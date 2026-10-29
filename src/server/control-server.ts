@@ -20,7 +20,7 @@ import { ClankyOperationService } from "../core/clanky-operation-service";
 import { isControlToolName } from "../core/control-tool-contracts";
 import { controlGrantScopes, resolveControlGrant, requireControlWorker, type ControlGrant } from "../core/control-authority";
 import { configureControlToolTransport } from "../core/control-tool-transport";
-import { runWithCurrentUser } from "../context/user-context";
+import { runWithAuthenticatedUser, runWithCurrentUser } from "../context/user-context";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { isReadRecord } from "@/shared/record";
 import { configureControlApi, controlErrorResponse } from "../api/control";
@@ -156,11 +156,11 @@ export class ControlServer {
       const resolve = async (): Promise<ControlGrant> => {
         const grant = await this.keyGrant(credential);
         if (!grant.managedContext) throw new DomainError("control_scope_required", "Native control requires an execution-owned credential.");
-        if (workerNodeId) await runWithCurrentUser(grant.user, async () => await requireControlWorker(grant, workerNodeId));
+        if (workerNodeId) await runWithAuthenticatedUser(grant.user, async () => await requireControlWorker(grant, workerNodeId));
         return grant;
       };
       const access = { grant: await resolve(), revalidate: resolve };
-      return await runWithCurrentUser(access.grant.user, async () => request.operation === "list"
+      return await runWithAuthenticatedUser(access.grant.user, async () => request.operation === "list"
         ? { tools: await this.sessions.tools(access, request.chatId) }
         : await this.sessions.call(access, {
           name: request.name, input: request.input, browser: request.context, signal,
@@ -200,7 +200,7 @@ export class ControlServer {
   private async keyGrant(token: string): Promise<ControlGrant> {
     const authenticated = authenticateApiKey(this.options.store, token);
     if (!authenticated) throw new DomainError("control_credential_invalid", "The control credential expired or was revoked.");
-    return await runWithCurrentUser(authenticated.user, async () => await resolveControlGrant({
+    return await runWithAuthenticatedUser(authenticated.user, async () => await resolveControlGrant({
       credentialId: `api-key:${authenticated.apiKeyId}`, scopes: authenticated.scopes, apiKeyId: authenticated.apiKeyId,
     }));
   }

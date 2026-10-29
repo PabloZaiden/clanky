@@ -74,6 +74,12 @@ selected executor; cleanup owns pending requests and files. CLI/terminal
 environment and the separate `ctx.workspace.prompt` callback retain their
 existing contracts.
 
+Credential-authenticated control starts with a fresh user/actor context and
+clears inherited workspace and resource-owner state before grant resolution
+and dispatch. In-process scheduled executions must not carry their source
+workspace restriction into a general control grant; the validated grant owns
+the restrictions reapplied by the common control authority.
+
 Resolve managed origin from persisted credential/execution associations.
 Optional browser context supplies verified provenance and navigation, never
 authority. Workspace grants permit project work, not workspace/access/host
