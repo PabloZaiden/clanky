@@ -26,8 +26,14 @@ interface Snapshot {
   };
 }
 interface ToolResult {
-  ok: boolean;
-  data?: { config?: { id: string } };
+  ok?: boolean;
+  status?: string;
+  completion?: string;
+  code?: string;
+  requestId?: string;
+  items?: Array<{ id: string }>;
+  content?: unknown;
+  data?: { id?: string };
   error?: { code: string };
 }
 interface Command { name: string; input: Record<string, unknown> }
@@ -70,6 +76,7 @@ async function prepare(client: Client, directory: string, executionHost: Record<
   const workspace = (await client.json<{ id: string }>("/api/workspaces", {
     method: "POST", body: JSON.stringify({
       name, directory, executionHost, workspaceType: "directory", allowWorktrees: false,
+      allowClankyContext: false,
       serverSettings: { agent: { adapter: "opencode2", provider: "opencode" } },
     }),
   }, 201)).data;
@@ -84,27 +91,50 @@ async function prepare(client: Client, directory: string, executionHost: Record<
   return { workspace, modelConfig, createChat };
 }
 
-async function operateWorkspace(client: Client, id: string, workspaceId: string, filePath: string, name: string) {
+async function operateWorkspace(
+  client: Client, id: string, workspaceId: string, filePath: string, name: string,
+  createChat: (name: string) => Promise<string>,
+) {
+  const createdId = await createChat(name);
+  const requestedName = `${name} awaiting approval`;
   await send(client, id, instruction([
     { name: "clanky_list_workspaces", input: {} },
-    { name: "clanky_read_workspace_file", input: { workspaceId, path: filePath } },
-    { name: "clanky_create_chat", input: { name, useWorktree: false } },
+    {
+      name: "clanky_execute_operation", input: {
+        operationId: "GET /api/workspaces/:id/files/content",
+        parameters: [{ name: "id", value: workspaceId }],
+        query: [{ name: "path", value: filePath }],
+        bodyJson: null, confirmationDescription: null,
+      },
+    },
+    {
+      name: "clanky_create_chat", input: {
+        name: requestedName, useWorktree: false,
+        confirmationDescription: `Create the chat "${requestedName}" in this workspace with automatic permission approval.`,
+      },
+    },
   ]));
   const output = await results(client, id);
-  expect(output.every((result) => result.ok)).toBe(true);
+  expect(output[0]?.items?.some((item) => item.id === workspaceId)).toBe(true);
+  expect(output[1]?.ok).toBe(true);
   expect(JSON.stringify(output)).toContain("Selected execution host file");
-  const createdId = output.at(-1)?.data?.config?.id;
-  expect(createdId).toBeDefined();
+  expect(output.at(-1)).toMatchObject({
+    ok: true, code: "confirmation_required", completion: "not_executed",
+  });
+  expect(output.at(-1)?.requestId).toBeDefined();
+  const chats = (await client.json<Chat[]>(`/api/chats?workspaceId=${encodeURIComponent(workspaceId)}`)).data;
+  expect(chats.some((chat) => chat.config.name === requestedName)).toBe(false);
   expect((await client.json<Chat>(`/api/chats/${createdId}`)).data.config.name).toBe(name);
   await send(client, id, instruction([
-    { name: "clanky_send_message_to_chat", input: { chatId: createdId, message: "Work in this workspace." } },
+    { name: "clanky_send_chat_message", input: { target: createdId, message: "Work in this workspace." } },
   ]));
   expect((await results(client, id))[0]!.ok).toBe(true);
-  await idle(client, createdId!);
+  await idle(client, createdId);
   const delegated = (await client.json<Snapshot>(`/api/chats/${createdId}/snapshot?full=1`)).data;
   expect(delegated.transcript.messages.some(
     (message) => message.role === "assistant" && message.content.includes("Work in this workspace."),
   )).toBe(true);
+  return createdId;
 }
 
 test("OpenCode users control workspaces, route browser actions, steer and resume their chat", async () => {
@@ -119,10 +149,7 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     await application.start();
     const host = (await application.json<Array<{ ref: Record<string, unknown> }>>("/api/execution-hosts"))
       .data.find((entry) => entry.ref["kind"] === "local")!;
-    const { workspace, modelConfig, createChat } = await prepare(application, directory, host.ref, "OpenCode Control workspace");
-    await application.json("/api/preferences/quick-chat", {
-      method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
-    });
+    const { workspace, createChat } = await prepare(application, directory, host.ref, "OpenCode Control workspace");
     const id = await createChat("OpenCode Control");
     const inputFile = createFileAttachment("project.json", "{\"project\":\"OpenCode workspace\"}\n", "application/json");
     await application.json(`/api/chats/${id}/messages`, {
@@ -134,7 +161,28 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     expect(fileSnapshot.transcript.messages.some((message) =>
       message.role === "assistant" && message.content.includes(expectedFileInspection(inputFile).sha256)
     )).toBe(true);
-    await operateWorkspace(application, id, workspace.id, filePath, "Delegated OpenCode work");
+    const delegatedId = await operateWorkspace(application, id, workspace.id, filePath, "Delegated OpenCode work", createChat);
+    const foreignDirectory = join(application.runDirectory, "foreign-workspace");
+    await mkdir(foreignDirectory, { recursive: true });
+    const foreign = await prepare(application, foreignDirectory, host.ref, "Foreign OpenCode project");
+    const foreignId = await foreign.createChat("Foreign project conversation");
+    const foreignMessage = "Foreign project conversation must remain private.";
+    await send(application, foreignId, foreignMessage);
+    await idle(application, foreignId);
+    const unauthorizedMessage = "This cross-project instruction must not be delivered.";
+    await send(application, id, instruction([
+      { name: "clanky_read_chat", input: { target: delegatedId } },
+      { name: "clanky_read_chat", input: { target: foreignId } },
+      { name: "clanky_send_chat_message", input: { target: foreignId, message: unauthorizedMessage } },
+    ]));
+    const collaboration = await results(application, id);
+    expect(collaboration[0]).toHaveProperty("content");
+    expect(JSON.stringify(collaboration[0]?.content)).toContain("Work in this workspace.");
+    expect(collaboration[1]?.ok).toBe(false);
+    expect(JSON.stringify(collaboration[1])).not.toContain(foreignMessage);
+    expect(collaboration[2]?.ok).toBe(false);
+    const unchangedForeign = (await application.json<Snapshot>(`/api/chats/${foreignId}/snapshot?full=1`)).data;
+    expect(unchangedForeign.transcript.messages.some((message) => message.content.includes(unauthorizedMessage))).toBe(false);
 
     const key = (await application.json<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "OpenCode browser clients", scopes: ["*"] }),
@@ -175,9 +223,9 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
       (status) => status === "streaming",
       { description: "OpenCode Control turn to accept steering", timeoutMs: 10_000 });
     await steer("Continue.", clients[0]!);
-    expect((await results(application, id))[0]!.ok).toBe(true);
+    expect((await results(application, id))[0]?.items?.some((item) => item.id === workspace.id)).toBe(true);
     await send(application, id, instruction([
-      { name: "clanky_open_workspace_file", input: { workspaceId: workspace.id, filePath } },
+      { name: "clanky_ui_action", input: { action: { type: "open_workspace_file", workspaceId: workspace.id, filePath } } },
     ]), clients[1]);
     const action = await pollUntil(() => actions[1]!.at(-1),
       (value) => value?.source.kind === "chat_turn" && value.source.chatId === id,
@@ -191,15 +239,15 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
         outcome: { status: "opened", action: action!.action },
       }),
     });
-    expect((await results(application, id))[0]!.ok).toBe(true);
+    expect((await results(application, id))[0]?.status).toBe("opened");
     for (const socket of sockets) socket.close();
     await pollUntil(() => sockets.map((socket) => socket.readyState),
       (states) => states.every((state) => state === WebSocket.CLOSED),
       { description: "OpenCode browser clients to disconnect", timeoutMs: 5_000 });
     await application.restart();
-    await send(application, id, instruction([{ name: "clanky_list_chats", input: { workspaceId: workspace.id } }]));
+    await send(application, id, instruction([{ name: "clanky_list_chats", input: { workspace: workspace.id } }]));
     const resumed = await results(application, id);
-    expect(resumed[0]!.ok).toBe(true);
+    expect(resumed[0]?.items).toBeDefined();
     expect(JSON.stringify(resumed)).toContain("Delegated OpenCode work");
   } catch (error) {
     console.error(await application.diagnostics());
@@ -252,12 +300,9 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
         cwd: worker.dataDir, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
       }),
     });
-    const { workspace, modelConfig, createChat } = await prepare(client, workspaceDirectory, host.ref, "Mesh OpenCode Control");
-    await client.json("/api/preferences/quick-chat", {
-      method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
-    });
+    const { workspace, createChat } = await prepare(client, workspaceDirectory, host.ref, "Mesh OpenCode Control");
     const id = await createChat("Mesh Control conversation");
-    await operateWorkspace(client, id, workspace.id, filePath, "Delegated Mesh work");
+    await operateWorkspace(client, id, workspace.id, filePath, "Delegated Mesh work", createChat);
   } catch (error) {
     for (const node of nodes) console.error(await meshNodeDiagnostics(node));
     throw error;

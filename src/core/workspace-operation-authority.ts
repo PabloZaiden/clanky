@@ -21,8 +21,8 @@ async function readOperationBody(operation: DelegatedOperation, request: Request
   }
 }
 
-export function requireWorkspaceResource(input: {
-  guest: CollaborationGuestGrant;
+export function requireBoundWorkspaceResource(input: {
+  ownerUserId: string;
   workspaceId: string;
   resource: string;
   id: string;
@@ -30,18 +30,27 @@ export function requireWorkspaceResource(input: {
   if (input.resource === "read-item") return;
   if (input.resource === "execution-host" && workspaceUsesExecutionHost({
     workspaceId: input.workspaceId,
-    ownerUserId: input.guest.ownerUserId,
+    ownerUserId: input.ownerUserId,
     executionHostId: input.id,
   })) return;
   const workspaceId = findResourceWorkspace({
-    resource: input.resource, id: input.id, ownerUserId: input.guest.ownerUserId,
+    resource: input.resource, id: input.id, ownerUserId: input.ownerUserId,
   });
   if (workspaceId !== input.workspaceId) {
     throw new DomainError("collaboration_resource_unavailable", "The resource is not available in this shared workspace.");
   }
+}
+
+export function requireWorkspaceResource(input: {
+  guest: CollaborationGuestGrant;
+  workspaceId: string;
+  resource: string;
+  id: string;
+}): void {
+  requireBoundWorkspaceResource({ ...input, ownerUserId: input.guest.ownerUserId });
   if (input.resource === "terminal" || input.resource === "preview") {
     collaborationService.authorizeInteractiveResource({
-      kind: input.resource, id: input.id, workspaceId,
+      kind: input.resource, id: input.id, workspaceId: input.workspaceId,
     });
   }
 }

@@ -23,6 +23,8 @@ import { StandaloneChatTranscriptViewer } from "../StandaloneChatTranscriptViewe
 import { AppRouteContent, type ShellMainContentProps } from "./shell-main-content";
 import { getRouteString } from "./route-fields";
 import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
+import { ControlRequestPage } from "../control/control-request-page";
+import { ControlConsentPage } from "../control/control-consent-page";
 
 const ROUTE_VIEWS = [
   "home",
@@ -48,6 +50,8 @@ const ROUTE_VIEWS = [
   "compose",
   "rebuild-workspace",
   "restart-workspace",
+  "control-request",
+  "control-consent",
 ] as const;
 
 const WORKSPACE_ENTITY_ROUTE_VIEWS = new Set([
@@ -318,6 +322,13 @@ function renderShellRouteContent(
   const unavailable = getClankyRouteUnavailableReason(route);
   if (unavailable) {
     return <Page><ErrorState title="Operation unavailable" description={unavailable} /></Page>;
+  }
+  if (route.view === "control-request") {
+    const requestId = getRouteString(route, "requestId");
+    return <ControlRequestPage key={requestId} requestId={requestId} />;
+  }
+  if (route.view === "control-consent") {
+    return <ControlConsentPage />;
   }
   if (route.view === "chat-transcript") {
     const transcriptChatId = getRouteString(route, "chatId");

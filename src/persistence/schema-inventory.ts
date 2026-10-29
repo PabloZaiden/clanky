@@ -61,6 +61,8 @@ function resetOnlyTable(
 }
 
 export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
+  resetOnlyTable("webapp_oauth_authorizations", "framework"),
+  resetOnlyTable("webapp_oauth_sessions", "framework"),
   resetOnlyTable("webapp_audit_events", "framework"),
   resetOnlyTable("webapp_user_setup_links", "framework"),
   resetOnlyTable("webapp_preferences", "framework"),

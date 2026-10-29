@@ -12,6 +12,7 @@ import { preferencesManager } from "../core/preferences-manager";
 import { workspaceConnections } from "../core/workspace-connections";
 import { projectCollaborationOperations } from "./collaboration-operation-metadata";
 import { workspaceClientErrorResponse } from "./workspace-client-errors";
+import { getWorkspaceAccessAuthority } from "../context/user-context";
 
 const log = createLogger("api:workspace-federation");
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
@@ -44,7 +45,7 @@ export function withUnifiedWorkspaceResources(routes: RouteTable): RouteTable {
       const handler = route[method];
       if (!handler) continue;
       next[method] = async (request, ctx) => {
-        if (ctx.delegation) return await handler(request, ctx);
+        if (ctx.delegation || getWorkspaceAccessAuthority()) return await handler(request, ctx);
         try {
           return await federation.request(request, async (localRequest: Request) => await handler(localRequest, ctx));
         } catch (error) {

@@ -211,9 +211,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
         );
     const command = providerCommand.command;
     const args = providerCommand.args;
-    const spawnEnv = config.transport === "ssh"
-      ? config.env
-      : buildProviderSpawnEnvironment(providerCommand, process.env, config.env);
+    const spawnEnv = buildProviderSpawnEnvironment(providerCommand, process.env, config.env);
     const logArgs = sanitizeSpawnArgsForLogging(command, args);
     const spawnCwd = config.transport === "ssh" ? "/" : config.directory;
     this.recentProcessLines = [];

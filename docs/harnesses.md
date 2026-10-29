@@ -44,13 +44,37 @@ OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.
 
-Native OpenCode 2 chats in the configured Quick Chat workspace support
-[Clanky Control](control-chats.md), with the same shared tools as Codex and
-Copilot. Clanky loads a managed native plugin and private loopback bridge on
+Owned native chats, tasks and managed Agent runs support
+[Clanky Control](control-chats.md) in their workspace without Quick Chat setup
+or general access. Explicit general access permits broader application control
+within the user's permissions. Native adapters discover their granted catalog
+from the shared control boundary and invoke it with scoped managed credentials;
+they do not call arbitrary application routes with broad API keys.
+Codex registers these tools only on newly created native threads. Existing
+threads resume with their previously registered catalog and history, without
+catalog-change refusal, replacement threads or an MCP fallback. Invoked actions
+still require current server authorization and valid common-control inputs.
+
+ACP remains available for ordinary model execution, but receives no automatic
+Clanky control or CLI credentials, including with general access enabled.
+Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
+the server, worker or SSH login environment. Other environment variables and
+provider authentication are preserved. Personal keys and interactive terminals
+are unchanged. Deterministic programs retain scoped control through their
+trusted runner, without passing its key to an ACP prompt subprocess.
+
+For OpenCode 2, Clanky loads a managed native plugin and private loopback bridge on
 the execution host; no separate plugin installation, ACP adapter or MCP
 configuration is needed. The installed runtime must support the generation-2
-Promise plugin API. Plugin activation and managed credentials are checked
-before admitting a Control conversation.
+Promise plugin API, including tool reload. Actual chat roots discover optional
+browser tools using their persisted real chat ID; task/run roots do not claim a
+chat identity. The plugin reloads newly discovered tools before the native
+prompt is prepared and filters each model context to that owned root's catalog.
+Plugin activation and managed credentials are checked
+before admitting a Control conversation. Tools belong only to an active owned
+root turn; native subagents do not inherit them. Task and scheduled-run
+question policies remain unattended, and human control approval remains a
+separate pending interaction.
 
 [Live voice](voice.md#live-voice) is a global sidebar assistant, independent of
 OpenCode, Quick Chat and any selected chat or native adapter.

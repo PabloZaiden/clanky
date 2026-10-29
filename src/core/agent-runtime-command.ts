@@ -1,5 +1,5 @@
 import type { AgentProvider, AgentTransport } from "@/shared/settings";
-import { mergeRuntimeEnvironment } from "./managed-context-environment";
+import { mergeRuntimeEnvironment, withoutManagedContextEnvironment } from "./managed-context-environment";
 import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";
 
 export interface AgentRuntimeCommand {
@@ -329,8 +329,11 @@ export function buildProviderShellInvocation(
   providerCommand: AgentRuntimeCommand,
   runtimeEnvironment?: Record<string, string>,
 ): string {
-  const environment = mergeRuntimeEnvironment(providerCommand.env, runtimeEnvironment);
+  const environment = withoutManagedContextEnvironment(
+    mergeRuntimeEnvironment(providerCommand.env, runtimeEnvironment),
+  );
   return [
+    "env -u CLANKY_BASE_URL -u CLANKY_API_KEY",
     ...buildEnvAssignments(environment),
     quoteShell(providerCommand.command),
     ...providerCommand.args.map((value) => quoteShell(value)),
@@ -341,16 +344,12 @@ export function buildProviderSpawnEnvironment(
   providerCommand: AgentRuntimeCommand,
   baseEnv: NodeJS.ProcessEnv = process.env,
   overrides?: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv | undefined {
+): NodeJS.ProcessEnv {
   const runtimeEnvironment = mergeRuntimeEnvironment(providerCommand.env, overrides);
-  if (!runtimeEnvironment) {
-    return undefined;
-  }
-
-  return {
+  return withoutManagedContextEnvironment({
     ...baseEnv,
     ...runtimeEnvironment,
-  };
+  }) ?? {};
 }
 
 export function buildProviderAvailabilityShellCheck(provider: AgentProvider): string {

@@ -71,7 +71,8 @@ The most common server settings are environment variables:
 | `CLANKY_HOST` | Interface used by the server | `127.0.0.1` |
 | `CLANKY_PORT` | HTTP port | `3000` |
 | `CLANKY_DATA_DIR` | Directory for database, configuration, and logs | `$HOME/.clanky` |
-| `CLANKY_PUBLIC_BASE_URL` | External origin used for Mesh and browser links | unset |
+| `CLANKY_PUBLIC_BASE_URL` | External origin used for Mesh, control links and MCP OAuth | unset |
+| `CLANKY_MCP_OAUTH_CLIENTS` | JSON array of operator-registered MCP OAuth clients | `[]` |
 | `CLANKY_REMOTE_ONLY` | Disable the local execution host | unset |
 | `CLANKY_API_ONLY` | Serve API and server-origin authentication/account pages without the app UI | `false` |
 | `CLANKY_LOG_LEVEL` | Server log level | `info` |
@@ -100,6 +101,96 @@ registration or same-origin override is needed. Cookie-backed browser sessions
 retain their same-origin checks. With authentication disabled, even a loopback
 API can expose private unauthenticated reads to other websites. Use an isolated
 data directory whenever passkey enforcement is disabled.
+
+## Agent control and MCP
+
+Supported native agents and deterministic programs collaborate within their
+own project without enabling general Clanky access or installing a CLI/skill.
+The workspace's **Allow general
+Clanky access** setting additionally permits in-scope cross-project and server
+control, within the user's existing permissions. It never grants account,
+API-key or session administration. Native tools, Live Voice, external MCP and
+deterministic programs share the application-control implementation; they do not
+need separate internal MCP servers. See [native control](control-chats.md) and
+[Live Voice](voice.md#live-voice) for their client behavior.
+
+ACP model processes do not receive automatic Clanky control or CLI credentials,
+even when general access is enabled. Ordinary ACP chats and prompts still work.
+Deterministic code keeps its trusted runner control regardless of prompt
+adapter, without passing its key to ACP. Legacy nonterminal wildcard
+credentials are retired on startup; personal keys and interactive terminal
+behavior are unchanged.
+
+External clients connect to **`https://clanky.example.com/mcp`** using Streamable
+HTTP. Set a stable `CLANKY_PUBLIC_BASE_URL`, preserve that origin through the
+proxy, and keep passkey enforcement enabled. Local development may instead use
+a fixed loopback listening port. Do not configure OAuth against an ephemeral
+port or change its issuer/resource URL while grants are in use.
+
+### OAuth clients
+
+Register each supported client through `CLANKY_MCP_OAUTH_CLIENTS`, for example:
+
+```json
+[
+  {
+    "clientId": "my-desktop-agent",
+    "clientName": "My desktop agent",
+    "redirectUris": ["http://127.0.0.1:8181/callback"],
+    "grantTypes": ["authorization_code", "refresh_token"]
+  }
+]
+```
+
+Use the client's actual ID and exact callback URI, including its loopback port.
+Public callbacks require HTTPS; literal loopback callbacks may use HTTP.
+Clients must support operator pre-registration. Dynamic client registration and
+automatic client-ID-metadata onboarding are not supported; a client requiring
+either cannot use this OAuth configuration unchanged.
+
+The client uses protected-resource/authorization-server discovery, requests the
+`clanky:control` scope for the exact `/mcp` resource, and starts an authorization
+code flow with S256 PKCE. The user signs in to Clanky and explicitly selects
+one owned workspace or general application control on the consent screen.
+That choice is validated and persisted by the server, not trusted from a
+tool argument or a client-supplied workspace scope.
+
+OAuth access tokens expire after ten minutes. Refresh tokens rotate within a
+thirty-day absolute lifetime; narrower refreshes and revocation cannot widen
+the original grant. Tokens authenticate only the configured MCP resource,
+not Clanky's REST, account, device, key, browser-session or realtime endpoints.
+Do not pass browser cookies, unrestricted API keys or credentials in URLs to
+an MCP client.
+
+### Unattended service credentials
+
+In **Settings → Agents & integrations**, create a named integration, select its
+workspace/general grant and choose an expiry of one to ninety days. Copy the
+token when it is first shown and store it privately in the client's credential
+configuration. Send it as `Authorization: Bearer <token>` to `/mcp`; never put
+it in prompts, source files, command history or query strings. The token is not
+shown again. Revoke an unused integration from the same Settings section.
+
+These are limited control credentials, not ordinary unrestricted CLI/API keys.
+They cannot approve their own operations, mint keys or obtain a browser session.
+Workspace-only integrations cannot inspect other projects, administer the
+workspace/access policy or enumerate unrelated servers.
+
+### Human interactions
+
+Destructive and other confirmation-required operations return a frozen,
+expiring request and an authenticated Clanky link without performing the
+requested mutation. The human reviews and approves or rejects the exact
+arguments; scope and target state are checked again before execution.
+Approval is single-use. Pending requests do not survive restart or restore
+revoked/ended execution authority. A pending result is not completed work,
+and an uncertain outcome must be inspected before repeating a mutation.
+
+Missing SSH credentials use a separate private browser handoff. Passwords and
+credential tokens do not enter model arguments/results or deterministic code.
+Real browser passkey authentication is required for approval, credential
+handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
+not grant those human capabilities, even on loopback.
 
 ## Production access
 

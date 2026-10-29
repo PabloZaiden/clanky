@@ -11,6 +11,13 @@ Use this skill when you need to operate an existing Clanky instance from a termi
 Clanky evolves over time, so prefer discovery over memorized command details. Treat the running CLI and its API/schema output as the source of truth.
 The canonical command and HTTP reference is [`docs/API.md`](../../docs/API.md).
 
+Managed agent control keys are limited, not unrestricted CLI/raw REST
+credentials. Prefer the provided native control tools or `ctx.clanky.call()`;
+do not treat a `403` as permission to fall back through CLI, key-management or
+session endpoints. External client setup, OAuth preregistration, service grants
+and human approval links are documented in
+[Agent control and MCP](../../docs/deployment.md#agent-control-and-mcp).
+
 ## Conversation files
 
 For chat/task/Agent inputs, discover the endpoint's `attachments` schema before
@@ -29,20 +36,23 @@ Storage, download, recovery and cleanup details are in
 
 ## Native Control chats
 
-Normal native Codex, Copilot and OpenCode 2 chats in the user's configured
-Quick Chat workspace receive the shared `clanky_*` Control tools. OpenCode
-eligibility follows the `opencode2` adapter, regardless of its model's upstream
-provider. Setup and restart requirements are in
+Supported native Codex, Copilot and OpenCode 2 executions receive the shared
+`clanky_*` Control tools for their admitted project; Quick Chat is not an
+authorization gate. OpenCode eligibility follows the `opencode2` adapter,
+regardless of its model's upstream provider. Setup and restart requirements are in
 [`docs/control-chats.md`](../../docs/control-chats.md).
 
-Prefer these tools when they are available. Read another workspace through
-`clanky_read_workspace_file`; delegate repository work by creating or messaging
-that workspace's chat rather than executing Git against it from the Control
-chat. Browser-opening tools affect only the originating tab and do not return
-file contents. After steering from another or unknown tab, domain tools remain
-available but browser actions require a subsequent ordinary turn with known
-browser provenance. ACP, native subagents and unattended sessions do not
-receive these Control tools.
+ACP has no automatic Clanky access, even with general workspace access enabled.
+Ordinary ACP chats and prompts still work without receiving a managed control
+key. This does not disable trusted-runner `ctx.clanky.call()` for deterministic
+programs whose `workspace.prompt()` uses ACP; the runner's credential stays out
+of the ACP subprocess. Do not adapt legacy ACP CLI access as a fallback.
+
+Prefer these tools when they are available. Cross-project work requires an
+explicit grant; delegate repository work through an authorized chat rather than
+executing Git against another workspace. Browser-opening tools require the real
+originating tab and do not return file contents. Unattended execution does not
+supply browser authority; never invent a tab or session to bypass that boundary.
 
 For interrupted native chats, discover and use the normal reconnect operation
 to resume the original conversation. Recovery retains unfinished partial text
@@ -221,9 +231,18 @@ workspaces, or change `allowClankyContext`. `GET /api/collaboration/access`
 reports effective capabilities; no invited controller has `admin`. Use qualified
 workspace references for ordinary work. Revoke the whole collaborator to remove
 all-workspaces access; per-workspace reductions do not apply.
-Without Clanky Context, deterministic prompt tokens authorize only that run's
-chat, not other APIs or chats. Owner-enabled Clanky Context intentionally grants
-broader execution-context access; Work collaborators may use it.
+Deterministic programs use `ctx.clanky.call(name, input)` for direct shared
+control, with names and input types derived from canonical contracts. The
+trusted runner retains the managed credential; the program and its commands
+receive no credentials or server configuration. Authority follows the admitted
+project, never a caller-supplied workspace ID; general access needs an explicit
+grant. Treat results as unknown JSON and inspect them before use.
+`confirmation_required` / `not_executed` is pending approval, not success: return
+it without autoapproval, invented browser/voice sessions, or an indefinite wait.
+Do not retry uncertain mutations automatically. The prompt bridge remains
+limited to that run's exact chat. See
+[deterministic execution](../../docs/API.md#deterministic-agent-execution) for
+request bounds, cancellation and the unchanged exec/prompt workflow.
 For `"read"`, inspect content, transcripts, files, Git information and realtime
 updates, and download files normally. Do not send messages, answer questions or
 permissions, edit content, upload, run/stop work, execute commands or open

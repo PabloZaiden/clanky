@@ -1,18 +1,18 @@
 /**
- * Call-owned ordering, frozen visual approvals and private credential handoffs.
+ * Ordered control execution, frozen approvals and private credential handoffs.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ControlUiAction, ControlUiActionOutcome } from "@/shared/clanky-control";
-import type { LiveVoiceUiContext } from "@/shared/live-voice";
-import { VoiceConfirmationDescriptionSchema } from "@/shared/live-voice";
-import { controlUiActionService } from "./control-ui-action-service";
+import type { ExecuteOperationInput } from "@/contracts/schemas/control";
+import { ControlConfirmationDescriptionSchema, type ControlClientContext } from "@/shared/control-interactions";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
-import { resolveVoiceCredentialTargets } from "./live-voice-credential-targets";
+import { resolveControlCredentialTargets } from "./control-credential-targets";
 import {
-  type ClankyOperationService, type ExecuteOperationInput, type OperationAuthority,
+  type ClankyOperationService, type OperationAuthority,
   type OperationResult, type PreparedOperation,
 } from "./clanky-operation-service";
 import { DomainError } from "../domain/domain-error";
@@ -22,6 +22,7 @@ const MAX_PENDING = 16;
 
 export type ConfirmedWriteExecutor = (input: ExecuteOperationInput, maxBytes?: number) => Promise<OperationResult>;
 export type ConfirmationContinuation = (result: OperationResult, executeWrite: ConfirmedWriteExecutor) => Promise<OperationResult>;
+export type ControlInteractionOutcome = ControlUiActionOutcome | { status: "pending"; url: string };
 
 interface PendingConfirmation {
   operation: PreparedOperation;
@@ -38,38 +39,58 @@ interface PendingCredential {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export class LiveVoiceActions {
+export class ControlActions {
   private readonly controller = new AbortController();
+  private readonly invocation = new AsyncLocalStorage<{ signal: AbortSignal; clientId?: string }>();
   private mutationTail: Promise<unknown> = Promise.resolve();
   private readonly confirmations = new Map<string, PendingConfirmation>();
   private readonly credentials = new Map<string, PendingCredential>();
-  private context: LiveVoiceUiContext;
+  private context: ControlClientContext;
 
   constructor(private readonly options: {
-    callId: string;
-    clientId: string;
-    userId: string;
-    context: LiveVoiceUiContext;
+    clientId?: string;
+    context: ControlClientContext;
     authority: OperationAuthority;
     service: ClankyOperationService;
-    notify: (content: string) => void;
-    remember: (operation: PreparedOperation, result: OperationResult) => void;
+    notify?: (content: string) => void;
+    remember?: (operation: PreparedOperation, result: OperationResult) => void;
+    interact: (action: ControlUiAction, requestId: string, signal: AbortSignal) => Promise<ControlInteractionOutcome>;
   }) { this.context = options.context; }
 
-  get signal(): AbortSignal { return this.controller.signal; }
+  get signal(): AbortSignal { return this.invocation.getStore()?.signal ?? this.controller.signal; }
+  private get clientId(): string | undefined { return this.invocation.getStore()?.clientId ?? this.options.clientId; }
   get authority(): OperationAuthority { return this.options.authority; }
-  get uiContext(): LiveVoiceUiContext { return this.context; }
+  get uiContext(): ControlClientContext { return this.context; }
 
-  updateContext(context: LiveVoiceUiContext): void {
+  async withInvocation<T>(
+    context: { signal: AbortSignal; clientId?: string },
+    invoke: () => Promise<T>,
+  ): Promise<T> {
+    return await this.invocation.run({
+      ...context, signal: AbortSignal.any([this.controller.signal, context.signal]),
+    }, invoke);
+  }
+
+  getConfirmation(requestId: string): {
+    description: string; expiresAt: number; operation: ExecuteOperationInput;
+  } {
+    this.prune();
+    const pending = this.confirmations.get(requestId);
+    if (!pending || this.controller.signal.aborted) {
+      throw new DomainError("control_request_unavailable", "The confirmation expired or was already consumed.");
+    }
+    return {
+      description: pending.description, expiresAt: pending.expiresAt,
+      operation: structuredClone(pending.operation.input),
+    };
+  }
+
+  updateContext(context: ControlClientContext): void {
     if (context.revision > this.context.revision) this.context = context;
   }
 
-  private async dispatch(action: ControlUiAction, requestId: string): Promise<ControlUiActionOutcome> {
-    const result = await controlUiActionService.dispatch({
-      ownerId: this.options.userId, clientId: this.options.clientId,
-      source: { kind: "live_voice", callId: this.options.callId, requestId }, action,
-    }, this.signal);
-    return result.outcome;
+  private async dispatch(action: ControlUiAction, requestId: string): Promise<ControlInteractionOutcome> {
+    return await this.options.interact(action, requestId, this.signal);
   }
 
   async getUiState(requestId: string) {
@@ -96,7 +117,7 @@ export class LiveVoiceActions {
       case "open_ssh_server": operationId = "GET /api/ssh-servers/:id"; id = action.serverId; break;
       case "open_execution_host": {
         const read = this.options.service.prepare(this.authority, { operationId: "GET /api/execution-hosts", parameters: [], query: [], bodyJson: null });
-        const result = await this.options.service.execute(this.authority, read, { signal: this.signal, clientId: this.options.clientId });
+        const result = await this.options.service.execute(this.authority, read, { signal: this.signal, clientId: this.clientId });
         const hosts = Array.isArray(result.data) ? result.data : [];
         if (!result.ok || !hosts.some((host: unknown) => {
           if (!host || typeof host !== "object" || !("ref" in host)) return false;
@@ -110,7 +131,7 @@ export class LiveVoiceActions {
     const prepared = this.options.service.prepare(this.authority, {
       operationId, parameters: [{ name: "id", value: id! }], query: [], bodyJson: null,
     });
-    const result = await this.options.service.execute(this.authority, prepared, { signal: this.signal, clientId: this.options.clientId });
+    const result = await this.options.service.execute(this.authority, prepared, { signal: this.signal, clientId: this.clientId });
     if (!result.ok) throw new DomainError("voice_operation_target", "The requested UI target is unavailable.");
   }
 
@@ -120,19 +141,20 @@ export class LiveVoiceActions {
   }): Promise<OperationResult | Record<string, unknown>> {
     const { requestId, confirmationDescription, maxBytes } = options;
     const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
+    await this.authority.validate?.(prepared, this.signal);
     if (prepared.metadata.automation!.policy === "read") return await this.perform(prepared, requestId);
     return await this.serial(async () => {
       if (prepared.metadata.automation!.policy !== "confirm") return await this.perform(prepared, requestId);
       if (confirmationDescription === null) {
         throw new DomainError("voice_confirmation_description_required", "Supply a short description of this action, its named target and consequences in the user's language.");
       }
-      const description = VoiceConfirmationDescriptionSchema.parse(confirmationDescription);
+      const description = ControlConfirmationDescriptionSchema.parse(confirmationDescription);
       this.prune();
       if (this.confirmations.size >= MAX_PENDING) throw new DomainError("voice_live_busy", "Too many actions are awaiting confirmation.");
       const id = crypto.randomUUID();
       const revision = await this.options.service.targetRevision(this.authority, prepared, this.signal);
       const expiresAt = Date.now() + PENDING_TTL_MS;
-      const credentials = await resolveVoiceCredentialTargets(prepared);
+      const credentials = await resolveControlCredentialTargets(prepared);
       const argumentsSize = JSON.stringify({ parameters: input.parameters, query: input.query, body: prepared.body ?? null }, null, 2).length;
       if (argumentsSize > 40_000) throw new DomainError("voice_operation_invalid", "The arguments exceed the confirmation limit. Request a smaller operation.");
       const pending = {
@@ -146,11 +168,14 @@ export class LiveVoiceActions {
           requestId: id, description: pending.description, expiresAt,
         },
       }, requestId);
-      if (outcome.status !== "presented") {
+      if (outcome.status !== "presented" && outcome.status !== "pending") {
         this.confirmations.delete(id);
         return { ok: false, completion: "not_executed", outcome };
       }
-      return { ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt };
+      return {
+        ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt,
+        ...(outcome.status === "pending" ? { approvalUrl: outcome.url } : {}),
+      };
     });
   }
 
@@ -160,17 +185,18 @@ export class LiveVoiceActions {
     if (!pending || this.signal.aborted) throw new DomainError("voice_confirmation_not_found", "The confirmation expired or was already consumed.");
     this.confirmations.delete(requestId);
     if (!approved) {
-      this.options.remember(pending.operation, {
+      this.options.remember?.(pending.operation, {
         ok: true, operationId: pending.operation.id, code: "confirmation_rejected", completion: "not_executed",
       });
-      this.options.notify("The user rejected the pending operation. No operation was executed.");
+      this.options.notify?.("The user rejected the pending operation. No operation was executed.");
       return { ok: true, code: "confirmation_rejected", completion: "not_executed" };
     }
     const result = await this.serial<OperationResult>(async () => {
+      await this.authority.validate?.(pending.operation, this.signal);
       const revision = await this.options.service.targetRevision(this.authority, pending.operation, this.signal);
-      const credentials = await resolveVoiceCredentialTargets(pending.operation);
+      const credentials = await resolveControlCredentialTargets(pending.operation);
       if (revision !== pending.revision || credentials.revision !== pending.credentialRevision) {
-        this.options.remember(pending.operation, {
+        this.options.remember?.(pending.operation, {
           ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
         });
         return { ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
@@ -187,7 +213,7 @@ export class LiveVoiceActions {
         return await this.perform(prepared, requestId);
       });
     });
-    this.options.notify(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
+    this.options.notify?.(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
     return result;
   }
 
@@ -201,12 +227,13 @@ export class LiveVoiceActions {
 
   private async perform(prepared: PreparedOperation, requestId: string): Promise<OperationResult> {
     if (this.signal.aborted) throw new DomainError("voice_live_not_found", "The call has ended.");
+    await this.authority.validate?.(prepared, this.signal);
     const credential = prepared.metadata.automation!.credential;
     let credentialToken: string | null = null;
     const credentialTokens: Record<string, string> = {};
     const unavailableServerIds: string[] = [];
     if (credential) {
-      const targets = await resolveVoiceCredentialTargets(prepared);
+      const targets = await resolveControlCredentialTargets(prepared);
       for (const serverId of targets.serverIds) {
         const token = await this.requestCredential(serverId, requestId);
         if (token) { credentialTokens[serverId] = token; credentialToken = token; }
@@ -216,15 +243,15 @@ export class LiveVoiceActions {
         return { ok: false, operationId: prepared.id, completion: "not_executed",
           code: "ssh_credential_required", message: "Supply the SSH credential in this browser, then request the operation again." };
       }
-      if ((await resolveVoiceCredentialTargets(prepared)).revision !== targets.revision) {
+      if ((await resolveControlCredentialTargets(prepared)).revision !== targets.revision) {
         return { ok: false, operationId: prepared.id, completion: "not_executed",
           code: "voice_credential_target_changed", message: "The execution binding changed during credential handoff. Read it again before requesting the operation." };
       }
     }
     const result = await this.options.service.execute(this.authority, prepared, {
-      signal: this.signal, clientId: this.options.clientId, credentialToken, credentialTokens, unavailableServerIds,
+      signal: this.signal, clientId: this.clientId, credentialToken, credentialTokens, unavailableServerIds,
     });
-    this.options.remember(prepared, result);
+    this.options.remember?.(prepared, result);
     return result;
   }
 
@@ -240,8 +267,13 @@ export class LiveVoiceActions {
     try {
       const outcome = await this.dispatch({ type: "request_ssh_credential", requestId: id, serverId,
         serverName: server.config.name.slice(0, 500), expiresAt: Date.now() + PENDING_TTL_MS }, requestId);
-      if (outcome.status !== "presented") this.finishCredential(id, null);
-      return await ready.promise;
+      if (outcome.status !== "presented" && outcome.status !== "pending") this.finishCredential(id, null);
+      const onAbort = () => this.finishCredential(id, null);
+      this.signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        if (this.signal.aborted) onAbort();
+        return await ready.promise;
+      } finally { this.signal.removeEventListener("abort", onAbort); }
     } finally { this.finishCredential(id, null); }
   }
 
@@ -251,6 +283,11 @@ export class LiveVoiceActions {
     if (!pending || this.signal.aborted) throw new DomainError("voice_credential_not_found", "The credential request expired.");
     if (token) sshCredentialManager.getPasswordForToken(pending.serverId, token);
     this.finishCredential(requestId, token);
+  }
+
+  cancelRequest(requestId: string): void {
+    this.confirmations.delete(requestId);
+    this.finishCredential(requestId, null);
   }
 
   private finishCredential(id: string, token: string | null): void {

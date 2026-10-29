@@ -24,6 +24,10 @@ interface Session {
   prompt: string;
   events: Array<Record<string, unknown>>;
   result?: string;
+  control?: {
+    requests: Array<{ name: string; input: Record<string, unknown> }>;
+    results: unknown[];
+  };
   backgroundResult?: string;
   usage: Record<string, { inputTokens: number; outputTokens: number; reasoningTokens: number; cacheReadTokens: number; cacheWriteTokens: number }>;
   children?: Array<{
@@ -108,6 +112,14 @@ function execute(session: Session): void {
     finish(session, backgroundFollowUp(session.prompt, session.backgroundResult));
     return;
   }
+  const requests = session.prompt.split("\n")
+    .filter((line) => line.startsWith("Control request: "))
+    .flatMap((line) => JSON.parse(line.slice("Control request: ".length)));
+  if (requests.length) {
+    session.control = { requests, results: [] };
+    requestTool(session, requests[0]!.name, requests[0]!.input);
+    return;
+  }
   if (!session.tools.some((tool) => tool.name === "clanky_list_workspaces")) {
     finish(session, `Agent received: ${session.prompt}\nClanky tools unavailable.`);
     return;
@@ -115,7 +127,7 @@ function execute(session: Session): void {
   requestTool(session, "clanky_list_workspaces", {});
 }
 
-function toolResult(params: Record<string, unknown>): void {
+async function toolResult(params: Record<string, unknown>): Promise<void> {
   const id = String(params["requestId"]);
   const request = pending.get(id);
   if (!request) throw new Error("Unexpected Copilot tool result.");
@@ -126,11 +138,32 @@ function toolResult(params: Record<string, unknown>): void {
   const result = typeof raw === "string" ? JSON.parse(raw) : raw;
   event(session, "tool.execution_complete", { toolCallId: id, result, success: !params["error"] });
   event(session, "external_tool.completed", { requestId: id });
+  if (session.control) {
+    const control = session.control;
+    control.results.push(result);
+    const next = control.requests[control.results.length];
+    if (next) {
+      requestTool(session, next.name, next.input);
+      return;
+    }
+    session.control = undefined;
+    let planningReceipt = "";
+    if (session.prompt.includes("<promise>PLAN_READY</promise>")) {
+      await mkdir(join(session.directory, ".clanky-planning"), { recursive: true });
+      await Bun.write(join(session.directory, ".clanky-planning", "plan.md"), "# Project collaboration plan\nUse the inspected project reference.");
+      await Bun.write(join(session.directory, ".clanky-planning", "status.md"), "Project reference inspected; awaiting plan approval.");
+      planningReceipt = "\n<promise>PLAN_READY</promise>";
+    }
+    finish(session, `Control results: ${JSON.stringify(control.results)}${planningReceipt}`);
+    return;
+  }
   if (name === "clanky_list_workspaces") {
     session.result = `Agent received: ${session.prompt}\nClanky workspace list: ${JSON.stringify(result)}`;
-    const workspace = result?.data?.data?.[0] ?? result?.data?.[0];
+    const workspace = result?.items?.[0];
     if (session.prompt.includes("open the workspace") && workspace?.id) {
-      requestTool(session, "clanky_open_workspace", { workspaceId: workspace.id });
+      requestTool(session, "clanky_ui_action", {
+        action: { type: "open_workspace", workspaceId: workspace.id },
+      });
       return;
     }
   } else {
@@ -393,7 +426,7 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       await sendInput(session, params, frame.id);
       return;
     case "session.tools.handlePendingToolCall":
-      toolResult(params);
+      await toolResult(params);
       await save();
       result = { success: true };
       break;

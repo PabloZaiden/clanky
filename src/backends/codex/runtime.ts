@@ -86,18 +86,37 @@ export class CodexRuntime {
 
   private async readFrames(): Promise<void> {
     const decoder = new TextDecoder();
-    let buffer = "";
+    let parts: Uint8Array[] = [];
+    let bytes = 0;
     try {
       for await (const chunk of this.process.stdout) {
-        buffer += decoder.decode(chunk, { stream: true });
-        let index: number;
-        while ((index = buffer.indexOf("\n")) >= 0) {
-          const line = buffer.slice(0, index);
-          buffer = buffer.slice(index + 1);
-          if (Buffer.byteLength(line, "utf8") > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "Codex exceeded its protocol frame limit.");
+        let start = 0;
+        while (start < chunk.byteLength) {
+          const end = chunk.indexOf(10, start);
+          const part = chunk.subarray(start, end === -1 ? chunk.byteLength : end);
+          bytes += part.byteLength;
+          if (bytes > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "Codex exceeded its protocol frame limit.");
+          if (end === -1) {
+            parts.push(part);
+            break;
+          }
+          // Scan each chunk once; inline images must not cause repeated full-frame scans.
+          let frame = part;
+          if (parts.length) {
+            frame = new Uint8Array(bytes);
+            let offset = 0;
+            for (const previous of parts) {
+              frame.set(previous, offset);
+              offset += previous.byteLength;
+            }
+            frame.set(part, offset);
+          }
+          const line = decoder.decode(frame);
+          parts = [];
+          bytes = 0;
           if (line.trim()) this.rpc.receive(line);
+          start = end + 1;
         }
-        if (Buffer.byteLength(buffer, "utf8") > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "Codex exceeded its protocol frame limit.");
       }
       if (!this.closing) throw new HarnessError("harness_transport_closed", "Codex exited unexpectedly.");
     } catch (error) {

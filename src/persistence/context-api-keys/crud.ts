@@ -61,6 +61,19 @@ export async function listContextApiKeyAssociationsForUser(userId: string): Prom
   return listAssociationsForUser(userId);
 }
 
+export async function getContextApiKeyAssociationForUser(
+  userId: string,
+  apiKeyId: string,
+): Promise<ContextApiKeyAssociation | undefined> {
+  const row = getDatabase().query<Record<string, unknown>, [string, string]>(`
+    SELECT user_id, workspace_id, context_type, context_id, api_key_id,
+      generation, created_at, revoked_at
+    FROM clanky_context_api_keys
+    WHERE user_id = ? AND api_key_id = ?
+  `).get(userId, apiKeyId);
+  return row ? rowToAssociation(row) : undefined;
+}
+
 export async function listContextApiKeyAssociationsForContext(
   workspaceId: string,
   contextType: ManagedContextType,

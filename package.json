@@ -27,10 +27,11 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "1.0.26",
+    "@modelcontextprotocol/server": "2.4.0",
     "@monaco-editor/react": "4.7.0",
     "@noble/hashes": "2.4.0",
     "@opencode/client": "2.1.4",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#3fd936fc3f01ffd8a84123a339cff391cda91c6d",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#8c022fccb49ef41b3934193df23be50072c68d37",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
@@ -55,6 +56,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@types/bun": "1.4.4",
     "@types/css-tree": "3.2.0",
     "@types/pngjs": "6.0.5",

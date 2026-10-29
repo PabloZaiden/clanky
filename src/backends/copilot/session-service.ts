@@ -22,7 +22,7 @@ interface Conversation {
   info: AgentSession;
   translator: CopilotEventTranslator;
   unsubscribe: () => void;
-  activeControlContext?: ClankyControlContext;
+  activeControlTurn?: { context?: ClankyControlContext; abort: AbortController };
   admitting?: boolean;
 }
 
@@ -71,7 +71,7 @@ export class CopilotSessionService {
       excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
-      ...(options.ownership.controlTools ? { tools: this.nativeControlTools() } : {}),
+      ...(options.ownership.controlTools ? { tools: await this.nativeControlTools(options.ownership.controlChatId) } : {}),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -123,7 +123,7 @@ export class CopilotSessionService {
       excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(binding.questionPolicy),
-      ...(binding.controlTools ? { tools: this.nativeControlTools() } : {}),
+      ...(binding.controlTools ? { tools: await this.nativeControlTools(binding.controlChatId) } : {}),
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();
@@ -150,10 +150,11 @@ export class CopilotSessionService {
     const conversation = this.get(sessionId);
     conversation.translator.interrupted = true;
     this.questions.close(sessionId, "cancelled");
+    this.endControlTurn(conversation);
     try {
       await conversation.native.abort();
     } finally {
-      conversation.activeControlContext = undefined;
+      this.endControlTurn(conversation);
     }
   }
 
@@ -162,12 +163,12 @@ export class CopilotSessionService {
       await this.requireIdle(conversation);
       if (prompt.model) await this.applyModel(conversation, prompt.model.modelID, prompt.model.variant);
       await this.requireIdle(conversation);
-      this.activateControlContext(conversation, prompt.controlContext);
+      this.beginControlTurn(conversation, prompt.controlContext);
       conversation.translator.beginPrompt();
       try {
         await conversation.native.send(toCopilotMessage(prompt));
       } catch (error) {
-        conversation.activeControlContext = undefined;
+        this.endControlTurn(conversation);
         throw error;
       }
     });
@@ -211,6 +212,7 @@ export class CopilotSessionService {
 
   async close(): Promise<void> {
     this.closing = true;
+    this.controlTools?.close();
     await Promise.allSettled(this.operations);
     const errors: unknown[] = [];
     for (const id of [...this.conversations.keys()]) {
@@ -235,11 +237,12 @@ export class CopilotSessionService {
           for (const translated of translator.translate(event)) {
             if (translated.scope.kind === "principal"
               && (translated.type === "prompt.complete" || translated.type === "error")) {
-              conversation.activeControlContext = undefined;
+              this.endControlTurn(conversation);
             }
             this.events.publish(session.sessionId, translated);
           }
         } catch (error) {
+          this.endControlTurn(conversation);
           this.events.failSession(session.sessionId, new HarnessError(
             "harness_event_gap", "Native event observation failed.", { cause: error },
           ));
@@ -272,37 +275,54 @@ export class CopilotSessionService {
 
   prepareSteering(id: string, clientId: string | undefined): void {
     const conversation = this.get(id);
-    const context = conversation.activeControlContext;
-    if (context?.clientId && context.clientId !== clientId) {
-      conversation.activeControlContext = { ...context, clientId: undefined };
+    const active = conversation.activeControlTurn;
+    const context = active?.context;
+    if (active && context?.clientId && context.clientId !== clientId) {
+      active.context = { ...context, clientId: undefined };
     }
   }
 
-  private activateControlContext(conversation: Conversation, context: ClankyControlContext | undefined): void {
+  private beginControlTurn(conversation: Conversation, context: ClankyControlContext | undefined): void {
     const binding = conversation.info.binding;
     if (binding?.controlTools !== true) {
       if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
       return;
     }
-    if (!context || context.chatId !== (binding.controlChatId ?? binding.contextId) || !context.workspaceId || !context.turnId) {
+    if (context && (context.chatId !== binding.controlChatId || !context.workspaceId || !context.turnId)) {
       throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
     }
-    if (conversation.activeControlContext) {
+    if (conversation.activeControlTurn) {
       throw new HarnessError("harness_request_failed", "A Clanky control turn is already active in this conversation.");
     }
-    conversation.activeControlContext = context;
+    conversation.activeControlTurn = { context, abort: new AbortController() };
   }
 
-  private nativeControlTools(): Tool[] {
+  private endControlTurn(conversation: Conversation): void {
+    conversation.activeControlTurn?.abort.abort();
+    conversation.activeControlTurn = undefined;
+  }
+
+  private async nativeControlTools(chatId?: string): Promise<Tool[]> {
     const service = this.getControlToolService();
-    return service.definitions.map((definition) => ({
+    return (await service.listTools({ chatId })).map((definition) => ({
       name: definition.name,
       description: definition.description,
       parameters: definition.inputSchema,
       skipPermission: true,
       handler: async (args, invocation) => {
-        const context = this.conversations.get(invocation.sessionId)?.activeControlContext;
-        return await service.invoke(definition.name, args, context, invocation.signal);
+        const conversation = this.conversations.get(invocation.sessionId);
+        const active = conversation?.activeControlTurn;
+        if (!conversation?.info.binding?.controlTools || !active) return {
+          ok: false,
+          error: {
+            code: "control_context_unavailable",
+            message: "The Clanky tool call is not correlated with an active owned turn.",
+          },
+        };
+        return await service.invoke(definition.name, args, active.context, AbortSignal.any([
+          ...(invocation.signal ? [invocation.signal] : []),
+          active.abort.signal,
+        ]));
       },
     }));
   }
@@ -320,6 +340,7 @@ export class CopilotSessionService {
 
   private async closeSession(sessionId: string): Promise<void> {
     const conversation = this.get(sessionId);
+    this.endControlTurn(conversation);
     this.questions.close(sessionId, "expired");
     const errors: unknown[] = [];
     try {
@@ -337,6 +358,7 @@ export class CopilotSessionService {
 
   private async rollback(session: CopilotSession, original: unknown): Promise<void> {
     const conversation = this.conversations.get(session.sessionId);
+    if (conversation) this.endControlTurn(conversation);
     this.conversations.delete(session.sessionId);
     conversation?.unsubscribe();
     this.questions.close(session.sessionId, "expired");

@@ -1,18 +1,18 @@
 /**
- * Direct intent dispatch through canonical authorized public operations.
+ * Shared direct intent dispatch through canonical authorized operations.
  */
 import { z } from "zod";
 import { DomainError } from "../domain/domain-error";
 import { ControlNavigationActionSchema } from "@/shared/clanky-control";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
-import { directRecord, LiveVoiceDirectContext } from "./live-voice-direct-context";
+import { directRecord, ControlToolContext } from "./control-tool-context";
 import { isReadRecord } from "../client-sdk/collaboration/resource-read";
-import { liveVoiceDirectSchemas, type DirectToolName } from "./live-voice-direct-contracts";
-import { directList, directOverview, directRead, directServers, pendingInteractions } from "./live-voice-direct-reads";
-import { directCreateChat, directCreateTask, directCreateWorkspace } from "./live-voice-direct-creation";
+import { controlDirectSchemas, type DirectToolName } from "./control-tool-contracts";
+import { directList, directOverview, directRead, directServers, pendingInteractions } from "./control-direct-reads";
+import { directCreateChat, directCreateTask, directCreateWorkspace } from "./control-direct-creation";
 
-export const LiveVoiceNavigationActionSchema = z.discriminatedUnion("type", [
+export const ControlNavigationIntentSchema = z.discriminatedUnion("type", [
   ...ControlNavigationActionSchema.options,
   z.object({
     type: z.literal("open_named"), kind: z.enum(["chat", "task", "workspace", "server", "host"]),
@@ -22,11 +22,11 @@ export const LiveVoiceNavigationActionSchema = z.discriminatedUnion("type", [
 ]);
 
 export function isDirectToolName(name: string): name is DirectToolName {
-  return Object.hasOwn(liveVoiceDirectSchemas, name);
+  return Object.hasOwn(controlDirectSchemas, name);
 }
 
-export async function directUiAction(context: LiveVoiceDirectContext, value: unknown): Promise<unknown> {
-  const action = LiveVoiceNavigationActionSchema.parse(value);
+export async function directUiAction(context: ControlToolContext, value: unknown): Promise<unknown> {
+  const action = ControlNavigationIntentSchema.parse(value);
   if (action.type !== "open_named") return await context.options.actions.uiAction(action, context.options.requestId);
   if (action.kind === "host") {
     const host = await context.host(action.target);
@@ -44,36 +44,36 @@ export async function directUiAction(context: LiveVoiceDirectContext, value: unk
   return await context.options.actions.uiAction(canonical, context.options.requestId);
 }
 
-export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext, name: DirectToolName, args: unknown): Promise<unknown> {
+export async function executeDirectControlTool(context: ControlToolContext, name: DirectToolName, args: unknown): Promise<unknown> {
   switch (name) {
     case "clanky_recent_work":
-      return await directOverview(context, false, liveVoiceDirectSchemas[name].parse(args));
+      return await directOverview(context, false, controlDirectSchemas[name].parse(args));
     case "clanky_waiting_work":
-      return await directOverview(context, true, liveVoiceDirectSchemas[name].parse(args));
+      return await directOverview(context, true, controlDirectSchemas[name].parse(args));
     case "clanky_list_chats":
-      return await directList(context, "chat", liveVoiceDirectSchemas[name].parse(args));
+      return await directList(context, "chat", controlDirectSchemas[name].parse(args));
     case "clanky_list_tasks":
-      return await directList(context, "task", liveVoiceDirectSchemas[name].parse(args));
+      return await directList(context, "task", controlDirectSchemas[name].parse(args));
     case "clanky_read_chat":
-      return await directRead(context, "chat", liveVoiceDirectSchemas[name].parse(args));
+      return await directRead(context, "chat", controlDirectSchemas[name].parse(args));
     case "clanky_read_task":
-      return await directRead(context, "task", liveVoiceDirectSchemas[name].parse(args));
+      return await directRead(context, "task", controlDirectSchemas[name].parse(args));
     case "clanky_create_chat":
-      return await directCreateChat(context, liveVoiceDirectSchemas[name].parse(args));
+      return await directCreateChat(context, controlDirectSchemas[name].parse(args));
     case "clanky_create_task":
-      return await directCreateTask(context, liveVoiceDirectSchemas[name].parse(args));
+      return await directCreateTask(context, controlDirectSchemas[name].parse(args));
     case "clanky_create_workspace":
-      return await directCreateWorkspace(context, liveVoiceDirectSchemas[name].parse(args));
+      return await directCreateWorkspace(context, controlDirectSchemas[name].parse(args));
     case "clanky_list_workspaces": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       return await context.read({
         operationId: "GET /api/workspaces", query: { limit: input.limit ?? 10, ...(input.cursor ? { cursor: input.cursor } : {}) },
       });
     }
     case "clanky_list_servers":
-      return await directServers(context, liveVoiceDirectSchemas[name].parse(args));
+      return await directServers(context, controlDirectSchemas[name].parse(args));
     case "clanky_send_chat_message": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("chat", input.target, input.workspace))["id"]);
       return await context.execute({
         operationId: "POST /api/chats/:id/messages", parameters: { id },
@@ -81,7 +81,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_steer_queued_chat_message": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const target = await context.resolve("chat", input.target, input.workspace);
       const id = String(target["id"]);
       const chat = directRecord(await context.readExact("GET /api/chats/:id", { id }));
@@ -187,12 +187,12 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_interrupt_chat": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("chat", input.target, input.workspace))["id"]);
       return await context.execute({ operationId: "POST /api/chats/:id/interrupt", parameters: { id }, body: {} });
     }
     case "clanky_update_chat_lifecycle": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       if (input.action === "move_to_trash" && !input.confirmationDescription) {
         throw new DomainError(
           "voice_confirmation_description_required",
@@ -222,7 +222,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_respond_chat_interaction": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("chat", input.target, input.workspace))["id"]);
       if (input.kind === "question" ? !input.answers || input.decision !== null : !input.decision || input.answers !== null) {
         throw new DomainError("voice_interaction_invalid", "Supply answers only for a question, or a decision only for a permission.");
@@ -240,7 +240,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_instruct_task": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
       return await context.execute({
         operationId: input.intent === "follow_up" ? "POST /api/tasks/:id/follow-up" : "PUT /api/tasks/:id/pending-prompt",
@@ -249,7 +249,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_control_task": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
       return await context.execute({
         operationId: `POST /api/tasks/:id/${input.command === "start_planning" ? "draft/start" : "stop"}`,
@@ -257,7 +257,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_review_task_plan": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       if (input.action === "feedback" ? !input.feedback : input.feedback !== null) {
         throw new DomainError("voice_plan_action_invalid", "Feedback is required only for the feedback action.");
       }
@@ -270,7 +270,7 @@ export async function executeDirectLiveVoiceTool(context: LiveVoiceDirectContext
       });
     }
     case "clanky_finish_task": {
-      const input = liveVoiceDirectSchemas[name].parse(args);
+      const input = controlDirectSchemas[name].parse(args);
       const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
       return await context.execute({
         operationId: `POST /api/tasks/:id/${input.action === "accept_local" ? "accept" : "push"}`,

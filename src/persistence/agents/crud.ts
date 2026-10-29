@@ -183,11 +183,11 @@ export async function loadAgentRunSummary(runId: string): Promise<AgentRun | nul
   return rowToAgentRun(row);
 }
 
-export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | null> {
+export async function loadAgentRunSummaryByChatId(chatId: string): Promise<AgentRun | null> {
   const userId = requireResourcePersistenceUserId("chat", chatId);
   const row = getDatabase()
     .prepare(`
-      SELECT ${AGENT_RUN_LOAD_COLUMNS} FROM agent_runs
+      SELECT ${AGENT_RUN_METADATA_COLUMNS} FROM agent_runs
       WHERE chat_id = ? AND user_id = ?
       ORDER BY created_at DESC
       LIMIT 1
@@ -196,12 +196,7 @@ export async function loadAgentRunByChatId(chatId: string): Promise<AgentRun | n
   if (!row) {
     return null;
   }
-  const run = rowToAgentRun(row);
-  const transcript = agentRunTranscriptStore.hydrateForUser(run.id, userId);
-  run.messages = transcript.messages;
-  run.logs = transcript.logs;
-  run.toolCalls = transcript.toolCalls;
-  return run;
+  return rowToAgentRun(row);
 }
 
 export async function listAgentRuns(

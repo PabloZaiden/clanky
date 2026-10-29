@@ -107,6 +107,7 @@ test("Copilot users inspect attachments, steer work and open their workspace", a
     const workspace = (await application.json<Workspace>("/api/workspaces", {
       method: "POST", body: JSON.stringify({
         name: workspaceName, directory: git.repositoryDirectory, executionHost: local.ref,
+        allowClankyContext: false,
         serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
       }),
     }, 201)).data;
@@ -134,9 +135,6 @@ test("Copilot users inspect attachments, steer work and open their workspace", a
       message.role === "assistant" && message.content.includes(expectedFileInspection(inputFile).sha256)
     )).toBe(true);
 
-    await application.json("/api/preferences/quick-chat", {
-      method: "PUT", body: JSON.stringify({ workspaceId: workspace.id, model: modelConfig, useWorktree: false }),
-    });
     const chatId = await createChat("Copilot control steering");
     const key = (await application.json<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "Copilot public realtime", scopes: ["*"] }),

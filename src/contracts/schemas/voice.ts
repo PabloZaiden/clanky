@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import { LiveVoiceUiContextSchema } from "@/shared/live-voice";
+import { ControlClientContextSchema } from "@/shared/control-interactions";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
   LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS,
@@ -62,12 +62,12 @@ export const VoiceValidationRequestSchema = z.discriminatedUnion("capability", [
 export const LiveVoiceSessionRequestSchema = z.object({
   sdp: z.string().min(1).max(65_536),
   clientId: z.string().uuid(),
-  context: LiveVoiceUiContextSchema,
+  context: ControlClientContextSchema,
 }).strict();
 
 export const LiveVoiceHeartbeatSchema = z.object({
   clientId: z.string().uuid(),
-  context: LiveVoiceUiContextSchema,
+  context: ControlClientContextSchema,
 }).strict();
 export const LiveVoiceCloseSchema = z.object({ clientId: z.string().uuid() }).strict();
 export const LiveVoiceConfirmationResponseSchema = z.object({

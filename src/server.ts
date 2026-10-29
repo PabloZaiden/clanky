@@ -111,6 +111,8 @@ import { workspaceClientSockets } from "./api/workspace-client-sockets";
 import { workspaceDirectRoutes, workspaceDirectHandlers, stopWorkspaceDirect } from "./api/workspace-direct";
 import { remoteTerminalProxy } from "./api/workspace-socket-proxy";
 import { workspaceRealtimeSources } from "./api/workspace-realtime-source";
+import { ControlServer } from "./server/control-server";
+import { mcpRoutes } from "./api/control";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -366,6 +368,7 @@ function stopBackgroundWorkers(): void {
 }
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({
+  ...mcpRoutes,
   [MESH_RELAY_DESCRIPTOR_PATH]: {
     auth: "public",
     sameOrigin: "never",
@@ -613,6 +616,14 @@ export async function getWebAppServer(
     const { writeClientOperationCatalog } = await import("./client-operation-catalog");
     await writeClientOperationCatalog();
   }
+  const controlRuntime = readRuntimeConfig({
+    appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky",
+  });
+  let controlBaseUrl = controlRuntime.publicBaseUrl
+    ?? getLocalManagedCredentialBaseUrl(controlRuntime.host, controlRuntime.port);
+  const controlServer = meshWorker ? undefined : new ControlServer({
+    store, catalog: createRouteCatalog(routes), getBaseUrl: () => controlBaseUrl,
+  });
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",
@@ -624,7 +635,7 @@ export async function getWebAppServer(
     store,
     auth: meshWorker
       ? { passkeys: false, apiKeys: true, deviceAuth: false }
-      : { passkeys: true, apiKeys: true, deviceAuth: true },
+      : { passkeys: true, apiKeys: true, deviceAuth: true, ...(controlServer?.oauth ? { oauth: controlServer.oauth } : {}) },
     ...(meshWorker ? {} : { realtime: { path: "/api/ws" } }),
     routes: meshWorker ? meshWorkerRoutes : routes,
     websockets: {
@@ -636,6 +647,8 @@ export async function getWebAppServer(
         ? initializeMeshWorkerRuntime
         : reconcileStartupState,
       afterStart: async (server) => {
+        controlBaseUrl = app?.config.publicBaseUrl
+          ?? (server.port === undefined ? undefined : getLocalManagedCredentialBaseUrl(controlRuntime.host, server.port));
         await completeStartup(server, {
           startBackgroundWorkers: !meshWorker,
         });
@@ -689,6 +702,7 @@ export async function getWebAppServer(
         await Promise.all([
           cleanup(() => previewSessionManager.closeAll()),
           cleanup(() => liveVoiceManager.closeAll()),
+          cleanup(() => controlServer?.close()),
         ]);
         await cleanup(() => chatManager.shutdown());
         await cleanup(() => taskManager.shutdown());
@@ -720,6 +734,7 @@ export async function getWebAppServer(
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),
   });
+  controlServer?.configure(app);
   if (!meshWorker) {
     const appServer = app;
     configureWorkspaceClientGateway(appServer);
