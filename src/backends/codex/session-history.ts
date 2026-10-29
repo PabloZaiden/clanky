@@ -2,23 +2,28 @@
  * Projects public app-server history without touching a live translator.
  */
 import type { HarnessHistoryEvent } from "@/shared/harness-history";
-import type { HarnessEventScope } from "@/shared/harness-events";
+import type { HarnessEvent, HarnessEventScope } from "@/shared/harness-events";
 import type { Turn } from "./generated/v2/Turn";
 import type { CodexRpcSession } from "./rpc-session";
 import { NativeSessionHistory } from "../native-session-history";
 import { HarnessError } from "../harness-errors";
 import { CodexEventTranslator } from "./event-translator";
+import { NativeSubagentHistory, type NativeHistoryCollector } from "../native-subagent-history";
 
-async function* projectTurn(options: {
-  history: NativeSessionHistory;
+async function* projectTurn<TEvent extends HarnessEvent>(options: {
+  history: NativeHistoryCollector<TEvent>;
   rpc: CodexRpcSession;
   threadId: string;
   turn: Turn;
-}): AsyncGenerator<HarnessHistoryEvent[]> {
+  activityId?: string;
+}): AsyncGenerator<TEvent[]> {
   const { history, rpc, threadId, turn } = options;
   history.observeNative({ ...turn, items: undefined });
   const translator = new CodexEventTranslator();
-  const scope: HarnessEventScope = { kind: "principal", native: { adapter: "codex", conversationId: threadId, turnId: turn.id } };
+  const native = { adapter: "codex" as const, conversationId: threadId, turnId: turn.id };
+  const scope: HarnessEventScope = options.activityId
+    ? { kind: "child", activityId: options.activityId, native }
+    : { kind: "principal", native };
   const nativeTimestamp = turn.completedAt ?? turn.startedAt;
   let cursor: string | undefined;
   const seen = new Set<string>();
@@ -55,7 +60,16 @@ async function* projectTurn(options: {
 }
 
 export async function* readCodexSessionHistory(rpc: CodexRpcSession, threadId: string): AsyncGenerator<HarnessHistoryEvent[]> {
-  const history = new NativeSessionHistory();
+  yield* readCodexHistory(rpc, threadId, new NativeSessionHistory());
+}
+
+export async function* readCodexSubagentHistory(rpc: CodexRpcSession, threadId: string): AsyncGenerator<HarnessEvent[]> {
+  yield* readCodexHistory(rpc, threadId, new NativeSubagentHistory(threadId), threadId);
+}
+
+async function* readCodexHistory<TEvent extends HarnessEvent>(
+  rpc: CodexRpcSession, threadId: string, history: NativeHistoryCollector<TEvent>, activityId?: string,
+): AsyncGenerator<TEvent[]> {
   const initial = await rpc.request("thread/read", { threadId, includeTurns: false });
   if (initial.thread.id !== threadId) throw new HarnessError("harness_session_not_owned", "Native history belongs to a different conversation.");
   if (initial.thread.historyMode === "paginated" || initial.thread.historyMode === "legacy") {
@@ -69,7 +83,7 @@ export async function* readCodexSessionHistory(rpc: CodexRpcSession, threadId: s
       for (const turn of result.data) {
         if (seen.has(turn.id)) throw new HarnessError("harness_event_gap", "Native history pages overlap.");
         seen.add(turn.id);
-        yield* projectTurn({ history, rpc, threadId, turn });
+        yield* projectTurn({ history, rpc, threadId, turn, activityId });
       }
       if (!result.nextCursor) break;
       if (cursor === result.nextCursor) throw new HarnessError("harness_event_gap", "Native history pagination made no progress.");

@@ -20,6 +20,10 @@ export class CodexEventTranslator {
   constructor(private readonly options: { includeProviderImageFileReference?: boolean } = {}) {}
 
   translateHistoryItem(item: ThreadItem, scope: HarnessEventScope): HarnessEvent[] {
+    if (scope.kind === "child" && item.type === "reasoning") return [{
+      type: "reasoning.delta", content: [...item.summary, ...item.content].join("\n"),
+      reasoningId: item.id, complete: true, scope,
+    }];
     return [...this.translateItem(item, false), ...this.translateItem(item, true)]
       .map((payload) => ({ ...payload, scope }));
   }
@@ -53,10 +57,14 @@ export class CodexEventTranslator {
         ];
       case "item/reasoning/textDelta":
       case "item/reasoning/summaryTextDelta":
-        return [wrap({ type: "reasoning.delta", content: event.params.delta })];
+        return [wrap({ type: "reasoning.delta", content: event.params.delta, reasoningId: event.params.itemId })];
       case "item/started":
         return this.translateItem(event.params.item, false).map(wrap);
       case "item/completed":
+        if (scope.kind === "child" && event.params.item.type === "reasoning") return [{
+          ...wrap({ type: "reasoning.delta", content: [...event.params.item.summary, ...event.params.item.content].join("\n"),
+            reasoningId: event.params.item.id, complete: true }),
+        }];
         return [
           ...this.translateItem(event.params.item, true),
           ...(event.params.item.type === "agentMessage" && event.params.item.delivery === "async" && event.params.item.questions?.length ? [{
@@ -143,6 +151,7 @@ export class CodexEventTranslator {
     }
     if (item.type === "userMessage") return completed ? [{
       type: "user.message",
+      messageId: item.id,
       content: item.content.filter((part) => part.type === "text").map((part) => part.text).join("\n"),
     }] : [];
     const toolName = item.type === "commandExecution" ? "bash"

@@ -429,6 +429,7 @@ export function getConversationAdmissionsForUser(
   userId: string,
 ): Array<{ inputId: string; nativeMessageId: string | null; status: string }> {
   assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  if (resource === "subagent") return [];
   const table = resource === "task" ? "tasks" : "chats";
   const target = resource === "agent_run"
     ? getDatabase().prepare("SELECT chat_id FROM agent_runs WHERE id = ? AND user_id = ?")

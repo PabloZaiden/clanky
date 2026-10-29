@@ -32,6 +32,7 @@ import { useTaskComposerAdapter } from "./task-composer-adapter";
 import { HarnessEntityView } from "../harness-activity";
 import { TaskPendingInput } from "./pending-input";
 import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
+import { useTaskTranscriptFileLinks } from "./use-task-transcript-file-links";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -73,6 +74,7 @@ export function TaskDetails({
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
+  const fileLinkContext = useTaskTranscriptFileLinks(taskId, task, toast.error);
   const { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange } = useTabState({
     taskId, task,
     messagesCount: messages.length, toolCallsCount: toolCalls.length, logsCount: logs.length,
@@ -290,6 +292,8 @@ export function TaskDetails({
       snapshot={state.harness?.activity}
       capabilities={state.harness?.capabilities}
       inputs={state.harness?.inputs}
+      binding={state.session?.binding}
+      fileLinkContext={fileLinkContext}
       onInputUpdated={refresh}
       onBack={() => onCloseActivity?.()}
       onOpenActivity={onOpenActivity}
@@ -369,7 +373,7 @@ export function TaskDetails({
             loadingTranscript={loadingTranscript}
             content={content}
             actions={actions}
-            onFileOpenError={toast.error}
+            fileLinkContext={fileLinkContext}
             activityOpen={showActivity}
           />
         </div>

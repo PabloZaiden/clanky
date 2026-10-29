@@ -6,12 +6,14 @@ import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { inspectAttachedFiles } from "./file-input";
+import { createPng } from "../support/png-fixtures";
 import {
   BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
 } from "./background-work";
 
 interface Session {
   id: string;
+  parentID?: string;
   projectID: string;
   location: { directory: string };
   model: { id: string; providerID: string };
@@ -212,12 +214,45 @@ async function execute(session: Session): Promise<void> {
 }
 
 function startBackground(session: Session, work: BackgroundWork): void {
+  const child: Session = {
+    ...structuredClone(session), id: crypto.randomUUID(), parentID: session.id,
+    title: "Workspace inventory", agent: "explore", metadata: {}, sequence: 0, messages: [], events: [],
+    time: { created: Date.now(), updated: Date.now() },
+    cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  };
+  sessions.set(child.id, child);
+  emit(child, "session.created", {
+    parentID: session.id, projectID: child.projectID, location: child.location, title: child.title, agent: child.agent, model: child.model,
+  });
+  const childMessageID = `${child.id}:response`;
+  const inboxID = `${child.id}:input`;
+  emit(child, "session.inbox.enqueued", { inboxID, item: { type: "user", delivery: "queue",
+    payload: { text: "Inspect the reusable modules and report the inventory." } } });
+  emit(child, "session.inbox.delivered", { inboxID });
+  active.set(child.id, { prompt: "Inventory", abort: new AbortController() });
+  emit(child, "session.execution.started");
+  emit(child, "session.step.started", { assistantMessageID: childMessageID });
+  emit(child, "session.text.delta", { assistantMessageID: childMessageID, ordinal: 0, delta: "Inspecting reusable modules..." });
+  emit(child, "session.reasoning.delta", { assistantMessageID: childMessageID, ordinal: 1, delta: "Checking the reusable modules." });
   const controller = new AbortController();
   // The native child remains owned while the principal is idle.
   const operation = (async () => {
     try {
+      await save(child);
       const report = await readBackgroundFile(work.resultPath, controller.signal);
       if (report === undefined || controller.signal.aborted) return;
+      emit(child, "session.tool.input.started", { id: `${child.id}:read`, name: "read_file" });
+      emit(child, "session.tool.called", { id: `${child.id}:read`, input: { path: work.resultPath } });
+      emit(child, "session.tool.success", { id: `${child.id}:read`, content: [
+        { type: "text", text: report }, { type: "image", mimeType: "image/png", data: createPng(2, 2).toString("base64") },
+      ] });
+      emit(child, "session.reasoning.ended", { assistantMessageID: childMessageID, ordinal: 1,
+        text: "Checking the reusable modules. The inventory is ready." });
+      emit(child, "session.text.ended", { assistantMessageID: childMessageID, ordinal: 0, text: `Subagent findings: ${report}` });
+      emit(child, "session.step.ended", { assistantMessageID: childMessageID });
+      active.delete(child.id);
+      emit(child, "session.execution.succeeded");
+      await save(child);
       session.backgroundResult = report;
       active.set(session.id, { prompt: "", abort: controller, background: work });
       emit(session, "session.execution.started");
@@ -296,7 +331,9 @@ const server = Bun.serve({
       await save(session);
       return Response.json({ data: session });
     }
-    if (path === "/api/session") return Response.json({ data: [], cursor: {} });
+    if (path === "/api/session") return Response.json({
+      data: [...sessions.values()].filter((session) => session.parentID === url.searchParams.get("parentID")), cursor: {},
+    });
     const logSessionId = /^\/api\/experimental\/session\/([^/]+)\/log$/.exec(path)?.[1];
     if (logSessionId) {
       const session = sessions.get(logSessionId);

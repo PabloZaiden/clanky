@@ -11,7 +11,7 @@ export interface BackgroundClient {
 }
 
 export interface BackgroundChat {
-  config: { id: string };
+  config: { id: string; workspaceId?: string; source?: { workspaceId?: string }; model?: unknown };
   state: {
     status: string; error?: unknown; queuedMessages?: Array<{ content: string }>;
     usage?: { outputTokens?: number; inputTokens?: number };
@@ -20,7 +20,8 @@ export interface BackgroundChat {
 
 interface Snapshot {
   transcript: {
-    messages: Array<{ role: string; content: string }>;
+    messages: Array<{ id: string; role: string; content: string; attachments?: Array<{ mimeType: string; data: string }> }>;
+    logs?: Array<{ details?: { logKind?: string; responseContent?: string } }>;
     toolCalls?: Array<{
       id: string;
       status: string;
@@ -33,6 +34,15 @@ interface Snapshot {
 interface ToolDetails {
   output?: unknown;
 }
+
+interface SavedSubagent {
+  id: string;
+  activity: { id: string; parentId?: string; description: string };
+  coverage: string;
+  observation: string;
+}
+
+interface ChildSnapshot extends Snapshot { subagent: SavedSubagent }
 
 export async function prepareBackgroundChat(options: {
   client: BackgroundClient;
@@ -90,6 +100,8 @@ export async function useBackgroundConversation(options: {
   directory: string;
   writeFile(path: string, content: string): Promise<void>;
   reconnect(): Promise<void>;
+  onChildObserved?: (id: string) => Promise<void>;
+  verifyIsolation?: boolean;
 }): Promise<void> {
   const { client, chatId, directory, writeFile, reconnect } = options;
   const timeoutMs = 10_000;
@@ -104,6 +116,32 @@ export async function useBackgroundConversation(options: {
   await pollUntil(() => observe(client, chatId),
     ({ chat, snapshot }) => chat.state.status === "idle" && assistantMessages(snapshot).length > 0,
     { description: "principal to acknowledge delegation and idle while its background work runs", timeoutMs, formatLastObserved: JSON.stringify });
+  const childrenPath = `/api/chats/${chatId}/subagents`;
+  const children = await pollUntil(async () => (await client.json<{ items: SavedSubagent[] }>(childrenPath)).data.items,
+    (items) => items.some((item) => item.activity.description === "Workspace inventory"),
+    { description: "delegated child to be retained without a browser subscription", timeoutMs, formatLastObserved: JSON.stringify });
+  const child = children.find((item) => item.activity.description === "Workspace inventory")!;
+  const childPath = `${childrenPath}/${encodeURIComponent(child.id)}`;
+  const partial = await pollUntil(async () => (await client.json<ChildSnapshot>(`${childPath}/snapshot?full=1`)).data,
+    (snapshot) => snapshot.transcript.messages.some((message) => message.content === "Inspect the reusable modules and report the inventory.")
+      && snapshot.transcript.messages.some((message) => message.content === "Inspecting reusable modules..."),
+    { description: "child instruction and partial response to be readable live", timeoutMs, formatLastObserved: JSON.stringify });
+  expect(partial.subagent.coverage).toBe("partial");
+  await options.onChildObserved?.(child.id);
+  if (options.verifyIsolation) {
+    const parent = (await client.json<BackgroundChat>(`/api/chats/${chatId}`)).data;
+    const unrelated = (await client.json<BackgroundChat>("/api/chats", {
+      method: "POST", body: JSON.stringify({ name: "Unrelated conversation",
+        workspaceId: parent.config.source?.workspaceId ?? parent.config.workspaceId, model: parent.config.model, useWorktree: false }),
+    }, 201)).data;
+    await client.json(`/api/chats/${unrelated.config.id}/subagents/${child.id}/snapshot`, undefined, 404);
+    await client.json(`/api/chats/${unrelated.config.id}`, { method: "DELETE" });
+    await client.json(`/api/trash/${unrelated.config.id}`, { method: "DELETE" });
+    const nested = children.find((item) => item.activity.parentId === child.activity.id);
+    expect(nested).toBeDefined();
+    const nestedSnapshot = (await client.json<ChildSnapshot>(`${childrenPath}/${nested!.id}/snapshot`)).data;
+    expect(assistantMessages(nestedSnapshot)).toEqual(["Nested review complete."]);
+  }
 
   await writeFile(resultPath, report);
   await pollUntil(() => observe(client, chatId),
@@ -125,6 +163,20 @@ export async function useBackgroundConversation(options: {
   const outputTokens = completed.chat.state.usage!.outputTokens!;
   expect(completed.chat.state.usage!.inputTokens).toBeGreaterThan(0);
   const persisted = assistantMessages(completed.snapshot);
+  expect(persisted.some((content) => content.startsWith("Subagent findings:") || content === "Nested review complete.")).toBe(false);
+  const finishedChild = await pollUntil(async () => (await client.json<ChildSnapshot>(`${childPath}/snapshot?full=1`)).data,
+    (snapshot) => snapshot.subagent.coverage === "complete"
+      && assistantMessages(snapshot).includes(`Subagent findings: ${report}`),
+    { description: "completed child history and tools to be retained independently", timeoutMs, formatLastObserved: JSON.stringify });
+  expect(finishedChild.transcript.messages.filter((message) => message.role === "assistant" && message.content)).toHaveLength(1);
+  expect(finishedChild.transcript.messages.flatMap((message) => message.attachments ?? [])
+    .filter((attachment) => attachment.mimeType === "image/png" && attachment.data.length > 0)).toHaveLength(1);
+  expect(finishedChild.transcript.logs?.filter((entry) => entry.details?.logKind === "reasoning")
+    .map((entry) => entry.details?.responseContent)).toEqual(["Checking the reusable modules. The inventory is ready."]);
+  const childTools = finishedChild.transcript.toolCalls ?? [];
+  expect(childTools).toHaveLength(1);
+  const childTool = (await client.json<ToolDetails>(`${childPath}/tool-calls/${encodeURIComponent(childTools[0]!.id)}`)).data;
+  expect(JSON.stringify(childTool.output)).toContain(report);
 
   await reconnect();
   const reopened = await observe(client, chatId);
@@ -143,6 +195,18 @@ export async function useBackgroundConversation(options: {
     expect(assistantMessages(resumed.snapshot).filter((value) => value === content)).toHaveLength(1);
   }
   expect(reportTools(resumed.tools, report)).toHaveLength(1);
+  const recoveredChild = (await client.json<ChildSnapshot>(`${childPath}/snapshot?full=1`)).data;
+  expect(recoveredChild.transcript.messages).toEqual(finishedChild.transcript.messages);
+  expect(recoveredChild.transcript.toolCalls?.map((tool) => tool.id)).toEqual(childTools.map((tool) => tool.id));
+  await reconnect();
+  const offlineChild = (await client.json<ChildSnapshot>(`${childPath}/snapshot?full=1`)).data;
+  expect(offlineChild.transcript.messages).toEqual(finishedChild.transcript.messages);
+  expect((await client.json<{ items: SavedSubagent[] }>(childrenPath)).data.items.map((item) => item.id)).toContain(child.id);
+  await client.json(`/api/chats/${chatId}`, { method: "DELETE" });
+  await client.json(`${childPath}/snapshot`, undefined, 404);
+  await client.json(`/api/trash/${chatId}/restore`, { method: "POST" });
+  expect((await client.json<ChildSnapshot>(`${childPath}/snapshot?full=1`)).data.transcript.messages).toEqual(finishedChild.transcript.messages);
   await client.json(`/api/chats/${chatId}`, { method: "DELETE" });
   await client.json(`/api/trash/${chatId}`, { method: "DELETE" });
+  await client.json(`${childPath}/snapshot`, undefined, 404);
 }

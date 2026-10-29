@@ -595,6 +595,13 @@ non-owned-chat messages are not found. If the assistant message is still
 streaming, the server uses its current in-memory content. The configured text
 model summarizes that content before Piper returns `audio/wav`.
 
+Saved subagent conversations expose the same bodyless speech action under
+their parent chat/task's subagent message route. The server resolves the
+assistant message from that child's saved transcript, never from the parent's
+message collection or caller-supplied text. Parent authority, validated text
+summaries, Piper availability and global browser audio ownership still apply.
+The read-only child view does not mount Talk, Live voice input or a composer.
+
 The `/api/voice/transcribe` endpoint continues to use the configured
 transcription provider.
 

@@ -9,17 +9,17 @@ import {
 import { pollUntil } from "./support/polling";
 import { subscribeRealtime } from "./support/realtime";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
-import { installExternalAcpProvider, installExternalCode } from "./support/provider";
+import { installExternalAcpProvider, installExternalCode, installExternalNativeCopilotProvider } from "./support/provider";
 import { exerciseCodePreview, exerciseServicePreview } from "./support/code-preview";
 
 interface Workspace { id: string; name: string; directory: string; access?: "read" | "work" | "admin"; scratchpad: string }
 interface Connection { connection: { id: string; status: string }; realtime: string; errorCode: string | null }
 interface Terminal { config: { id: string } }
-interface Frame { type?: string; data?: string; event?: { resource?: string; id?: string } }
+interface Frame { type?: string; data?: string; event?: { resource?: string; id?: string; type?: string; subagentId?: string } }
 interface Model { providerID: string; modelID: string; connected: boolean }
 interface Work {
   config: { id: string; name: string; creator?: { kind: string; name: string } };
-  state: { status: string; error?: unknown };
+  state: { status: string; error?: unknown; planMode?: { isPlanReady: boolean } };
 }
 interface Snapshot {
   transcript: { messages: Array<{ role: string; content: string; attachments?: Array<{ filename: string; data: string }> }> };
@@ -45,7 +45,7 @@ async function json<T>(node: ManagedMeshNode, path: string, method = "GET", body
   return response.body;
 }
 
-async function createWorkspace(node: ManagedMeshNode, directory: string, name: string): Promise<Workspace> {
+async function createWorkspace(node: ManagedMeshNode, directory: string, name: string, adapter = "acp"): Promise<Workspace> {
   await mkdir(directory);
   const git = Bun.spawnSync(["git", "-C", directory, "init", "--quiet"]);
   if (git.exitCode) throw new Error(git.stderr.toString());
@@ -62,7 +62,7 @@ async function createWorkspace(node: ManagedMeshNode, directory: string, name: s
   if (!host) throw new Error("Local execution host unavailable");
   return await json(node, "/api/workspaces", "POST", {
     name, directory, executionHost: host.ref, workspaceType: "git", allowWorktrees: false,
-    serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+    serverSettings: { agent: { adapter, provider: "copilot" } },
   });
 }
 
@@ -111,6 +111,7 @@ test("a direct invitation file shares workspace work and streams without a relay
     const command = await compiledClankyCommand();
     const bin = join(directory, "bin");
     await installExternalCode(bin);
+    await installExternalNativeCopilotProvider(bin);
     for (const name of ["owner", "invitee"]) {
       const home = join(directory, name);
       await mkdir(home);
@@ -120,7 +121,7 @@ test("a direct invitation file shares workspace work and streams without a relay
       }));
     }
     const owner = nodes[0]!, invitee = nodes[1]!;
-    const workspace = await createWorkspace(owner, join(directory, "project"), "Direct shared project");
+    const workspace = await createWorkspace(owner, join(directory, "project"), "Direct shared project", "copilot");
     const created = await json<{ token: string }>(owner, "/api/collaboration/invitations", "POST", {
       transport: "direct", workspaceIds: [workspace.id],
     });
@@ -185,6 +186,25 @@ test("a direct invitation file shares workspace work and streams without a relay
       { description: "direct shared terminal output", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
     const grants = await json<Array<{ id: string }>>(owner, "/api/collaboration/guests");
     const grant = grants[0]!;
+    const model = (await json<Model[]>(owner, `/api/models?workspaceId=${workspace.id}`)).find((entry) => entry.connected)!;
+    const parent = await json<Work>(owner, "/api/chats", "POST", {
+      name: "Shared native inventory", workspaceId: workspace.id, useWorktree: false,
+      model: { providerID: model.providerID, modelID: model.modelID, variant: "" },
+    });
+    const resultPath = join(workspace.directory, "shared-inventory.txt"), releasePath = join(workspace.directory, "shared-inventory-ready.txt");
+    await json(owner, `/api/chats/${parent.config.id}/messages`, "POST", {
+      message: `Delegate the inventory. [background-result:${resultPath}] [continuation-release:${releasePath}]`,
+    });
+    const sharedParent = await pollUntil(async () => (await json<Work[]>(invitee, `/api/chats?workspaceId=${encodeURIComponent(shared.id)}`))
+      .find((entry) => entry.config.name === "Shared native inventory"), (entry) => Boolean(entry),
+      { description: "shared native conversation to appear", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    type ChildList = { items: Array<{ id: string; activity: { id: string; description: string } }> };
+    const childListPath = `/api/chats/${encodeURIComponent(sharedParent!.config.id)}/subagents`;
+    const sharedChild = await pollUntil(async () => (await json<ChildList>(invitee, childListPath)).items
+      .find((entry) => entry.activity.description === "Workspace inventory"), (entry) => Boolean(entry),
+      { description: "origin-qualified shared subagent to appear", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect(sharedChild!.id.startsWith("clanky.remote.v1.")).toBe(true);
+    const childPath = `${childListPath}/${encodeURIComponent(sharedChild!.id)}`;
     await json(owner, `/api/collaboration/guests/${grant.id}/workspaces/${workspace.id}`, "PUT", { permission: "read" });
     await pollUntil(() => shell.socket.readyState, (state) => state === WebSocket.CLOSED,
       { description: "direct shell to close after permission reduction", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
@@ -193,16 +213,72 @@ test("a direct invitation file shares workspace work and streams without a relay
     expect((await meshJsonRequest(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`, {
       method: "PUT", body: { scratchpad: "Not allowed" },
     })).status).toBe(403);
+    const childRealtime = observeSocket(invitee, "/api/ws", key.token);
+    sockets.push(childRealtime.socket);
+    await pollUntil(() => childRealtime.socket.readyState, (state) => state === WebSocket.OPEN,
+      { description: "read-only child realtime to open", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    await subscribeRealtime(childRealtime.socket, {
+      kinds: ["content"], types: ["subagent.transcript"], targets: { subagentId: sharedChild!.id },
+    });
+    const report = "The shared inventory is ready for read-only review.";
+    await Bun.write(resultPath, report);
+    await Bun.write(releasePath, "Continue.");
+    const childSnapshot = await pollUntil(() => json<Snapshot>(invitee, `${childPath}/snapshot?full=1`),
+      (snapshot) => snapshot.transcript.messages.some((message) => message.content === `Subagent findings: ${report}`),
+      { description: "read-only collaborator to read saved child content", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    await pollUntil(() => childRealtime.frames, (frames) => frames.some((frame) => frame.event?.type === "subagent.transcript"
+      && frame.event.subagentId === sharedChild!.id),
+      { description: "read-only collaborator to receive scoped child content", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect((await meshJsonRequest(invitee, `/api/chats/${encodeURIComponent(sharedParent!.config.id)}/activity/${sharedChild!.activity.id}/stop`, {
+      method: "POST",
+    })).status).toBe(403);
+    for (const args of [
+      ["add", "--", "handoff.txt", "shared-inventory-ready.txt", "shared-inventory.txt"],
+      ["commit", "--quiet", "-m", "Record the reviewed shared inventory"],
+    ]) {
+      const result = Bun.spawnSync(["git", "-C", workspace.directory, ...args]);
+      if (result.exitCode) throw new Error(result.stderr.toString());
+    }
+    const taskResult = join(workspace.directory, "task-inventory.txt"), taskRelease = join(workspace.directory, "task-inventory-ready.txt");
+    const branches = await json<{ currentBranch: string }>(owner,
+      `/api/git/branches?workspaceId=${workspace.id}&directory=${encodeURIComponent(workspace.directory)}`);
+    const task = await json<Work>(owner, "/api/tasks", "POST", {
+      workspaceId: workspace.id, name: "Delegated task inventory",
+      prompt: `Plan the implementation using a delegated inventory. [background-result:${taskResult}] [continuation-release:${taskRelease}]`,
+      baseBranch: branches.currentBranch, attachments: [],
+      model: { providerID: model.providerID, modelID: model.modelID, variant: "" }, cheapModel: { mode: "same-as-task" },
+      maxIterations: 2, maxConsecutiveErrors: 2, activityTimeoutSeconds: null,
+      stopPattern: "<promise>COMPLETE</promise>", git: { branchPrefix: "collaboration/", commitScope: "" },
+      useWorktree: false, clearPlanningFolder: true, autoAcceptPlan: false, fullyAutonomous: false, draft: false,
+    });
+    const taskChild = await pollUntil(async () => (await json<ChildList>(owner, `/api/tasks/${task.config.id}/subagents`)).items
+      .find((entry) => entry.activity.description === "Workspace inventory"), (entry) => Boolean(entry),
+      { description: "task execution to retain its own delegated conversation", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    const taskChildPath = `/api/tasks/${task.config.id}/subagents/${taskChild!.id}/snapshot?full=1`;
+    const liveTaskChild = await json<Snapshot>(owner, taskChildPath);
+    expect(liveTaskChild.transcript.messages.some((message) => message.role === "user"
+      && message.content === "Inspect the reusable modules and report the inventory.")).toBe(true);
+    await Bun.write(taskResult, "Task-specific inventory.");
+    await Bun.write(taskRelease, "Finish planning.");
+    await pollUntil(() => json<Snapshot>(owner, taskChildPath),
+      (snapshot) => snapshot.transcript.messages.some((message) => message.content === "Subagent findings: Task-specific inventory."),
+      { description: "task child to retain its independent completed result", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    await pollUntil(() => json<Work>(owner, `/api/tasks/${task.config.id}`),
+      (work) => work.state.planMode?.isPlanReady === true,
+      { description: "delegated task plan to await user approval", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
     await restartMeshNode(owner);
     await ready();
     await restartMeshNode(invitee);
     await ready();
     expect((await json<Workspace>(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`)).scratchpad).toBe("Direct handoff");
     expect((await json<Workspace>(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`)).access).toBe("read");
+    expect((await json<Snapshot>(invitee, `${childPath}/snapshot?full=1`)).transcript.messages).toEqual(childSnapshot.transcript.messages);
+    expect((await json<Snapshot>(owner, taskChildPath)).transcript.messages.some((message) => message.content === "Subagent findings: Task-specific inventory.")).toBe(true);
     await json(owner, `/api/collaboration/guests/${grant.id}`, "DELETE");
     await pollUntil(async () => await meshJsonRequest(invitee, `/api/workspaces/${encodeURIComponent(shared.id)}`),
       (result) => result.status === 403 || result.status === 410 || result.status === 503,
       { description: "direct grant revocation to deny workspace access", timeoutMs: MESH_OPERATION_TIMEOUT_MS });
+    expect([403, 410, 503]).toContain((await meshJsonRequest(invitee, `${childPath}/snapshot`)).status);
   } catch (error) {
     failure = error;
     for (const node of nodes) console.error(meshNodeDiagnostics(node));

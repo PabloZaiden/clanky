@@ -11,22 +11,26 @@ import { HarnessError } from "../harness-errors";
 import { CodexConnection } from "./connection";
 import { CodexControl } from "./control";
 import { consumeHarnessPrompt } from "../harness-prompt";
-import { readCodexSessionHistory, isCodexSessionProcessing } from "./session-history";
+import { readCodexSessionHistory, readCodexSubagentHistory, isCodexSessionProcessing } from "./session-history";
 import { NativeHistoryReader } from "../native-history-reader";
+import type { HarnessEvent } from "@/shared/harness-events";
 
 export class CodexBackend implements Backend {
   readonly name = "codex";
   private readonly connection = new CodexConnection();
   private readonly history = new NativeHistoryReader();
+  private readonly childHistory = new NativeHistoryReader<HarnessEvent>();
   readonly harness = new CodexControl(this.connection.requireServices.bind(this.connection));
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     await this.history.close();
+    await this.childHistory.close();
     await this.connection.connect(config, signal);
     this.history.open();
+    this.childHistory.open();
   }
   async disconnect(): Promise<void> {
-    try { await this.history.close(); } finally { await this.connection.disconnect(); }
+    try { await Promise.all([this.history.close(), this.childHistory.close()]); } finally { await this.connection.disconnect(); }
   }
   isConnected(): boolean { return this.connection.isConnected(); }
   createSession(options: CreateSessionOptions): Promise<AgentSession> { return this.connection.requireServices().sessions.create(options); }
@@ -46,6 +50,20 @@ export class CodexBackend implements Backend {
       source: () => readCodexSessionHistory(runtime.rpc, id),
       processing: () => isCodexSessionProcessing(runtime.rpc, id),
     });
+  }
+  async readSubagentHistory(id: string, activityId: string, cursor?: string) {
+    const { sessions, runtime } = this.connection.requireServices();
+    sessions.get(id);
+    await sessions.reconcileDescendants(id);
+    if (sessions.getThread(activityId)?.rootId !== id || activityId === id) {
+      throw new HarnessError("harness_activity_not_owned", "The native thread is not a child of this conversation.");
+    }
+    const page = await this.childHistory.read({
+      sessionId: JSON.stringify([id, activityId]), cursor,
+      source: () => readCodexSubagentHistory(runtime.rpc, activityId),
+      processing: () => isCodexSessionProcessing(runtime.rpc, activityId),
+    });
+    return { events: page.events, processing: page.principalProcessing, nextCursor: page.nextCursor };
   }
   async replyToPermission(_requestId: string, _response: string): Promise<void> {
     throw new HarnessError("harness_unsupported_feature", "Native permissions are automatically approved.");

@@ -20,6 +20,7 @@ import { isAbortError, SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecy
 import { markStreamingText } from "../lib/streaming-text";
 import { toTranscriptStreamEvent } from "./transcript-event-adapter";
 import { useTranscriptToolDetails } from "./useTranscriptToolDetails";
+import type { SubagentEvent } from "@/shared/subagent";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -40,7 +41,7 @@ export interface TranscriptResourceState<TResource> {
 export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceId: string;
   resourceLabel: string;
-  stream: "task" | "chat" | "agent.run";
+  stream: "task" | "chat" | "agent.run" | "subagent";
   baseUrl: string;
   initialResource?: TResource | null;
   resourceState?: TranscriptResourceState<TResource>;
@@ -67,12 +68,13 @@ export interface UseTranscriptResourceResult<TResource> {
   realtimeStatus: "connecting" | "open" | "closed";
 }
 
-type ContentEvent = TaskEvent | ChatEvent | AgentEvent;
+type ContentEvent = TaskEvent | ChatEvent | AgentEvent | Extract<SubagentEvent, { type: "subagent.transcript" }>;
 
 const STREAMS = {
   task: { resource: "tasks", target: "taskId" },
   chat: { resource: "chats", target: "chatId" },
   "agent.run": { resource: "agent-runs", target: "agentRunId" },
+  subagent: { resource: "subagents", target: "subagentId" },
 } as const;
 const CONTENT_SUFFIXES = ["message", "message.delta", "log", "log.delta", "tool_call", "tool_call.extra"];
 
@@ -252,7 +254,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
 
   const { status: realtimeStatus } = useRealtime<ContentEvent>({
     targets: { [STREAMS[stream].target]: resourceId },
-    types: CONTENT_SUFFIXES.map((suffix) => `${stream}.${suffix}`),
+    types: stream === "subagent" ? ["subagent.transcript"] : CONTENT_SUFFIXES.map((suffix) => `${stream}.${suffix}`),
     trackLastEvent: false,
     onSubscribed: (activation) => sync.current?.activate(activation),
     onStatus: (status) => { if (status !== "open") sync.current?.deactivate(); },

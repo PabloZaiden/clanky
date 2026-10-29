@@ -61,7 +61,7 @@ export interface UseVoicePlaybackResult {
   playingKey: string | null;
   status: "idle" | "generating" | "playing";
   playbackRecovery: VoicePlaybackRecovery | null;
-  play: (chatId: string, messageId: string) => Promise<void>;
+  play: (target: string | { kind: "chat" | "task"; parentId: string; subagentId: string }, messageId: string) => Promise<void>;
   retryPlayback: () => Promise<void>;
   stop: () => void;
 }
@@ -228,10 +228,12 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   }, [playbackRecovery, releaseAudio, stop, notifyError]);
 
   const play = useCallback(async (
-    chatId: string,
+    target: string | { kind: "chat" | "task"; parentId: string; subagentId: string },
     messageId: string,
   ): Promise<void> => {
-    const key = messageId;
+    const base = typeof target === "string" ? `/api/chats/${encodeURIComponent(target)}`
+      : `/api/${target.kind === "chat" ? "chats" : "tasks"}/${encodeURIComponent(target.parentId)}/subagents/${encodeURIComponent(target.subagentId)}`;
+    const key = `${base}:${messageId}`;
     if (activeKeyRef.current === key) {
       stop();
       return;
@@ -246,11 +248,11 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
     const controller = new AbortController();
     requestControllerRef.current = controller;
     let generatedAudioReady = false;
-    setPlayingKey(key);
+    setPlayingKey(messageId);
     setStatus("generating");
     try {
       const blob = await apiRequest(
-        `/api/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/speech`,
+        `${base}/messages/${encodeURIComponent(messageId)}/speech`,
         {
           method: "POST",
           signal: controller.signal,

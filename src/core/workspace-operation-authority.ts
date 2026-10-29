@@ -59,6 +59,7 @@ export async function authorizeWorkspaceOperation(input: {
   const policy = operation.metadata.automation?.policy;
   let readOnly = operation.method === "GET"
     && (policy === "read" || policy === undefined || policy === "excluded");
+  if (operation.method === "POST" && operation.delegation.action === "saved-message-speech") readOnly = true;
   if (operation.delegation.action === "filesystem") {
     const command = FileSystemCommandSchema.safeParse(body);
     readOnly = command.success && ["info", "stat", "list"].includes(command.data.operation);

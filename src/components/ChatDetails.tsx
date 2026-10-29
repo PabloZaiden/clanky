@@ -239,6 +239,8 @@ export function ChatDetails({
       snapshot={chat.state.harness?.activity}
       capabilities={chat.state.harness?.capabilities}
       inputs={chat.state.harness?.inputs}
+      binding={chat.state.session?.binding}
+      fileLinkContext={fileLinkContext}
       onInputUpdated={refreshInput}
       onBack={() => {
         setEmbeddedActivity(false);

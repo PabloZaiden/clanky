@@ -3,16 +3,15 @@
  * Props are passed as grouped bundles to keep the call-site concise.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { appAbsoluteUrl } from "../../lib/public-path";
-import { replaceWebAppRoute, routeToHash, TabPanel, TabPanels } from "@pablozaiden/webapp/web";
+import { useEffect, useState } from "react";
+import { TabPanel, TabPanels } from "@pablozaiden/webapp/web";
 import type { MessageData, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
 import type { UseTaskContentResult } from "./use-task-content";
 import type { UseTaskActionsResult } from "./use-task-actions";
 import { LogTab } from "./log-tab";
-import type { TranscriptFileLinkTarget } from "../log-viewer";
+import type { TranscriptFileLinkContext } from "../log-viewer";
 import { InfoTab } from "./info-tab";
 import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
@@ -44,7 +43,7 @@ interface TaskDetailsTabContentProps {
   // Bundled state from hooks
   content: UseTaskContentResult;
   actions: UseTaskActionsResult;
-  onFileOpenError: (message: string) => void;
+  fileLinkContext?: TranscriptFileLinkContext;
   activityOpen: boolean;
 }
 
@@ -69,7 +68,7 @@ export function TaskDetailsTabContent({
   loadingTranscript,
   content,
   actions,
-  onFileOpenError,
+  fileLinkContext,
   activityOpen,
 }: TaskDetailsTabContentProps) {
   const { config } = task;
@@ -81,30 +80,6 @@ export function TaskDetailsTabContent({
       setHasVisitedChatTab(true);
     }
   }, [activeTab]);
-
-  const getTaskFileRoute = useCallback(({ path, startDirectory, kind }: TranscriptFileLinkTarget) => ({
-    view: "code-explorer",
-    contentType: "task",
-    taskId,
-    startDirectory,
-    filePath: kind === "directory" ? undefined : path,
-  }), [taskId]);
-
-  const openLinkedTaskFile = useCallback((target: TranscriptFileLinkTarget) => {
-    replaceWebAppRoute(getTaskFileRoute(target));
-  }, [getTaskFileRoute]);
-
-  const fileLinkContext = useMemo(() => ({
-    fileExplorerTarget: {
-      type: "workspace" as const,
-      id: config.workspaceId,
-      startDirectory: toolPathDisplayRoot,
-    },
-    rootDirectory: toolPathDisplayRoot,
-    getFileHref: (target: TranscriptFileLinkTarget) => appAbsoluteUrl(routeToHash(getTaskFileRoute(target))),
-    openFile: openLinkedTaskFile,
-    onFileOpenError,
-  }), [config.workspaceId, getTaskFileRoute, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
     <TabPanels className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-transparent">

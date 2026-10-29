@@ -178,6 +178,34 @@ An unavailable or partial observation does not prove that no work is running.
 ACP does not advertise native activity or steering. A principal response can
 finish while native background work remains observable.
 
+### Saved subagent conversations
+
+Select a subagent's name in **Activity** to read its conversation with the
+normal chat presentation, including Markdown, reasoning, tool details and
+available images. There is no composer or child-send action. **Back to
+activity** restores the list; returning to the parent preserves its draft,
+scroll and selected tab. Known nested subagents show their originating child.
+Stop remains a separate native activity action, not a transcript action.
+
+Clanky captures identified children on the server while observing their
+parent session, including between principal turns, without an open browser.
+Saved children remain listed after completion, native inventory changes,
+restart or worker disconnect. Reading saved content does not reconnect the
+provider or start work. Children inherit their parent's access and retention:
+Trash hides them, restore makes them readable again, and permanent parent
+deletion removes them. They are not standalone chats or sidebar entries.
+
+Copilot, Codex and OpenCode 2 expose child history through their public native
+APIs; compatible Mesh workers support the same capture. Instructions and
+reasoning are retained only when exposed, not reconstructed from delegation
+summaries or hidden context. Recovery is bounded and reconciles stable native
+identities with already saved content. **Partial history** means some content
+is unfinished, missing or beyond those recovery limits. Disconnected
+observation is separate from execution status and does not imply completion.
+Older Mesh workers can still serve content already saved on the controller;
+update the worker to enable native child-history recovery. ACP and direct SSH
+do not gain native subagent support.
+
 Chat streaming follows the principal execution, not the lifetime of background
 processes. When the principal finishes, the chat becomes idle and accepts a new
 message normally, even if a background server is still running. Those processes

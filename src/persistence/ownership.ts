@@ -7,7 +7,7 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
 
-export type WorkspacePersistenceResource = "workspace" | "task" | "chat" | "agent" | "agent-run" | "terminal" | "preview" | "review-comment";
+export type WorkspacePersistenceResource = "workspace" | "task" | "chat" | "agent" | "agent-run" | "terminal" | "preview" | "review-comment" | "subagent";
 
 const RESOURCE_BINDINGS: Record<WorkspacePersistenceResource, string> = {
   workspace: "SELECT user_id AS owner, id AS workspace FROM workspaces WHERE id = ?",
@@ -18,6 +18,7 @@ const RESOURCE_BINDINGS: Record<WorkspacePersistenceResource, string> = {
   terminal: "SELECT user_id AS owner, workspace_id AS workspace FROM terminal_sessions WHERE id = ?",
   preview: "SELECT user_id AS owner, workspace_id AS workspace FROM preview_sessions WHERE id = ?",
   "review-comment": "SELECT comment.user_id AS owner, task.workspace_id AS workspace FROM review_comments comment JOIN tasks task ON task.id = comment.task_id AND task.user_id = comment.user_id WHERE comment.id = ?",
+  subagent: "SELECT child.user_id AS owner, COALESCE(chat.workspace_id, task.workspace_id) AS workspace FROM harness_subagents child LEFT JOIN chats chat ON chat.id = child.chat_id AND chat.user_id = child.user_id LEFT JOIN tasks task ON task.id = child.task_id AND task.user_id = child.user_id WHERE child.id = ?",
 };
 
 export function requirePersistenceUserId(): string {

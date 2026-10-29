@@ -9,7 +9,7 @@ import { decodeUtf8Base64Url, encodeJsonBase64Url } from "./encoding";
 export const COLLABORATION_RESOURCE_KINDS = [
   "workspace", "task", "chat", "agent", "agent-run", "terminal", "preview",
   "review-comment", "execution-host", "read-item", "attachment",
-  "provisioning-job", "worker-update-job",
+  "provisioning-job", "worker-update-job", "subagent",
 ] as const;
 export type KnownCollaborationResourceKind = typeof COLLABORATION_RESOURCE_KINDS[number];
 export type CollaborationResourceKind = KnownCollaborationResourceKind | (string & {});

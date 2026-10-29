@@ -11,8 +11,8 @@ export const HARNESS_HISTORY_MAX_BYTES = 2 * 1024 * 1024;
 export type HarnessHistoryEvent = Extract<HarnessEvent, { type: "message.start" | "message.complete" | "tool.start" | "tool.complete" }>;
 
 /** No historical user inputs, interactions, deltas, or prompt completion signals. */
-export interface HarnessSessionHistory {
-  events: HarnessHistoryEvent[];
+export interface HarnessSessionHistory<TEvent extends HarnessEvent = HarnessHistoryEvent> {
+  events: TEvent[];
   /** Current native execution state, not inferred from persisted idle events. */
   principalProcessing: boolean;
   /** Opaque, single-use continuation owned by this backend and session. */

@@ -11,6 +11,11 @@ const RESOURCE_QUERIES: Readonly<Record<string, string>> = {
   workspace: "SELECT id AS workspaceId FROM workspaces WHERE id = ? AND user_id = ?",
   task: "SELECT workspace_id AS workspaceId FROM tasks WHERE id = ? AND user_id = ?",
   chat: "SELECT workspace_id AS workspaceId FROM chats WHERE id = ? AND user_id = ? AND source_kind = 'workspace'",
+  subagent: `SELECT COALESCE(c.workspace_id, t.workspace_id) AS workspaceId
+    FROM harness_subagents s
+    LEFT JOIN chats c ON c.id = s.chat_id AND c.user_id = s.user_id AND c.deleted_at IS NULL
+    LEFT JOIN tasks t ON t.id = s.task_id AND t.user_id = s.user_id
+    WHERE s.id = ? AND s.user_id = ? AND (c.id IS NOT NULL OR t.id IS NOT NULL)`,
   agent: "SELECT workspace_id AS workspaceId FROM agents WHERE id = ? AND user_id = ?",
   "agent-run": `SELECT a.workspace_id AS workspaceId
     FROM agent_runs r JOIN agents a ON a.id = r.agent_id AND a.user_id = r.user_id

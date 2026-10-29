@@ -9,6 +9,7 @@ import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { HarnessControl, HarnessConversationBinding } from "@/shared/harness-control";
 import type { PromptInput } from "@/shared/harness-input";
+import type { HarnessSubagentHistory } from "@/shared/subagent";
 export type { HarnessEvent, QuestionInfo, QuestionOption } from "@/shared/harness-events";
 export type {
   PromptInput,
@@ -215,6 +216,7 @@ export interface Backend {
 
   /** Read completed native content without replaying inputs or restarting work. */
   readSessionHistory?(sessionId: string, cursor?: string): Promise<HarnessSessionHistory>;
+  readSubagentHistory?(sessionId: string, activityId: string, cursor?: string): Promise<HarnessSubagentHistory>;
 
   /** Reply to a permission request */
   replyToPermission(requestId: string, response: string): Promise<void>;

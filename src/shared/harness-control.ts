@@ -47,6 +47,7 @@ export interface HarnessCapabilities {
   questionPolicy?: "session";
   clankyControlTools?: boolean;
   history?: "completed";
+  subagentHistory?: "completed";
   usage?: "tokens";
 }
 

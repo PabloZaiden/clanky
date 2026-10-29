@@ -111,6 +111,15 @@ Harness events distinguish principal execution from child scopes. Child output
 and failures must not enter the parent's transcript or complete its execution;
 questions and permissions retain their origin.
 
+Identified native subagent content has its own durable child resource, never
+a synthetic Chat row. The existing session-lived Activity observer owns capture
+and bounded native-history recovery; browser subscriptions do not own it.
+Child reads authorize the visible parent and use the shared transcript SQL,
+pagination, lazy tools and versioned realtime. Parent principal filters remain
+intact. Child records cascade on final parent deletion and remain hidden in
+Trash. Session/host identity separates replaced native generations; unavailable
+history or observation must stay explicit rather than becoming empty success.
+
 `message.complete` closes a message, `prompt.complete` closes the principal
 prompt, and idle status alone proves neither prompt completion nor descendant
 process exit. Tasks depend on the generic backend contract, not an ACP class.

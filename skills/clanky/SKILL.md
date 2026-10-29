@@ -667,6 +667,15 @@ clanky ws
 
 ### Realtime interests
 
+Native subagent conversations are saved resources beneath their parent chat or
+task. Discover the parent's subagent list/snapshot/tool operations through the
+normal route catalog; pass the returned Clanky child ID, not a native Activity
+ID. Stored reads work without reconnecting the runtime and inherit parent
+authority. Respect explicit partial/unavailable history; do not infer missing
+instructions, resend work or create standalone chats. Native Stop remains a
+separate Activity operation. For child content, subscribe to
+`subagent.transcript` with a `subagentId` target and then read its snapshot.
+
 Send one subscription JSON object per stdin line on the open bridge. State
 changes and content streams are separate interests on the same connection:
 

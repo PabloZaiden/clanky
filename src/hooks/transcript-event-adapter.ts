@@ -5,11 +5,14 @@ import type {
   TranscriptStreamEvent,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
+import type { SubagentEvent } from "@/shared/subagent";
 
 export function toTranscriptStreamEvent(
-  event: AgentEvent | ChatEvent | TaskEvent,
+  event: AgentEvent | ChatEvent | TaskEvent | Extract<SubagentEvent, { type: "subagent.transcript" }>,
 ): TranscriptStreamEvent | null {
   switch (event.type) {
+    case "subagent.transcript":
+      return event.event;
     case "chat.message":
     case "agent.run.message":
     case "task.message":

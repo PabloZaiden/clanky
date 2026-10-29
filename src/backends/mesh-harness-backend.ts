@@ -10,7 +10,7 @@ import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-
 import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
-import { MeshHarnessEventSchema, MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessEventSchema, MeshHarnessSessionHistorySchema, MeshHarnessSubagentHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import { HarnessUsageSnapshotSchema } from "@/contracts/schemas/harness-usage";
 import {
@@ -187,6 +187,14 @@ export class MeshHarnessBackend implements Backend {
     const parsed = MeshHarnessSessionHistorySchema.safeParse(result);
     if (!parsed.success) throw new HarnessError("harness_event_gap", "The native Mesh history is incomplete or invalid.", { cause: parsed.error });
     return parsed.data;
+  }
+
+  async readSubagentHistory(id: string, activityId: string, cursor?: string) {
+    if (!this.sessions.has(id)) throw new HarnessError("harness_session_not_owned", "The conversation is not owned by this native Mesh proxy.");
+    if (this.capabilities.subagentHistory !== "completed") {
+      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to recover subagent transcripts.");
+    }
+    return MeshHarnessSubagentHistorySchema.parse(await this.rpc({ operation: "subagent-history", sessionId: id, activityId, cursor }));
   }
 
   private async adopt(session: AgentSession): Promise<AgentSession> {

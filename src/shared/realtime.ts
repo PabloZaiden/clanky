@@ -9,11 +9,13 @@ import type { ControlUiActionEvent } from "./clanky-control";
 import type { LiveVoiceActivityEvent } from "./live-voice";
 import type { CollaborationResourceKind } from "./collaboration-reference";
 import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "./prompt-templates";
+import type { SubagentEvent } from "./subagent";
 
 export const CLANKY_REALTIME_RESOURCES = {
   workspaces: "workspaces",
   tasks: "tasks",
   chats: "chats",
+  subagents: "subagents",
   chatActivity: "chat-activity",
   trash: "trash",
   agents: "agents",
@@ -54,6 +56,7 @@ type RetainedProvisioningEvent = Extract<ProvisioningEvent, {
 
 export type ClankyStreamEvent =
   | RetainedTaskEvent | RetainedChatEvent | RetainedAgentEvent | RetainedProvisioningEvent
+  | Extract<SubagentEvent, { type: "subagent.transcript" }>
   | ControlUiActionEvent | LiveVoiceActivityEvent;
 
 export type ClankyRealtimeEvent = ResourceRealtimeEvent | ClankyStreamEvent;
@@ -62,6 +65,7 @@ export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, Collabor
   workspaces: "workspace",
   tasks: "task",
   chats: "chat",
+  subagents: "subagent",
   trash: "chat",
   "chat-activity": "chat",
   agents: "agent",
@@ -71,6 +75,7 @@ export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, Collabor
 };
 
 const WORKSPACE_STREAM_TYPES = new Set<string>([
+  "subagent.transcript",
   "task.message", "task.message.delta", "task.tool_call", "task.tool_call.extra",
   "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
   "chat.message", "chat.message.delta", "chat.tool_call", "chat.tool_call.extra", "chat.log", "chat.log.delta",

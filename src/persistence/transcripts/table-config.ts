@@ -71,6 +71,7 @@ const TRANSCRIPT_TABLE_CONFIGS: Readonly<
   chat: createTranscriptTableConfig("chat"),
   task: createTranscriptTableConfig("task"),
   agent_run: createTranscriptTableConfig("agent_run"),
+  subagent: createTranscriptTableConfig("subagent"),
 };
 
 export function getTranscriptTableConfig(

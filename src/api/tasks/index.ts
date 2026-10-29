@@ -47,6 +47,7 @@ import { tasksChatRoutes } from "./chat";
 import { tasksTranscriptRoutes } from "./transcript";
 import { tasksActivityRoutes } from "./activity";
 import { tasksInputRoutes } from "./input";
+import { createSubagentRoutes } from "../subagents";
 
 /**
  * All tasks routes combined.
@@ -66,4 +67,5 @@ export const tasksRoutes = defineRoutes({
   ...tasksTranscriptRoutes,
   ...tasksActivityRoutes,
   ...tasksInputRoutes,
+  ...createSubagentRoutes("task"),
 });

@@ -12,7 +12,7 @@ import {
 import { workspaceEventReferenceFields } from "@/shared/workspace-event";
 import { qualifyWorkspaceResponse } from "./response";
 
-const REFERENCE_TARGETS = new Set(["id", "scope", "workspaceId", "taskId", "chatId", "agentId", "agentRunId", "terminalSessionId", "previewId"]);
+const REFERENCE_TARGETS = new Set(["id", "scope", "workspaceId", "taskId", "chatId", "subagentId", "agentId", "agentRunId", "terminalSessionId", "previewId"]);
 
 export function collaborationRemoteInterest(interest: RealtimeInterest, connectionId: string): RealtimeInterest | undefined {
   const result = { ...interest, kinds: interest.kinds.filter((kind) => kind !== "action") };

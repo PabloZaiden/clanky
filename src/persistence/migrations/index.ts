@@ -892,6 +892,54 @@ export const migrations: Migration[] = [
     transactional: false,
     up: migrateCollaborationDirectRoutes,
   },
+  {
+    version: 90,
+    name: "persist_harness_subagent_transcripts",
+    up: (db) => {
+      db.run(`CREATE TABLE IF NOT EXISTS harness_subagents (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES webapp_users(id) ON DELETE CASCADE,
+        chat_id TEXT REFERENCES chats(id) ON DELETE CASCADE,
+        task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        source_key TEXT NOT NULL,
+        record_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(user_id, source_key),
+        CHECK ((chat_id IS NOT NULL) != (task_id IS NOT NULL))
+      )`);
+      db.run("CREATE INDEX IF NOT EXISTS idx_subagents_chat ON harness_subagents(user_id, chat_id, created_at DESC, id DESC)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_subagents_task ON harness_subagents(user_id, task_id, created_at DESC, id DESC)");
+      db.run(`CREATE TABLE IF NOT EXISTS subagent_transcript_entries (
+        subagent_id TEXT NOT NULL REFERENCES harness_subagents(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        entry_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('message', 'tool', 'log')),
+        timestamp TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        message_role TEXT,
+        tool_name TEXT,
+        tool_status TEXT,
+        tool_input TEXT,
+        tool_output TEXT,
+        tool_extras TEXT,
+        tool_has_image_preview INTEGER NOT NULL DEFAULT 0,
+        message_has_files INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (subagent_id, entry_id)
+      )`);
+      db.run(`CREATE TABLE IF NOT EXISTS subagent_transcript_meta (
+        subagent_id TEXT PRIMARY KEY REFERENCES harness_subagents(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        revision TEXT NOT NULL,
+        entry_count INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      )`);
+      db.run("CREATE INDEX IF NOT EXISTS idx_subagent_entries_page ON subagent_transcript_entries(subagent_id, user_id, timestamp, sequence, entry_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_subagent_responses ON subagent_transcript_entries(subagent_id, user_id, message_role, timestamp, sequence, entry_id)");
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

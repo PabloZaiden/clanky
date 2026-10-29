@@ -14,13 +14,14 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { isDomainError } from "../domain/domain-error";
 import { HarnessUsageObserver } from "./harness-usage-observer";
+import { SubagentTranscriptObserver } from "./subagent-transcript-observer";
 
 const log = createLogger("harness-activity");
 
 interface Observation {
   context: HarnessContext;
   binding: HarnessConversationBinding;
-  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected">;
+  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected" | "readSubagentHistory">;
   stream: EventStream<HarnessEvent>;
   stopped: boolean;
   interval?: ReturnType<typeof setInterval>;
@@ -32,6 +33,7 @@ interface Observation {
   failures: number;
   nextRefreshAt: number;
   usage: HarnessUsageObserver;
+  subagents: SubagentTranscriptObserver;
   publish(projection: Pick<HarnessConversationState, "activity" | "cleanup">): boolean;
 }
 
@@ -59,6 +61,7 @@ export class HarnessActivityService {
       context, binding, backend, stream, stopped: false, loop: Promise.resolve(),
       failures: 0, nextRefreshAt: 0,
       usage: new HarnessUsageObserver({ context, binding, control: backend.harness }),
+      subagents: new SubagentTranscriptObserver(context, binding, backend),
       onEvent: onEvent ? (event) => runWithExecutionOwner(user, () => onEvent(event)) : undefined,
       publish: (projection) => runWithExecutionOwner(user, () => {
         const saved = mergeHarnessProjection(context, binding, projection);
@@ -96,27 +99,40 @@ export class HarnessActivityService {
     const observation = this.observations.get(this.key(context));
     if (!observation) return;
     this.stop(observation);
-    await observation.loop;
-    let settled = !settleWork;
-    if (settleWork && observation.backend.isConnected()) {
-      try {
-        const cleanup = await observation.backend.harness.settleOwnedWork(observation.binding.nativeId);
-        if (cleanup.status !== "settled") {
-          throw new HarnessError("harness_request_failed", "Native work did not settle before its final usage checkpoint.");
+    try {
+      await observation.loop;
+      let settled = !settleWork;
+      if (settleWork && observation.backend.isConnected()) {
+        try {
+          const cleanup = await observation.backend.harness.settleOwnedWork(observation.binding.nativeId);
+          if (cleanup.status !== "settled") {
+            throw new HarnessError("harness_request_failed", "Native work did not settle before its final usage checkpoint.");
+          }
+          settled = true;
+        } catch (error) {
+          log.warn("Unable to settle native work before closing observation", { context, error: String(error) });
         }
-        settled = true;
+      }
+      await observation.usage.close();
+      if (!settled) observation.usage.markStale();
+      if (observation.refresh) {
+        try { await observation.refresh; } catch (error) {
+          log.warn("Closing a failed activity refresh", { context, error: String(error) });
+        }
+      }
+      try {
+        if (observation.backend.isConnected()) {
+          const activity = await observation.backend.harness.getActivity(observation.binding.nativeId);
+          await observation.subagents.reconcile(activity, true);
+        }
       } catch (error) {
-        log.warn("Unable to settle native work before closing observation", { context, error: String(error) });
+        log.warn("Unable to recover final child history", { context, error: String(error) });
+      }
+    } finally {
+      try { await observation.subagents.disconnect(); } finally {
+        if (this.observations.get(this.key(context)) === observation) this.observations.delete(this.key(context));
       }
     }
-    await observation.usage.close();
-    if (!settled) observation.usage.markStale();
-    if (observation.refresh) {
-      try { await observation.refresh; } catch (error) {
-        log.warn("Closing a failed activity refresh", { context, error: String(error) });
-      }
-    }
-    if (this.observations.get(this.key(context)) === observation) this.observations.delete(this.key(context));
   }
 
   async settle(context: HarnessContext, binding: HarnessConversationBinding, backend: Pick<Backend, "harness">) {
@@ -158,6 +174,7 @@ export class HarnessActivityService {
         const event = await observation.stream.next();
         if (event) {
           failures = 0;
+          await observation.subagents.consume(event);
           if (event.type === "prompt.complete" || event.type === "error") {
             await observation.usage.refresh();
           }
@@ -167,10 +184,14 @@ export class HarnessActivityService {
           }
           continue;
         }
-        if (!observation.stopped) observation.publish({ activity: { observation: "unavailable", reason: "disconnected" } });
+        if (!observation.stopped) {
+          observation.publish({ activity: { observation: "unavailable", reason: "disconnected" } });
+          await observation.subagents.reconcile({ observation: "unavailable", reason: "disconnected" });
+        }
       } catch (error) {
         log.warn("Harness activity observation interrupted", { context: observation.context, error: String(error) });
         this.publishUnavailable(observation, error);
+        await observation.subagents.reconcile({ observation: "unavailable", reason: "gap" });
         if (this.isPermanentFailure(error)) {
           this.stop(observation);
           return;
@@ -192,7 +213,7 @@ export class HarnessActivityService {
           this.scheduleRefresh(observation);
           break;
         } catch (error) {
-          this.failedRefresh(observation, error);
+          await this.failedRefresh(observation, error);
         }
       }
     }
@@ -202,8 +223,8 @@ export class HarnessActivityService {
     if (observation.stopped || observation.pending || Date.now() < observation.nextRefreshAt) return;
     observation.pending = setTimeout(() => {
       observation.pending = undefined;
-      void this.refresh(observation).catch((error) => {
-        this.failedRefresh(observation, error);
+      void this.refresh(observation).catch((error) => this.failedRefresh(observation, error)).catch((error) => {
+        log.error("Unable to persist activity refresh failure", { context: observation.context, error: String(error) });
       });
     }, 100);
   }
@@ -212,6 +233,7 @@ export class HarnessActivityService {
     if (observation.refresh) return observation.refresh;
     const operation = (async () => {
       const activity = await observation.backend.harness.getActivity(observation.binding.nativeId);
+      await observation.subagents.reconcile(activity);
       if (!observation.stopped && !observation.publish({ activity })) this.stop(observation);
       observation.failures = 0;
       observation.nextRefreshAt = 0;
@@ -223,10 +245,11 @@ export class HarnessActivityService {
     return operation;
   }
 
-  private failedRefresh(observation: Observation, error: unknown): void {
+  private async failedRefresh(observation: Observation, error: unknown): Promise<void> {
     const permanent = this.isPermanentFailure(error);
     log[permanent ? "error" : "warn"]("Harness activity refresh failed", { context: observation.context, error: String(error) });
     this.publishUnavailable(observation, error);
+    await observation.subagents.reconcile({ observation: "unavailable", reason: "gap" });
     if (permanent) this.stop(observation);
     else {
       observation.failures = Math.min(observation.failures + 1, 6);

@@ -2,7 +2,7 @@
  * Mesh native host contract. Never interpreted as ACP JSON-RPC.
  */
 import { z } from "zod";
-import { HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
+import { HarnessActivitySchema, HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
 import { MessageAttachmentsSchema } from "./task";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
@@ -75,6 +75,7 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("activity") }),
   Session.extend({ operation: z.literal("usage") }),
   Session.extend({ operation: z.literal("history"), cursor: Id.optional() }),
+  Session.extend({ operation: z.literal("subagent-history"), activityId: Id, cursor: Id.optional() }),
   Session.extend({ operation: z.literal("stop"), activityId: Id }),
   Session.extend({ operation: z.literal("settle") }),
   Session.extend({ operation: z.literal("steer"), request: z.object({
@@ -103,8 +104,8 @@ export const MeshHarnessEventsRequestSchema = MeshHarnessEnvelopeBaseSchema.exte
 }).strict();
 
 export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type", [
-  z.object({ type: z.literal("activity.changed") }),
-  z.object({ type: z.literal("user.message"), content: z.string() }),
+  z.object({ type: z.literal("activity.changed"), activity: HarnessActivitySchema.optional() }),
+  z.object({ type: z.literal("user.message"), content: z.string(), messageId: Id.optional() }),
   z.object({ type: z.literal("message.start"), messageId: Id }),
   z.object({ type: z.literal("message.delta"), content: z.string(), messageId: Id.optional() }),
   z.object({
@@ -114,7 +115,7 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
     attachments: ProviderImageAttachmentsSchema.optional(),
     providerImageFile: ProviderImageFileReferenceSchema.optional(),
   }),
-  z.object({ type: z.literal("reasoning.delta"), content: z.string() }),
+  z.object({ type: z.literal("reasoning.delta"), content: z.string(), reasoningId: Id.optional(), complete: z.boolean().optional() }),
   z.object({ type: z.literal("tool.start"), toolCallId: Id.optional(), toolName: Id, input: z.unknown() }),
   z.object({ type: z.literal("tool.complete"), toolCallId: Id.optional(), toolName: Id, input: z.unknown().optional(), output: z.unknown() }),
   z.object({ type: z.literal("request.error"), code: Id, message: z.string(), details: z.record(z.string(), z.unknown()).optional() }),
@@ -156,3 +157,14 @@ export const MeshHarnessSessionHistorySchema = z.object({
     }
   }
 }).transform((history) => history as HarnessSessionHistory);
+
+export const MeshHarnessSubagentHistorySchema = z.object({
+  events: z.array(MeshHarnessEventSchema).max(HARNESS_HISTORY_MAX_EVENTS),
+  processing: z.boolean(),
+  nextCursor: Id.optional(),
+}).strict().superRefine((history, ctx) => {
+  if (new TextEncoder().encode(JSON.stringify(history)).byteLength > HARNESS_HISTORY_MAX_BYTES
+    || history.events.some((event) => event.scope.kind !== "child")) {
+    ctx.addIssue({ code: "custom", message: "Invalid or oversized native child history." });
+  }
+});

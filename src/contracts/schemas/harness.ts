@@ -47,6 +47,15 @@ export const HarnessEventScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("unknown"), native: HarnessNativeReferencesSchema.optional() }),
 ]);
 
+export const HarnessActivitySchema = z.object({
+  id: z.string().min(1), parentId: z.string().optional(), spawningToolCallId: z.string().optional(),
+  kind: z.enum(["subagent", "process", "external"]), description: z.string(),
+  status: z.enum(["queued", "running", "waiting", "idle", "stopping", "stopped", "completed", "failed", "unknown"]),
+  ownership: z.enum(["owned", "unverified"]), workspaceWrites: z.enum(["possible", "none", "unknown"]),
+  native: HarnessNativeReferencesSchema, requestedModel: z.string().optional(),
+  effectiveModel: z.string().optional(), lastActivity: z.string().optional(),
+});
+
 const HarnessQuestionStatusSchema = z.enum(["pending", "queued", "submitting", "unconfirmed", "answered", "cancelled", "expired"]);
 
 export const HarnessQuestionMessageSchema = z.object({
@@ -115,6 +124,7 @@ export const HarnessConversationStateSchema = z.object({
     questionPolicy: z.literal("session").optional(),
     clankyControlTools: z.boolean().optional(),
     history: z.literal("completed").optional(),
+    subagentHistory: z.literal("completed").optional(),
     usage: z.literal("tokens").optional(),
   }).optional(),
   gitSafety: z.union([
@@ -126,14 +136,7 @@ export const HarnessConversationStateSchema = z.object({
     z.object({
       observation: z.literal("available"), coverage: z.enum(["partial", "native"]),
       observedAt: z.string(), principalProcessing: z.boolean(),
-      activities: z.array(z.object({
-        id: z.string(), parentId: z.string().optional(), spawningToolCallId: z.string().optional(),
-        kind: z.enum(["subagent", "process", "external"]), description: z.string(),
-        status: z.enum(["queued", "running", "waiting", "idle", "stopping", "stopped", "completed", "failed", "unknown"]),
-        ownership: z.enum(["owned", "unverified"]), workspaceWrites: z.enum(["possible", "none", "unknown"]),
-        native: HarnessNativeReferencesSchema, requestedModel: z.string().optional(),
-        effectiveModel: z.string().optional(), lastActivity: z.string().optional(),
-      })).max(2000),
+      activities: z.array(HarnessActivitySchema).max(2000),
     }),
     z.object({ observation: z.literal("unavailable"), reason: z.enum(["unsupported", "disconnected", "gap"]) }),
   ]).optional(),

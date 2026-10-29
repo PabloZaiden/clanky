@@ -206,6 +206,14 @@ operations on that host through `CommandExecutor`. Model catalogs, native
 conversation IDs, principal/child attribution, admission receipts, and scoped
 Stop retain the selected provider's capabilities and limitations.
 
+Saved subagent transcripts use the optional native `subagentHistory` capability
+and an additive child-history read operation within Mesh v7. A controller never
+sends that operation to an older worker that does not advertise it. Stored
+controller-side child conversations remain readable without a worker
+connection; missing recovery support is explicit and does not fall back to ACP.
+The owned root lease, native lineage, cursors and existing history-size budgets
+apply to child reads too; principal-history contracts are unchanged.
+
 ## Native lifetime, recovery, and cleanup
 
 - Assistant message completion is not principal turn completion or quiescence.

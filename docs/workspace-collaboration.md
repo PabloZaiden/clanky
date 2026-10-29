@@ -126,6 +126,15 @@ disables or removes modification controls. Controller credentials and other
 participants' private interactive sessions remain subject to the existing
 collaboration restrictions.
 
+Saved subagent lists, snapshots, tool details and scoped realtime inherit the
+parent conversation's workspace authority, including **Read only** access.
+Child references are origin-qualified independently from their parent's ID;
+native activity/message/tool identities are not rewritten. Bodyless read-aloud
+requests resolve an authorized saved child assistant message and retain the
+voice provider's availability/configuration requirements. None of these reads
+permits sending to or stopping a child. Trash hides its saved children, and
+revocation removes access to both history and future publications.
+
 The controller also enforces these permissions for direct API/CLI calls and
 the browser-only client. Changes return HTTP `403` with the
 `collaboration_read_only` code. This includes sending messages, answering
