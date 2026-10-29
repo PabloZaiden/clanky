@@ -157,17 +157,17 @@ export class ControlServer {
       if (identity.userId !== requireExecutionOwnerUserId()) {
         throw new DomainError("control_actor_mismatch", "The control source belongs to another execution owner.");
       }
-      let admittedId: string | undefined;
+      let admittedGrant: ControlGrant | undefined;
       const resolve = async (): Promise<ControlGrant> => {
         const account = this.options.store.getUserById(identity.userId);
         if (!account || account.disabledAt) {
           throw new DomainError("control_context_unavailable", "The execution owner is unavailable.");
         }
         return await runWithAuthenticatedUser(toCurrentUser(account),
-          async () => await resolveExecutionControlGrant(identity, admittedId));
+          async () => await resolveExecutionControlGrant(identity, admittedGrant));
       };
       const grant = await resolve();
-      admittedId = grant.id;
+      admittedGrant = grant;
       const access = { grant, revalidate: resolve };
       return {
         access,

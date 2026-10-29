@@ -71,6 +71,8 @@ export class MeshHarnessBackend implements Backend {
   private readonly observers = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   private readonly requests = new Set<AbortController>();
   private readonly controlReplies = new Set<AbortController>();
+  private readonly controlReplyWaiters = new Set<() => void>();
+  private readonly controlCalls = new Set<string>();
   private readonly controlRequests = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   private controlObserver?: { controller: AbortController; promise: Promise<void> };
   private controlFailure?: Error;
@@ -158,6 +160,9 @@ export class MeshHarnessBackend implements Backend {
       throw new HarnessError("harness_transport_closed", "The native Mesh request could not be completed.", { cause: error });
     } finally {
       clearTimeout(timer); pending.delete(controller); signal?.removeEventListener("abort", abort);
+      if (operation.operation === "control.result") {
+        for (const wake of this.controlReplyWaiters) wake();
+      }
     }
   }
 
@@ -254,14 +259,16 @@ export class MeshHarnessBackend implements Backend {
 
   private controlEvent(connection: ControlToolConnection, signal: AbortSignal, event: MeshHarnessControlEvent): void {
     if (event.type === "cancel") {
+      this.controlCalls.delete(event.requestId);
       this.controlRequests.get(event.requestId)?.controller.abort();
       return;
     }
-    if (this.controlRequests.has(event.requestId) || this.controlRequests.size >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS) {
+    if (this.controlRequests.has(event.requestId) || this.controlCalls.size >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS) {
       throw new HarnessError("harness_event_gap", "The execution control request is duplicated or exceeds the lease capacity.");
     }
     const controller = new AbortController();
     const requestSignal = AbortSignal.any([signal, controller.signal]);
+    this.controlCalls.add(event.requestId);
     const promise = (async (): Promise<void> => {
       let reply: ControlToolReply;
       try {
@@ -269,13 +276,29 @@ export class MeshHarnessBackend implements Backend {
       } catch (error) {
         reply = controlToolTransportFailure(error);
       }
+      while (this.controlReplies.size >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS && !requestSignal.aborted) {
+        const available = Promise.withResolvers<void>();
+        const wake = (): void => available.resolve();
+        this.controlReplyWaiters.add(wake);
+        requestSignal.addEventListener("abort", wake, { once: true });
+        try { await available.promise; }
+        finally {
+          this.controlReplyWaiters.delete(wake);
+          requestSignal.removeEventListener("abort", wake);
+        }
+      }
       if (requestSignal.aborted) return;
+      // The worker can issue its next call before this RPC is acknowledged.
+      this.controlCalls.delete(event.requestId);
       ControlReplyAdmission.parse(await this.rpc({
         operation: "control.result", controlRequestId: event.requestId, reply,
       }, signal));
     })().catch((error: unknown) => {
       if (!requestSignal.aborted) this.observationFailed(error);
-    }).finally(() => { this.controlRequests.delete(event.requestId); });
+    }).finally(() => {
+      this.controlCalls.delete(event.requestId);
+      this.controlRequests.delete(event.requestId);
+    });
     this.controlRequests.set(event.requestId, { controller, promise });
   }
 
@@ -606,6 +629,8 @@ export class MeshHarnessBackend implements Backend {
     this.controlObserver = undefined;
     this.controlFailure = undefined;
     this.controlRequests.clear();
+    this.controlCalls.clear();
+    this.controlReplyWaiters.clear();
     this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.restoredProviderImageWarnings.clear(); this.observationFailures.clear(); this.deleting.clear();
     await client?.releaseSession();
   }

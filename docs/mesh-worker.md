@@ -111,6 +111,9 @@ existing harness event stream and replies through harness RPC. The lease-level
 control observation is ready before provider connection or conversation
 creation/resume, including OpenCode's early discovery. Reply capacity is
 independent of operations waiting for those replies.
+Track active calls separately from replies awaiting acknowledgement. Wait for
+bounded reply capacity rather than closing a healthy lease when those stages
+overlap.
 
 Current controllers request `x-clanky-mesh-control-tools: 2` during generation
 discovery and require signed `controlTools: 2` metadata before admission. The
@@ -122,8 +125,9 @@ Discovery without the opt-in and noncontrol contracts are unchanged.
 Direct TLS and relay use the same execution infrastructure. No independent
 worker-to-controller callback, public hostname, route backfill or pairing reset
 is needed. Existing v7 relays already forward these harness routes. Worker
-binding and active registration are revalidated on each request. Observation
-loss closes the lease; calls/results are bounded and cancellable, and a missing
+binding, including its revision, and active registration are revalidated on
+each request. Observation loss closes the lease; calls/results are bounded
+and cancellable, and a missing
 authoritative result is uncertain, never automatically replayed.
 
 During rollout, workers retain the old v1 discovery/admission and callback in

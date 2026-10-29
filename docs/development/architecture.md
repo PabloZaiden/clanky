@@ -102,6 +102,9 @@ dispatch, including after approval or private credential entry.
 Internal admission identity stays stable across transport reconnects only for
 the same source, permission ceiling and execution-host binding. Domain-owned
 pending requests must not be lost merely because a lease reconnects.
+Retain the admitted binding separately and reject host, target or revision
+changes during live validation, including pending decisions. Live permission
+narrowing does not replace that binding or the immutable ceiling.
 An ended Agent run cannot authorize further control or pending approvals, even
 when its native conversation is retained.
 Grant and provenance checks use metadata snapshots, not unrequested transcripts.

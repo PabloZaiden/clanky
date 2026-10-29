@@ -11,6 +11,7 @@ import {
   CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE,
   controlWorkspaceScope, type ManagedContextIdentity,
 } from "@/shared/context-api-key";
+import { executionHostBindingsEqual, type ExecutionHostBinding } from "@/shared/execution-host";
 import { readReferenceField, isReadRecord } from "@/shared/record";
 import { requireCurrentUser } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
@@ -31,6 +32,7 @@ export interface ControlGrant {
   readonly general: boolean;
   readonly workspaceId?: string;
   readonly managedContext?: ManagedContextIdentity;
+  readonly executionHostBinding?: ExecutionHostBinding;
 }
 
 export async function requireControlWorker(grant: ControlGrant, workerNodeId: string): Promise<void> {
@@ -83,7 +85,7 @@ export async function resolveControlGrant(input: {
 }
 
 export async function resolveExecutionControlGrant(
-  identity: ManagedContextIdentity, admittedId?: string,
+  identity: ManagedContextIdentity, admitted?: ControlGrant,
 ): Promise<ControlGrant> {
   const user = requireCurrentUser();
   if (identity.userId !== user.id || identity.contextType === "terminal_session"
@@ -92,9 +94,13 @@ export async function resolveExecutionControlGrant(
   }
   const workspace = await getWorkspace(identity.workspaceId);
   if (!workspace) throw new DomainError("control_workspace_unavailable", "The execution workspace is unavailable.");
+  if (admitted && (!admitted.executionHostBinding
+    || !executionHostBindingsEqual(admitted.executionHostBinding, workspace.executionHostBinding))) {
+    throw new DomainError("control_context_unavailable", "The originating execution host binding has changed.");
+  }
   const general = workspace.allowClankyContext === true;
   // A transport reconnect must not replace domain ownership or broaden its ceiling.
-  const id = admittedId ?? `execution:${JSON.stringify([
+  const id = admitted?.id ?? `execution:${JSON.stringify([
     identity.userId, identity.workspaceId, identity.contextType, identity.contextId,
     general, user.isAdmin, user.isOwner,
     workspace.executionHostBinding.targetKey, workspace.executionHostBinding.revision,
@@ -102,6 +108,9 @@ export async function resolveExecutionControlGrant(
   return Object.freeze({
     id, user: Object.freeze({ ...user }), general,
     workspaceId: identity.workspaceId, managedContext: Object.freeze({ ...identity }),
+    executionHostBinding: Object.freeze({
+      ...workspace.executionHostBinding, host: Object.freeze({ ...workspace.executionHostBinding.host }),
+    }),
   });
 }
 
