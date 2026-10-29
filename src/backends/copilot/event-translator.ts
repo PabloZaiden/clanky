@@ -58,7 +58,25 @@ export class CopilotEventTranslator {
         return events;
       }
       case "assistant.reasoning_delta":
-        return [wrap({ type: "reasoning.delta", content: event.data.deltaContent })];
+        return [wrap({ type: "reasoning.delta", content: event.data.deltaContent, reasoningId: event.data.reasoningId })];
+      case "assistant.reasoning":
+        return scope.kind === "child" ? [wrap({
+          type: "reasoning.delta", content: event.data.content, reasoningId: event.data.reasoningId, complete: true,
+        })] : [];
+      case "subagent.started":
+        return [wrap({
+          type: "activity.changed",
+          ...(event.agentId ? { activity: {
+            id: event.agentId, parentId: event.data.parentId, spawningToolCallId: event.data.toolCallId,
+            kind: "subagent" as const, description: event.data.agentDisplayName || event.data.agentDescription,
+            status: "running" as const, ownership: "owned" as const, workspaceWrites: "possible" as const,
+            requestedModel: event.data.model,
+            native: { adapter: "copilot" as const, conversationId: this.sessionId, activityId: event.agentId },
+          } } : {}),
+        })];
+      case "subagent.completed":
+      case "subagent.failed":
+        return [wrap({ type: "activity.changed" })];
       case "tool.execution_start":
         if (this.tools.size >= 1024) throw new HarnessError("harness_request_failed", "Too many active native tool calls.");
         this.tools.set(event.data.toolCallId, event.data.toolName);
@@ -113,7 +131,7 @@ export class CopilotEventTranslator {
         return [wrap({ type: "session.status", sessionId: this.sessionId, status: "busy" })];
       case "user.message":
         return [{
-          ...wrap({ type: "user.message", content: event.data.content }),
+          ...wrap({ type: "user.message", content: event.data.content, messageId: event.data.messageId }),
           scope: {
             ...scope,
             native: { ...scope.native, adapter: "copilot", messageId: event.data.messageId },

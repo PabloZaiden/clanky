@@ -2,6 +2,7 @@
  * Provider-neutral execution events, separate from scheduled Clanky Agent events.
  */
 import type { MessageAttachment } from "@/shared/message-attachments";
+import type { HarnessActivity } from "./harness-control";
 
 export const HARNESS_ADAPTER_IDS = ["acp", "copilot", "codex", "opencode2"] as const;
 export type HarnessAdapter = typeof HARNESS_ADAPTER_IDS[number];
@@ -48,8 +49,8 @@ export interface QuestionInfo {
 }
 
 export type HarnessEventPayload =
-  | { type: "activity.changed" }
-  | { type: "user.message"; content: string }
+  | { type: "activity.changed"; activity?: HarnessActivity }
+  | { type: "user.message"; content: string; messageId?: string }
   | { type: "message.start"; messageId: string }
   | { type: "message.delta"; content: string; messageId?: string }
   | {
@@ -59,7 +60,7 @@ export type HarnessEventPayload =
       attachments?: MessageAttachment[];
       providerImageFile?: ProviderImageFileReference;
     }
-  | { type: "reasoning.delta"; content: string }
+  | { type: "reasoning.delta"; content: string; reasoningId?: string; complete?: boolean }
   | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
   | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown }
   | { type: "request.error"; message: string; code: string; details?: Readonly<Record<string, unknown>> }

@@ -15,6 +15,7 @@ import {
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 import { createGitFixture } from "./support/git";
 import { pollUntil } from "./support/polling";
+import { subscribeRealtime } from "./support/realtime";
 
 const providers = [
   { adapter: "copilot", provider: "copilot", install: installExternalNativeCopilotProvider },
@@ -25,6 +26,9 @@ const providers = [
 for (const provider of providers) {
   test(`${provider.adapter} users receive background work, queue a request and resume its conversation`, async () => {
     const application = await E2EApplication.create();
+    let socket: WebSocket | undefined;
+    const childEvents: Array<{ subagentId: string; event: { type: string; message?: { content: string } } }> = [];
+    let selectedChildId: string | undefined;
     try {
       const directory = join(application.runDirectory, "workspace");
       await mkdir(directory);
@@ -40,12 +44,38 @@ for (const provider of providers) {
         client: application, chatId, directory,
         async writeFile(path: string, content: string) { await Bun.write(path, content); },
         async reconnect() { await application.restart({ force: provider.adapter === "codex" }); },
+        verifyIsolation: provider.adapter === "copilot",
+        onChildObserved: provider.adapter === "copilot" ? async (subagentId) => {
+          selectedChildId = subagentId;
+          const key = (await application.json<{ token: string }>("/api/api-keys", {
+            method: "POST", body: JSON.stringify({ name: "subagent-reader", scopes: ["*"] }),
+          })).data.token;
+          const url = new URL("/api/ws", application.baseUrl);
+          url.protocol = "ws:";
+          const AuthenticatedWebSocket = WebSocket as typeof WebSocket & {
+            new(url: URL, options: Bun.WebSocketOptions): WebSocket;
+          };
+          socket = new AuthenticatedWebSocket(url, { headers: { authorization: `Bearer ${key}`, origin: application.baseUrl } });
+          socket.addEventListener("message", (frame) => {
+            const value = JSON.parse(String(frame.data));
+            if (value.event?.type === "subagent.transcript") childEvents.push(value.event);
+          });
+          await pollUntil(() => socket!.readyState, (state) => state === WebSocket.OPEN,
+            { description: "child reader realtime to open", timeoutMs: 5000 });
+          await subscribeRealtime(socket, { kinds: ["content"], types: ["subagent.transcript"], targets: { subagentId } });
+        } : undefined,
       });
+      if (selectedChildId) {
+        expect(childEvents.length).toBeGreaterThan(0);
+        expect(childEvents.every((event) => event.subagentId === selectedChildId)).toBe(true);
+        expect(childEvents.some((event) => event.event.message?.content.startsWith("Subagent findings:"))).toBe(true);
+      }
       if (provider.adapter === "copilot") await useUnattendedControlRoots(application, host.ref);
     } catch (error) {
       console.error(await application.diagnostics());
       throw error;
     } finally {
+      socket?.close();
       await application.cleanup();
     }
   });

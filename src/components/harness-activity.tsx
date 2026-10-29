@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import {
   DataList,
   DataListRow,
@@ -13,6 +13,7 @@ import type {
   HarnessActivitySnapshot,
   HarnessCapabilities,
   HarnessInputReceipt,
+  HarnessConversationBinding,
 } from "@/shared/harness-control";
 import { StateText, StatusBadge } from "./common";
 import {
@@ -23,6 +24,10 @@ import {
 } from "./harness-input-reconciliation";
 import { useHarnessActivity } from "./use-harness-activity";
 import { useWorkspaceReadOnly } from "../context/workspace-access-context";
+import type { Subagent } from "@/shared/subagent";
+import type { TranscriptFileLinkContext } from "./log-viewer";
+import { SubagentTranscript } from "./subagent-transcript";
+import { useSavedSubagents } from "./use-saved-subagents";
 
 interface HarnessActivityProps {
   kind: "chat" | "task";
@@ -33,6 +38,8 @@ interface HarnessActivityProps {
   onOpenActivity?: () => void;
   inputs?: HarnessInputReceipt[];
   onInputUpdated?: () => Promise<void>;
+  binding?: HarnessConversationBinding | null;
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 const ToolActivityContext = createContext<{
@@ -106,17 +113,23 @@ function ActivityRow({
   stopping,
   disabled,
   onStop,
+  onOpen,
+  parentDescription,
 }: {
   activity: HarnessActivity;
   canStop: boolean;
   stopping: boolean;
   disabled: boolean;
   onStop: () => void;
+  onOpen?: () => void;
+  parentDescription?: string;
 }) {
   return (
     <DataListRow
-      title={<span className="block truncate">{activity.description}</span>}
-      description={activity.kind === "subagent" ? activity.effectiveModel ?? activity.requestedModel ?? "Model not reported"
+      title={onOpen ? <button type="button" className="block w-full truncate text-left hover:underline" onClick={onOpen}
+        aria-label={`Open transcript for ${activity.description}`}>{activity.description}</button>
+        : <span className="block truncate">{activity.description}</span>}
+      description={activity.kind === "subagent" ? [activity.effectiveModel ?? activity.requestedModel ?? "Model not reported", parentDescription].filter(Boolean).join(" / ")
         : activity.kind === "process" ? "Process" : "External activity"}
       descriptionClassName="!mt-0"
       badge={<StatusBadge size="sm"><StateText>{activity.status}</StateText></StatusBadge>}
@@ -129,10 +142,30 @@ function ActivityRow({
   );
 }
 
-function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }: HarnessActivityProps) {
+function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack, binding, fileLinkContext }: HarnessActivityProps) {
   const readOnly = useWorkspaceReadOnly();
   const { activity, loaded, error, stoppingId, unconfirmedId, stop } = useHarnessActivity({ kind, entityId, snapshot });
+  const saved = useSavedSubagents(kind, entityId);
+  const [selected, setSelected] = useState<Subagent | null>(null);
+  const nativeItems = activity?.observation === "available" ? activity.activities : [];
+  const savedCurrent = new Set(saved.items.filter((item) => item.binding.nativeId === binding?.nativeId).map((item) => item.activity.id));
+  const canStop = (item: HarnessActivity) => !readOnly && item.ownership === "owned"
+    && ["queued", "running", "waiting", "unknown"].includes(item.status)
+    && (item.kind === "process" ? capabilities?.stopScopes.includes("command") === true
+      : item.kind === "subagent" && capabilities?.stopScopes.includes("child-execution") === true);
+  const childToolContext = useMemo(() => {
+    const byTool = new Map<string, HarnessActivity[]>();
+    for (const item of saved.items) {
+      if (!selected || item.binding.nativeId !== selected.binding.nativeId || item.activity.parentId !== selected.activity.id
+        || !item.activity.spawningToolCallId) continue;
+      const key = item.activity.spawningToolCallId;
+      byTool.set(key, [...(byTool.get(key) ?? []), item.activity]);
+    }
+    return { byTool, inputs: new Map<string, HarnessInputReceipt>(), onOpenActivity: () => setSelected(null) };
+  }, [saved.items, selected]);
   return (
+    <div className="relative flex h-full min-h-0 min-w-0 flex-col">
+    <div className={`flex h-full min-h-0 flex-col ${selected ? "invisible" : ""}`} inert={selected ? true : undefined} aria-hidden={selected ? true : undefined}>
     <Page className="h-full overflow-y-auto">
       <Panel
         title="Activity"
@@ -160,26 +193,49 @@ function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack }:
               <ErrorState title="Termination unconfirmed" description="Waiting for native termination confirmation." />
             )}
             <DataList>
-              {activity.activities.length === 0 ? <EmptyState title="No observed background activity" /> : (
-                activity.activities.map((item) => (
+              {nativeItems.filter((item) => !savedCurrent.has(item.id)).map((item) => (
                   <ActivityRow
                     key={item.id}
                     activity={item}
-                    canStop={!readOnly && item.ownership === "owned"
-                      && ["queued", "running", "waiting", "unknown"].includes(item.status)
-                      && (item.kind === "process" ? capabilities?.stopScopes.includes("command") === true
-                        : item.kind === "subagent" && capabilities?.stopScopes.includes("child-execution") === true)}
+                    canStop={canStop(item)}
                     stopping={stoppingId === item.id}
                     disabled={stoppingId !== undefined && stoppingId !== item.id}
                     onStop={() => void stop(item.id)}
                   />
-                ))
-              )}
+                ))}
             </DataList>
           </div>
         )}
       </Panel>
+      <Panel title="Subagent conversations">
+        {!saved.loaded && <LoadingState title="Loading saved subagents" />}
+        {saved.error && <ErrorState title="Saved subagents could not be loaded" description={saved.error} />}
+        {saved.loaded && !saved.error && !saved.items.length && <EmptyState title="No saved subagent conversations" />}
+        <DataList>
+          {saved.items.map((item) => {
+            const currentSession = item.binding.nativeId === binding?.nativeId;
+            const native = currentSession ? nativeItems.find((candidate) => candidate.id === item.activity.id) : undefined;
+            const parent = item.activity.parentId ? saved.items.find((candidate) => candidate.binding.nativeId === item.binding.nativeId && candidate.activity.id === item.activity.parentId) : undefined;
+            return <ActivityRow key={item.id} activity={native ?? item.activity}
+              parentDescription={[parent ? `From ${parent.activity.description}` : item.activity.parentId ? "Nested subagent" : undefined,
+                !currentSession ? "Previous session" : undefined, item.coverage === "partial" ? "Partial history" : undefined].filter(Boolean).join(" / ")}
+              canStop={Boolean(native && canStop(native))} stopping={currentSession && stoppingId === item.activity.id}
+              disabled={stoppingId !== undefined && stoppingId !== item.activity.id}
+              onStop={() => void stop(item.activity.id)} onOpen={() => setSelected(item)} />;
+          })}
+        </DataList>
+        {saved.hasMore && <button type="button" className="mt-3 text-xs underline decoration-dotted underline-offset-2 disabled:opacity-50"
+          disabled={saved.loading} onClick={saved.loadMore}>{saved.loading ? "Loading" : "Load older subagents"}</button>}
+      </Panel>
     </Page>
+    </div>
+    {selected && <div className="absolute inset-0 flex min-h-0 flex-col">
+      <ToolActivityContext.Provider value={childToolContext}>
+        <SubagentTranscript key={selected.id} kind={kind} entityId={entityId} initialSubagent={selected}
+          binding={binding} fileLinkContext={fileLinkContext} onBack={() => setSelected(null)} />
+      </ToolActivityContext.Provider>
+    </div>}
+    </div>
   );
 }
 
@@ -226,7 +282,7 @@ export function HarnessEntityView({
           </div>
           {showActivity && (
             <div className="absolute inset-0 flex min-h-0 flex-col">
-              <div className="flex min-h-0 flex-1 flex-col"><HarnessActivityPage {...props} /></div>
+              <div className="flex min-h-0 flex-1 flex-col"><HarnessActivityPage key={`${props.kind}:${props.entityId}`} {...props} /></div>
               {activityFooter}
             </div>
           )}

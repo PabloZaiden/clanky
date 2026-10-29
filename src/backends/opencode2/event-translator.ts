@@ -16,6 +16,7 @@ export class OpenCodeEventTranslator {
   private readonly tools = new Map<string, string>();
   private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private lastSequence?: number;
+  private readonly childInputs = new Map<string, string>();
 
   get sequence(): number | undefined { return this.lastSequence; }
 
@@ -35,6 +36,21 @@ export class OpenCodeEventTranslator {
       sourceSequence: "durable" in event ? event.durable.seq : undefined,
     });
     switch (event.type) {
+      case "session.inbox.enqueued":
+        if (scope.kind === "child" && event.data.item.type === "user") {
+          if (this.childInputs.size >= 1000) throw new HarnessError("harness_event_gap", "Too many pending native child inputs.");
+          this.childInputs.set(event.data.inboxID, event.data.item.payload.text);
+        }
+        return [];
+      case "session.inbox.delivered": {
+        const content = this.childInputs.get(event.data.inboxID);
+        this.childInputs.delete(event.data.inboxID);
+        return scope.kind === "child" && content !== undefined
+          ? [wrap({ type: "user.message", content, messageId: event.data.inboxID })] : [];
+      }
+      case "session.inbox.cancelled":
+        this.childInputs.delete(event.data.inboxID);
+        return [];
       case "session.execution.started":
         this.imageOutputBudget.reset();
         return [wrap({ type: "session.status", sessionId: event.data.sessionID, status: "busy" })];
@@ -70,7 +86,11 @@ export class OpenCodeEventTranslator {
         return [wrap({ type: "message.complete", content, messageId: event.data.assistantMessageID })];
       }
       case "session.reasoning.delta":
-        return [wrap({ type: "reasoning.delta", content: event.data.delta })];
+        return [wrap({ type: "reasoning.delta", content: event.data.delta,
+          reasoningId: `${event.data.assistantMessageID}:${event.data.ordinal}` })];
+      case "session.reasoning.ended":
+        return scope.kind === "child" ? [wrap({ type: "reasoning.delta", content: event.data.text,
+          reasoningId: `${event.data.assistantMessageID}:${event.data.ordinal}`, complete: true })] : [];
       case "session.tool.input.started":
         if (this.tools.size >= 1000) throw new HarnessError("harness_event_gap", "Native tool observation capacity reached.");
         this.tools.set(event.data.id, event.data.name);

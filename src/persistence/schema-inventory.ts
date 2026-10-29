@@ -13,14 +13,14 @@ export type SchemaTableCategory =
   | "framework"
   | "metadata";
 
-export type SchemaTranscriptResource = "chat" | "task" | "agent_run";
+export type SchemaTranscriptResource = "chat" | "task" | "agent_run" | "subagent";
 export type SchemaTranscriptTableRole = "entries" | "meta";
 
 export interface SchemaTranscriptTableMetadata {
   readonly resource: SchemaTranscriptResource;
   readonly role: SchemaTranscriptTableRole;
-  readonly parentTable: "chats" | "tasks" | "agent_runs";
-  readonly resourceColumn: "chat_id" | "task_id" | "agent_run_id";
+  readonly parentTable: "chats" | "tasks" | "agent_runs" | "harness_subagents";
+  readonly resourceColumn: "chat_id" | "task_id" | "agent_run_id" | "subagent_id";
 }
 
 export interface SchemaTableDefinition {
@@ -86,6 +86,13 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_controller_grants", "clanky"),
   currentTable("mesh_harness_conversations", "clanky"),
   currentTable("harness_usage", "clanky"),
+  currentTable("subagent_transcript_meta", "clanky", {
+    resource: "subagent", role: "meta", parentTable: "harness_subagents", resourceColumn: "subagent_id",
+  }),
+  currentTable("subagent_transcript_entries", "clanky", {
+    resource: "subagent", role: "entries", parentTable: "harness_subagents", resourceColumn: "subagent_id",
+  }),
+  currentTable("harness_subagents", "clanky"),
   // The immutable baseline can recreate this table; reset must discard it.
   resetOnlyTable("mesh_controller_relay_pairing", "clanky"),
   currentTable("mesh_controller_relays", "clanky"),

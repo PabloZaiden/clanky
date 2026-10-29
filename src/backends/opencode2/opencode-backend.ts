@@ -11,22 +11,26 @@ import { HarnessError } from "../harness-errors";
 import { consumeHarnessPrompt } from "../harness-prompt";
 import { OpenCodeConnection } from "./connection";
 import { OpenCodeControl } from "./control";
-import { readOpenCodeSessionHistory } from "./session-history";
+import { readOpenCodeSessionHistory, readOpenCodeSubagentHistory } from "./session-history";
 import { NativeHistoryReader } from "../native-history-reader";
+import type { HarnessEvent } from "@/shared/harness-events";
 
 export class OpenCodeBackend implements Backend {
   readonly name = "opencode2";
   private readonly connection = new OpenCodeConnection();
   private readonly history = new NativeHistoryReader();
+  private readonly childHistory = new NativeHistoryReader<HarnessEvent>();
   readonly harness = new OpenCodeControl(this.connection.requireServices.bind(this.connection));
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     await this.history.close();
+    await this.childHistory.close();
     await this.connection.connect(config, signal);
     this.history.open();
+    this.childHistory.open();
   }
   async disconnect(): Promise<void> {
-    try { await this.history.close(); } finally { await this.connection.disconnect(); }
+    try { await Promise.all([this.history.close(), this.childHistory.close()]); } finally { await this.connection.disconnect(); }
   }
   isConnected(): boolean { return this.connection.isConnected(); }
   createSession(options: CreateSessionOptions): Promise<AgentSession> { return this.connection.requireServices().sessions.create(options); }
@@ -46,6 +50,20 @@ export class OpenCodeBackend implements Backend {
       source: () => readOpenCodeSessionHistory(client, id),
       processing: async () => (await client.session.active())[id] !== undefined,
     });
+  }
+  async readSubagentHistory(id: string, activityId: string, cursor?: string) {
+    const { sessions, client } = this.connection.requireServices();
+    sessions.get(id);
+    await sessions.reconcileDescendants(id);
+    if (sessions.getTracked(activityId)?.rootId !== id || activityId === id) {
+      throw new HarnessError("harness_activity_not_owned", "The native session is not a child of this conversation.");
+    }
+    const page = await this.childHistory.read({
+      sessionId: JSON.stringify([id, activityId]), cursor,
+      source: () => readOpenCodeSubagentHistory(client, activityId),
+      processing: async () => (await client.session.active())[activityId] !== undefined,
+    });
+    return { events: page.events, processing: page.principalProcessing, nextCursor: page.nextCursor };
   }
   async replyToPermission(_requestId: string, _response: string): Promise<void> { throw new HarnessError("harness_unsupported_feature", "Native permissions are automatically approved."); }
   replyToQuestion(requestId: string, answers: string[][]): Promise<void> { return this.connection.requireServices().questions.reply(requestId, answers); }

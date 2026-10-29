@@ -27,6 +27,7 @@ export class CopilotControl implements HarnessControl {
       questionPolicy: "session",
       clankyControlTools: true,
       history: "completed",
+      subagentHistory: "completed",
       usage: "tokens",
     };
   }

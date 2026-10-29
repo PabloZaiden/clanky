@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
 import { inspectAttachedFiles } from "./file-input";
+import { createPng } from "../support/png-fixtures";
 import {
   BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
 } from "./background-work";
@@ -29,6 +30,9 @@ interface Session {
   };
   backgroundResult?: string;
   usage: Record<string, { inputTokens: number; outputTokens: number; reasoningTokens: number; cacheReadTokens: number; cacheWriteTokens: number }>;
+  children?: Array<{
+    id: string; toolCallId: string; description: string; prompt: string; status: string; startedAt: string; parentId?: string;
+  }>;
 }
 
 const sessions = new Map<string, Session>();
@@ -63,7 +67,7 @@ function write(message: Record<string, unknown>): void {
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
 }
 
-function event(session: Session, type: string, data: Record<string, unknown>): void {
+function event(session: Session, type: string, data: Record<string, unknown>, agentId?: string): void {
   if (type === "assistant.message") {
     const usage = session.usage[session.model] ??= {
       inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
@@ -74,7 +78,7 @@ function event(session: Session, type: string, data: Record<string, unknown>): v
     usage.cacheReadTokens += 25;
     usage.cacheWriteTokens += 5;
   }
-  const value = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), parentId: null, type, data };
+  const value = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), parentId: null, type, data, ...(agentId ? { agentId } : {}) };
   session.events.push(value);
   session.events = session.events.slice(-500);
   write({ method: "session.event", params: { sessionId: session.id, event: value } });
@@ -187,9 +191,13 @@ async function sendInput(session: Session | undefined, params: Record<string, un
     const delegated = backgroundWork(prompt);
     const releaseFile = /\[wait-for-file:([^\]\r\n]+)\]/.exec(prompt)?.[1];
     if (delegated) {
-      finish(session, BACKGROUND_DELEGATED);
-      await save();
-      startBackground(session, delegated);
+      if (prompt.includes("<promise>PLAN_READY</promise>")) {
+        void startBackground(session, delegated);
+      } else {
+        finish(session, BACKGROUND_DELEGATED);
+        await save();
+        void startBackground(session, delegated);
+      }
     } else if (releaseFile) {
       const controller = new AbortController();
       waiting.set(session.id, controller);
@@ -203,7 +211,29 @@ async function sendInput(session: Session | undefined, params: Record<string, un
   await save();
 }
 
-function startBackground(session: Session, work: BackgroundWork): void {
+function startBackground(session: Session, work: BackgroundWork): Promise<void> {
+  const child = {
+    id: crypto.randomUUID(), toolCallId: crypto.randomUUID(), description: "Workspace inventory",
+    prompt: "Inspect the reusable modules and report the inventory.", status: "running", startedAt: new Date().toISOString(),
+  };
+  const nested = {
+    id: crypto.randomUUID(), toolCallId: crypto.randomUUID(), description: "Inventory verification",
+    prompt: "Verify the inventory findings.", status: "completed", startedAt: new Date().toISOString(), parentId: child.id,
+  };
+  session.children = [child, nested];
+  for (const agent of session.children) {
+    event(session, "subagent.started", {
+      agentName: "explore", agentDescription: agent.description, agentDisplayName: agent.description,
+      toolCallId: agent.toolCallId, parentId: agent.parentId,
+    }, agent.id);
+    event(session, "user.message", { messageId: `${agent.id}:input`, content: agent.prompt }, agent.id);
+  }
+  event(session, "assistant.message", { messageId: `${nested.id}:response`, content: "Nested review complete." }, nested.id);
+  event(session, "assistant.idle", {}, nested.id);
+  event(session, "subagent.completed", { agentName: "explore", toolCallId: nested.toolCallId }, nested.id);
+  event(session, "assistant.message_start", { messageId: `${child.id}:response` }, child.id);
+  event(session, "assistant.message_delta", { messageId: `${child.id}:response`, deltaContent: "Inspecting reusable modules..." }, child.id);
+  event(session, "assistant.reasoning_delta", { reasoningId: `${child.id}:reasoning`, deltaContent: "Checking the reusable modules." }, child.id);
   const controller = new AbortController();
   // This owned native child outlives the admitting principal turn, not its session.
   const operation = continueBackground(session, work, controller.signal)
@@ -215,11 +245,24 @@ function startBackground(session: Session, work: BackgroundWork): void {
     })
     .finally(() => { background.delete(session.id); });
   background.set(session.id, { controller, operation });
+  return operation;
 }
 
 async function continueBackground(session: Session, work: BackgroundWork, signal: AbortSignal): Promise<void> {
   const report = await readBackgroundFile(work.resultPath, signal);
   if (report === undefined) return;
+  const child = session.children?.find((entry) => !entry.parentId);
+  if (child) {
+    event(session, "tool.execution_start", { toolCallId: `${child.id}:read`, toolName: "read_file", arguments: { path: work.resultPath } }, child.id);
+    event(session, "tool.execution_complete", { toolCallId: `${child.id}:read`, result: {
+      contents: report, content: [{ type: "image", mimeType: "image/png", data: createPng(2, 2).toString("base64") }],
+    }, success: true }, child.id);
+    event(session, "assistant.reasoning", { reasoningId: `${child.id}:reasoning`, content: "Checking the reusable modules. The inventory is ready." }, child.id);
+    event(session, "assistant.message", { messageId: `${child.id}:response`, content: `Subagent findings: ${report}` }, child.id);
+    event(session, "assistant.idle", {}, child.id);
+    child.status = "completed";
+    event(session, "subagent.completed", { agentName: "explore", toolCallId: child.toolCallId }, child.id);
+  }
   session.backgroundResult = report;
   session.processing = true;
   event(session, "assistant.turn_start", { turnId: crypto.randomUUID() });
@@ -229,7 +272,12 @@ async function continueBackground(session: Session, work: BackgroundWork, signal
   event(session, "assistant.message", { messageId: crypto.randomUUID(), content: `Background report: ${report}` });
   await save();
   if (await readBackgroundFile(work.releasePath, signal) === undefined) return;
-  idle(session);
+  if (session.prompt.includes("<promise>PLAN_READY</promise>")) {
+    await mkdir(join(session.directory, ".clanky-planning"), { recursive: true });
+    await Bun.write(join(session.directory, ".clanky-planning", "plan.md"), "Use the reviewed inventory to implement the requested changes.");
+    await Bun.write(join(session.directory, ".clanky-planning", "status.md"), "Inventory reviewed; awaiting plan approval.");
+    finish(session, "The delegated inventory is reviewed.\n<promise>PLAN_READY</promise>");
+  } else idle(session);
   await save();
 }
 
@@ -342,8 +390,16 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       };
       break;
     case "session.tasks.list":
-      result = { tasks: [] };
+      result = { tasks: (session!.children ?? []).map((child) => ({
+        ...child, type: "agent", agentType: "explore", model: session!.model,
+      })) };
       break;
+    case "session.tasks.cancel": {
+      const child = session!.children?.find((entry) => entry.id === params["id"]);
+      if (child) child.status = "cancelled";
+      result = {};
+      break;
+    }
     case "session.tasks.refresh":
     case "session.eventLog.registerInterest":
     case "session.options.update":
@@ -351,13 +407,18 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       break;
     case "session.eventLog.read": {
       const maximum = typeof params["max"] === "number" ? params["max"] : 200;
+      const agentIds = Array.isArray(params["agentIds"]) ? params["agentIds"] : undefined;
+      const types = Array.isArray(params["types"]) ? params["types"] : undefined;
+      const events = session!.events.filter((entry) =>
+        (!types || types.includes(entry["type"]))
+        && (agentIds ? agentIds.includes(entry["agentId"]) : params["agentScope"] === "primary" ? !entry["agentId"] : true));
       const forward = params["direction"] !== "backward";
-      const position = params["cursor"] === undefined ? (forward ? 0 : session!.events.length) : Number(params["cursor"]);
+      const position = params["cursor"] === undefined ? (forward ? 0 : events.length) : Number(params["cursor"]);
       const start = forward ? position : Math.max(0, position - maximum);
-      const end = forward ? Math.min(session!.events.length, position + maximum) : position;
+      const end = forward ? Math.min(events.length, position + maximum) : position;
       result = {
-        events: session!.events.slice(start, end), cursor: String(forward ? end : start),
-        hasMore: forward ? end < session!.events.length : start > 0, cursorStatus: "ok",
+        events: events.slice(start, end), cursor: String(forward ? end : start),
+        hasMore: forward ? end < events.length : start > 0, cursorStatus: "ok",
       };
       break;
     }

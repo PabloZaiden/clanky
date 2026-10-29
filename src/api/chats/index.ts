@@ -4,6 +4,7 @@ import { chatsLifecycleRoutes } from "./lifecycle";
 import { chatsMessagingRoutes } from "./messaging";
 import { chatsTranscriptRoutes } from "./transcripts";
 import { chatsActivityRoutes } from "./activity";
+import { createSubagentRoutes } from "../subagents";
 
 export {
   chatsCrudRoutes,
@@ -19,4 +20,5 @@ export const chatsRoutes = defineRoutes({
   ...chatsMessagingRoutes,
   ...chatsTranscriptRoutes,
   ...chatsActivityRoutes,
+  ...createSubagentRoutes("chat"),
 });

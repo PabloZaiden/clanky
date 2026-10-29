@@ -93,6 +93,12 @@ spacing corrections.
 Activity opens through framework entity actions while preserving conversation
 DOM, scroll, and composer draft. An embedded task chat's **Chat activity** action
 is distinct from execution **Activity**; tool rows link to their own scope.
+Saved subagent selection stays inside that Activity composition. Reuse the
+normal shared chat transcript presentation and read actions without mounting
+the composer, editable chat lifecycle or input-voice gesture. Keep both parent
+and Activity list mounted during child navigation. Child element IDs and audio
+ownership must not collide with the hidden parent; use the parent's matching
+execution-host/file context, not controller-local path guesses.
 Steer is a text-style action below queued input. Admission, native delivery,
 and model obedience remain separate concepts.
 

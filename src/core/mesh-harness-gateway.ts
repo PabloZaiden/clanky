@@ -9,7 +9,7 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessActivitySnapshot } from "@/shared/harness-control";
 import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-events";
 import type { MeshHarnessOperation } from "@/contracts/schemas/mesh-harness";
-import { MeshHarnessSessionHistorySchema } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessSessionHistorySchema, MeshHarnessSubagentHistorySchema } from "@/contracts/schemas/mesh-harness";
 import { meshExecutionGateway, type MeshExecutionGateway } from "./mesh-execution-gateway";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { DomainError } from "../domain/domain-error";
@@ -343,6 +343,19 @@ export class MeshHarnessGateway {
         }
         const history = MeshHarnessSessionHistorySchema.safeParse(await backend.readSessionHistory(operation.sessionId, operation.cursor));
         if (!history.success) throw new DomainError("harness_event_gap", "Native history is incomplete or exceeds the recovery limit.", { cause: history.error });
+        return history.data;
+      }
+      case "subagent-history": {
+        if (!backend.readSubagentHistory || backend.harness.capabilities.subagentHistory !== "completed") {
+          throw new DomainError("harness_unsupported_feature", "This native worker does not recover subagent history.");
+        }
+        const history = MeshHarnessSubagentHistorySchema.safeParse(
+          await backend.readSubagentHistory(operation.sessionId, operation.activityId, operation.cursor),
+        );
+        if (!history.success) throw new DomainError("harness_event_gap", "Native child history is incomplete or exceeds the recovery limit.", { cause: history.error });
+        if (history.data.events.some((event) => event.scope.kind !== "child" || event.scope.activityId !== operation.activityId)) {
+          throw new DomainError("harness_event_gap", "Native child history does not match the requested activity.");
+        }
         return history.data;
       }
       case "stop": return await backend.harness.stopActivity(operation.sessionId, operation.activityId);

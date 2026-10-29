@@ -17,6 +17,7 @@ import { log } from "@pablozaiden/webapp/server";
 import { getExecutionOwnerUserId } from "../context/user-context";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
+import type { SubagentEvent } from "@/shared/subagent";
 
 export interface EventContext {
   readonly userId?: string;
@@ -140,3 +141,4 @@ export interface HarnessStateEvent {
 }
 
 export const harnessEventEmitter = new SimpleEventEmitter<HarnessStateEvent>();
+export const subagentEventEmitter = new SimpleEventEmitter<SubagentEvent>();

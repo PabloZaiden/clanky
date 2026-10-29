@@ -3,6 +3,7 @@
  */
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { HarnessHistoryEvent, HarnessSessionHistory } from "@/shared/harness-history";
+import type { HarnessEvent } from "@/shared/harness-events";
 import { HarnessError } from "./harness-errors";
 import { recoverNativeSessionHistory } from "./native-session-history";
 
@@ -12,19 +13,19 @@ const PAGE_EVENTS = 512;
 const PAGE_BYTES = 1024 * 1024;
 const CURSOR_TTL_MS = 60_000;
 
-interface HistoryReader {
+interface HistoryReader<TEvent extends HarnessEvent> {
   sessionId: string;
-  source: AsyncGenerator<HarnessHistoryEvent[]>;
+  source: AsyncGenerator<TEvent[]>;
   processing: () => Promise<boolean>;
-  pending?: HarnessHistoryEvent[];
+  pending?: TEvent[];
   cursor?: string;
   timer?: ReturnType<typeof setTimeout>;
 }
 
-export class NativeHistoryReader {
-  private readonly cursors = new Map<string, HistoryReader>();
-  private readonly sessions = new Map<string, HistoryReader>();
-  private readonly operations = new Set<Promise<HarnessSessionHistory>>();
+export class NativeHistoryReader<TEvent extends HarnessEvent = HarnessHistoryEvent> {
+  private readonly cursors = new Map<string, HistoryReader<TEvent>>();
+  private readonly sessions = new Map<string, HistoryReader<TEvent>>();
+  private readonly operations = new Set<Promise<HarnessSessionHistory<TEvent>>>();
   private closing = false;
 
   open(): void { this.closing = false; }
@@ -32,11 +33,11 @@ export class NativeHistoryReader {
   read(options: {
     sessionId: string;
     cursor?: string;
-    source: () => AsyncGenerator<HarnessHistoryEvent[]>;
+    source: () => AsyncGenerator<TEvent[]>;
     processing: () => Promise<boolean>;
-  }): Promise<HarnessSessionHistory> {
+  }): Promise<HarnessSessionHistory<TEvent>> {
     if (this.closing) throw new HarnessError("harness_transport_closed", "Native history recovery is closing.");
-    let reader: HistoryReader;
+    let reader: HistoryReader<TEvent>;
     if (options.cursor) {
       const previous = this.cursors.get(options.cursor);
       if (!previous || previous.sessionId !== options.sessionId) throw new HarnessError("harness_event_gap", "The native history cursor expired or belongs to a different conversation.");
@@ -56,8 +57,8 @@ export class NativeHistoryReader {
     return operation;
   }
 
-  private async page(reader: HistoryReader): Promise<HarnessSessionHistory> {
-    const events: HarnessHistoryEvent[] = [];
+  private async page(reader: HistoryReader<TEvent>): Promise<HarnessSessionHistory<TEvent>> {
+    const events: TEvent[] = [];
     let bytes = 0;
     let done = false;
     try {
@@ -107,7 +108,7 @@ export class NativeHistoryReader {
     await Promise.all([...this.sessions.values()].map((reader) => this.retire(reader)));
   }
 
-  private async retire(reader: HistoryReader): Promise<void> {
+  private async retire(reader: HistoryReader<TEvent>): Promise<void> {
     clearTimeout(reader.timer);
     if (reader.cursor) this.cursors.delete(reader.cursor);
     this.sessions.delete(reader.sessionId);

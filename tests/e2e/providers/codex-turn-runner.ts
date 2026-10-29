@@ -4,7 +4,7 @@
 
 import type { ActiveTurn, CodexFixtureStore } from "./codex-state";
 import type { CodexJsonRpcSession } from "./codex-json-rpc";
-import { buildTurn, buildTurnSummary } from "./codex-protocol";
+import { buildThread, buildTurn, buildTurnSummary } from "./codex-protocol";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
@@ -186,10 +186,21 @@ export async function runCodexTurn(
   ).join("\n");
   const delegated = backgroundWork(prompt);
   if (delegated) {
+    const childThread = await store.createThread({ cwd: thread.cwd, parentThreadId: thread.id }, thread.model);
+    rpc.notify("thread/started", { thread: buildThread(childThread) });
+    const child = await store.beginTurn({ threadId: childThread.id,
+      input: [{ type: "text", text: "Inspect the reusable modules and report the inventory.", text_elements: [] }] });
+    rpc.notify("turn/started", { threadId: childThread.id, turn: buildTurn(child.turn) });
+    rpc.notify("item/started", { threadId: childThread.id, turnId: child.turn.id, item: child.turn.items[0], startedAtMs: Date.now() });
+    rpc.notify("item/completed", { threadId: childThread.id, turnId: child.turn.id, item: child.turn.items[0], completedAtMs: Date.now() });
+    rpc.notify("item/agentMessage/delta", { threadId: childThread.id, turnId: child.turn.id,
+      itemId: `${childThread.id}:response`, delta: "Inspecting reusable modules..." });
+    rpc.notify("item/reasoning/textDelta", { threadId: childThread.id, turnId: child.turn.id,
+      itemId: `${childThread.id}:reasoning`, contentIndex: 0, delta: "Checking the reusable modules." });
     emitAssistantMessage(active, BACKGROUND_DELEGATED, rpc);
     await store.completeTurn(active);
     notifyCodexTurnCompleted(active, rpc);
-    await continueCodexBackground(thread.id, delegated, store, rpc);
+    await continueCodexBackground(thread.id, delegated, store, rpc, child);
     return;
   }
   if (thread.backgroundResult) {
@@ -235,12 +246,30 @@ async function continueCodexBackground(
   work: BackgroundWork,
   store: CodexFixtureStore,
   rpc: CodexJsonRpcSession,
+  child: ActiveTurn,
 ): Promise<void> {
   const controller = store.ownBackground(threadId);
   let active: ActiveTurn | undefined;
   try {
     const report = await readBackgroundFile(work.resultPath, controller.signal);
     if (report === undefined) return;
+    const childItem = { type: "dynamicToolCall", id: `${child.thread.id}:read`, namespace: null,
+      tool: "read_file", arguments: { path: work.resultPath }, status: "completed", contentItems: [
+        { type: "inputText", text: report }, { type: "inputImage", imageUrl: `data:image/png;base64,${createPng(2, 2).toString("base64")}` },
+      ],
+      success: true, durationMs: 0 };
+    child.turn.items.push(childItem);
+    child.turn.itemTimes[childItem.id] = { startedAtMs: Date.now(), completedAtMs: Date.now() };
+    rpc.notify("item/started", { threadId: child.thread.id, turnId: child.turn.id, item: { ...childItem, status: "inProgress", contentItems: null }, startedAtMs: Date.now() });
+    rpc.notify("item/completed", { threadId: child.thread.id, turnId: child.turn.id, item: childItem, completedAtMs: Date.now() });
+    const reasoning = { type: "reasoning", id: `${child.thread.id}:reasoning`, summary: [], content: ["Checking the reusable modules. The inventory is ready."] };
+    child.turn.items.push(reasoning);
+    rpc.notify("item/completed", { threadId: child.thread.id, turnId: child.turn.id, item: reasoning, completedAtMs: Date.now() });
+    const response = { type: "agentMessage", id: `${child.thread.id}:response`, text: `Subagent findings: ${report}`, phase: null, memoryCitation: null, delivery: null, questions: null };
+    child.turn.items.push(response);
+    rpc.notify("item/completed", { threadId: child.thread.id, turnId: child.turn.id, item: response, completedAtMs: Date.now() });
+    await store.completeTurn(child);
+    notifyCodexTurnCompleted(child, rpc);
     active = await store.beginTurn({ threadId, input: [] });
     active.thread.backgroundResult = report;
     rpc.notify("turn/started", { threadId, turn: buildTurn(active.turn) });

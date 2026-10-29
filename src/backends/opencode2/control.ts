@@ -23,6 +23,7 @@ export class OpenCodeControl implements HarnessControl {
     questionPolicy: "session",
     clankyControlTools: true,
     history: "completed",
+    subagentHistory: "completed",
     usage: "tokens",
   };
   constructor(private readonly resolve: () => {

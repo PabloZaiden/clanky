@@ -1,8 +1,7 @@
 import { useContext, useEffect, useRef } from "react";
 import type { PointerEvent } from "react";
 import { isQuestionOpen } from "@/shared/harness-questions";
-import { ConversationViewer } from "../log-viewer";
-import { useMarkdownPreference } from "../../hooks";
+import { ConversationTranscript } from "../conversation-transcript";
 import type { ChatTranscriptProps } from "./types";
 import { ChatQuestions } from "./chat-questions";
 import { LiveVoiceContext } from "../../hooks/useLiveVoice";
@@ -29,7 +28,6 @@ export function ChatTranscript({
   playingReadAloudKey,
   readAloudStatus,
 }: ChatTranscriptProps) {
-  const { enabled: markdownEnabled } = useMarkdownPreference();
   const liveVoice = useContext(LiveVoiceContext);
   const readOnly = useWorkspaceReadOnly();
   const tapCountRef = useRef(0);
@@ -169,18 +167,14 @@ export function ChatTranscript({
           {chat.state.error.message}
         </div>
       )}
-      <ConversationViewer
+      <ConversationTranscript
         id="chat-transcript"
-        messages={transcript.messages}
-        toolCalls={transcript.toolCalls}
-        logs={transcript.logs}
+        transcript={transcript}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         isWorking={isWorking}
-        markdownEnabled={markdownEnabled}
         toolPathDisplayRoot={toolPathDisplayRoot}
         fileLinkContext={fileLinkContext}
-        hasOlderTranscript={transcript.hasOlder}
         onLoadMoreTranscript={onLoadMoreTranscript}
         onLoadFullTranscript={onLoadFullTranscript}
         loadingTranscript={loadingTranscript}

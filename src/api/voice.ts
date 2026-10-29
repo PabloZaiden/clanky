@@ -16,6 +16,7 @@ import { DomainError } from "../domain/domain-error";
 import { detectTrailingPromiseMarker } from "../utils/promise-markers";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import type { PersistedMessage } from "@/shared";
 
 const VOICE_MAX_UPLOAD_BYTES = 21 * 1024 * 1024;
 
@@ -257,46 +258,53 @@ export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
         POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw synthesized audio is coordinated by the browser audio owner." } },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
-        if (req.body !== null) {
-          return errorResponse(
-            "voice_invalid_speech_request",
-            "Speech can only be generated from an existing assistant message.",
-            400,
-          );
-        }
-        try {
-          const message = await chatManager.getAssistantMessage(
-            ctx.params["id"]!,
-            ctx.params["messageId"]!,
-          );
-          if (!message) {
-            return errorResponse("not_found", "Assistant message not found", 404);
-          }
-          const speechContent = detectTrailingPromiseMarker(message.content)?.content
-            ?? message.content;
-          const audio = await manager.synthesizeSummarySpeech(
-            speechContent,
-            req.signal,
-          );
-          return new Response(audio.audio, {
-            headers: {
-              "Content-Type": audio.contentType,
-              "Cache-Control": "no-store",
-              "Content-Length": String(audio.audio.byteLength),
-            },
-          });
-        } catch (error) {
-          if (
-            req.signal.aborted
-            || error instanceof DOMException && error.name === "AbortError"
-          ) {
-            throw error;
-          }
-          return voiceErrorResponse(error);
-        }
+        return assistantMessageSpeechResponse(req, () => chatManager.getAssistantMessage(
+          ctx.params["id"]!, ctx.params["messageId"]!,
+        ), manager);
       },
     },
   });
+}
+
+export async function assistantMessageSpeechResponse(
+  req: Request,
+  getMessage: () => Promise<PersistedMessage | null>,
+  manager = voiceManager,
+): Promise<Response> {
+  if (req.body !== null) {
+    return errorResponse(
+      "voice_invalid_speech_request",
+      "Speech can only be generated from an existing assistant message.",
+      400,
+    );
+  }
+  try {
+    const message = await getMessage();
+    if (!message) {
+      return errorResponse("not_found", "Assistant message not found", 404);
+    }
+    const speechContent = detectTrailingPromiseMarker(message.content)?.content
+      ?? message.content;
+    const audio = await manager.synthesizeSummarySpeech(
+      speechContent,
+      req.signal,
+    );
+    return new Response(audio.audio, {
+      headers: {
+        "Content-Type": audio.contentType,
+        "Cache-Control": "no-store",
+        "Content-Length": String(audio.audio.byteLength),
+      },
+    });
+  } catch (error) {
+    if (
+      req.signal.aborted
+      || error instanceof DOMException && error.name === "AbortError"
+    ) {
+      throw error;
+    }
+    return voiceErrorResponse(error);
+  }
 }
 
 export const voiceRoutes = defineRoutes({

@@ -28,7 +28,10 @@ export function resolveWorkspaceEventAuthority(
   if (publication.kind === "content") {
     const type = event["type"];
     if (typeof type !== "string") return undefined;
-    if (type.startsWith("task.")) {
+    if (type === "subagent.transcript") {
+      resource = "subagent";
+      id = target["subagentId"];
+    } else if (type.startsWith("task.")) {
       resource = "task";
       id = target["taskId"];
     } else if (type.startsWith("chat.")) {

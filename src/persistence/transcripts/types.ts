@@ -6,7 +6,7 @@ import type {
   TranscriptEntryKind as SharedTranscriptEntryKind,
 } from "@/shared";
 
-export type TranscriptResource = "chat" | "task" | "agent_run";
+export type TranscriptResource = "chat" | "task" | "agent_run" | "subagent";
 export type TranscriptEntryKind = SharedTranscriptEntryKind;
 
 export interface TranscriptEntriesPage {
@@ -51,7 +51,7 @@ export interface TranscriptMeta {
 }
 
 export interface TranscriptTableConfig {
-  parentTable: "chats" | "tasks" | "agent_runs";
+  parentTable: "chats" | "tasks" | "agent_runs" | "harness_subagents";
   entriesTable: string;
   metaTable: string;
   resourceColumn: string;

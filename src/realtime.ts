@@ -23,6 +23,7 @@ import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
+import type { SubagentEvent } from "@/shared/subagent";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
 import type {
   RealtimeBus,
@@ -41,7 +42,8 @@ export type ClankyDomainEvent =
   | HarnessStateEvent
   | MeshStateEvent
   | ControlUiActionEvent
-  | LiveVoiceActivityEvent;
+  | LiveVoiceActivityEvent
+  | SubagentEvent;
 
 type ResourceAction = Extract<RealtimeAction, "changed" | "deleted">;
 
@@ -53,6 +55,8 @@ export interface ResourcePublication<TPayload = unknown> {
   workspaceId?: string;
   membershipId?: string | null;
   payload?: TPayload;
+  chatId?: string;
+  taskId?: string;
 }
 
 export interface RealtimeOwner {
@@ -83,6 +87,8 @@ export function createClankyRealtimePublisher(
         ...(publication.scope ? { scope: publication.scope } : {}),
         ...(publication.workspaceId ? { workspaceId: publication.workspaceId } : {}),
         ...(publication.membershipId !== undefined ? { membershipId: publication.membershipId ?? "owner" } : {}),
+        ...(publication.chatId ? { chatId: publication.chatId } : {}),
+        ...(publication.taskId ? { taskId: publication.taskId } : {}),
       };
       const options = {
         ...(publication.scope ? { scope: publication.scope } : {}),
@@ -182,6 +188,15 @@ export function publishClankyDomainEvent(
   owner: RealtimeOwner,
 ): void {
   switch (event.type) {
+    case "subagent.changed":
+      publisher.publishResource(owner, {
+        resource: CLANKY_REALTIME_RESOURCES.subagents, action: "changed", id: event.subagentId,
+        chatId: event.chatId, taskId: event.taskId,
+      });
+      return;
+    case "subagent.transcript":
+      publishStream(publisher, owner, event, { subagentId: event.subagentId, chatId: event.chatId, taskId: event.taskId });
+      return;
     case "harness.changed":
       publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
       for (const run of event.runs ?? []) {

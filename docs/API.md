@@ -38,6 +38,30 @@ to list, restore, permanently delete or empty it. Retention is 30 days, checked
 at startup and daily. Tasks and their conversations are unchanged.
 See [Chat Trash](chat-trash.md) for pagination, cleanup and recovery semantics.
 
+## Saved subagent conversations
+
+Chat and task APIs expose saved children under
+`/api/chats/:id/subagents` and `/api/tasks/:id/subagents`. The collection uses
+`{items,nextCursor}` with an optional opaque `before` cursor. A child ID is a
+persistent Clanky resource ID, not the native Activity ID used by Stop.
+
+Under `/:subagentId`, read `snapshot` with the normal transcript `before`,
+`since` or `full=1` window, and `tool-calls/:toolCallId` for a full lazy tool
+payload. Snapshots return `{subagent,transcript}`, including separate history
+coverage and observation state. These reads use saved data and do not require
+a connected provider. They inherit the visible parent's authorization; a
+trashed, removed or unrelated parent does not expose the child.
+
+`messages/:messageId/speech` accepts a bodyless POST for an existing saved
+assistant message, using the normal summary/Piper policy. There are no child
+send, steer, model-change or continuation routes.
+
+Realtime uses the `subagents` state resource and `subagent.transcript` content
+events targeted by `subagentId`; parent `chatId` or `taskId` dimensions scope
+list updates. Content carries the shared transcript event and versioned
+`streamPosition`. Subscribe before reading the authoritative snapshot and
+refresh after epoch/revision gaps; there is no content replay.
+
 ## Shared workspace routing
 
 The normal API includes local resources and workspaces shared over Direct or

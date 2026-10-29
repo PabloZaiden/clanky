@@ -8,7 +8,6 @@ import {
   HARNESS_HISTORY_MAX_NATIVE_BYTES,
   HARNESS_HISTORY_MAX_NATIVE_EVENTS,
   type HarnessHistoryEvent,
-  type HarnessSessionHistory,
 } from "@/shared/harness-history";
 import { HarnessError } from "./harness-errors";
 
@@ -80,9 +79,9 @@ export class NativeSessionHistory {
   }
 }
 
-export async function recoverNativeSessionHistory(
-  read: () => Promise<HarnessSessionHistory>,
-): Promise<HarnessSessionHistory> {
+export async function recoverNativeSessionHistory<T>(
+  read: () => Promise<T>,
+): Promise<T> {
   try {
     return await read();
   } catch (error) {

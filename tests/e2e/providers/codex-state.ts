@@ -24,6 +24,7 @@ export interface PersistedThread {
   turns: PersistedTurn[];
   updatedAt: number;
   backgroundResult?: string;
+  parentThreadId?: string;
 }
 
 export interface ActiveTurn {
@@ -100,6 +101,7 @@ function parseThread(value: unknown): PersistedThread {
     dynamicTools: Array.isArray(value["dynamicTools"]) ? value["dynamicTools"] : [],
     turns: Array.isArray(value["turns"]) ? value["turns"].map(parseTurn) : [],
     backgroundResult: typeof value["backgroundResult"] === "string" ? value["backgroundResult"] : undefined,
+    parentThreadId: typeof value["parentThreadId"] === "string" ? value["parentThreadId"] : undefined,
   };
 }
 
@@ -137,7 +139,12 @@ export class CodexFixtureStore {
     if (!thread) {
       throw new Error(`The Codex fixture thread ${threadId} does not exist.`);
     }
+
     return thread;
+  }
+
+  childThreads(parentId: string): PersistedThread[] {
+    return Object.values(this.state.threads).filter((thread) => thread.parentThreadId === parentId);
   }
 
   async createThread(params: Record<string, unknown>, defaultModel: string): Promise<PersistedThread> {
@@ -151,6 +158,7 @@ export class CodexFixtureStore {
       status: "idle",
       dynamicTools: Array.isArray(params["dynamicTools"]) ? params["dynamicTools"] : [],
       turns: [],
+      parentThreadId: typeof params["parentThreadId"] === "string" ? params["parentThreadId"] : undefined,
     };
     this.state.threads[thread.id] = thread;
     await this.persist();

@@ -111,6 +111,7 @@ function isImagePayloadRecord(value: Record<string, unknown>): boolean {
   const type = typeof value["type"] === "string" ? value["type"].toLowerCase() : "";
   if (
     type === "image"
+    || type === "inputimage"
     || type === "image_url"
     || type === "imagegeneration"
     || type === "image_generation_call"
@@ -168,7 +169,7 @@ function collectImageCandidates(
   collection.seen.add(value);
 
   const type = typeof value["type"] === "string" ? value["type"].toLowerCase() : "";
-  if (type === "image" || type === "image_url") {
+  if (type === "image" || type === "image_url" || type === "inputimage") {
     const imageUrl = isRecord(value["image_url"]) ? value["image_url"] : undefined;
     const data = typeof value["data"] === "string"
       ? value["data"]
@@ -176,7 +177,9 @@ function collectImageCandidates(
         ? value["url"]
         : typeof imageUrl?.["url"] === "string" && isInlineImageDataUri(imageUrl["url"])
           ? imageUrl["url"]
-          : undefined;
+          : typeof value["imageUrl"] === "string" && isInlineImageDataUri(value["imageUrl"])
+            ? value["imageUrl"]
+            : undefined;
     if (data !== undefined) {
       addImageCandidate({ data }, collection);
     } else {

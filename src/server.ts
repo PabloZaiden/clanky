@@ -43,6 +43,7 @@ import {
   previewEventEmitter,
   meshStateEventEmitter,
   harnessEventEmitter,
+  subagentEventEmitter,
   clientActionEventEmitter,
   workerUpdateEventEmitter,
 } from "./core/event-emitter";
@@ -185,6 +186,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     previewEventEmitter.subscribe(publishEvent),
     meshStateEventEmitter.subscribe(publishEvent),
     harnessEventEmitter.subscribe(publishEvent),
+    subagentEventEmitter.subscribe(publishEvent),
     clientActionEventEmitter.subscribe(publishEvent),
     workerUpdateEventEmitter.subscribe(publishEvent),
   ];

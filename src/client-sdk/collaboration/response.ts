@@ -8,6 +8,7 @@ const REFERENCE_FIELDS = {
   workspaceId: "workspace",
   taskId: "task",
   chatId: "chat",
+  subagentId: "subagent",
   agentId: "agent",
   runId: "agent-run",
   agentRunId: "agent-run",
@@ -63,6 +64,8 @@ function qualifyEntity(
   else if (typeof config["targetKind"] === "string" && typeof config["remotePort"] === "number") resource = "preview";
   else if (typeof value["agentId"] === "string" && isReadRecord(value["configSnapshot"])) resource = "agent-run";
   else if (typeof value["commentText"] === "string" && typeof value["taskId"] === "string") resource = "review-comment";
+  else if (isReadRecord(value["activity"]) && isReadRecord(value["binding"])
+    && (typeof value["chatId"] === "string" || typeof value["taskId"] === "string")) resource = "subagent";
   const result = qualifyFields(value, context);
   if (resource === "workspace" && context.controllerName) {
     result["collaboration"] = { controllerName: context.controllerName };
@@ -118,6 +121,7 @@ const ENTITY_SLOTS = {
   terminalSession: "terminal",
   preview: "preview",
   comment: "review-comment",
+  subagent: "subagent",
 } as const;
 
 function isEntity(value: Record<string, unknown>): boolean {
@@ -127,7 +131,8 @@ function isEntity(value: Record<string, unknown>): boolean {
       || typeof value["executionTargetRevision"] === "number"
       || isReadRecord(value["details"])
       || isReadRecord(value["configSnapshot"])
-      || typeof value["commentText"] === "string");
+      || typeof value["commentText"] === "string"
+      || isReadRecord(value["activity"]) && isReadRecord(value["binding"]));
 }
 
 export function qualifyWorkspaceResponse(

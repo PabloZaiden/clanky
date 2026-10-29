@@ -70,7 +70,9 @@ export class CodexMethodDispatcher {
       case "thread/read":
         return { result: this.readThread(params) };
       case "thread/list":
-        return { result: { data: [], nextCursor: null, backwardsCursor: null } };
+        return { result: { data: typeof params["ancestorThreadId"] === "string"
+          ? this.store.childThreads(params["ancestorThreadId"]).map((thread) => buildThread(thread)) : [],
+          nextCursor: null, backwardsCursor: null } };
       case "thread/turns/list":
         return { result: this.listTurns(params) };
       case "thread/items/list":

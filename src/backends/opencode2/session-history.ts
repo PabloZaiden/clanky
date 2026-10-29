@@ -3,15 +3,26 @@
  */
 import type { OpenCodeClient } from "@opencode/client";
 import type { HarnessHistoryEvent } from "@/shared/harness-history";
-import type { HarnessEventScope } from "@/shared/harness-events";
+import type { HarnessEvent, HarnessEventScope } from "@/shared/harness-events";
 import { NativeSessionHistory } from "../native-session-history";
 import { HarnessError } from "../harness-errors";
 import { OpenCodeEventTranslator } from "./event-translator";
+import { NativeSubagentHistory, type NativeHistoryCollector } from "../native-subagent-history";
 
 export async function* readOpenCodeSessionHistory(client: OpenCodeClient, sessionId: string): AsyncGenerator<HarnessHistoryEvent[]> {
-  const history = new NativeSessionHistory();
+  yield* readOpenCodeHistory(client, sessionId, new NativeSessionHistory());
+}
+
+export async function* readOpenCodeSubagentHistory(client: OpenCodeClient, sessionId: string): AsyncGenerator<HarnessEvent[]> {
+  yield* readOpenCodeHistory(client, sessionId, new NativeSubagentHistory(sessionId), sessionId);
+}
+
+async function* readOpenCodeHistory<TEvent extends HarnessEvent>(
+  client: OpenCodeClient, sessionId: string, history: NativeHistoryCollector<TEvent>, activityId?: string,
+): AsyncGenerator<TEvent[]> {
   const translator = new OpenCodeEventTranslator();
-  const scope: HarnessEventScope = { kind: "principal", native: { adapter: "opencode2", conversationId: sessionId } };
+  const native = { adapter: "opencode2" as const, conversationId: sessionId };
+  const scope: HarnessEventScope = activityId ? { kind: "child", activityId, native } : { kind: "principal", native };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   let synced = false;

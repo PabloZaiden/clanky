@@ -11,22 +11,26 @@ import { HarnessError } from "../harness-errors";
 import { consumeHarnessPrompt } from "../harness-prompt";
 import { CopilotConnection } from "./connection";
 import { CopilotControl } from "./control";
-import { readCopilotSessionHistory } from "./session-history";
+import { readCopilotSessionHistory, readCopilotSubagentHistory } from "./session-history";
 import { NativeHistoryReader } from "../native-history-reader";
+import type { HarnessEvent } from "@/shared/harness-events";
 
 export class CopilotBackend implements Backend {
   readonly name = "copilot";
   private readonly connection = new CopilotConnection();
   private readonly history = new NativeHistoryReader();
+  private readonly childHistory = new NativeHistoryReader<HarnessEvent>();
   readonly harness = new CopilotControl(this.connection);
 
   async connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     await this.history.close();
+    await this.childHistory.close();
     await this.connection.connect(config, signal);
     this.history.open();
+    this.childHistory.open();
   }
   async disconnect(): Promise<void> {
-    try { await this.history.close(); } finally { await this.connection.disconnect(); }
+    try { await Promise.all([this.history.close(), this.childHistory.close()]); } finally { await this.connection.disconnect(); }
   }
   isConnected(): boolean { return this.connection.isConnected(); }
   createSession(options: CreateSessionOptions): Promise<AgentSession> {
@@ -57,6 +61,18 @@ export class CopilotBackend implements Backend {
       source: () => readCopilotSessionHistory(session),
       processing: async () => (await session.rpc.metadata.isProcessing()).processing,
     });
+  }
+  async readSubagentHistory(sessionId: string, activityId: string, cursor?: string) {
+    const session = this.connection.requireServices().sessions.get(sessionId).native;
+    const page = await this.childHistory.read({
+      sessionId: JSON.stringify([sessionId, activityId]), cursor,
+      source: () => readCopilotSubagentHistory(session, activityId),
+      processing: async () => {
+        const current = (await session.rpc.tasks.list()).tasks.find((entry) => entry.id === activityId);
+        return current?.status === "running";
+      },
+    });
+    return { events: page.events, processing: page.principalProcessing, nextCursor: page.nextCursor };
   }
   async replyToPermission(_requestId: string, _response: string): Promise<void> {
     throw new HarnessError("harness_unsupported_feature", "Native permissions are automatically approved.");
