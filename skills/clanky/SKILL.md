@@ -17,9 +17,13 @@ do not treat a `403` as permission to fall back through CLI, key-management or
 session endpoints. External client setup, OAuth preregistration, service grants
 and human approval links are documented in
 [Agent control and MCP](../../docs/deployment.md#agent-control-and-mcp).
-Humans can also find pending requests in the sidebar's Approvals inbox and
-Home's Needs attention. Native/MCP/deterministic confirmations expire after
-one hour; do not renew or repeat uncertain work to avoid that deadline.
+Humans can also find pending requests in Settings → Agents & integrations →
+Approvals and Home's Needs attention. The per-user approval checkbox defaults
+on; only a passkey-authenticated human can change it. With it off, new nonvoice
+confirm-class operations execute directly within their existing grant; pending
+requests stay pending. Voice always confirms. Inspect returned status instead
+of assuming confirmation or completion. Native/MCP/deterministic confirmations
+expire after one hour; do not renew or repeat uncertain work to avoid that deadline.
 
 ## Conversation files
 

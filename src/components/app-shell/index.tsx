@@ -376,6 +376,7 @@ export function AppShell() {
   ]);
 
   const settingsSections = useMemo(() => [...buildShellSettingsSections({
+    onNavigate: navigateWithinShell,
     quickChatSettings,
     schedulerTimezone,
     githubUsername,
@@ -391,6 +392,7 @@ export function AppShell() {
     voiceSettings,
   }), ...(browserDownloadSettings ? [browserDownloadSettings] : [])], [
     browserDownloadSettings,
+    navigateWithinShell,
     dashboardData,
     fullTreePreference,
     githubUsername,

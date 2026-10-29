@@ -93,13 +93,21 @@ Nonvoice control sessions own bounded, expiring requests and private SSH
 continuations. Return pending human interaction without blocking an unattended
 agent indefinitely; the session owns detached work, cancellation and cleanup.
 Only a separate real passkey-backed human interaction can approve frozen work
-or supply a private credential. Pending requests are single-use and do not
+or supply a private credential. A per-user persisted preference, enabled by
+default and writable only through human-only excluded control administration,
+decides whether new nonvoice confirm-class operations need that interaction.
+The shared action owner reads it at admission, executes directly when disabled
+and reuses the same continuation-aware execution path; it does not create and
+auto-decide requests. Existing pending work is untouched. Invalid preference
+data fails explicitly rather than disabling approval. Voice never receives this
+bypass, and grants, live authority and private credentials remain enforced.
+Pending requests are single-use and do not
 survive restart. Credential tokens never enter tool results or deterministic
 user code. Voice retains its existing call-bound presentation and direct paths.
 Nonvoice confirmations have a fixed one-hour review deadline; idle session
 cleanup retains sessions that own pending requests or running work. Live Voice
 confirmations and private SSH handoffs retain their one-minute limits.
-The human-only pending collection drives both the Approvals inbox and Home's
+The human-only pending collection drives both Settings' Approvals section and Home's
 Needs attention through the same user-scoped realtime resource. It excludes
 frozen arguments and operation results; individual request reads retain them.
 

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 
 export const CONTROL_REQUEST_MAX_BYTES = 256 * 1024;
+export const ControlApprovalPolicySchema = z.object({ requireApproval: z.boolean() }).strict();
+export type ControlApprovalPolicy = z.infer<typeof ControlApprovalPolicySchema>;
 
 export const ControlToolInvocationSchema = z.object({
   input: z.unknown(),

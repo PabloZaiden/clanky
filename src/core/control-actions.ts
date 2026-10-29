@@ -53,6 +53,7 @@ export class ControlActions {
     authority: OperationAuthority;
     service: ClankyOperationService;
     confirmationTtlMs?: number;
+    requiresConfirmation?: () => Promise<boolean>;
     notify?: (content: string) => void;
     remember?: (operation: PreparedOperation, result: OperationResult) => void;
     interact: (action: ControlUiAction, requestId: string, signal: AbortSignal) => Promise<ControlInteractionOutcome>;
@@ -146,6 +147,9 @@ export class ControlActions {
     if (prepared.metadata.automation!.policy === "read") return await this.perform(prepared, requestId);
     return await this.serial(async () => {
       if (prepared.metadata.automation!.policy !== "confirm") return await this.perform(prepared, requestId);
+      if (this.options.requiresConfirmation && !await this.options.requiresConfirmation()) {
+        return await this.performWithContinuation(prepared, requestId, options.afterConfirmed);
+      }
       if (confirmationDescription === null) {
         throw new DomainError("voice_confirmation_description_required", "Supply a short description of this action, its named target and consequences in the user's language.");
       }
@@ -203,16 +207,7 @@ export class ControlActions {
         return { ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
           message: "The target changed since the dialog opened. Read it again and request a new confirmation." };
       }
-      const created = await this.perform(pending.operation, requestId);
-      if (!created.ok || !pending.afterConfirmed) return created;
-      return await pending.afterConfirmed(created, async (input, maxBytes) => {
-        const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
-        if (prepared.metadata.automation!.policy !== "write") {
-          throw new DomainError("voice_operation_invalid", "Approved follow-on stages may only execute ordinary write operations.");
-        }
-        // The continuation owns this queue slot; re-entering execute() would deadlock.
-        return await this.perform(prepared, requestId);
-      });
+      return await this.performWithContinuation(pending.operation, requestId, pending.afterConfirmed);
     });
     this.options.notify?.(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
     return result;
@@ -224,6 +219,21 @@ export class ControlActions {
       throw new DomainError("voice_operation_invalid", "Internal preparation may only read authorized data.");
     }
     return await this.perform(prepared, requestId);
+  }
+
+  private async performWithContinuation(
+    operation: PreparedOperation, requestId: string, continuation?: ConfirmationContinuation,
+  ): Promise<OperationResult> {
+    const created = await this.perform(operation, requestId);
+    if (!created.ok || !continuation) return created;
+    return await continuation(created, async (input, maxBytes) => {
+      const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
+      if (prepared.metadata.automation!.policy !== "write") {
+        throw new DomainError("voice_operation_invalid", "Follow-on stages may only execute ordinary write operations.");
+      }
+      // The continuation owns this queue slot; re-entering execute() would deadlock.
+      return await this.perform(prepared, requestId);
+    });
   }
 
   private async perform(prepared: PreparedOperation, requestId: string): Promise<OperationResult> {

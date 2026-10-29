@@ -6,6 +6,7 @@ import { createGitFixture, gitStatus, type GitFixture } from "./support/git";
 import { GLOBAL_LIVE_INTENT } from "./support/live-voice-provider";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { pollUntil } from "./support/polling";
+import { bootstrapOwner, CookieJar, requestWithCookies } from "./support/passkey";
 import { subscribeRealtime } from "./support/realtime";
 import { readProcessDiagnostics } from "./support/process";
 import {
@@ -181,7 +182,15 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     const environment = {
       NODE_EXTRA_CA_CERTS: provider.certificatePath, SSH_AUTH_SOCK: ssh.agentSocket, CLANKY_LOG_LEVEL: "info",
     };
-    await application.start({ env: environment });
+    await application.start({ disablePasskey: false, requestHostname: "localhost", env: environment });
+    const human = new CookieJar();
+    await bootstrapOwner(application, human);
+    const policy = await requestWithCookies(application, human, "/api/control/approval-policy", {
+      method: "PUT", headers: { origin: application.baseUrl }, body: JSON.stringify({ requireApproval: false }),
+    });
+    expect(policy.status).toBe(200);
+    expect(await policy.json()).toEqual({ requireApproval: false });
+    await application.restart({ disablePasskey: true, env: environment });
     const local = (await application.json<Array<{ ref: Record<string, string> }>>("/api/execution-hosts"))
       .data.find((host) => host.ref["kind"] === "local")!;
     const workspaces: Workspace[] = [];

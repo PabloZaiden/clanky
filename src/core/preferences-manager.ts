@@ -6,6 +6,8 @@
  */
 
 import {
+  getControlApprovalRequired,
+  setControlApprovalRequired,
   getDashboardViewMode as getDashboardViewModeRecord,
   getFileExplorerFullTreeEnabled as getFileExplorerFullTreeEnabledRecord,
   getGithubUsername as getGithubUsernameRecord,
@@ -55,6 +57,14 @@ export interface QuickChatModelRequest {
 }
 
 export class PreferencesManager {
+  async getControlApprovalRequired(): Promise<boolean> {
+    return await getControlApprovalRequired();
+  }
+
+  async setControlApprovalRequired(required: boolean): Promise<void> {
+    await setControlApprovalRequired(required);
+  }
+
   async getWorkerUpdatePreferences(): Promise<WorkerUpdatePreferences> {
     return await getWorkerUpdatePreferencesRecord();
   }

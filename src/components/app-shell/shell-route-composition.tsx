@@ -24,7 +24,6 @@ import { AppRouteContent, type ShellMainContentProps } from "./shell-main-conten
 import { getRouteString } from "./route-fields";
 import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
 import { ControlRequestPage } from "../control/control-request-page";
-import { ControlRequestsPage } from "../control/control-requests-page";
 import { ControlConsentPage } from "../control/control-consent-page";
 
 const ROUTE_VIEWS = [
@@ -87,6 +86,11 @@ type ShellRouteContentSelection = Pick<
   | "composeServer"
   | "composeExecutionHost"
 >;
+
+function ApprovalSettingsRedirect({ onNavigate }: { onNavigate: (route: WebAppRoute) => void }) {
+  useEffect(() => onNavigate({ view: "settings", category: "integrations" }), [onNavigate]);
+  return <Page><LoadingState title="Opening approvals settings" /></Page>;
+}
 
 export type ShellRouteCompositionContext = Omit<
   ShellMainContentProps,
@@ -328,7 +332,7 @@ function renderShellRouteContent(
     const requestId = getRouteString(route, "requestId");
     return requestId
       ? <ControlRequestPage key={requestId} requestId={requestId} />
-      : <ControlRequestsPage onNavigate={context.navigateWithinShell} showPrivateItems={context.showPrivateItems} />;
+      : <ApprovalSettingsRedirect onNavigate={context.navigateWithinShell} />;
   }
   if (route.view === "control-consent") {
     return <ControlConsentPage />;

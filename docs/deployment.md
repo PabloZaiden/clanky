@@ -178,13 +178,24 @@ workspace/access policy or enumerate unrelated servers.
 
 ### Human interactions
 
-Destructive and other confirmation-required operations return a frozen,
-expiring request and an authenticated Clanky link without performing the
-requested mutation. The human reviews and approves or rejects the exact
-arguments; scope and target state are checked again before execution.
-Open **Approvals** in the sidebar to review your pending requests without a
-client-provided link. They also appear in Home's **Needs attention** section.
-Each action is reviewed separately; the inbox also labels private SSH handoffs.
+In **Settings → Agents & integrations → Approvals**, each user controls
+**Require approval for agent operations**. It is enabled by default for both
+existing and new users. Only a genuine passkey-authenticated human can change
+it; native agents, MCP clients and deterministic code cannot disable it.
+
+When enabled, destructive and other confirmation-class control operations
+return a frozen, expiring request and an authenticated Clanky link without
+performing the requested mutation. The human reviews the exact arguments;
+scope and target state are checked again before execution. When disabled,
+new nonvoice operations execute directly within their existing permissions.
+This does not expand grants, approve existing pending requests, configure
+providers' own terminal/file permissions or bypass private SSH handoffs.
+Changes apply to new operations immediately, without restarting chats.
+**Live Voice always requires visual confirmation**, regardless of this setting.
+
+The pending list is in the same **Approvals** Settings section, with individual
+links also available in Home's **Needs attention**. Each action is reviewed
+separately; the list also labels private SSH handoffs.
 Native, MCP and deterministic confirmations expire one hour after creation.
 Reading a request does not extend its deadline, and reviewing one does not
 consume another. Live Voice confirmations and private SSH handoffs keep their
@@ -195,8 +206,8 @@ and an uncertain outcome must be inspected before repeating a mutation.
 
 Missing SSH credentials use a separate private browser handoff. Passwords and
 credential tokens do not enter model arguments/results or deterministic code.
-Real browser passkey authentication is required for approval, credential
-handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
+Real browser passkey authentication is required for approval, approval-policy
+changes, credential handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
 not grant those human capabilities, even on loopback.
 
 ## Production access

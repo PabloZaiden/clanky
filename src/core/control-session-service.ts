@@ -9,6 +9,7 @@ import { ControlActions, type ControlInteractionOutcome } from "./control-action
 import type { ControlGrant, ControlOperationAuthority } from "./control-authority";
 import type { ClankyOperationService, PreparedOperation } from "./clanky-operation-service";
 import { controlRequestPrivate } from "./control-request-privacy";
+import { preferencesManager } from "./preferences-manager";
 import { controlToolDefinitions, isControlToolName } from "./control-tool-contracts";
 import { controlUiToolDefinitions, isControlUiToolName } from "./control-ui-tools";
 import { executeControlTool } from "./control-tools";
@@ -173,6 +174,7 @@ export class ControlSessionService {
     const actions = new ControlActions({
       context: { revision: 0, route: {} }, authority, service: this.options.service,
       confirmationTtlMs: CONFIRMATION_TTL_MS,
+      requiresConfirmation: () => preferencesManager.getControlApprovalRequired(),
       interact: async (action, _requestId, signal) => await this.interact(action, signal),
     });
     session = { access, authority, actions, expiresAt: Date.now() + SESSION_TTL_MS, runs: new Set() };
