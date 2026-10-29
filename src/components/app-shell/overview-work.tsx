@@ -28,6 +28,7 @@ export function OverviewWork({
   showPrivateItems: boolean;
 }) {
   const approvals = usePendingControlRequests();
+  const approvalsInitiallyLoading = approvals.loading && approvals.data === undefined;
   const activeItems = useMemo(
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
     [executionHostNodes, sidebarWorkspaceGroups],
@@ -57,7 +58,7 @@ export function OverviewWork({
       <Panel title="Needs attention">
         {approvals.error ? <ErrorState title="Could not load approvals" description={String(approvals.error)}
           action={<Button disabled={approvals.loading} onClick={() => void approvals.refresh()}>Retry</Button>} /> : null}
-        {!approvals.data && approvals.loading ? <LoadingState title="Loading approvals" /> : null}
+        {approvalsInitiallyLoading ? <LoadingState title="Loading approvals" /> : null}
         {attentionItems.length > 0 || attentionAgents.length > 0 || Boolean(approvals.data?.length) ? (
           <DataList>
             {approvals.data?.map((request) => (
@@ -76,7 +77,7 @@ export function OverviewWork({
               />
             ))}
           </DataList>
-        ) : !approvals.loading && !approvals.error ? <EmptyState title="Nothing needs your attention" /> : null}
+        ) : !approvalsInitiallyLoading && !approvals.error ? <EmptyState title="Nothing needs your attention" /> : null}
       </Panel>
       {recentItems.length > 0 ? (
         <Panel title="Recent activity">

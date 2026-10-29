@@ -110,6 +110,12 @@ confirmations and private SSH handoffs retain their one-minute limits.
 The human-only pending collection drives both Settings' Approvals section and Home's
 Needs attention through the same user-scoped realtime resource. It excludes
 frozen arguments and operation results; individual request reads retain them.
+Collection notifications represent pending membership or effective summary
+privacy changes, not unrelated work, policy writes or completed-result updates.
+Canonical privacy changes, deletions and Trash transitions notify the control
+owner, which compares pending privacy before publishing. Initial reads and
+reconnect recovery remain authoritative; do not make every browser reread
+approvals for generic activity.
 
 ## Execution hosts and workspace paths
 

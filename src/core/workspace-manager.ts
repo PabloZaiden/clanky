@@ -32,6 +32,7 @@ import { DEFAULT_WORKSPACE_TYPE } from "@/shared/workspace";
 import { backendManager } from "./backend-manager";
 import { assertHarnessHostPolicy } from "./backend/harness-host-policy";
 import { DomainError } from "../domain/domain-error";
+import { resourcePrivacyEventEmitter } from "./event-emitter";
 import { getWorkerPaths } from "./provisioning/worker-assets";
 import { prepareWorkerRuntimeAssets } from "./provisioning/worker-runtime-assets";
 import {
@@ -766,6 +767,7 @@ export class WorkspaceManager {
         await runtimeAssets?.rollback();
         return workspace;
       }
+      if (privateChanged) resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
       if (removeSshTarget) {
         await removeWorkspaceSshTarget(id);
         workspace = await this.getWorkspace(id);

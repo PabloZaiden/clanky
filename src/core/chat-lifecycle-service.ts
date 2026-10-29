@@ -55,6 +55,7 @@ import {
 import { DomainError } from "../domain/domain-error";
 import type { ChatHistoryExportService } from "./chat-history-export-service";
 import { conversationAttachmentService } from "./conversation-attachment-service";
+import { resourcePrivacyEventEmitter } from "./event-emitter";
 
 const log = createLogger("chat-lifecycle-service");
 
@@ -516,6 +517,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     let updatedChat = await this.state.updateConfig(chatId, config);
     if (!updatedChat) {
       return null;
+    }
+    if ((updatedChat.config.isPrivate === true) !== (chat.config.isPrivate === true) || updates.source !== undefined) {
+      resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
     }
 
     if (updates.model && updatedChat.state.session?.id) {

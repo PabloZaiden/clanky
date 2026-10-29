@@ -16,7 +16,7 @@ export function ControlApprovalPolicyContent() {
   const query = useLiveQuery({
     enabled: available,
     load: (signal) => apiRequest<ControlApprovalPolicy>("/api/control/approval-policy", { signal }),
-    realtime: { resources: ["control-requests"] },
+    realtime: { resources: ["control-requests"], scopes: ["policy"] },
   });
   async function save(requireApproval: boolean) {
     setSaving(true);

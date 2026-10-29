@@ -27,7 +27,7 @@ export function ControlRequestPage({ requestId }: { requestId: string | undefine
   const query = useLiveQuery({
     enabled: Boolean(requestId), deps: [requestId],
     load: (signal) => apiRequest<ControlRequestSnapshot>(`/api/control/requests/${encodeURIComponent(requestId!)}`, { signal }),
-    realtime: { resources: ["control-requests"] },
+    realtime: { resources: ["control-requests"], ids: requestId ? [requestId] : undefined },
   });
   const request = query.data;
   const expired = useControlExpiry(request?.expiresAt);

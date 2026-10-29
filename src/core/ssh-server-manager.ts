@@ -23,6 +23,7 @@ import { CommandExecutorImpl } from "./remote-command-executor";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { DomainError } from "../domain/domain-error";
+import { resourcePrivacyEventEmitter } from "./event-emitter";
 
 export class SshServerManager {
   async listServers(): Promise<SshServer[]> {
@@ -90,6 +91,9 @@ export class SshServerManager {
         ...(request.isPrivate !== undefined ? { isPrivate: request.isPrivate } : {}),
         updatedAt: new Date().toISOString(),
       });
+      if (request.isPrivate !== undefined && request.isPrivate !== (existing.isPrivate === true)) {
+        resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
+      }
       const updated = await getSshServer(id);
       if (!updated) {
         throw new DomainError(
@@ -107,7 +111,9 @@ export class SshServerManager {
       const { previewSessionManager } = await import("./preview-session-manager");
       await previewSessionManager.closeSshServerPreviews(id);
       sshCredentialManager.clearTokensForServer(id);
-      return await deleteSshServer(id);
+      const deleted = await deleteSshServer(id);
+      if (deleted) resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
+      return deleted;
     });
   }
 
