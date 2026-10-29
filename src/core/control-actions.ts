@@ -52,6 +52,7 @@ export class ControlActions {
     context: ControlClientContext;
     authority: OperationAuthority;
     service: ClankyOperationService;
+    confirmationTtlMs?: number;
     notify?: (content: string) => void;
     remember?: (operation: PreparedOperation, result: OperationResult) => void;
     interact: (action: ControlUiAction, requestId: string, signal: AbortSignal) => Promise<ControlInteractionOutcome>;
@@ -72,7 +73,7 @@ export class ControlActions {
   }
 
   getConfirmation(requestId: string): {
-    description: string; expiresAt: number; operation: ExecuteOperationInput;
+    description: string; expiresAt: number; operation: PreparedOperation;
   } {
     this.prune();
     const pending = this.confirmations.get(requestId);
@@ -81,7 +82,7 @@ export class ControlActions {
     }
     return {
       description: pending.description, expiresAt: pending.expiresAt,
-      operation: structuredClone(pending.operation.input),
+      operation: pending.operation,
     };
   }
 
@@ -153,7 +154,7 @@ export class ControlActions {
       if (this.confirmations.size >= MAX_PENDING) throw new DomainError("voice_live_busy", "Too many actions are awaiting confirmation.");
       const id = crypto.randomUUID();
       const revision = await this.options.service.targetRevision(this.authority, prepared, this.signal);
-      const expiresAt = Date.now() + PENDING_TTL_MS;
+      const expiresAt = Date.now() + (this.options.confirmationTtlMs ?? PENDING_TTL_MS);
       const credentials = await resolveControlCredentialTargets(prepared);
       const argumentsSize = JSON.stringify({ parameters: input.parameters, query: input.query, body: prepared.body ?? null }, null, 2).length;
       if (argumentsSize > 40_000) throw new DomainError("voice_operation_invalid", "The arguments exceed the confirmation limit. Request a smaller operation.");

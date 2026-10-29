@@ -2,6 +2,7 @@ import { createLogger, defineRoutes, type RouteContext } from "@pablozaiden/weba
 import {
   ControlToolInvocationSchema, ControlToolsQuerySchema, ControlToolsResponseSchema,
   ControlRequestSnapshotSchema, ControlDecisionSchema, ControlCredentialHandoffSchema,
+  ControlRequestsResponseSchema,
   CreateControlCredentialSchema, ControlCredentialSummarySchema,
   CONTROL_REQUEST_MAX_BYTES,
 } from "@/contracts/schemas/control";
@@ -81,6 +82,18 @@ export const controlRoutes = defineRoutes({
         return Response.json(await api.sessions.call(await api.access(req, ctx), {
           name: ctx.params["name"]!, input: body.data.input, browser: body.data.context, signal: req.signal,
         }), { headers: NO_STORE });
+      } catch (error) { return controlErrorResponse(error); }
+    },
+  },
+  "/api/control/requests": {
+    auth: "user", sameOrigin: "always", tags: ["control"],
+    description: "Human-only pending control requests for the current user, without frozen arguments or operation results.",
+    operations: { GET: { responseSchema: ControlRequestsResponseSchema, automation: EXCLUDED } },
+    async GET(req, ctx) {
+      try {
+        const api = control();
+        api.requireHuman(req, ctx);
+        return Response.json(await api.sessions.listPendingRequests(), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
   },

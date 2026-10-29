@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { DataList, EmptyState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { DataList, EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Agent, Workspace } from "@/shared";
 import { shouldShowInRecentActivity } from "../../utils";
 import {
@@ -11,6 +11,9 @@ import {
 import { getOverviewActivityTimestamp, getOverviewAttention } from "./overview-activity";
 import { OverviewAgentRow } from "./overview-agents";
 import { OverviewWorkItem } from "./overview-work-item";
+import { ControlRequestRow } from "../control/control-requests-page";
+import { usePendingControlRequests } from "../control/use-pending-control-requests";
+import { Button } from "../common";
 
 const RECENT_ACTIVITY_LIMIT = 5;
 
@@ -24,6 +27,7 @@ export function OverviewWork({
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems: boolean;
 }) {
+  const approvals = usePendingControlRequests();
   const activeItems = useMemo(
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }),
     [executionHostNodes, sidebarWorkspaceGroups],
@@ -51,8 +55,14 @@ export function OverviewWork({
   return (
     <>
       <Panel title="Needs attention">
-        {attentionItems.length > 0 || attentionAgents.length > 0 ? (
+        {approvals.error ? <ErrorState title="Could not load approvals" description={String(approvals.error)}
+          action={<Button disabled={approvals.loading} onClick={() => void approvals.refresh()}>Retry</Button>} /> : null}
+        {!approvals.data && approvals.loading ? <LoadingState title="Loading approvals" /> : null}
+        {attentionItems.length > 0 || attentionAgents.length > 0 || Boolean(approvals.data?.length) ? (
           <DataList>
+            {approvals.data?.map((request) => (
+              <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
+            ))}
             {attentionItems.map(({ item, attention }) => (
               <OverviewWorkItem key={item.key} item={item} attention={attention} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
             ))}
@@ -66,7 +76,7 @@ export function OverviewWork({
               />
             ))}
           </DataList>
-        ) : <EmptyState title="Nothing needs your attention" />}
+        ) : !approvals.loading && !approvals.error ? <EmptyState title="Nothing needs your attention" /> : null}
       </Panel>
       {recentItems.length > 0 ? (
         <Panel title="Recent activity">

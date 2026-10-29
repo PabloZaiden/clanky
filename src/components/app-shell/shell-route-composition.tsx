@@ -24,6 +24,7 @@ import { AppRouteContent, type ShellMainContentProps } from "./shell-main-conten
 import { getRouteString } from "./route-fields";
 import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
 import { ControlRequestPage } from "../control/control-request-page";
+import { ControlRequestsPage } from "../control/control-requests-page";
 import { ControlConsentPage } from "../control/control-consent-page";
 
 const ROUTE_VIEWS = [
@@ -325,7 +326,9 @@ function renderShellRouteContent(
   }
   if (route.view === "control-request") {
     const requestId = getRouteString(route, "requestId");
-    return <ControlRequestPage key={requestId} requestId={requestId} />;
+    return requestId
+      ? <ControlRequestPage key={requestId} requestId={requestId} />
+      : <ControlRequestsPage onNavigate={context.navigateWithinShell} showPrivateItems={context.showPrivateItems} />;
   }
   if (route.view === "control-consent") {
     return <ControlConsentPage />;

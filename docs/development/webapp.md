@@ -122,7 +122,16 @@ win and unavailable categories fall back to General.
 Control authorization uses framework `control-request` and `control-consent`
 routes. Request pages show the frozen action, expiry and canonical result;
 approval uses a separate confirmation and SSH handoffs remain private browser
-operations. OAuth consent reads its opaque request handle from the URL search
+operations.
+The control-request route without a request ID is the Approvals inbox, reached
+from the sidebar. Pending requests also appear in Home's Needs attention;
+both views use the same human-only collection and user-scoped realtime updates,
+with local expiry removal during a connection interruption.
+Approval summaries carry effective target privacy and use the shared private-row
+reveal behavior, including inherited workspace/host privacy. The collection is
+loaded only for passkey-authenticated sessions; other sessions see a non-retryable
+unavailable inbox instead of an approval-load error on Home.
+OAuth consent reads its opaque request handle from the URL search
 query, not route fields, and requires an explicit workspace/general selection.
 Never pass that query through request-path logging. Scoped service credentials
 live under Settings → Agents & integrations; newly issued tokens are shown

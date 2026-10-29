@@ -284,7 +284,7 @@ export function useShellHeader({
       case "home":
         return { title: "Clanky" };
       case "control-request":
-        return { title: "Control request" };
+        return { title: getRouteString(route, "requestId") ? "Control request" : "Approvals" };
       case "control-consent":
         return { title: "Authorize integration" };
       case "task":

@@ -4,7 +4,7 @@ import { createGitFixture } from "./support/git";
 import {
   CookieJar,
   bootstrapOwner,
-  createPasskeyRegistration,
+  completeUserSetup,
   requestWithCookies,
 } from "./support/passkey";
 
@@ -45,40 +45,6 @@ afterEach(async () => {
   await application?.cleanup();
   application = undefined;
 });
-
-async function completeUserSetup(
-  app: E2EApplication,
-  jar: CookieJar,
-  token: string,
-): Promise<void> {
-  const optionsResponse = await requestWithCookies(
-    app,
-    jar,
-    "/api/user-setup/options",
-    {
-      method: "POST",
-      body: JSON.stringify({ token }),
-    },
-  );
-  expect(optionsResponse.status).toBe(200);
-  const options = await optionsResponse.json() as {
-    challenge: string;
-    rp: { id?: string };
-  };
-  const verifyResponse = await requestWithCookies(
-    app,
-    jar,
-    "/api/user-setup/verify",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        token,
-        response: await createPasskeyRegistration(options, app.baseUrl),
-      }),
-    },
-  );
-  expect(verifyResponse.status).toBe(200);
-}
 
 async function createApiKey(
   app: E2EApplication,

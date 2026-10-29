@@ -131,6 +131,7 @@ export function ControlRequestPage({ requestId }: { requestId: string | undefine
   }
 
   return <Page>
+    <FormActions><a href={routeToHash({ view: "control-request" })}>All approvals</a></FormActions>
     {!requestId ? <ErrorState title="Request not found" description="This link is missing a request identifier." /> : null}
     {query.error ? <ErrorState title="Request unavailable" description={String(query.error)}
       action={<Button disabled={submitting || query.loading} onClick={() => void query.refresh()}>Refresh status</Button>} /> : null}
