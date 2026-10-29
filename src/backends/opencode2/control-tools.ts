@@ -12,6 +12,7 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { ClankyControlToolService, type ClankyControlToolDefinition } from "../clanky-control-tools";
 import { HarnessError } from "../harness-errors";
 import { OPENCODE_CONTROL_PLUGIN_ID, OPENCODE_CONTROL_PLUGIN_SOURCE } from "./control-plugin";
+import type { ControlToolConnection } from "../../core/control-tool-transport";
 
 const log = createLogger("opencode2-control-tools");
 const SessionInputSchema = z.object({ sessionId: z.string().min(1).max(500) }).strict();
@@ -41,10 +42,10 @@ export class OpenCodeControlTools {
   private closing?: Promise<void>;
   private definitions: readonly ClankyControlToolDefinition[] = [];
 
-  constructor(private readonly managedEnvironment: Record<string, string | undefined>) {}
+  constructor(private readonly control?: ControlToolConnection) {}
 
   async open(environment: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<NodeJS.ProcessEnv> {
-    if (!this.managedEnvironment["CLANKY_BASE_URL"] || !this.managedEnvironment["CLANKY_API_KEY"]) return environment;
+    if (!this.control) return environment;
     this.definitions = await this.getToolService().listTools({ signal });
     const profile = join(resolveAppDataDir({ envPrefix: "CLANKY", appDirectoryName: ".clanky" }), "native", "opencode2");
     await mkdir(profile, { recursive: true, mode: 0o700 });
@@ -177,7 +178,8 @@ export class OpenCodeControlTools {
   private getToolService(): ClankyControlToolService {
     if (!this.toolService) {
       try {
-        this.toolService = new ClankyControlToolService(this.managedEnvironment);
+        if (!this.control) throw new HarnessError("harness_runtime_unavailable", "Execution-owned Clanky control is unavailable.");
+        this.toolService = new ClankyControlToolService(this.control);
       } catch (error) {
         throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for control tools.", { cause: error });
       }

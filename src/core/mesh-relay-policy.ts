@@ -78,6 +78,7 @@ export const MESH_RELAY_CONTROLLER_SOCKET_ROUTES: ReadonlySet<string> = new Set(
 export const MESH_RELAY_WORKER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<string>> =
   new Map<string, ReadonlySet<string>>([
     ["/api/mesh/internal/enrollment", new Set(["POST"])],
+    ["/api/mesh/internal/control-tools", new Set(["POST"])],
   ]);
 
 /** The only Mesh route that accepts a relay query string. */

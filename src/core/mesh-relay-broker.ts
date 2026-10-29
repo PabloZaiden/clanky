@@ -530,14 +530,14 @@ function validateStreamRoute(
     }
   } else if (connection.role === "worker") {
     if (
-      request.kind !== "http"
-      || method !== "POST"
-      || route.pathname !== "/api/mesh/internal/enrollment"
+      !isMeshRelayRouteAllowed("worker", request.kind, method, route.pathname)
+      || (connection.workerStatus !== "authorized"
+        && route.pathname !== "/api/mesh/internal/enrollment")
       || route.hasQuery
     ) {
       throw new RelayRequestError(
         "relay_route_forbidden",
-        "Workers may use the relay only for enrollment.",
+        "Workers may use only enrollment or authorized execution-control routes.",
         403,
       );
     }

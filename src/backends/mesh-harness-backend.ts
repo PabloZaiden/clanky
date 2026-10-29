@@ -100,6 +100,7 @@ export class MeshHarnessBackend implements Backend {
       ...this.options, directory: config.directory, provider: config.provider ?? "copilot",
       localUserId: requireExecutionOwnerUserId(), channel: MESH_HARNESS_CHANNEL,
       managedEnvironment: config.managedEnvironment,
+      controlCredential: config.control?.credential,
     });
     this.client = client;
     try {

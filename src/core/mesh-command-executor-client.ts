@@ -90,6 +90,7 @@ export interface MeshCommandExecutorClientConfig {
   adapter?: Exclude<HarnessAdapter, "acp">;
   sessionTtlMs?: number;
   managedEnvironment?: Record<string, string>;
+  controlCredential?: string;
 }
 
 export interface MeshExecutionSessionConnection {
@@ -283,6 +284,7 @@ export class MeshCommandExecutorClient {
   private readonly adapter?: Exclude<HarnessAdapter, "acp">;
   private readonly sessionTtlMs: number;
   private readonly managedEnvironment?: Record<string, string>;
+  private readonly controlCredential?: string;
   private session: MeshExecutionSession | null = null;
   private route: MeshPeerRoute | null = null;
   private openingSession: Promise<void> | null = null;
@@ -312,6 +314,7 @@ export class MeshCommandExecutorClient {
         ? MESH_ACP_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
     this.managedEnvironment = config.managedEnvironment;
+    this.controlCredential = config.controlCredential;
   }
 
   private requestAbortedError(signal?: AbortSignal): DomainError {
@@ -441,7 +444,9 @@ export class MeshCommandExecutorClient {
       );
     }
     const route = registration.route;
-    const protocolVersion: MeshExecutionProtocolVersion = await discoverMeshWorkerGeneration(registration, signal, this.fetchImpl);
+    const protocolVersion: MeshExecutionProtocolVersion = await discoverMeshWorkerGeneration(
+      registration, signal, this.fetchImpl, this.controlCredential !== undefined,
+    );
     if (this.channel === MESH_HARNESS_CHANNEL) {
       if (!this.adapter) throw new DomainError("mesh_execution_protocol_mismatch", "A native Mesh lease requires an adapter.");
       assertHarnessMeshProtocol(this.adapter, protocolVersion);
@@ -465,6 +470,7 @@ export class MeshCommandExecutorClient {
         channel,
         ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
         environment: this.managedEnvironment,
+        controlCredential: this.controlCredential,
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };

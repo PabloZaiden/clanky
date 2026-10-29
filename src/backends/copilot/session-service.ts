@@ -7,6 +7,7 @@ import type { AgentSession, CreateSessionOptions, ConfigOption, PromptInput } fr
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { ClankyControlContext } from "@/shared/clanky-control";
 import { ClankyControlToolService } from "../clanky-control-tools";
+import type { ControlToolConnection } from "../../core/control-tool-transport";
 import type { HarnessEventHub } from "../harness-event-hub";
 import { HarnessError } from "../harness-errors";
 import { requireMatchingHarnessBinding } from "../harness-binding";
@@ -31,7 +32,7 @@ interface SessionServiceDependencies {
   catalog: CopilotModelCatalog;
   events: HarnessEventHub;
   questions: CopilotQuestionCoordinator;
-  managedEnvironment?: Record<string, string | undefined>;
+  control?: ControlToolConnection;
 }
 
 export class CopilotSessionService {
@@ -43,7 +44,7 @@ export class CopilotSessionService {
   private readonly catalog: CopilotModelCatalog;
   private readonly events: HarnessEventHub;
   private readonly questions: CopilotQuestionCoordinator;
-  private readonly managedEnvironment?: Record<string, string | undefined>;
+  private readonly control?: ControlToolConnection;
   private controlTools?: ClankyControlToolService;
 
   constructor(dependencies: SessionServiceDependencies) {
@@ -51,7 +52,7 @@ export class CopilotSessionService {
     this.catalog = dependencies.catalog;
     this.events = dependencies.events;
     this.questions = dependencies.questions;
-    this.managedEnvironment = dependencies.managedEnvironment;
+    this.control = dependencies.control;
   }
 
   create(options: CreateSessionOptions): Promise<AgentSession> {
@@ -330,7 +331,8 @@ export class CopilotSessionService {
   private getControlToolService(): ClankyControlToolService {
     if (!this.controlTools) {
       try {
-        this.controlTools = new ClankyControlToolService(this.managedEnvironment ?? {});
+        if (!this.control) throw new HarnessError("harness_runtime_unavailable", "Execution-owned Clanky control is unavailable.");
+        this.controlTools = new ClankyControlToolService(this.control);
       } catch (error) {
         throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for control tools.", { cause: error });
       }

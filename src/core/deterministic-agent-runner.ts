@@ -14,6 +14,7 @@ import type { DeterministicAgentOutput } from "./deterministic-agent-output";
 import type { ManagedRuntimeCredential } from "./managed-credential-service";
 import { controlToolSchemas } from "./control-tool-contracts";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { requestControlTool, controlToolTransportFailure } from "./control-tool-transport";
 
 const log = createLogger("deterministic-agent-runner");
 
@@ -28,7 +29,9 @@ export type RunnerMessage =
   | { type: "stderr"; text: string }
   | { type: "done" }
   | { type: "error"; message: string }
-  | { type: "aborted" };
+  | { type: "aborted" }
+  | { type: "control"; id: string; name: string; input: unknown }
+  | { type: "control.cancel"; id: string };
 
 // ---------------------------------------------------------------------------
 // Runner script — embedded as a string and written to the workspace host.
@@ -49,6 +52,8 @@ import { execFile } from "node:child_process";
 import { fork } from "node:child_process";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
+import { watch, readFile, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 const execFileAsync = promisify(execFile);
 const CONTROL_MODE = process.argv[2] !== "--worker";
@@ -110,74 +115,45 @@ function controlRequestBody(message) {
 
 class ControlRequestError extends Error {}
 
-async function readControlResult(response) {
-  const reader = response.body?.getReader();
-  if (!reader) throw new ControlRequestError("Clanky control returned an invalid JSON response");
-  const chunks = [];
-  let bytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > MAX_CONTROL_RESULT_BYTES) {
-        await reader.cancel();
-        throw new ControlRequestError("Clanky control result exceeds 1 MiB; inspect current state before retrying");
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new ControlRequestError("Clanky control returned an invalid JSON response; inspect current state before retrying");
-  }
-}
-
 async function executeClankyControl(message, signal) {
-  const body = controlRequestBody(message);
-  const baseUrl = process.env["CLANKY_BASE_URL"] || "";
-  const apiKey = process.env["CLANKY_API_KEY"] || "";
-  if (!baseUrl || !apiKey) {
-    throw new Error("ctx.clanky.call is not available: context credentials are not configured for this run");
-  }
+  controlRequestBody(message);
   if (signal.aborted) throw new Error("Aborted");
+  const id = crypto.randomUUID();
+  const filename = "control-" + id + ".json";
+  const directory = dirname(codeFilePath);
   const controller = new AbortController();
   const requestSignal = AbortSignal.any([signal, controller.signal]);
+  const changes = watch(directory, { signal: requestSignal });
   const timer = setTimeout(() => controller.abort(), CONTROL_REQUEST_TIMEOUT_MS);
+  let completed = false;
   try {
-    let response;
-    try {
-      response = await fetch(baseUrl + "/api/control/tools/" + message.name, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + apiKey,
-        },
-        body,
-        signal: requestSignal,
-        redirect: "error",
-      });
-    } catch {
-      throw new ControlRequestError("Clanky control request failed; outcome may be unknown, inspect current state before retrying");
+    const first = changes.next();
+    sendControl({ type: "control", id, name: message.name, input: message.input });
+    let change = await first;
+    while (!change.done) {
+      if (change.value.filename === filename) {
+        const content = await readFile(join(directory, filename), "utf8");
+        if (Buffer.byteLength(content) > MAX_CONTROL_RESULT_BYTES) {
+          throw new ControlRequestError("Clanky control result exceeds 1 MiB; inspect current state before retrying");
+        }
+        const result = JSON.parse(content);
+        await unlink(join(directory, filename));
+        completed = true;
+        return result;
+      }
+      change = await changes.next();
     }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new ControlRequestError("Clanky control request failed (HTTP " + response.status + "); inspect current state before retrying");
-    }
-    return await readControlResult(response);
+    throw new ControlRequestError("The Clanky control response channel closed.");
   } catch (error) {
     if (signal.aborted) throw new Error("Aborted");
     if (controller.signal.aborted) {
       throw new Error("Clanky control request timed out; outcome may be unknown, inspect current state before retrying");
     }
-    // Transport errors can contain private URLs or headers; only known local
-    // failures cross the worker boundary.
     if (error instanceof ControlRequestError) throw error;
     throw new Error("Clanky control response failed; outcome may be unknown, inspect current state before retrying");
   } finally {
+    if (!completed) sendControl({ type: "control.cancel", id });
+    await changes.return();
     clearTimeout(timer);
   }
 }
@@ -711,6 +687,8 @@ export async function launchDeterministicAgentOnHost(
 
   let tempDir: string | undefined;
   let executionError: unknown;
+  const controlLifetime = new AbortController();
+  const controlRequests = new Map<string, { abort: AbortController; operation: Promise<void> }>();
   try {
     tempDir = await createHostTempDirectory(executor, directory, signal);
     const runnerPath = `${tempDir}/runner.mjs`;
@@ -754,6 +732,42 @@ export async function launchDeterministicAgentOnHost(
           continue;
         }
         switch (message.type) {
+          case "control": {
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(message.id)
+              || controlRequests.has(message.id) || controlRequests.size >= 128) {
+              runnerError = "Invalid or excessive runner control requests";
+              break;
+            }
+            const abort = new AbortController();
+            const requestSignal = AbortSignal.any([signal, controlLifetime.signal, abort.signal]);
+            const operation = (async () => {
+              let result: unknown;
+              try {
+                if (!credential) throw new Error("Execution-owned Clanky control is unavailable for this run.");
+                result = await requestControlTool({ credential: credential.token }, {
+                  operation: "call", name: message.name, input: message.input,
+                }, requestSignal);
+              } catch (error) {
+                result = controlToolTransportFailure(error);
+              }
+              if (requestSignal.aborted) return;
+              const responsePath = `${tempDir}/control-${message.id}.json`;
+              const stagingPath = `${responsePath}.pending`;
+              if (!await executor.writeFile(stagingPath, JSON.stringify(result))) {
+                throw new Error("Failed to write the runner control result on its execution host.");
+              }
+              const moved = await executor.movePath(stagingPath, responsePath);
+              if (!moved.success) throw new Error("Failed to publish the runner control result on its execution host.");
+            })().catch((error: unknown) => {
+              runnerError = "The runner control response could not be delivered; inspect the target before repeating a mutation.";
+              log.error("Runner control response delivery failed", { runId: run.id, error: String(error) });
+            }).finally(() => { controlRequests.delete(message.id); });
+            controlRequests.set(message.id, { abort, operation });
+            break;
+          }
+          case "control.cancel":
+            controlRequests.get(message.id)?.abort.abort();
+            break;
           case "stdout":
             output.append("stdout", message.text);
             break;
@@ -811,6 +825,8 @@ export async function launchDeterministicAgentOnHost(
     executionError = error;
     throw error;
   } finally {
+    controlLifetime.abort();
+    await Promise.allSettled([...controlRequests.values()].map((request) => request.operation));
     if (tempDir) {
       try {
         const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {

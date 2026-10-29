@@ -195,14 +195,14 @@ export class ManagedCredentialService {
           && (!cached.expiresAt || Date.parse(cached.expiresAt) > Date.now())
           && (!options?.expiresAt || cached.expiresAt
             && Date.parse(cached.expiresAt) <= Date.parse(options.expiresAt))) {
-          const baseUrl = await this.requirePublicBaseUrl(identity);
+          const baseUrl = await this.requirePublicBaseUrl(identity, control);
           this.activeCredentials.delete(cacheKey);
           this.activeCredentials.set(cacheKey, { ...cached, baseUrl });
           return { ...cached, baseUrl };
         }
       }
 
-      const baseUrl = await this.requirePublicBaseUrl(identity);
+      const baseUrl = await this.requirePublicBaseUrl(identity, control);
       const generation = await getNextContextApiKeyGenerationForUser(
         user.id,
         identity.workspaceId,
@@ -518,11 +518,11 @@ export class ManagedCredentialService {
     return this.store;
   }
 
-  private async requirePublicBaseUrl(identity: ManagedContextIdentity): Promise<string> {
+  private async requirePublicBaseUrl(identity: ManagedContextIdentity, control = false): Promise<string> {
     let rawValue = this.publicBaseUrl?.trim();
     if (!rawValue) {
       const workspace = await getWorkspace(identity.workspaceId);
-      if (workspace?.executionHostBinding.host.kind === "local") {
+      if (control || workspace?.executionHostBinding.host.kind === "local") {
         rawValue = this.localBaseUrl?.trim();
       }
     }

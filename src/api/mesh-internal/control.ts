@@ -44,6 +44,7 @@ export const meshControlRoutes = defineRoutes({
           req.headers.get(MESH_PROTOCOL_VERSIONS_HEADER),
           req.headers.get("x-clanky-mesh-request-id"),
           meshRequestProtocolVersions(req),
+          req.headers.get("x-clanky-mesh-control-tools") === "1",
         );
         return Response.json(descriptor, { headers: {
           [MESH_PROTOCOL_VERSION_HEADER]: String(descriptor.protocolVersion),

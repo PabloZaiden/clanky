@@ -50,7 +50,7 @@ export class CopilotConnection {
         catalog,
         events: this.events,
         questions,
-        managedEnvironment: config.managedEnvironment,
+        control: config.control,
       });
       this.services = { runtime, catalog, questions, sessions };
     })().finally(() => {

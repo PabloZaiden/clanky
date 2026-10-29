@@ -50,6 +50,12 @@ or general access. Explicit general access permits broader application control
 within the user's permissions. Native adapters discover their granted catalog
 from the shared control boundary and invoke it with scoped managed credentials;
 they do not call arbitrary application routes with broad API keys.
+The control connection is separate from `CLANKY_BASE_URL` and CLI credentials.
+Local control dispatches to the common core; Mesh control uses the enrolled
+controller route transparently over direct TLS or a relay. Control tools do
+not require worker access to the controller's public hostname. See
+[Mesh control transport](mesh-worker.md#execution-owned-control-tools) for
+upgrade requirements.
 Codex registers these tools only on newly created native threads. Existing
 threads resume with their previously registered catalog and history, without
 catalog-change refusal, replacement threads or an MCP fallback. Invoked actions

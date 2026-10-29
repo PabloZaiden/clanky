@@ -19,6 +19,7 @@ import { CodexEventTranslator } from "./event-translator";
 import { toCodexInput } from "./prompt";
 import { codexQuestionConfig } from "./question-policy";
 import { ClankyControlToolService } from "../clanky-control-tools";
+import type { ControlToolConnection } from "../../core/control-tool-transport";
 import type { ClankyControlToolResult } from "../clanky-control-tools";
 import { z } from "zod";
 import type { HarnessUsageSnapshot, TokenCounts } from "@/shared/harness-usage";
@@ -72,7 +73,7 @@ export class CodexSessionService {
     runtime: CodexRuntime;
     catalog: CodexModelCatalog;
     events: HarnessEventHub;
-    managedEnvironment?: Record<string, string | undefined>;
+    control?: ControlToolConnection;
   }) {
     this.unsubscribe = dependencies.runtime.rpc.onNotification((event) => {
       try { this.receive(event); } catch (error) {
@@ -467,7 +468,8 @@ export class CodexSessionService {
   private getControlToolService(): ClankyControlToolService {
     if (!this.controlTools) {
       try {
-        this.controlTools = new ClankyControlToolService(this.dependencies.managedEnvironment ?? {});
+        if (!this.dependencies.control) throw new HarnessError("harness_runtime_unavailable", "Execution-owned Clanky control is unavailable.");
+        this.controlTools = new ClankyControlToolService(this.dependencies.control);
       } catch (error) {
         throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for control tools.", { cause: error });
       }

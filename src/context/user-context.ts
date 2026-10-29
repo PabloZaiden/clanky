@@ -6,7 +6,7 @@ import { DomainError } from "../domain/domain-error";
 const userContext = new AsyncLocalStorage<CurrentUser>();
 const actorContext = new AsyncLocalStorage<CollaborationActor>();
 const workspaceContext = new AsyncLocalStorage<WorkspaceAccessAuthority | undefined>();
-const resourceOwnerContext = new AsyncLocalStorage<CurrentUser>();
+const resourceOwnerContext = new AsyncLocalStorage<CurrentUser | undefined>();
 
 export interface WorkspaceExecutionContext {
   readonly authority: WorkspaceAccessAuthority;
@@ -15,6 +15,12 @@ export interface WorkspaceExecutionContext {
 
 export function runWithCurrentUser<T>(user: CurrentUser, callback: () => T): T {
   return userContext.run(user, callback);
+}
+
+/** Admit authenticated work without inheriting an execution's authority. */
+export function runWithAuthenticatedUser<T>(user: CurrentUser, callback: () => T): T {
+  return userContext.run(user, () => actorContext.run({ kind: "user", userId: user.id },
+    () => workspaceContext.run(undefined, () => resourceOwnerContext.run(undefined, callback))));
 }
 
 export function getCurrentUser(): CurrentUser | undefined {

@@ -15,7 +15,6 @@ import type {
 } from "./engine-types";
 import { managedContextIdentityResolver } from "../managed-context-identity";
 import { managedCredentialService } from "../managed-credential-service";
-import { buildManagedContextEnvironment } from "../managed-context-environment";
 import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { getWorkspace } from "../../persistence/workspaces";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "../harness-session";
@@ -57,7 +56,6 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
       throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
     }
-    const runtimeEnvironment = buildManagedContextEnvironment(credential);
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
       transport: settings.agent.transport,
@@ -66,7 +64,10 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     });
     log.debug("[TaskEngine] setupSession: About to call backend.connect");
     try {
-      await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory, runtimeEnvironment));
+      await ctx.backend.connect({
+        ...buildConnectionConfig(settings, ctx.workingDirectory),
+        control: credential ? { credential: credential.token } : undefined,
+      });
     } catch (error) {
       await managedCredentialService.cleanupFailedLaunch(credential, error);
     }
@@ -152,7 +153,6 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
       if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
         throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
       }
-      const runtimeEnvironment = buildManagedContextEnvironment(credential);
       ctx.emitLog("info", "Reconnecting to backend...", {
         provider: settings.agent.provider,
         transport: settings.agent.transport,
@@ -160,7 +160,10 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
         port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
       });
       try {
-        await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory, runtimeEnvironment));
+        await ctx.backend.connect({
+          ...buildConnectionConfig(settings, ctx.workingDirectory),
+          control: credential ? { credential: credential.token } : undefined,
+        });
       } catch (error) {
         await managedCredentialService.cleanupFailedLaunch(credential, error);
       }

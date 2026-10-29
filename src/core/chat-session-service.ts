@@ -23,7 +23,6 @@ import { backendManager, buildConnectionConfig } from "./backend";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
-import { buildManagedContextEnvironment } from "./managed-context-environment";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
@@ -182,8 +181,8 @@ export class ChatSessionService implements ChatSessionPort {
           ...buildConnectionConfig(
             await this.backendManager.getWorkspaceSettings(workspaceId),
             stagedWorking.directory,
-            buildManagedContextEnvironment(credential),
           ),
+          control: credential ? { credential: credential.token } : undefined,
           controlTools,
         }, options.signal);
         this.connectedControlStates.set(backend, {

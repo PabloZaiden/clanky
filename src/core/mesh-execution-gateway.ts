@@ -190,6 +190,7 @@ interface MeshExecutionSession {
   ownerId?: string;
   expiresAt: number;
   environment?: Record<string, string>;
+  controlCredential?: string;
   executor: CommandExecutor;
   requestIds: Set<string>;
   activeControllers: Set<AbortController>;
@@ -808,6 +809,7 @@ export class MeshExecutionGateway {
       ownerId: request.ownerId,
       expiresAt,
       environment,
+      controlCredential: request.controlCredential,
       executor: new CommandExecutorImpl({
         provider: "local",
         directory: executionRoot,
@@ -884,7 +886,7 @@ export class MeshExecutionGateway {
   async getHarnessSessionConfig(sessionId: string, sessionToken: string): Promise<{
     callerNodeId: string; workspaceId: string; ownerId: string;
     executionNodeId: string;
-    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>;
+    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlCredential?: string;
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
@@ -901,6 +903,7 @@ export class MeshExecutionGateway {
       callerNodeId: session.callerNodeId, workspaceId: session.workspaceId, ownerId: session.ownerId,
       executionNodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
       adapter: session.adapter, directory: session.directory, bindingDirectory: session.bindingDirectory, environment,
+      controlCredential: session.controlCredential,
     };
   }
 
