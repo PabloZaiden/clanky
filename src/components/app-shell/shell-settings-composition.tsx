@@ -1,4 +1,4 @@
-import type { WebAppRootProps } from "@pablozaiden/webapp/web";
+import type { WebAppRootProps, WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
@@ -33,8 +33,11 @@ import { WorkspaceCollaborationContent } from "../app-settings/workspace-collabo
 import { ControlCredentialsContent } from "../app-settings/control-credentials-content";
 import { ControlOAuthGrantsContent } from "../app-settings/control-oauth-grants-content";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
+import { ControlApprovalPolicyContent } from "../app-settings/control-approval-policy-content";
+import { PendingControlRequests } from "../control/control-requests";
 
 export interface ShellSettingsCompositionOptions {
+  onNavigate: (route: WebAppRoute) => void;
   quickChatSettings: UseQuickChatSettingsResult;
   schedulerTimezone: UseSchedulerTimezoneResult;
   githubUsername: UseGithubUsernameResult;
@@ -58,6 +61,7 @@ export type ShellSettingsSections =
   NonNullable<NonNullable<WebAppRootProps["settings"]>["sections"]>;
 
 export function buildShellSettingsSections({
+  onNavigate,
   quickChatSettings,
   schedulerTimezone,
   githubUsername,
@@ -76,6 +80,22 @@ export function buildShellSettingsSections({
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
   const sections: ShellSettingsSections = [
+    {
+      id: "control-approvals",
+      title: "Approvals",
+      category: { id: "integrations", title: "Agents & integrations" },
+      scope: "user" as const,
+      rows: [{
+        id: "require-control-approval",
+        title: "Require approval for agent operations",
+        description: "Voice always requires confirmation. Changing this does not approve pending requests.",
+        labelFor: "require-control-approval",
+        content: <ControlApprovalPolicyContent />,
+        contentPlacement: "inline",
+      }],
+      // Pending requests need a collection with private reveal and individual decision links.
+      render: () => <PendingControlRequests onNavigate={onNavigate} showPrivateItems={privateItemsPreference.showPrivateItems} />,
+    },
     {
       id: "control-oauth-grants",
       title: "Authorized integrations",
@@ -360,7 +380,7 @@ export function buildShellSettingsSections({
     },
   ];
   const capabilities = getClankyClientCapabilities();
-  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
+  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
   return sections.filter((section) => section.id === "voice"
     ? capabilities.voice
     : capabilities.controllerAdministration || !controllerSections.has(section.id));

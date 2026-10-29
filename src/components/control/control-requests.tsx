@@ -1,5 +1,5 @@
 import {
-  DataList, EmptyState, ErrorState, LoadingState, Page, Panel, type WebAppRoute,
+  DataList, EmptyState, ErrorState, LoadingState, type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { ControlRequestSummary } from "@/contracts/schemas/control";
 import { Button } from "../common";
@@ -22,22 +22,20 @@ export function ControlRequestRow({ request, onNavigate, showPrivateItems }: {
   />;
 }
 
-export function ControlRequestsPage({ onNavigate, showPrivateItems }: {
+export function PendingControlRequests({ onNavigate, showPrivateItems }: {
   onNavigate: (route: WebAppRoute) => void;
   showPrivateItems: boolean;
 }) {
   const query = usePendingControlRequests();
-  if (!query.available) return <Page><EmptyState title="Approvals unavailable"
-    description="A passkey-authenticated session is required to review approvals." /></Page>;
-  return <Page>
-    <Panel title="Pending requests">
-      {query.error ? <ErrorState title="Could not load approvals" description={String(query.error)}
-        action={<Button disabled={query.loading} onClick={() => void query.refresh()}>Retry</Button>} /> : null}
-      {!query.data && query.loading ? <LoadingState title="Loading approvals" /> : null}
-      {query.data?.length ? <DataList>
-        {query.data.map((request) => <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate}
-          showPrivateItems={showPrivateItems} />)}
-      </DataList> : query.data && !query.error ? <EmptyState title="No pending approvals" /> : null}
-    </Panel>
-  </Page>;
+  if (!query.available) return <EmptyState title="Approvals unavailable"
+    description="A passkey-authenticated session is required to review approvals." />;
+  return <>
+    {query.error ? <ErrorState title="Could not load approvals" description={String(query.error)}
+      action={<Button disabled={query.loading} onClick={() => void query.refresh()}>Retry</Button>} /> : null}
+    {!query.data && query.loading ? <LoadingState title="Loading approvals" /> : null}
+    {query.data?.length ? <DataList>
+      {query.data.map((request) => <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate}
+        showPrivateItems={showPrivateItems} />)}
+    </DataList> : query.data && !query.error ? <EmptyState title="No pending approvals" /> : null}
+  </>;
 }

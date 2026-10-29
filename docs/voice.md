@@ -187,7 +187,9 @@ microphone. Pending approvals, SSH handoffs and watches do not carry over, and
 previous actions are never automatically repeated.
 
 Destructive actions, arbitrary commands, permission changes and autonomous
-execution require a **visual approval dialog** in the originating tab. The
+execution require a **visual approval dialog** in the originating tab, even
+when **Require approval for agent operations** is disabled in Settings.
+That per-user setting controls only nonvoice operations. The
 dialog shows a short model-written description in the user's language, with
 the named target and important consequences, plus **Approve** and **Reject**.
 It does not show API endpoints or JSON payloads. The model supplies the text

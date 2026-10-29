@@ -193,12 +193,6 @@ export async function executeDirectControlTool(context: ControlToolContext, name
     }
     case "clanky_update_chat_lifecycle": {
       const input = controlDirectSchemas[name].parse(args);
-      if (input.action === "move_to_trash" && !input.confirmationDescription) {
-        throw new DomainError(
-          "voice_confirmation_description_required",
-          "Describe the named chat and its recoverable Trash behavior before preparing this deletion.",
-        );
-      }
       const target = await context.resolve("chat", input.target, input.workspace);
       const id = String(target["id"]);
       const chat = directRecord(await context.readExact("GET /api/chats/:id", { id }));

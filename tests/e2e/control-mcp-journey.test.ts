@@ -291,6 +291,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
     }
 
     expect(await humanJson("/api/auth/status")).toMatchObject({ authenticated: true, authKind: "passkey" });
+    expect(await humanJson("/api/control/approval-policy")).toEqual({ requireApproval: true });
     const local = (await humanJson<Array<{ ref: Record<string, string> }>>("/api/execution-hosts"))
       .find((host) => host.ref["kind"] === "local")!;
     expect(local).toBeDefined();
@@ -364,6 +365,47 @@ test("external MCP integrations receive explicit human grants, isolated control 
     });
     expect(memberInbox.status).toBe(200);
     expect(await memberInbox.json()).toEqual([]);
+    await denied("/api/control/approval-policy", {
+      apiKey: general.token, method: "PUT", body: JSON.stringify({ requireApproval: false }),
+    });
+    expect(await call(generalClient, "clanky_execute_operation", {
+      operationId: "PUT /api/control/approval-policy", parameters: [], query: [],
+      bodyJson: JSON.stringify({ requireApproval: false }), confirmationDescription: null,
+    })).toMatchObject({ ok: false, completion: "not_executed" });
+    await humanJson("/api/control/approval-policy", {
+      method: "PUT", body: JSON.stringify({ requireApproval: false }),
+    });
+    const memberPolicy = await requestWithCookies(application, memberCookies, "/api/control/approval-policy", {
+      headers: { origin: baseUrl },
+    });
+    expect(memberPolicy.status).toBe(200);
+    expect(await memberPolicy.json()).toEqual({ requireApproval: true });
+    expect(await snapshot(reviewLater.requestId)).toMatchObject({ status: "pending" });
+    expect((await humanJson<Chat>(`/api/chats/${additionalArchive}`)).config.id).toBe(additionalArchive);
+    const automatic = await call<{
+      ok: boolean;
+      data: { creation: { id: string }; message: { ok: boolean } };
+    }>(projectClient, "clanky_create_chat", {
+      name: "Automatically admitted discussion", workspace: first.id, useWorktree: false,
+      initialMessage: "Summarize this project.", open: false,
+      afterCreationDescription: "Send the initial project-summary instruction.",
+    });
+    expect(automatic).toMatchObject({ ok: true, data: { message: { ok: true } } });
+    const automaticId = automatic.data.creation.id;
+    await pollUntil(async () => await humanJson<{ transcript: { messages: Array<{ role: string; content: string }> } }>(
+      `/api/chats/${automaticId}/snapshot?full=1`,
+    ), (snapshot) => snapshot.transcript.messages.filter(({ role, content }) =>
+      role === "user" && content === "Summarize this project.").length === 1,
+    { description: "automatically created chat to receive its initial instruction", timeoutMs: 10_000 });
+    expect(await call(projectClient, "clanky_update_chat_lifecycle", {
+      target: automaticId, action: "move_to_trash",
+    })).toMatchObject({ ok: true, completion: "completed" });
+    expect((await humanJson<{ items: Array<{ id: string }> }>("/api/trash")).items.map(({ id }) => id))
+      .toContain(automaticId);
+    expect((await inbox()).map(({ id }) => id)).toEqual([reviewLater.requestId]);
+    await humanJson("/api/control/approval-policy", {
+      method: "PUT", body: JSON.stringify({ requireApproval: true }),
+    });
     const hostNote = "The external integration reads this private SSH handoff only after human credential entry.";
     const hostFile = "external-handoff.txt";
     await Bun.write(`${firstGit.repositoryDirectory}/${hostFile}`, hostNote);
@@ -592,8 +634,12 @@ test("external MCP integrations receive explicit human grants, isolated control 
       .toEqual(expect.arrayContaining([archived, additionalArchive]));
 
     const pendingRestart = await prepareTrash(refreshedClient, shared, "Updated project discussion");
+    await humanJson("/api/control/approval-policy", {
+      method: "PUT", body: JSON.stringify({ requireApproval: false }),
+    });
     await Promise.all(clients.splice(0).map((client) => client.close()));
     await restart();
+    expect(await humanJson("/api/control/approval-policy")).toEqual({ requireApproval: false });
     expect(await inbox()).toEqual([]);
     await decision(pendingRestart.requestId, true, 410);
     expect((await humanJson<Chat>(`/api/chats/${shared}`)).config.id).toBe(shared);
@@ -622,6 +668,9 @@ test("external MCP integrations receive explicit human grants, isolated control 
       .filter(({ id }) => id === archived)).toHaveLength(1);
 
     await restart(true);
+    await denied("/api/control/approval-policy", {
+      method: "PUT", body: JSON.stringify({ requireApproval: false }),
+    });
     await denied("/api/control/requests");
     await denied("/api/control/credentials", {
       method: "POST",

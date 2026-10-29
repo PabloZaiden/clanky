@@ -3,6 +3,7 @@ import {
   ControlToolInvocationSchema, ControlToolsQuerySchema, ControlToolsResponseSchema,
   ControlRequestSnapshotSchema, ControlDecisionSchema, ControlCredentialHandoffSchema,
   ControlRequestsResponseSchema,
+  ControlApprovalPolicySchema,
   CreateControlCredentialSchema, ControlCredentialSummarySchema,
   CONTROL_REQUEST_MAX_BYTES,
 } from "@/contracts/schemas/control";
@@ -14,6 +15,7 @@ import type { ControlIntegrationService } from "../core/control-integration-serv
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { parseAndValidate } from "./validation";
 import { errorResponse } from "./helpers";
+import { preferencesManager } from "../core/preferences-manager";
 
 const log = createLogger("api:control");
 const NO_STORE = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" };
@@ -58,6 +60,30 @@ export function controlErrorResponse(error: unknown): Response {
 const EXCLUDED = { policy: "excluded", reason: "Private control admission or human-only interaction, never an executable agent operation." } as const;
 
 export const controlRoutes = defineRoutes({
+  "/api/control/approval-policy": {
+    auth: "user", sameOrigin: "always", tags: ["control"],
+    description: "Human-only per-user approval policy for new nonvoice control operations. Voice always requires confirmation.",
+    operations: {
+      GET: { responseSchema: ControlApprovalPolicySchema, automation: EXCLUDED },
+      PUT: { requestSchema: ControlApprovalPolicySchema, responseSchema: ControlApprovalPolicySchema, automation: EXCLUDED },
+    },
+    async GET(req, ctx) {
+      try {
+        control().requireHuman(req, ctx);
+        return Response.json({ requireApproval: await preferencesManager.getControlApprovalRequired() }, { headers: NO_STORE });
+      } catch (error) { return controlErrorResponse(error); }
+    },
+    async PUT(req, ctx) {
+      try {
+        control().requireHuman(req, ctx);
+        const body = await parseAndValidate(ControlApprovalPolicySchema, req);
+        if (!body.success) return body.response;
+        await preferencesManager.setControlApprovalRequired(body.data.requireApproval);
+        ctx.userRealtime.publishChanged("control-requests");
+        return Response.json(body.data, { headers: NO_STORE });
+      } catch (error) { return controlErrorResponse(error); }
+    },
+  },
   "/api/control/tools": {
     auth: "user", sameOrigin: "mutations", scopes: [CLANKY_CONTROL_SCOPE], tags: ["control"],
     description: "Discover the scoped control catalog. Real managed-chat provenance may additionally enable optional browser tools.",

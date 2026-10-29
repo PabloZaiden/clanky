@@ -27,6 +27,17 @@ import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update
 
 const log = createLogger("persistence:preferences");
 
+export async function getControlApprovalRequired(): Promise<boolean> {
+  const value = getPreference("controlApprovalRequired");
+  if (value === null || value === "true") return true;
+  if (value === "false") return false;
+  throw new Error("The stored control approval preference is invalid.");
+}
+
+export async function setControlApprovalRequired(required: boolean): Promise<void> {
+  setPreference("controlApprovalRequired", String(required));
+}
+
 /**
  * Re-export DashboardViewMode so existing consumers of this module don't break.
  */

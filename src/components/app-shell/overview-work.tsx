@@ -11,7 +11,7 @@ import {
 import { getOverviewActivityTimestamp, getOverviewAttention } from "./overview-activity";
 import { OverviewAgentRow } from "./overview-agents";
 import { OverviewWorkItem } from "./overview-work-item";
-import { ControlRequestRow } from "../control/control-requests-page";
+import { ControlRequestRow } from "../control/control-requests";
 import { usePendingControlRequests } from "../control/use-pending-control-requests";
 import { Button } from "../common";
 

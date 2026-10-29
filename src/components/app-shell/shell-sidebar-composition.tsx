@@ -7,7 +7,6 @@ import type {
 import {
   ActivityIcon,
   FolderTreeIcon,
-  ListIcon,
   ServerIcon,
 } from "../common";
 import {
@@ -180,14 +179,6 @@ export function buildShellSidebarComposition(
     pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
     topActions: [
       ...options.voiceActions,
-      ...(getClankyClientCapabilities().controllerAdministration ? [{
-        id: "approvals",
-        title: "Approvals",
-        label: "Approvals",
-        icon: <ListIcon />,
-        systemImage: "checklist",
-        route: { view: "control-request" },
-      }] : []),
       {
         id: "quick-chat",
         title: options.quickChatUnavailableReason ?? "Start Quick Chat",

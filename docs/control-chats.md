@@ -68,9 +68,14 @@ An admitted message is not completed agent work. Required human approval is a
 pending result, never implicit approval; unattended tasks and scheduled runs
 do not wait indefinitely or auto-answer it. An interrupted or timed-out request
 can have an uncertain outcome and must not be automatically replayed.
-Humans can review requests through **Approvals** in the sidebar or Home's
-**Needs attention**, not only the returned link. Native confirmations have a
-fixed one-hour deadline; each approval authorizes only its own frozen action.
+Humans can review requests in **Settings → Agents & integrations → Approvals**
+or Home's **Needs attention**, not only the returned link. The same Settings
+section contains the per-user **Require approval for agent operations**
+checkbox, enabled by default. Disabling it executes new nonvoice confirm-class
+operations directly within their existing grant; it leaves pending requests
+unchanged. Agents cannot change this policy. Live Voice always confirms.
+Native confirmations have a fixed one-hour deadline; each approval authorizes
+only its own frozen action.
 
 ## Browser actions and multiple tabs
 
