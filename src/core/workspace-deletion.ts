@@ -12,6 +12,7 @@ import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { meshManager } from "./mesh-manager";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
+import { resourcePrivacyEventEmitter } from "./event-emitter";
 
 const log = createLogger("core:workspace-deletion");
 const workspaceDeletionLocks = new Set<string>();
@@ -185,6 +186,7 @@ async function deleteWorkspaceWithOptionsUnlocked(
     }
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {
+      resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
       if (dedicatedWorker?.enrollment.workerNodeId) {
         try {
           await meshManager.removeDedicatedWorker(

@@ -79,7 +79,7 @@ export const controlRoutes = defineRoutes({
         const body = await parseAndValidate(ControlApprovalPolicySchema, req);
         if (!body.success) return body.response;
         await preferencesManager.setControlApprovalRequired(body.data.requireApproval);
-        ctx.userRealtime.publishChanged("control-requests");
+        ctx.userRealtime.publishChanged("control-requests", { scope: "policy" });
         return Response.json(body.data, { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },

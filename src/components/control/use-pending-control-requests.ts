@@ -11,7 +11,7 @@ export function usePendingControlRequests() {
   const query = useLiveQuery({
     enabled: available,
     load: (signal) => apiRequest<ControlRequestSummary[]>("/api/control/requests", { signal }),
-    realtime: { resources: ["control-requests", "workspaces", "chats", "tasks", "execution-hosts"] },
+    realtime: { resources: ["control-requests"], scopes: ["pending"] },
   });
   const requests = query.data?.filter((request) => request.status === "pending" && request.expiresAt > Date.now());
   const nextExpiry = requests?.reduce<number | undefined>(

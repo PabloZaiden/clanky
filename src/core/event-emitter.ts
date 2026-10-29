@@ -142,3 +142,4 @@ export interface HarnessStateEvent {
 
 export const harnessEventEmitter = new SimpleEventEmitter<HarnessStateEvent>();
 export const subagentEventEmitter = new SimpleEventEmitter<SubagentEvent>();
+export const resourcePrivacyEventEmitter = new SimpleEventEmitter<{ type: "resource.privacy_changed" }>();

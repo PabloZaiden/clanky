@@ -62,8 +62,8 @@ export class ControlServer {
         url.hash = routeToHash({ view: "control-request", requestId });
         return url.href;
       },
-      changed: (userId, id) => this.requireApp().realtime.publishChanged(
-        CLANKY_REALTIME_RESOURCES.controlRequests, { id, target: { userId } },
+      changed: (userId, id, pendingChanged) => this.requireApp().realtime.publishChanged(
+        CLANKY_REALTIME_RESOURCES.controlRequests, { id, scope: pendingChanged ? "pending" : "request", target: { userId } },
       ),
     });
     this.mcp = createMcpHandler(async () => {

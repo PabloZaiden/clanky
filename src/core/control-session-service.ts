@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { ClankyControlContext, ControlUiAction } from "@/shared/clanky-control";
 import type { ControlRequestSnapshot, ControlRequestSummary } from "@/contracts/schemas/control";
-import { requireCurrentUserId } from "../context/user-context";
+import { requireCurrentUserId, runWithExecutionOwner } from "../context/user-context";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { readBytes, isReadRecord } from "../client-sdk/collaboration/resource-read";
 import { ControlActions, type ControlInteractionOutcome } from "./control-actions";
@@ -15,6 +15,8 @@ import { controlUiToolDefinitions, isControlUiToolName } from "./control-ui-tool
 import { executeControlTool } from "./control-tools";
 import { requireControlChat, resolveControlOrigin } from "./control-origin";
 import { controlUiActionService } from "./control-ui-action-service";
+import { chatEventEmitter, resourcePrivacyEventEmitter, taskEventEmitter } from "./event-emitter";
+import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 
 const log = createLogger("core:control-sessions");
 const SESSION_TTL_MS = 10 * 60_000;
@@ -58,6 +60,8 @@ interface HumanRequest {
   run?: ControlRun;
   removeAt: number;
   timer: ReturnType<typeof setTimeout>;
+  privateState: boolean | undefined;
+  pendingPublished: boolean;
 }
 
 export class ControlSessionService {
@@ -66,15 +70,27 @@ export class ControlSessionService {
   private readonly invocation = new AsyncLocalStorage<{ session: ControlSession; run: ControlRun }>();
   private readonly actor = new AsyncLocalStorage<string>();
   private readonly pruning: ReturnType<typeof setInterval>;
+  private readonly privacyUpdates = new KeyedOperationQueue();
+  private readonly unsubscribePrivacy: Array<() => void>;
+  private closed = false;
 
   constructor(private readonly options: {
     service: ClankyOperationService;
     createAuthority: (access: ControlAccess) => ControlOperationAuthority;
     approvalUrl: (requestId: string) => string;
-    changed: (userId: string, requestId: string) => void;
+    changed: (userId: string, requestId: string, pendingChanged: boolean) => void;
   }) {
     this.pruning = setInterval(() => this.prune(), 30_000);
     this.pruning.unref();
+    this.unsubscribePrivacy = [
+      resourcePrivacyEventEmitter.subscribe((_event, context) => this.refreshPrivacy(context.userId)),
+      chatEventEmitter.subscribe((event, context) => {
+        if (event.type === "chat.deleted") this.refreshPrivacy(context.userId);
+      }),
+      taskEventEmitter.subscribe((event, context) => {
+        if (event.type === "task.deleted") this.refreshPrivacy(context.userId);
+      }),
+    ];
   }
 
   withCredential<T>(credentialId: string, invoke: () => T): T {
@@ -247,6 +263,7 @@ export class ControlSessionService {
   }
 
   private async interact(action: ControlUiAction, signal: AbortSignal): Promise<ControlInteractionOutcome> {
+    if (this.closed) throw new DomainError("control_unavailable", "Control sessions are shutting down.");
     const invocation = this.invocation.getStore();
     if (!invocation) throw new DomainError("control_context_unavailable", "No active control invocation owns this interaction.");
     const { session, run } = invocation;
@@ -266,15 +283,29 @@ export class ControlSessionService {
           description: `Supply the private SSH credential for ${action.serverName}.`,
           serverId: action.serverId, serverName: action.serverName, expiresAt: action.expiresAt };
       }
-      const request: HumanRequest = {
-        session, snapshot, operation, browser: run.browser,
-        ...(action.type === "request_ssh_credential" ? { run } : {}),
-        removeAt: snapshot.expiresAt + RESULT_TTL_MS,
-        timer: setTimeout(() => this.expire(request), Math.max(0, snapshot.expiresAt - Date.now())),
-      };
-      this.requests.set(id, request);
-      run.requests.add(id);
-      this.changed(request);
+      await this.privacyUpdates.run(session.access.grant.user.id, async () => {
+        const privateState = await controlRequestPrivate(operation, snapshot.serverId);
+        if (this.closed || signal.aborted) {
+          throw new DomainError("control_cancelled", "The originating control operation has ended.");
+        }
+        if (snapshot.expiresAt <= Date.now()) {
+          throw new DomainError("control_request_unavailable", "The control request expired before it could be presented.");
+        }
+        this.prune();
+        if (this.requests.size >= MAX_REQUESTS) throw new DomainError("control_busy", "Too many human requests are awaiting review.");
+        const request: HumanRequest = {
+          session, snapshot, operation, browser: run.browser, privateState, pendingPublished: false,
+          ...(action.type === "request_ssh_credential" ? { run } : {}),
+          removeAt: snapshot.expiresAt + RESULT_TTL_MS,
+          timer: setTimeout(() => this.expire(request), Math.max(0, snapshot.expiresAt - Date.now())),
+        };
+        this.requests.set(id, request);
+        run.requests.add(id);
+        this.changed(request);
+      }).catch((error: unknown) => {
+        session.actions.cancelRequest(id);
+        throw error;
+      });
       const url = this.options.approvalUrl(id);
       if (action.type === "request_ssh_credential") {
         // The session owns this bounded wait after returning the private handoff link.
@@ -323,7 +354,40 @@ export class ControlSessionService {
   }
 
   private changed(request: HumanRequest): void {
-    this.options.changed(request.session.access.grant.user.id, request.snapshot.id);
+    const pending = request.snapshot.status === "pending";
+    const pendingChanged = pending !== request.pendingPublished;
+    request.pendingPublished = pending;
+    this.options.changed(request.session.access.grant.user.id, request.snapshot.id, pendingChanged);
+  }
+
+  private refreshPrivacy(userId: string | undefined): void {
+    if (this.closed) return;
+    if (!userId) {
+      log.warn("Skipping control privacy change without an owner.");
+      return;
+    }
+    const owner = [...this.sessions.values()].find((session) => session.access.grant.user.id === userId)?.access.grant.user;
+    if (!owner) return;
+    void this.privacyUpdates.run(userId, () => runWithExecutionOwner(owner, async () => {
+      for (const request of this.requests.values()) {
+        if (this.closed) return;
+        if (request.session.access.grant.user.id !== userId || request.snapshot.status !== "pending") continue;
+        const isPrivate = await controlRequestPrivate(request.operation, request.snapshot.serverId);
+        if (this.closed) return;
+        if (request.snapshot.status !== "pending" || isPrivate === request.privateState) continue;
+        request.privateState = isPrivate;
+        this.options.changed(userId, request.snapshot.id, true);
+      }
+    })).catch((error: unknown) => {
+      if (this.closed) return;
+      log.error("Could not refresh control request privacy", { userId, error: String(error) });
+      for (const request of this.requests.values()) {
+        if (request.session.access.grant.user.id !== userId || request.snapshot.status !== "pending") continue;
+        request.privateState = undefined;
+        // Make the authoritative read expose failures instead of leaving privacy stale.
+        this.options.changed(userId, request.snapshot.id, true);
+      }
+    });
   }
 
   private prune(): void {
@@ -348,7 +412,10 @@ export class ControlSessionService {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    for (const unsubscribe of this.unsubscribePrivacy) unsubscribe();
     clearInterval(this.pruning);
+    await this.privacyUpdates.drain();
     const pending: Promise<unknown>[] = [];
     for (const request of this.requests.values()) clearTimeout(request.timer);
     for (const session of this.sessions.values()) {

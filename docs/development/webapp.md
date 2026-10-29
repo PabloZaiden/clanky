@@ -131,6 +131,10 @@ and their All approvals link returns there. There is no separate sidebar action
 or standalone inbox. Pending requests also appear in Home's Needs attention;
 both surfaces use the same human-only collection and user-scoped realtime updates,
 with local expiry removal during a connection interruption.
+Subscribe to pending-collection changes, not generic workspace/chat/task/host
+activity or policy/result updates. Read initially and after a relevant WS
+notification or reconnect; keep the loaded empty/nonempty state visible during
+background refresh rather than hiding it or showing initial loading again.
 Approval summaries carry effective target privacy and use the shared private-row
 reveal behavior, including inherited workspace/host privacy. The collection is
 loaded only for passkey-authenticated sessions; other sessions see a non-retryable

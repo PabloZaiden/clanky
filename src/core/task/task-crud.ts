@@ -32,6 +32,7 @@ import { getWorkspace } from "../../persistence/workspaces";
 import { assertWorktreesAllowed, isGitBackedWorkspace } from "../workspace-capabilities";
 import { createIdempotentAsyncOperation } from "../../utils/async-operation";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "../harness-session";
+import { resourcePrivacyEventEmitter } from "../event-emitter";
 
 export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): Promise<Task> {
   const id = crypto.randomUUID();
@@ -454,9 +455,12 @@ export async function updateTaskImpl(
   };
 
   const shouldTriggerCompletedAutonomy = syncPostApprovalFullyAutonomousPending(updatedConfig, currentState);
+  const privacyChanged = (updatedConfig.isPrivate === true) !== (currentConfig.isPrivate === true)
+    || updatedConfig.workspaceId !== currentConfig.workspaceId;
 
   const updatedTask: Task = { config: updatedConfig, state: currentState };
   await updateTaskConfig(taskId, updatedConfig);
+  if (privacyChanged) resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
   await updateTaskOperationalState(taskId, currentState);
   if (engine) {
     syncActivePlanningConfig(engine, updatedConfig);
