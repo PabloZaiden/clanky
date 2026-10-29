@@ -11,6 +11,7 @@ import { subagentTranscriptStore } from "../persistence/transcripts/subagent-sto
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { StreamVersion } from "./stream-version";
 import { subagentEventEmitter } from "./event-emitter";
+import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 
 const log = createLogger("subagent-transcripts");
 const livePositions = new Map<string, StreamVersion>();
@@ -23,11 +24,14 @@ interface Child {
   record: Subagent;
   version: StreamVersion;
   recovered: boolean;
+  recoveryFailures: number;
+  nextRecoveryAt: number;
 }
 
 type CaptureBackend = Pick<Backend, "harness" | "readSubagentHistory" | "isConnected">;
 
 export class SubagentTranscriptObserver {
+  private readonly owner = requireExecutionOwnerUser();
   private readonly children = new Map<string, Child>();
   private readonly operations = new KeyedOperationQueue();
   private restored = false;
@@ -39,7 +43,7 @@ export class SubagentTranscriptObserver {
   ) {}
 
   consume(event: HarnessEvent): Promise<void> {
-    return this.operations.run("capture", async () => {
+    return this.operations.run("capture", () => runWithExecutionOwner(this.owner, async () => {
       if (event.type === "activity.changed" && event.activity?.kind === "subagent" && event.activity.ownership === "owned") {
         this.child(event.activity);
       }
@@ -55,11 +59,11 @@ export class SubagentTranscriptObserver {
           this.changed(child);
         }
       }
-    });
+    }));
   }
 
   reconcile(snapshot: HarnessActivitySnapshot, final = false): Promise<void> {
-    return this.operations.run("capture", async () => {
+    return this.operations.run("capture", () => runWithExecutionOwner(this.owner, async () => {
       if (!this.restored) {
         let before: string | undefined;
         do {
@@ -82,27 +86,27 @@ export class SubagentTranscriptObserver {
         if (activity.kind === "subagent" && activity.ownership === "owned") this.child(activity);
       }
       for (const child of this.children.values()) {
-        if (final || !child.recovered) await this.recover(child);
+        if (final || !child.recovered && Date.now() >= child.nextRecoveryAt) await this.recover(child);
       }
-    });
+    }));
   }
 
   disconnect(): Promise<void> {
-    return this.operations.run("capture", async () => {
+    return this.operations.run("capture", () => runWithExecutionOwner(this.owner, async () => {
       try {
         this.unavailable("disconnected");
       } finally {
         for (const child of this.children.values()) livePositions.delete(child.record.id);
         this.children.clear();
       }
-    });
+    }));
   }
 
   private adopt(record: Subagent): Child {
     const existing = this.children.get(record.activity.id);
     if (existing) return existing;
     if (this.children.size >= 1000) throw new HarnessError("harness_event_gap", "The captured native child graph exceeded its limit.");
-    const child: Child = { record, version: new StreamVersion(), recovered: false };
+    const child: Child = { record, version: new StreamVersion(), recovered: false, recoveryFailures: 0, nextRecoveryAt: 0 };
     this.children.set(record.activity.id, child);
     livePositions.set(record.id, child.version);
     this.changed(child);
@@ -115,7 +119,10 @@ export class SubagentTranscriptObserver {
     activity = { ...activity, parentId: activity.parentId ?? previous.parentId,
       spawningToolCallId: activity.spawningToolCallId ?? previous.spawningToolCallId };
     if (JSON.stringify(previous) !== JSON.stringify(activity) || child.record.observation !== "connected") {
-      if (previous.status !== activity.status) child.recovered = false;
+      if (previous.status !== activity.status) {
+        child.recovered = false;
+        child.nextRecoveryAt = 0;
+      }
       child.record = updateSubagent(child.record, { activity, observation: "connected" });
       this.changed(child);
     }
@@ -143,30 +150,49 @@ export class SubagentTranscriptObserver {
     try {
       let cursor: string | undefined;
       let processing = false;
+      let incomplete = false;
+      const reasoning = new Map<string, string>();
       do {
         const page = await this.backend.readSubagentHistory(this.binding.nativeId, child.record.activity.id, cursor);
         processing = page.processing;
-        for (const event of page.events) {
+        for (let event of page.events) {
           if (event.scope.kind !== "child" || event.scope.activityId !== child.record.activity.id) {
             throw new HarnessError("harness_session_not_owned", "Native history returned content from another actor.");
           }
+          if (event.type === "reasoning.delta") {
+            if (!event.reasoningId) throw new HarnessError("harness_event_gap", "The native child reasoning has no identity.");
+            if (!reasoning.has(event.reasoningId) && reasoning.size >= 1000) {
+              throw new HarnessError("harness_event_gap", "Too many native child reasoning records.");
+            }
+            const content = event.complete ? event.content : `${reasoning.get(event.reasoningId) ?? ""}${event.content}`;
+            reasoning.set(event.reasoningId, content);
+            event = { ...event, content };
+          }
+          incomplete ||= event.type === "error" || event.type === "request.error";
           this.project(child, event, true);
         }
         cursor = page.nextCursor;
       } while (cursor);
       child.record = updateSubagent(child.record, {
-        coverage: processing || child.record.unfinishedMessageIds?.length ? "partial" : "complete",
+        coverage: incomplete || processing || child.record.unfinishedMessageIds?.length ? "partial" : "complete",
         observation: "connected", error: undefined,
       });
+      child.recovered = true;
+      child.recoveryFailures = 0;
+      child.nextRecoveryAt = 0;
     } catch (error) {
       log.warn("Native child history recovery failed", {
         subagentId: child.record.id, code: error instanceof HarnessError ? error.code : "harness_request_failed",
       });
+      const unsupported = error instanceof HarnessError && error.code === "harness_unsupported_feature";
       child.record = updateSubagent(child.record, {
-        coverage: "partial", observation: "error", error: "Some native subagent history could not be recovered.",
+        coverage: "partial", observation: unsupported ? "unsupported" : "error",
+        error: "Some native subagent history could not be recovered.",
       });
+      child.recovered = unsupported;
+      child.recoveryFailures = Math.min(child.recoveryFailures + 1, 6);
+      child.nextRecoveryAt = Date.now() + Math.min(30_000, 1000 * 2 ** child.recoveryFailures);
     }
-    child.recovered = true;
     this.changed(child);
   }
 
@@ -208,7 +234,9 @@ export class SubagentTranscriptObserver {
       const previous = getSubagentLog(child.record.id, id);
       if (!event.complete && previous?.details?.["complete"] === true) return;
       const oldText = previous?.details?.["responseContent"];
-      const content = event.complete ? event.content : `${typeof oldText === "string" ? oldText : ""}${event.content}`;
+      const content = recovered || event.complete
+        ? !event.complete && typeof oldText === "string" && oldText.startsWith(event.content) ? oldText : event.content
+        : `${typeof oldText === "string" ? oldText : ""}${event.content}`;
       const entry: TaskLogEntry = {
         id, level: "agent", message: "AI reasoning...", timestamp: previous?.timestamp ?? timestamp,
         details: { logKind: "reasoning", responseContent: content, complete: event.complete === true },
@@ -226,7 +254,10 @@ export class SubagentTranscriptObserver {
       this.write(child, { id: tool.id, kind: "tool", timestamp: tool.timestamp, payload: tool },
         { type: "transcript.tool", tool: createToolCallSummary(tool) });
     } else if (event.type === "error" || event.type === "request.error") {
-      const entry: TaskLogEntry = { id: event.sourceEventId ?? crypto.randomUUID(), timestamp, level: "error", message: event.message };
+      const entry: TaskLogEntry = {
+        id: event.sourceEventId ?? crypto.randomUUID(), timestamp, level: "error", message: event.message,
+        details: { logKind: "subagent-error" },
+      };
       this.write(child, { id: entry.id, kind: "log", timestamp, payload: entry }, { type: "transcript.log", log: entry });
       child.record = updateSubagent(child.record, {
         ...(event.type === "error" ? { activity: { ...child.record.activity, status: "failed" as const } } : {}),
@@ -235,7 +266,8 @@ export class SubagentTranscriptObserver {
       this.changed(child);
     } else if (event.type === "question.asked" || event.type === "question.resolved" || event.type === "permission.asked") {
       const entry: TaskLogEntry = {
-        id: `interaction:${event.requestId}:${event.type}`, timestamp, level: "info",
+        id: `interaction:${event.requestId}:${event.type}`, timestamp, level: "agent",
+        details: { logKind: "interaction" },
         message: event.type === "question.asked"
           ? `${event.questions.map((question) => question.question).join("\n")}\nAnswer in the parent conversation.`
           : event.type === "permission.asked" ? `Permission requested: ${event.permission}. Managed by the parent conversation.`

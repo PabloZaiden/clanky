@@ -226,6 +226,11 @@ summaries or hidden context. Recovery is bounded and reconciles stable native
 identities with already saved content. **Partial history** means some content
 is unfinished, missing or beyond those recovery limits. Disconnected
 observation is separate from execution status and does not imply completion.
+Missing native start boundaries or omitted generated images keep coverage
+partial. Transient recovery failures retry with bounded backoff while the
+parent is observed; no browser is required. Child failures and informational
+question/permission notices remain visible in the conversation, but answers
+and decisions still belong to the parent.
 Older Mesh workers can still serve content already saved on the controller;
 update the worker to enable native child-history recovery. ACP and direct SSH
 do not gain native subagent support.

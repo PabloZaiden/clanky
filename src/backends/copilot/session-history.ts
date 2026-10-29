@@ -37,7 +37,9 @@ async function* readCopilotHistory<TEvent extends HarnessEvent>(
     for (const event of result.events) {
       history.observeNative(event);
       if (!started) {
-        if (!activityId && (event.type !== "session.start" || event.parentId !== null)) {
+        if (activityId
+          ? event.type !== "subagent.started" || event.agentId !== activityId
+          : event.type !== "session.start" || event.parentId !== null) {
           throw new HarnessError("harness_event_gap", "The beginning of native history is unavailable.");
         }
         started = true;

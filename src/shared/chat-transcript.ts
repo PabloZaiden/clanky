@@ -232,6 +232,8 @@ export function shouldIncludeConversationTranscriptLog(log: TaskLogEntry): boole
     return false;
   }
 
+  if (log.level === "error" && logKind === "subagent-error") return true;
+
   if (log.level !== "agent" && log.level !== "user") {
     return false;
   }
