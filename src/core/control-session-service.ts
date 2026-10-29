@@ -85,7 +85,7 @@ export class ControlSessionService {
     this.unsubscribePrivacy = [
       resourcePrivacyEventEmitter.subscribe((_event, context) => this.refreshPrivacy(context.userId)),
       chatEventEmitter.subscribe((event, context) => {
-        if (event.type === "chat.deleted") this.refreshPrivacy(context.userId);
+        if (event.type === "chat.deleted" || event.type === "chat.trash.changed") this.refreshPrivacy(context.userId);
       }),
       taskEventEmitter.subscribe((event, context) => {
         if (event.type === "task.deleted") this.refreshPrivacy(context.userId);
