@@ -62,6 +62,18 @@ inventory. Native tools, voice, MCP and deterministic runner IPC adapt that
 core; do not duplicate domain transitions or launch an internal MCP server per
 execution.
 
+Pass application control as an explicit execution-owned connection, never
+derive its transport from CLI environment variables. Local calls use the
+common controller owner; worker-side native calls use the enrolled Mesh route.
+The narrow callback authenticates the managed credential and revalidates the
+current execution, workspace/worker binding and active registration. Relay
+authorization/header restrictions remain intact; do not introduce general API
+forwarding or a public-URL fallback. Deterministic `ctx.clanky.call` uses the
+trusted runner's request protocol and bounded atomic result files through its
+selected executor; cleanup owns pending requests and files. CLI/terminal
+environment and the separate `ctx.workspace.prompt` callback retain their
+existing contracts.
+
 Resolve managed origin from persisted credential/execution associations.
 Optional browser context supplies verified provenance and navigation, never
 authority. Workspace grants permit project work, not workspace/access/host

@@ -47,7 +47,7 @@ export class CodexConnection {
         runtime,
         catalog,
         events: this.events,
-        managedEnvironment: config.managedEnvironment,
+        control: config.control,
       });
       const questions = new CodexQuestionCoordinator({ sessions, events: this.events, runtime });
       runtime.rpc.setRequestHandler((request) => request.method === "item/tool/call"

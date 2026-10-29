@@ -17,6 +17,7 @@ import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { saveMeshHarnessConversation, requireMeshHarnessConversation, deleteMeshHarnessConversation } from "../persistence/mesh-harness-conversations";
 import type { EventStream } from "../utils/event-stream";
 import { createEventStream } from "../utils/event-stream";
+import { meshControlToolConnection } from "./mesh-control-tool-transport";
 
 const log = createLogger("core:mesh-harness-gateway");
 const MAX_HOSTS = 64;
@@ -90,6 +91,8 @@ export class MeshHarnessGateway {
         await backend.connect({
           directory: config.directory, transport: "stdio",
           env: config.environment, managedEnvironment: config.environment,
+          control: config.controlCredential
+            ? meshControlToolConnection(config.callerNodeId, config.controlCredential) : undefined,
         }, controller.signal);
         await this.leases.getHarnessSessionConfig(id, token);
         if (controller.signal.aborted) throw new DomainError("harness_connection_aborted", "The native host connection was aborted.");

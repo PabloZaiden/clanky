@@ -81,6 +81,12 @@ interface DomainErrorPolicyProfile {
  * compile-time checked while unknown internal codes still fail safely.
  */
 const API_DOMAIN_ERROR_CODES = {
+  control_unavailable: true,
+  control_context_unavailable: true,
+  control_credential_invalid: true,
+  control_scope_required: true,
+  control_result_invalid: true,
+  control_request_invalid: true,
   attachment_context_unavailable: true,
   attachment_location_invalid: true,
   attachment_data_invalid: true,
@@ -508,6 +514,12 @@ function retryAfterHeaders(error: DomainError): Record<string, string> | undefin
 }
 
 const COMMON_MAPPINGS = {
+  control_unavailable: { status: 503, message: "Execution-owned Clanky control is unavailable. Check the registered route and update the controller, relay and worker." },
+  control_context_unavailable: { status: 410, message: "The Clanky control execution is no longer available on this host." },
+  control_credential_invalid: { status: 401, message: "The Clanky control execution credential expired or was revoked." },
+  control_scope_required: { status: 403, message: "This operation requires an execution-owned Clanky control grant." },
+  control_result_invalid: { status: 502, message: "The Clanky control response is invalid. Inspect current state before repeating a mutation." },
+  control_request_invalid: { status: 400, message: "The Clanky control request is invalid or exceeds the supported size." },
   attachment_context_unavailable: { status: 409, message: "The attachment conversation is no longer available." },
   attachment_location_invalid: { status: 409, message: "The managed attachment location is invalid. Check the execution host." },
   attachment_data_invalid: { status: 409, message: "An attachment is incomplete or invalid. Attach the original file again." },

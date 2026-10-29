@@ -10,6 +10,7 @@ import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { HarnessControl, HarnessConversationBinding } from "@/shared/harness-control";
 import type { PromptInput } from "@/shared/harness-input";
 import type { HarnessSubagentHistory } from "@/shared/subagent";
+import type { ControlToolConnection } from "../core/control-tool-transport";
 export type { HarnessEvent, QuestionInfo, QuestionOption } from "@/shared/harness-events";
 export type {
   PromptInput,
@@ -59,6 +60,8 @@ export interface BackendConnectionConfig {
   startupStdin?: string;
   /** Managed Clanky runtime environment delivered separately to Mesh workers. */
   managedEnvironment?: Record<string, string>;
+  /** Execution-owned application control, independent of the CLI environment. */
+  control?: ControlToolConnection;
   /** Enable Clanky control tools for a normal chat in the designated workspace. */
   controlTools?: boolean;
   /** Working directory for the backend */

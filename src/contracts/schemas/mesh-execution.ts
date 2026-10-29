@@ -35,6 +35,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
   ownerId: z.string().min(1).max(200).optional(),
   environment: z.record(z.string(), z.string()).optional(),
+  controlCredential: z.string().min(1).max(4096).optional(),
   nonce: z.string().trim().min(1).max(200),
   expiresAt: z.string().datetime(),
   signature: z.string().trim().min(1).max(16_384),

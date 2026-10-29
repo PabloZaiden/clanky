@@ -14,13 +14,16 @@ import { readMeshControlResponseJson } from "./mesh-control-client";
 import { updateWorkerNegotiatedProtocolVersion } from "../persistence/mesh";
 
 export function meshWorkerGenerationSigningPayload(input: Omit<MeshWorkerProtocolDescriptor, "signature">): string {
-  return JSON.stringify([`clanky-mesh-worker-generation-v${input.protocolVersion}`, input.nodeId, input.fingerprint, input.requestNonce, input.binaryVersion, input.supportedProtocolVersions, input.preferredProtocolVersion]);
+  const payload: unknown[] = [`clanky-mesh-worker-generation-v${input.protocolVersion}`, input.nodeId, input.fingerprint, input.requestNonce, input.binaryVersion, input.supportedProtocolVersions, input.preferredProtocolVersion];
+  if (input.controlTools !== undefined) payload.push(["control-tools", input.controlTools]);
+  return JSON.stringify(payload);
 }
 
 export async function describeMeshWorkerGeneration(
   versionsHeader: string | null,
   nonce: string | null,
   localVersions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
+  controlTools = false,
 ): Promise<MeshWorkerProtocolDescriptor> {
   requireMeshRuntimeRole("worker");
   const selected = negotiateMeshProtocolVersion(
@@ -35,11 +38,12 @@ export async function describeMeshWorkerGeneration(
     preferredProtocolVersion: localVersions[0]!,
     nodeId: identity.nodeId, fingerprint: identity.fingerprint, requestNonce: nonce,
     binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
+    ...(controlTools ? { controlTools: 1 as const } : {}),
   };
   return { ...descriptor, signature: await signMeshPayload(meshWorkerGenerationSigningPayload(descriptor)) };
 }
 
-export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistration, signal?: AbortSignal, fetch?: typeof globalThis.fetch): Promise<MeshProtocolVersion> {
+export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistration, signal?: AbortSignal, fetch?: typeof globalThis.fetch, controlTools = false): Promise<MeshProtocolVersion> {
   const versions = meshRouteSupportedProtocolVersions(worker.route);
   if (versions.length === 0) {
     throw new DomainError("mesh_execution_protocol_mismatch", "The Mesh route has no supported generation.");
@@ -52,7 +56,10 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
   try {
     const response = await requestMeshPeer(worker.route, "api/mesh/internal/protocol", {
       method: "GET", signal: controller.signal, fetch,
-      headers: { [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(versions), "x-clanky-mesh-request-id": nonce },
+      headers: {
+        [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(versions), "x-clanky-mesh-request-id": nonce,
+        ...(controlTools ? { "x-clanky-mesh-control-tools": "1" } : {}),
+      },
     });
     if (response.status === 404) {
       await response.body?.cancel();
@@ -86,6 +93,9 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       || selected !== negotiateMeshProtocolVersion(versions, descriptor.supportedProtocolVersions)
       || !verifyMeshPayloadSignature(meshWorkerGenerationSigningPayload(unsigned), signature, worker.workerPublicKey)
     ) throw new DomainError("mesh_execution_protocol_mismatch", "The worker generation descriptor is invalid.");
+    if (controlTools && descriptor.controlTools !== 1) {
+      throw new DomainError("control_unavailable", "Update the Mesh worker to support execution-owned Clanky control.");
+    }
     await updateWorkerNegotiatedProtocolVersion({
       workerNodeId: worker.workerNodeId,
       localUserId: worker.localUserId,

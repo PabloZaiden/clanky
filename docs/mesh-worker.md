@@ -102,6 +102,36 @@ controller, relay, and worker has been confirmed on the new generation. Do not
 mix compatibility cleanup with the wire-contract change. This policy governs
 future transitions; it does not restore support for pre-v7 peers today.
 
+### Execution-owned control tools
+
+Native control tools use a scoped connection owned by their admitted execution,
+not the CLI's `CLANKY_BASE_URL`. Discovery and calls return to the controller
+through the worker's enrolled route, with identical behavior over direct TLS
+and relay. A relay-only worker therefore does not need the controller's public
+hostname for these tools. Workspace and general control use this same route
+and common authorization/approval owner.
+
+Upgrade the controller, relay and affected worker together for this extension.
+Native admissions requiring control request `x-clanky-mesh-control-tools: 1`
+during generation discovery. Supporting workers return signed `controlTools: 1`
+metadata; without it the controller rejects admission explicitly before sending
+the new credential field. Discovery without that opt-in remains unchanged.
+The separately signed admission credential is not placed in the provider's CLI
+environment. Relays allow only the narrow authenticated control callback from
+authorized workers; they still reject Authorization headers and arbitrary API
+routes. An older relay can reject this callback and must be upgraded; no public
+HTTP fallback, adapter switch, or mutation replay occurs.
+
+Each callback revalidates its scoped managed credential, current execution and
+workspace, worker binding and active registration. Calls and results are bounded
+and cancellable. A missing authoritative result is reported as an uncertain
+outcome; inspect the target before repeating a mutation.
+
+Deterministic `ctx.clanky.call` uses its trusted runner and selected executor's
+existing communication route, rather than public HTTP. This extension does
+not change CLI/terminal environment semantics or the separate
+`ctx.workspace.prompt` callback.
+
 ### Optional aggregated directory trees
 
 Workers can advertise `directoryTree: 1` alongside the unchanged

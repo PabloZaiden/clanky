@@ -30,6 +30,7 @@ const ERROR_STATUS: Readonly<Record<string, number>> = {
   control_client_unavailable: 409, control_human_required: 403,
   control_busy: 429, control_credential_limit: 409, control_cancelled: 499,
   control_unavailable: 503,
+  control_request_invalid: 400, control_result_invalid: 502,
 };
 
 interface ControlApi {

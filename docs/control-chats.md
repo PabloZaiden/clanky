@@ -29,24 +29,27 @@ as an ACP provider does not enable Control.
 For external clients, scoped credentials, approvals and MCP setup, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
-Clanky injects its managed API base URL and a scoped managed credential into
-owned runtime environments. The credential identifies the admitted chat, task
-or Agent run and its workspace; caller-supplied workspace IDs are not grants.
+Clanky supplies an execution-owned control connection with a scoped managed
+credential, separately from CLI environment variables. The credential identifies
+the admitted chat, task or Agent run and its workspace; caller-supplied workspace
+IDs are not grants.
 If the workspace, credential, native provider, or advertised Mesh capability
 is unavailable, starting control tools
 fails explicitly rather than starting a chat that appears able to control
-Clanky but cannot. Mesh runtimes require a configured `CLANKY_PUBLIC_BASE_URL`
-that is reachable from the selected execution host, even for workspace-only
-collaboration. They do not substitute the worker's local API or silently omit
-the tools when that controller URL is unavailable.
+Clanky but cannot. Local control invokes the common controller core directly;
+Mesh control uses the worker's enrolled controller route, including the relay.
+The worker does not need to resolve or reach the controller's public hostname
+for control tools. Workspace and general grants change authorization, not
+transport. This does not change `CLANKY_BASE_URL` for explicitly invoked CLI
+commands, terminal environments, or the separate `ctx.workspace.prompt` callback.
 
 ## What the agent can do
 
 Native adapters discover their applicable definitions from the authenticated
-common control endpoint. They do not maintain a separate native catalog or use
+common control owner. They do not maintain a separate native catalog or use
 broad credentials to call arbitrary REST routes. Successful and pending results
 are returned without a native-specific wrapper.
-Actual chat roots supply their real chat ID during HTTP discovery so the server
+Actual chat roots supply their real chat ID during discovery so the server
 can include optional browser tools after checking the credential association.
 Task and scheduled-run roots omit it; this does not change Mesh bindings or
 grant additional authority.
@@ -139,16 +142,19 @@ provider histories, replace conversations, keep a separate legacy tool
 implementation, or add an MCP fallback to upgrade existing Codex threads.
 Copilot registers current tools on creation and cold resume.
 
-Control uses the existing Mesh environment, session binding and prompt
-contracts. Browser chat context carries real chat/tab/turn provenance, while
-tasks and unattended runs need no browser context: their managed credential
+Control has its own execution-bound transport, separate from the CLI
+environment. Mesh admission binds its credential to the native lease; callbacks
+use the registered direct or relay route. Browser chat context carries real
+chat/tab/turn provenance, while tasks and unattended runs need no browser context:
+their managed credential
 identifies the canonical execution server-side. The native adapter privately
 requires an active owned root turn before forwarding any tool call.
 
 OpenCode 2 loads a managed native Promise plugin on the selected execution
 host. It exposes the same shared tools directly, without an ACP or MCP server.
 The plugin forwards calls through a private authenticated loopback bridge;
-API credentials remain in the managed runtime environment, not in plugin files.
+The control credential stays in Clanky's session-owned connection, not the
+provider environment or plugin files.
 Existing process-scoped OpenCode configuration and plugins are preserved;
 Clanky does not write Control settings into the workspace repository.
 Tools are available only to the owned root session's active turn, not

@@ -44,7 +44,7 @@ export class OpenCodeConnection {
     if (signal?.aborted) abort();
     this.opening = (async () => {
       await this.closing;
-      const controlTools = new OpenCodeControlTools(config.managedEnvironment ?? {});
+      const controlTools = new OpenCodeControlTools(config.control);
       let runtime: OpenCodeRuntime;
       try {
         const env = await controlTools.open({ ...config.env, ...config.managedEnvironment }, this.startupAbort?.signal);

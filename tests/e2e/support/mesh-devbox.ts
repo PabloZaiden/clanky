@@ -8,6 +8,7 @@ import { delimiter, join, resolve } from "node:path";
 import { currentEnvironment, runCommand } from "./process";
 import { MESH_OPERATION_TIMEOUT_MS } from "./timeouts";
 import { renderExternalWorkerUpdateBinary } from "./provider";
+import { getMeshTestTls } from "./mesh-tls";
 
 async function githubReleaseResponse(path: string, binary: string | Bun.BunFile): Promise<Response> {
   const root = resolve(import.meta.dir, "../../..");
@@ -44,6 +45,7 @@ export async function startMeshDevboxFixture(
   diagnostics(): string;
 }> {
   const binary = resolve(import.meta.dir, "../../../dist/clanky");
+  const tls = await getMeshTestTls();
   const curl = Bun.which("curl");
   if (!curl) throw new Error("The external GitHub release fixture requires curl.");
   const releaseBinary = options.updateStateDirectory ? renderExternalWorkerUpdateBinary() : Bun.file(binary);
@@ -69,6 +71,7 @@ export async function startMeshDevboxFixture(
             CLANKY_DATA_DIR: join(root, "data"), CLANKY_HOST: "127.0.0.1",
             CLANKY_PORT: (await Bun.file(join(root, "devbox-port")).text()).trim(),
             CLANKY_PUBLIC_BASE_URL: "", CLANKY_DISABLE_PASSKEY: undefined,
+            NODE_EXTRA_CA_CERTS: tls.certificatePath,
             HOME: join(root, "home"), PATH: `${binDirectory}${delimiter}${process.env["PATH"] ?? ""}`,
             CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
             CLANKY_E2E_WORKER_UPDATE_STATE_DIR: options.updateStateDirectory,

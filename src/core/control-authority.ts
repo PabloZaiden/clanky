@@ -15,6 +15,7 @@ import { readReferenceField, isReadRecord } from "@/shared/record";
 import { requireCurrentUser } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { getWorkspace } from "../persistence/workspaces";
+import { getWorkerRegistration } from "../persistence/mesh";
 import { managedCredentialService } from "./managed-credential-service";
 import { collaborationService } from "./collaboration-service";
 import { requireBoundWorkspaceResource } from "./workspace-operation-authority";
@@ -30,6 +31,19 @@ export interface ControlGrant {
   readonly general: boolean;
   readonly workspaceId?: string;
   readonly managedContext?: ManagedContextIdentity;
+}
+
+export async function requireControlWorker(grant: ControlGrant, workerNodeId: string): Promise<void> {
+  if (!grant.managedContext) {
+    throw new DomainError("control_scope_required", "Mesh callbacks require an execution-owned control credential.");
+  }
+  const workspace = await getWorkspace(grant.managedContext.workspaceId);
+  const registration = await getWorkerRegistration(workerNodeId, grant.user.id);
+  if (workspace?.executionHostBinding.host.kind !== "mesh"
+    || workspace.executionHostBinding.host.nodeId !== workerNodeId
+    || registration?.grantStatus !== "active") {
+    throw new DomainError("control_context_unavailable", "The control execution no longer belongs to this Mesh worker.");
+  }
 }
 
 export function controlGrantScopes(selection: ControlGrantSelection): string[] {

@@ -13,6 +13,7 @@ import { meshExecutionRoutes } from "./execution";
 import { meshTerminalRoutes } from "./terminal";
 import { meshTunnelRoutes } from "./tunnel";
 import { meshHarnessRoutes } from "./harness";
+import { meshControlToolRoutes } from "./control-tools";
 
 export const meshInternalRoutes = defineRoutes({
   ...meshControlRoutes,
@@ -21,9 +22,11 @@ export const meshInternalRoutes = defineRoutes({
   ...meshTerminalRoutes,
   ...meshTunnelRoutes,
   ...meshHarnessRoutes,
+  ...meshControlToolRoutes,
 });
 
 export const meshControllerInternalRoutes = defineRoutes({
+  ...meshControlToolRoutes,
   "/api/mesh/internal/enrollment": meshInternalRoutes["/api/mesh/internal/enrollment"]!,
 });
 
