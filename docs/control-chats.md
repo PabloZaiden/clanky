@@ -68,6 +68,9 @@ An admitted message is not completed agent work. Required human approval is a
 pending result, never implicit approval; unattended tasks and scheduled runs
 do not wait indefinitely or auto-answer it. An interrupted or timed-out request
 can have an uncertain outcome and must not be automatically replayed.
+Humans can review requests through **Approvals** in the sidebar or Home's
+**Needs attention**, not only the returned link. Native confirmations have a
+fixed one-hour deadline; each approval authorizes only its own frozen action.
 
 ## Browser actions and multiple tabs
 

@@ -182,6 +182,13 @@ Destructive and other confirmation-required operations return a frozen,
 expiring request and an authenticated Clanky link without performing the
 requested mutation. The human reviews and approves or rejects the exact
 arguments; scope and target state are checked again before execution.
+Open **Approvals** in the sidebar to review your pending requests without a
+client-provided link. They also appear in Home's **Needs attention** section.
+Each action is reviewed separately; the inbox also labels private SSH handoffs.
+Native, MCP and deterministic confirmations expire one hour after creation.
+Reading a request does not extend its deadline, and reviewing one does not
+consume another. Live Voice confirmations and private SSH handoffs keep their
+existing one-minute deadlines.
 Approval is single-use. Pending requests do not survive restart or restore
 revoked/ended execution authority. A pending result is not completed work,
 and an uncertain outcome must be inspected before repeating a mutation.

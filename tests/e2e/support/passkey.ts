@@ -196,3 +196,18 @@ export async function bootstrapOwner(app: E2EApplication, jar: CookieJar): Promi
     throw new Error(`Owner bootstrap verification failed (${verification.status}): ${await verification.text()}`);
   }
 }
+
+export async function completeUserSetup(app: E2EApplication, jar: CookieJar, token: string): Promise<void> {
+  const response = await requestWithCookies(app, jar, "/api/user-setup/options", {
+    method: "POST", body: JSON.stringify({ token }),
+  });
+  if (response.status !== 200) throw new Error(`User setup options failed (${response.status}): ${await response.text()}`);
+  const options = await response.json() as { challenge: string; rp: { id?: string } };
+  const verification = await requestWithCookies(app, jar, "/api/user-setup/verify", {
+    method: "POST",
+    body: JSON.stringify({ token, response: await createPasskeyRegistration(options, app.baseUrl) }),
+  });
+  if (verification.status !== 200) {
+    throw new Error(`User setup verification failed (${verification.status}): ${await verification.text()}`);
+  }
+}

@@ -96,6 +96,12 @@ Only a separate real passkey-backed human interaction can approve frozen work
 or supply a private credential. Pending requests are single-use and do not
 survive restart. Credential tokens never enter tool results or deterministic
 user code. Voice retains its existing call-bound presentation and direct paths.
+Nonvoice confirmations have a fixed one-hour review deadline; idle session
+cleanup retains sessions that own pending requests or running work. Live Voice
+confirmations and private SSH handoffs retain their one-minute limits.
+The human-only pending collection drives both the Approvals inbox and Home's
+Needs attention through the same user-scoped realtime resource. It excludes
+frozen arguments and operation results; individual request reads retain them.
 
 ## Execution hosts and workspace paths
 

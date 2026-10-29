@@ -6,7 +6,7 @@ import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
-import { bootstrapOwner, CookieJar, requestWithCookies } from "./support/passkey";
+import { bootstrapOwner, completeUserSetup, CookieJar, requestWithCookies } from "./support/passkey";
 import { pollUntil } from "./support/polling";
 import { findFreeLoopbackPort, readProcessDiagnostics } from "./support/process";
 import {
@@ -196,12 +196,18 @@ test("external MCP integrations receive explicit human grants, isolated control 
     async function snapshot(id: string): Promise<RequestSnapshot> {
       return await humanJson<RequestSnapshot>(`/api/control/requests/${id}`);
     }
+    async function inbox() {
+      return await humanJson<Array<Pick<RequestSnapshot, "id" | "kind" | "status" | "description" | "expiresAt">>>(
+        "/api/control/requests",
+      );
+    }
     async function decision(id: string, approved: boolean, status = 200) {
       return await humanJson<Record<string, unknown>>(`/api/control/requests/${id}/decision`, {
         method: "POST", body: JSON.stringify({ approved }),
       }, status);
     }
     async function prepareTrash(client: Client, chatId: string, name: string): Promise<PendingInteraction> {
+      const requestedAt = Date.now();
       const pending = await call<PendingInteraction>(client, "clanky_update_chat_lifecycle", {
         target: chatId, action: "move_to_trash",
         confirmationDescription: `Move ${name} to Trash, stopping active work. It remains recoverable for 30 days.`,
@@ -212,7 +218,8 @@ test("external MCP integrations receive explicit human grants, isolated control 
       expect(typeof pending.requestId).toBe("string");
       expect(new URL(pending.approvalUrl).origin).toBe(baseUrl);
       expect(pending.approvalUrl).toContain(pending.requestId);
-      expect(pending.expiresAt).toBeGreaterThan(Date.now());
+      expect(pending.expiresAt).toBeGreaterThanOrEqual(requestedAt + 60 * 60_000);
+      expect(pending.expiresAt).toBeLessThanOrEqual(Date.now() + 60 * 60_000);
       const frozen = await snapshot(pending.requestId);
       expect(frozen).toMatchObject({
         id: pending.requestId, kind: "confirmation", status: "pending", expiresAt: pending.expiresAt,
@@ -313,6 +320,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
     }
     const shared = await chat(first.id, "Project discussion", firstGit.branch);
     const archived = await chat(first.id, "Finished discussion", firstGit.branch);
+    const additionalArchive = await chat(first.id, "Another finished discussion", firstGit.branch);
     const foreign = await chat(second.id, "Other project discussion", secondGit.branch);
     const scoped = await credential("Workspace MCP integration", { level: "workspace", workspaceId: first.id });
     const general = await credential("General MCP integration", { level: "general" });
@@ -336,7 +344,26 @@ test("external MCP integrations receive explicit human grants, isolated control 
     expect(await call(generalClient, "clanky_read_chat", { target: foreign }))
       .toMatchObject({ target: { id: foreign }, section: "conversation" });
 
-    const expiring = await prepareTrash(projectClient, archived, "Finished discussion");
+    const reviewLater = await prepareTrash(projectClient, additionalArchive, "Another finished discussion");
+    expect(await inbox()).toEqual([expect.objectContaining({
+      id: reviewLater.requestId, kind: "confirmation", status: "pending",
+    })]);
+    await denied("/api/control/requests", { apiKey: scoped.token });
+    await denied("/api/control/requests", { apiKey: general.token });
+    expect(await execute(generalClient, "GET /api/control/requests"))
+      .toMatchObject({ ok: false, completion: "not_executed" });
+    const member = await humanJson<{ setupLink: { url: string } }>("/api/users", {
+      method: "POST", body: JSON.stringify({ username: "approval-reviewer", role: "user" }),
+    }, 201);
+    const memberCookies = new CookieJar();
+    const setupToken = new URL(member.setupLink.url).searchParams.get("token");
+    if (!setupToken) throw new Error("Missing member setup token.");
+    await completeUserSetup(application, memberCookies, setupToken);
+    const memberInbox = await requestWithCookies(application, memberCookies, "/api/control/requests", {
+      headers: { origin: baseUrl },
+    });
+    expect(memberInbox.status).toBe(200);
+    expect(await memberInbox.json()).toEqual([]);
     const hostNote = "The external integration reads this private SSH handoff only after human credential entry.";
     const hostFile = "external-handoff.txt";
     await Bun.write(`${firstGit.repositoryDirectory}/${hostFile}`, hostNote);
@@ -383,10 +410,15 @@ test("external MCP integrations receive explicit human grants, isolated control 
     expect(pendingHandoff).toMatchObject({
       kind: "ssh_credential", status: "pending", serverId: server.config.id,
     });
+    const waiting = await inbox();
+    expect(waiting.map(({ id }) => id)).toEqual(expect.arrayContaining([reviewLater.requestId, handoff.requestId]));
+    expect(waiting.find(({ id }) => id === handoff.requestId)).toMatchObject({ kind: "ssh_credential" });
+    expect(waiting.every((entry) => !("operation" in entry) && !("result" in entry) && !("credentialToken" in entry))).toBe(true);
     const humanHandoffResult = await humanJson(`/api/control/requests/${handoff.requestId}/credential`, {
       method: "POST", body: JSON.stringify({ credentialToken: privateCredential.credentialToken }),
     });
     expect(humanHandoffResult).toMatchObject({ ok: true, completion: "completed", data: { content: hostNote } });
+    expect((await inbox()).map(({ id }) => id)).not.toContain(handoff.requestId);
     const handoffStatus = await execute(generalClient, "GET /api/control/requests/:id", handoff.requestId);
     expect(handoffStatus).toMatchObject({
       ok: true, completion: "completed",
@@ -451,6 +483,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
     const apiKey = await humanJson<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "Ordinary API client", scopes: ["*"] }),
     });
+    await denied("/api/control/requests", { apiKey: apiKey.token });
     await denied("/api/control/credentials", {
       apiKey: apiKey.token, method: "POST",
       body: JSON.stringify({ name: "API self-grant", grant: { level: "general" }, expiresInDays: 1 }),
@@ -473,6 +506,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
     expect(await snapshot(rejected.requestId)).toMatchObject({
       status: "completed", result: { code: "confirmation_rejected" },
     });
+    expect((await inbox()).map(({ id }) => id)).not.toContain(rejected.requestId);
     await decision(rejected.requestId, true, 410);
     expect((await humanJson<Chat>(`/api/chats/${shared}`)).config.id).toBe(shared);
 
@@ -525,12 +559,6 @@ test("external MCP integrations receive explicit human grants, isolated control 
       body: JSON.stringify({ kind: "websocket", url: "/api/ws" }),
     });
 
-    // This timer is the public approval lifetime, not a synchronization delay.
-    await Bun.sleep(Math.max(0, expiring.expiresAt - Date.now()) + 1);
-    expect(await snapshot(expiring.requestId)).toMatchObject({ status: "expired" });
-    await decision(expiring.requestId, true, 410);
-    expect((await humanJson<Chat>(`/api/chats/${archived}`)).config.id).toBe(archived);
-
     const approved = await prepareTrash(oauthClient, archived, "Finished discussion");
     await denied(`/api/control/requests/${approved.requestId}/decision`, {
       apiKey: oauth.tokens()!.access_token, method: "POST", body: JSON.stringify({ approved: true }),
@@ -557,10 +585,16 @@ test("external MCP integrations receive explicit human grants, isolated control 
     await decision(approved.requestId, true, 410);
     expect((await humanJson<{ items: Array<{ id: string }> }>("/api/trash")).items
       .filter(({ id }) => id === archived)).toHaveLength(1);
+    expect((await inbox()).map(({ id }) => id)).toContain(reviewLater.requestId);
+    expect(await decision(reviewLater.requestId, true)).toMatchObject({ ok: true, completion: "completed" });
+    expect((await inbox()).map(({ id }) => id)).not.toContain(reviewLater.requestId);
+    expect((await humanJson<{ items: Array<{ id: string }> }>("/api/trash")).items.map(({ id }) => id))
+      .toEqual(expect.arrayContaining([archived, additionalArchive]));
 
     const pendingRestart = await prepareTrash(refreshedClient, shared, "Updated project discussion");
     await Promise.all(clients.splice(0).map((client) => client.close()));
     await restart();
+    expect(await inbox()).toEqual([]);
     await decision(pendingRestart.requestId, true, 410);
     expect((await humanJson<Chat>(`/api/chats/${shared}`)).config.id).toBe(shared);
     const resumed = await connect(oauth.tokens()!.access_token);
@@ -588,6 +622,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
       .filter(({ id }) => id === archived)).toHaveLength(1);
 
     await restart(true);
+    await denied("/api/control/requests");
     await denied("/api/control/credentials", {
       method: "POST",
       body: JSON.stringify({ name: "Emergency bypass is not consent", grant: { level: "general" }, expiresInDays: 1 }),

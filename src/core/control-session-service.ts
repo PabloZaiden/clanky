@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { ClankyControlContext, ControlUiAction } from "@/shared/clanky-control";
-import type { ControlRequestSnapshot } from "@/contracts/schemas/control";
+import type { ControlRequestSnapshot, ControlRequestSummary } from "@/contracts/schemas/control";
 import { requireCurrentUserId } from "../context/user-context";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { readBytes, isReadRecord } from "../client-sdk/collaboration/resource-read";
@@ -16,6 +16,7 @@ import { controlUiActionService } from "./control-ui-action-service";
 
 const log = createLogger("core:control-sessions");
 const SESSION_TTL_MS = 10 * 60_000;
+const CONFIRMATION_TTL_MS = 60 * 60_000;
 const RESULT_TTL_MS = 60_000;
 const EXECUTION_TIMEOUT_MS = 90_000;
 const MAX_SESSIONS = 128;
@@ -110,6 +111,17 @@ export class ControlSessionService {
     return structuredClone(request.snapshot);
   }
 
+  listPendingRequests(): ControlRequestSummary[] {
+    this.prune();
+    const userId = requireCurrentUserId();
+    return [...this.requests.values()]
+      .filter(({ session, snapshot }) => session.access.grant.user.id === userId && snapshot.status === "pending")
+      .map(({ snapshot: { id, kind, status, description, expiresAt, serverName } }) => ({
+        id, kind, status, description, expiresAt, ...(serverName ? { serverName } : {}),
+      }))
+      .sort((left, right) => left.expiresAt - right.expiresAt || left.id.localeCompare(right.id));
+  }
+
   async decide(id: string, approved: boolean, signal: AbortSignal): Promise<unknown> {
     const request = this.requireRequest(id);
     this.requirePending(request, "confirmation");
@@ -155,6 +167,7 @@ export class ControlSessionService {
     }
     const actions = new ControlActions({
       context: { revision: 0, route: {} }, authority, service: this.options.service,
+      confirmationTtlMs: CONFIRMATION_TTL_MS,
       interact: async (action, _requestId, signal) => await this.interact(action, signal),
     });
     session = { access, authority, actions, expiresAt: Date.now() + SESSION_TTL_MS, runs: new Set() };
@@ -171,6 +184,7 @@ export class ControlSessionService {
     if (parent) {
       this.requirePending(parent, "confirmation");
       parent.snapshot.status = "running";
+      parent.removeAt = Date.now() + EXECUTION_TIMEOUT_MS + RESULT_TTL_MS;
       clearTimeout(parent.timer);
       this.changed(parent);
     }
@@ -299,15 +313,18 @@ export class ControlSessionService {
 
   private prune(): void {
     const now = Date.now();
+    const waitingSessions = new Set<ControlSession>();
     for (const [id, request] of this.requests) {
       this.expire(request);
       if (request.removeAt <= now) {
         clearTimeout(request.timer);
         this.requests.delete(id);
+      } else if (request.snapshot.status === "pending" || request.snapshot.status === "running") {
+        waitingSessions.add(request.session);
       }
     }
     for (const [id, session] of this.sessions) {
-      if (session.expiresAt > now) continue;
+      if (session.expiresAt > now || waitingSessions.has(session)) continue;
       for (const run of session.runs) { run.detach(); run.controller.abort(); }
       session.actions.dispose();
       session.authority.release();
