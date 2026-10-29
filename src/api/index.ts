@@ -17,7 +17,6 @@
  * - agents: Scheduled-agent management and runs
  * - previews: Workspace and direct server preview management
  * - mesh: Controller-managed worker enrollment and transport
- * - agent-prompt-bridge: Internal deterministic-agent prompt bridge
  * - raw websocket upgrades: Realtime, terminal, and preview transports are defined separately
  * 
  * @module api
@@ -25,7 +24,6 @@
 
 import { defineRoutes, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
 import { runWithCurrentUser } from "../context/user-context";
-import { agentPromptBridgeRoutes } from "./agent-prompt-bridge";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
@@ -90,7 +88,6 @@ export const nativeApiRoutes = {
   ...controlUiActionRoutes,
   ...controlRoutes,
   ...controlResources(taskCreationContextRoutes),
-  ...agentPromptBridgeRoutes,
   ...collaborationRoutes,
 };
 
@@ -136,7 +133,6 @@ export * from "./chats/index";
 export * from "./trash";
 export * from "./agents";
 export * from "./previews";
-export * from "./agent-prompt-bridge";
 export * from "./mesh";
 export * from "./mesh-relay";
 export * from "./workspace-worker-enrollments";

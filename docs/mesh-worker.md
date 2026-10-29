@@ -105,32 +105,37 @@ future transitions; it does not restore support for pre-v7 peers today.
 ### Execution-owned control tools
 
 Native control tools use a scoped connection owned by their admitted execution,
-not the CLI's `CLANKY_BASE_URL`. Discovery and calls return to the controller
-through the worker's enrolled route, with identical behavior over direct TLS
-and relay. A relay-only worker therefore does not need the controller's public
-hostname for these tools. Workspace and general control use this same route
-and common authorization/approval owner.
+not a CLI API key or `CLANKY_BASE_URL`. The controller owns source/account/grant
+validation. Mesh carries correlated control request/cancel frames through the
+existing harness event stream and replies through harness RPC. The lease-level
+control observation is ready before provider connection or conversation
+creation/resume, including OpenCode's early discovery. Reply capacity is
+independent of operations waiting for those replies.
 
-Upgrade the controller, relay and affected worker together for this extension.
-Native admissions requiring control request `x-clanky-mesh-control-tools: 1`
-during generation discovery. Supporting workers return signed `controlTools: 1`
-metadata; without it the controller rejects admission explicitly before sending
-the new credential field. Discovery without that opt-in remains unchanged.
-The separately signed admission credential is not placed in the provider's CLI
-environment. Relays allow only the narrow authenticated control callback from
-authorized workers; they still reject Authorization headers and arbitrary API
-routes. An older relay can reject this callback and must be upgraded; no public
-HTTP fallback, adapter switch, or mutation replay occurs.
+Current controllers request `x-clanky-mesh-control-tools: 2` during generation
+discovery and require signed `controlTools: 2` metadata before admission. The
+signed lease enables that capability without sending a bearer credential.
+Both controller and worker must support v2; current controllers never fall back
+to v1 callbacks or a tool-less session. The global Mesh generation remains v7.
+Discovery without the opt-in and noncontrol contracts are unchanged.
 
-Each callback revalidates its scoped managed credential, current execution and
-workspace, worker binding and active registration. Calls and results are bounded
-and cancellable. A missing authoritative result is reported as an uncertain
-outcome; inspect the target before repeating a mutation.
+Direct TLS and relay use the same execution infrastructure. No independent
+worker-to-controller callback, public hostname, route backfill or pairing reset
+is needed. Existing v7 relays already forward these harness routes. Worker
+binding and active registration are revalidated on each request. Observation
+loss closes the lease; calls/results are bounded and cancellable, and a missing
+authoritative result is uncertain, never automatically replayed.
 
-Deterministic `ctx.clanky.call` uses its trusted runner and selected executor's
-existing communication route, rather than public HTTP. This extension does
-not change CLI/terminal environment semantics or the separate
-`ctx.workspace.prompt` callback.
+During rollout, workers retain the old v1 discovery/admission and callback in
+one isolated adapter for older controllers. The existing narrow relay callback
+allowlist remains so a relay upgrade does not break an older pair. It is not
+selected by current controllers; remove this compatibility only after fleet
+rollout is confirmed, following [protocol evolution](#protocol-evolution).
+Relays still reject Authorization headers and arbitrary API forwarding.
+
+Deterministic tools and current-conversation prompts use their trusted runner
+and selected executor's existing communication, without public HTTP or injected
+CLI credentials. Explicit human CLI/terminal behavior is unchanged.
 
 ### Optional aggregated directory trees
 

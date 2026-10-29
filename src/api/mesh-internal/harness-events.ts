@@ -6,11 +6,13 @@ import { isDomainError } from "../../domain/domain-error";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { MeshExecutionProtocolVersion } from "@/shared/mesh-execution";
 import type { EventStream } from "../../utils/event-stream";
+import type { MeshHarnessControlEvent } from "@/contracts/schemas/mesh-harness";
 
 const log = createLogger("api:mesh:harness-events");
 
 export function createHarnessEventStream(options: {
-  subscription: EventStream<HarnessEvent>;
+  subscription: EventStream<HarnessEvent | MeshHarnessControlEvent>;
+  channel?: "control";
   protocolVersion: MeshExecutionProtocolVersion;
   signal: AbortSignal;
   onObservationClosed: () => void;
@@ -22,7 +24,7 @@ export function createHarnessEventStream(options: {
   const encoder = new TextEncoder();
   const enqueueFrame = (
     controller: ReadableStreamDefaultController<Uint8Array>,
-    payload: { type: "ready" | "heartbeat" | "event"; event?: HarnessEvent },
+    payload: { type: "ready" | "heartbeat" | "event" | "control"; event?: HarnessEvent | MeshHarnessControlEvent },
   ): void => {
     controller.enqueue(encoder.encode(`${JSON.stringify({
       protocolVersion: options.protocolVersion,
@@ -63,7 +65,7 @@ export function createHarnessEventStream(options: {
         const event = await options.subscription.next();
         if (closed) return;
         if (!event) { close(); controller.close(); return; }
-        enqueueFrame(controller, { type: "event", event });
+        enqueueFrame(controller, { type: options.channel === "control" ? "control" : "event", event });
       } catch (error) {
         if (closed) return;
         close();
@@ -73,6 +75,11 @@ export function createHarnessEventStream(options: {
           code,
           errorType: error instanceof Error ? error.name : "unknown",
         });
+        if (options.channel === "control") {
+          try { controller.error(error); }
+          finally { options.onObservationClosed(); }
+          return;
+        }
         try {
           enqueueFrame(controller, {
             type: "event",

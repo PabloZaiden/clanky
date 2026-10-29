@@ -18,6 +18,7 @@ import {
   MESH_EXECUTION_CHANNEL,
   MESH_ACP_CHANNEL,
   MESH_HARNESS_CHANNEL,
+  MESH_EXECUTION_CONTROL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
@@ -90,7 +91,7 @@ export interface MeshCommandExecutorClientConfig {
   adapter?: Exclude<HarnessAdapter, "acp">;
   sessionTtlMs?: number;
   managedEnvironment?: Record<string, string>;
-  controlCredential?: string;
+  controlTools?: boolean;
 }
 
 export interface MeshExecutionSessionConnection {
@@ -284,7 +285,7 @@ export class MeshCommandExecutorClient {
   private readonly adapter?: Exclude<HarnessAdapter, "acp">;
   private readonly sessionTtlMs: number;
   private readonly managedEnvironment?: Record<string, string>;
-  private readonly controlCredential?: string;
+  private readonly controlTools: boolean;
   private session: MeshExecutionSession | null = null;
   private route: MeshPeerRoute | null = null;
   private openingSession: Promise<void> | null = null;
@@ -314,7 +315,7 @@ export class MeshCommandExecutorClient {
         ? MESH_ACP_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
     this.managedEnvironment = config.managedEnvironment;
-    this.controlCredential = config.controlCredential;
+    this.controlTools = config.controlTools === true;
   }
 
   private requestAbortedError(signal?: AbortSignal): DomainError {
@@ -445,7 +446,7 @@ export class MeshCommandExecutorClient {
     }
     const route = registration.route;
     const protocolVersion: MeshExecutionProtocolVersion = await discoverMeshWorkerGeneration(
-      registration, signal, this.fetchImpl, this.controlCredential !== undefined,
+      registration, signal, this.fetchImpl, this.controlTools,
     );
     if (this.channel === MESH_HARNESS_CHANNEL) {
       if (!this.adapter) throw new DomainError("mesh_execution_protocol_mismatch", "A native Mesh lease requires an adapter.");
@@ -470,7 +471,7 @@ export class MeshCommandExecutorClient {
         channel,
         ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
         environment: this.managedEnvironment,
-        controlCredential: this.controlCredential,
+        ...(this.controlTools ? { controlTools: MESH_EXECUTION_CONTROL_VERSION } : {}),
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };

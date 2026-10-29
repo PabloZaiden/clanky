@@ -14,7 +14,7 @@ import type {
   SessionReconnectResult,
 } from "./engine-types";
 import { managedContextIdentityResolver } from "../managed-context-identity";
-import { managedCredentialService } from "../managed-credential-service";
+import { createExecutionControlConnection } from "../control-tool-transport";
 import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { getWorkspace } from "../../persistence/workspaces";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "../harness-session";
@@ -31,6 +31,13 @@ export interface SessionOperationContext {
   setSessionId: (id: string | null) => void;
 }
 
+async function taskControlConnection(ctx: SessionOperationContext) {
+  if (ctx.backend.harness.capabilities.adapter === "acp") return undefined;
+  return await createExecutionControlConnection(
+    await managedContextIdentityResolver.forTask(ctx.config.id, ctx.config.workspaceId),
+  );
+}
+
 export async function setupTaskSession(ctx: SessionOperationContext): Promise<string> {
   log.debug("[TaskEngine] setupSession: Entry point");
 
@@ -44,18 +51,7 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
   const isConnected = ctx.backend.isConnected();
   log.debug("[TaskEngine] setupSession: Backend connected?", { isConnected });
   if (!isConnected) {
-    const identity = await managedContextIdentityResolver.forTask(
-      ctx.config.id,
-      ctx.config.workspaceId,
-    );
-    const credential = await managedCredentialService.ensureCredentialForRuntime(
-      identity,
-      ctx.state.session?.id ? "recreate" : "reuse",
-      { control: ["codex", "copilot", "opencode2"].includes(ctx.backend.harness.capabilities.adapter) },
-    );
-    if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
-      throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
-    }
+    const control = await taskControlConnection(ctx);
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
       transport: settings.agent.transport,
@@ -63,14 +59,10 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
       port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
     });
     log.debug("[TaskEngine] setupSession: About to call backend.connect");
-    try {
-      await ctx.backend.connect({
-        ...buildConnectionConfig(settings, ctx.workingDirectory),
-        control: credential ? { credential: credential.token } : undefined,
-      });
-    } catch (error) {
-      await managedCredentialService.cleanupFailedLaunch(credential, error);
-    }
+    await ctx.backend.connect({
+      ...buildConnectionConfig(settings, ctx.workingDirectory),
+      control,
+    });
     log.debug("[TaskEngine] setupSession: backend.connect completed");
     ctx.emitLog("info", "Backend connection established");
   } else {
@@ -143,30 +135,17 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
     const isConnected = ctx.backend.isConnected();
 
     if (!isConnected) {
-      const identity = await managedContextIdentityResolver.forTask(
-        ctx.config.id,
-        ctx.config.workspaceId,
-      );
-      const credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
-        control: ["codex", "copilot", "opencode2"].includes(ctx.backend.harness.capabilities.adapter),
-      });
-      if (ctx.backend.harness.capabilities.clankyControlTools && !credential) {
-        throw new HarnessError("harness_runtime_unavailable", "Managed Clanky API credentials are unavailable for the task.");
-      }
+      const control = await taskControlConnection(ctx);
       ctx.emitLog("info", "Reconnecting to backend...", {
         provider: settings.agent.provider,
         transport: settings.agent.transport,
         hostname: settings.agent.transport === "ssh" ? settings.agent.hostname : undefined,
         port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
       });
-      try {
-        await ctx.backend.connect({
-          ...buildConnectionConfig(settings, ctx.workingDirectory),
-          control: credential ? { credential: credential.token } : undefined,
-        });
-      } catch (error) {
-        await managedCredentialService.cleanupFailedLaunch(credential, error);
-      }
+      await ctx.backend.connect({
+        ...buildConnectionConfig(settings, ctx.workingDirectory),
+        control,
+      });
       ctx.emitLog("info", "Backend connection re-established");
     }
 

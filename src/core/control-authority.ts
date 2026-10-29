@@ -8,15 +8,15 @@ import {
   type HttpMethod, type RouteCatalogEntry,
 } from "@pablozaiden/webapp/server";
 import {
-  AGENT_PROMPT_SCOPE, CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE,
-  CLANKY_CONTROL_MANAGED_SCOPE, controlWorkspaceScope, type ManagedContextIdentity,
+  CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE,
+  controlWorkspaceScope, type ManagedContextIdentity,
 } from "@/shared/context-api-key";
 import { readReferenceField, isReadRecord } from "@/shared/record";
 import { requireCurrentUser } from "../context/user-context";
 import { DomainError } from "../domain/domain-error";
 import { getWorkspace } from "../persistence/workspaces";
 import { getWorkerRegistration } from "../persistence/mesh";
-import { managedCredentialService } from "./managed-credential-service";
+import { managedContextIdentityResolver } from "./managed-context-identity";
 import { collaborationService } from "./collaboration-service";
 import { requireBoundWorkspaceResource } from "./workspace-operation-authority";
 import type { OperationAuthority, OperationRequest, OperationResult, PreparedOperation } from "./clanky-operation-service";
@@ -26,7 +26,7 @@ export const CONTROL_INTERACTION_TAG = "clanky-control-interaction";
 const WORKSPACE_RESOURCES = new Set(["chat", "task", "workspace", "review-comment"]);
 
 export interface ControlGrant {
-  readonly credentialId: string;
+  readonly id: string;
   readonly user: CurrentUser;
   readonly general: boolean;
   readonly workspaceId?: string;
@@ -35,7 +35,7 @@ export interface ControlGrant {
 
 export async function requireControlWorker(grant: ControlGrant, workerNodeId: string): Promise<void> {
   if (!grant.managedContext) {
-    throw new DomainError("control_scope_required", "Mesh callbacks require an execution-owned control credential.");
+    throw new DomainError("control_scope_required", "Mesh control requires an execution-owned grant.");
   }
   const workspace = await getWorkspace(grant.managedContext.workspaceId);
   const registration = await getWorkerRegistration(workerNodeId, grant.user.id);
@@ -52,32 +52,23 @@ export function controlGrantScopes(selection: ControlGrantSelection): string[] {
 }
 
 export async function resolveControlGrant(input: {
-  credentialId: string;
+  id: string;
   scopes: readonly string[];
-  apiKeyId?: string;
 }): Promise<ControlGrant> {
   const user = requireCurrentUser();
   const scopes = new Set(input.scopes);
   if (!scopes.has(CLANKY_CONTROL_SCOPE) || scopes.has("*")) {
     throw new DomainError("control_scope_required", "Use a scoped Clanky control credential.");
   }
-  const managed = scopes.has(CLANKY_CONTROL_MANAGED_SCOPE);
-  const identity = managed && input.apiKeyId
-    ? await managedCredentialService.resolveControlContext(input.apiKeyId) : undefined;
-  if (managed && !identity) {
-    throw new DomainError("control_context_unavailable", "This credential is not bound to a managed execution.");
-  }
   const workspaceScopes = [...scopes].filter((scope) => scope.startsWith(controlWorkspaceScope("")));
   const workspaceId = workspaceScopes[0]?.slice(controlWorkspaceScope("").length);
   const general = scopes.has(CLANKY_CONTROL_GENERAL_SCOPE);
-  if (workspaceScopes.length > 1 || workspaceScopes.length > 0 && !workspaceId || !general && !workspaceId
-    || identity && identity.workspaceId !== workspaceId) {
+  if (workspaceScopes.length > 1 || workspaceScopes.length > 0 && !workspaceId || !general && !workspaceId) {
     throw new DomainError("control_scope_invalid", "A control credential must name its exact authorized workspace or general grant.");
   }
   for (const scope of scopes) {
-    if ([CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE, CLANKY_CONTROL_MANAGED_SCOPE].includes(scope)
-      || scope === controlWorkspaceScope(workspaceId ?? "")
-      || managed && (scope === AGENT_PROMPT_SCOPE || scope.startsWith(`${AGENT_PROMPT_SCOPE}:`))) continue;
+    if ([CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE].includes(scope)
+      || scope === controlWorkspaceScope(workspaceId ?? "")) continue;
     throw new DomainError("control_scope_invalid", "Control credentials cannot include unrelated application scopes.");
   }
   const workspace = workspaceId ? await getWorkspace(workspaceId) : undefined;
@@ -85,10 +76,32 @@ export async function resolveControlGrant(input: {
     throw new DomainError("control_workspace_unavailable", "The authorized workspace is unavailable.");
   }
   return Object.freeze({
-    credentialId: input.credentialId, user: Object.freeze({ ...user }),
-    general: general && (!identity || workspace?.allowClankyContext === true),
+    id: input.id, user: Object.freeze({ ...user }),
+    general,
     ...(workspaceId ? { workspaceId } : {}),
-    ...(identity ? { managedContext: Object.freeze({ ...identity }) } : {}),
+  });
+}
+
+export async function resolveExecutionControlGrant(
+  identity: ManagedContextIdentity, admittedId?: string,
+): Promise<ControlGrant> {
+  const user = requireCurrentUser();
+  if (identity.userId !== user.id || identity.contextType === "terminal_session"
+    || !await managedContextIdentityResolver.isActive(identity)) {
+    throw new DomainError("control_context_unavailable", "The originating control execution is no longer available.");
+  }
+  const workspace = await getWorkspace(identity.workspaceId);
+  if (!workspace) throw new DomainError("control_workspace_unavailable", "The execution workspace is unavailable.");
+  const general = workspace.allowClankyContext === true;
+  // A transport reconnect must not replace domain ownership or broaden its ceiling.
+  const id = admittedId ?? `execution:${JSON.stringify([
+    identity.userId, identity.workspaceId, identity.contextType, identity.contextId,
+    general, user.isAdmin, user.isOwner,
+    workspace.executionHostBinding.targetKey, workspace.executionHostBinding.revision,
+  ])}`;
+  return Object.freeze({
+    id, user: Object.freeze({ ...user }), general,
+    workspaceId: identity.workspaceId, managedContext: Object.freeze({ ...identity }),
   });
 }
 
@@ -137,7 +150,7 @@ export class ControlOperationAuthority implements OperationAuthority {
 
   refresh(next: OperationAuthority): void {
     if (!(next instanceof ControlOperationAuthority) || this.released
-      || next.current.credentialId !== this.options.grant.credentialId
+      || next.current.id !== this.options.grant.id
       || next.current.user.id !== this.options.grant.user.id
       || next.options.grant.workspaceId !== this.options.grant.workspaceId) {
       next.release();
@@ -153,19 +166,25 @@ export class ControlOperationAuthority implements OperationAuthority {
     await this.authorize({ method: prepared.method, path: prepared.path, body: prepared.body, signal });
   }
 
+  async revalidate(): Promise<ControlGrant> {
+    if (this.released) throw new DomainError("control_context_ended", "The control authority was released.");
+    const current = await this.options.revalidate();
+    if (current.id !== this.options.grant.id
+      || current.user.id !== this.options.grant.user.id
+      || current.workspaceId !== this.options.grant.workspaceId) {
+      throw new DomainError("control_authority_unavailable", "The original control grant is no longer available.");
+    }
+    this.current = current;
+    return current;
+  }
+
   private async authorize(request: OperationRequest): Promise<{
     operation: ControlAuthorizedOperation; workspaceId?: string; readOnly: boolean;
   }> {
     if (this.released || request.signal.aborted) {
       throw new DomainError("control_context_ended", "The control execution was cancelled.");
     }
-    const current = await this.options.revalidate();
-    if (current.credentialId !== this.options.grant.credentialId
-      || current.user.id !== this.options.grant.user.id
-      || current.workspaceId !== this.options.grant.workspaceId) {
-      throw new DomainError("control_authority_unavailable", "The original control grant is no longer available.");
-    }
-    this.current = current;
+    const current = await this.revalidate();
     const url = new URL(request.path, "http://clanky.invalid");
     const match = findRouteCatalogEntry(this.options.catalog, url.pathname);
     if (!match || !this.allows(match.entry, request.method)) {

@@ -160,6 +160,7 @@ export function buildMeshExecutionSessionSigningPayload(
   payload.push(envelope.environment ?? null);
   payload.push(envelope.adapter ?? null, envelope.ownerId ?? null);
   payload.push(envelope.nonce, envelope.expiresAt);
-  if (envelope.controlCredential !== undefined) payload.push(["control-tools", envelope.controlCredential]);
+  if (envelope.controlTools !== undefined) payload.push(["control-tools", envelope.controlTools]);
+  else if (envelope.controlCredential !== undefined) payload.push(["control-tools", envelope.controlCredential]);
   return JSON.stringify(payload);
 }

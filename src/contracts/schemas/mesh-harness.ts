@@ -6,6 +6,7 @@ import { HarnessActivitySchema, HarnessConversationBindingSchema, HarnessEventSc
 import { MessageAttachmentsSchema } from "./task";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
+import { ControlToolRequestSchema, ControlToolReplySchema } from "./control-tool-transport";
 import {
   HARNESS_HISTORY_MAX_BYTES,
   HARNESS_HISTORY_MAX_EVENTS,
@@ -63,6 +64,11 @@ const ProviderImageFileReferenceSchema = z.object({
 
 export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("capabilities") }),
+  z.object({
+    operation: z.literal("control.result"),
+    controlRequestId: z.string().uuid(),
+    reply: ControlToolReplySchema,
+  }).strict(),
   z.object({ operation: z.literal("create"), options: z.object({
     directory: Path, title: z.string().max(1000).optional(), model: Id.optional(),
     ownership: HarnessConversationBindingSchema.omit({ adapter: true, nativeId: true, directory: true }),
@@ -99,9 +105,20 @@ export const MeshHarnessEnvelopeSchema = MeshHarnessEnvelopeBaseSchema.extend({
   protocolVersion: MeshProtocolVersionSchema,
   payload: MeshHarnessOperationSchema,
 }).strict();
-export const MeshHarnessEventsRequestSchema = MeshHarnessEnvelopeBaseSchema.extend({
-  protocolVersion: MeshProtocolVersionSchema, conversationId: Id,
-}).strict();
+export const MeshHarnessEventsRequestSchema = z.union([
+  MeshHarnessEnvelopeBaseSchema.extend({
+    protocolVersion: MeshProtocolVersionSchema, conversationId: Id,
+  }).strict(),
+  MeshHarnessEnvelopeBaseSchema.extend({
+    protocolVersion: MeshProtocolVersionSchema, channel: z.literal("control"),
+  }).strict(),
+]);
+
+export const MeshHarnessControlEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("request"), requestId: z.string().uuid(), request: ControlToolRequestSchema }).strict(),
+  z.object({ type: z.literal("cancel"), requestId: z.string().uuid() }).strict(),
+]);
+export type MeshHarnessControlEvent = z.infer<typeof MeshHarnessControlEventSchema>;
 
 export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type", [
   z.object({ type: z.literal("activity.changed"), activity: HarnessActivitySchema.optional() }),

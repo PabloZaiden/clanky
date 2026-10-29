@@ -11,10 +11,10 @@ import type { AgentRun } from "@/shared/agent";
 import { CONTROL_REQUEST_MAX_BYTES } from "@/contracts/schemas/control";
 import type { CommandExecutor } from "./command-executor";
 import type { DeterministicAgentOutput } from "./deterministic-agent-output";
-import type { ManagedRuntimeCredential } from "./managed-credential-service";
 import { controlToolSchemas } from "./control-tool-contracts";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { requestControlTool, controlToolTransportFailure } from "./control-tool-transport";
+import { requestControlTool, controlToolTransportFailure, type ExecutionControlConnection } from "./control-tool-transport";
+import { promptDeterministicAgent } from "./deterministic-agent-prompt";
 
 const log = createLogger("deterministic-agent-runner");
 
@@ -31,7 +31,8 @@ export type RunnerMessage =
   | { type: "error"; message: string }
   | { type: "aborted" }
   | { type: "control"; id: string; name: string; input: unknown }
-  | { type: "control.cancel"; id: string };
+  | { type: "prompt"; id: string; message: string }
+  | { type: "request.cancel"; id: string };
 
 // ---------------------------------------------------------------------------
 // Runner script — embedded as a string and written to the workspace host.
@@ -40,9 +41,9 @@ export type RunnerMessage =
 /**
  * Plain Node.js 24+ ESM runner.
  *
- * The controller process owns the managed credential and handles workspace
- * exec/prompt/control requests. User code runs in a forked worker with those secrets
- * removed from its environment. The worker's direct stdout/stderr are drained
+ * The controller owns execution authority; the host adapts exec and typed
+ * prompt/control requests. User code runs in a forked worker with inherited
+ * CLI credentials removed. The worker's direct stdout/stderr are drained
  * and intentionally ignored; only explicit context output is forwarded.
  */
 export const DETERMINISTIC_AGENT_RUNNER_SCRIPT = `
@@ -115,44 +116,54 @@ function controlRequestBody(message) {
 
 class ControlRequestError extends Error {}
 
-async function executeClankyControl(message, signal) {
-  controlRequestBody(message);
+async function executeControllerRequest(message, signal) {
+  if (message.action === "control") controlRequestBody(message);
+  else if (typeof message.message !== "string" || message.message.length === 0) {
+    throw new Error("workspace.prompt requires a message");
+  }
   if (signal.aborted) throw new Error("Aborted");
   const id = crypto.randomUUID();
-  const filename = "control-" + id + ".json";
+  const filename = "response-" + id + ".json";
   const directory = dirname(codeFilePath);
   const controller = new AbortController();
   const requestSignal = AbortSignal.any([signal, controller.signal]);
   const changes = watch(directory, { signal: requestSignal });
-  const timer = setTimeout(() => controller.abort(), CONTROL_REQUEST_TIMEOUT_MS);
+  const timer = message.action === "control"
+    ? setTimeout(() => controller.abort(), CONTROL_REQUEST_TIMEOUT_MS) : undefined;
   let completed = false;
   try {
     const first = changes.next();
-    sendControl({ type: "control", id, name: message.name, input: message.input });
+    sendControl(message.action === "control"
+      ? { type: "control", id, name: message.name, input: message.input }
+      : { type: "prompt", id, message: message.message });
     let change = await first;
     while (!change.done) {
       if (change.value.filename === filename) {
         const content = await readFile(join(directory, filename), "utf8");
-        if (Buffer.byteLength(content) > MAX_CONTROL_RESULT_BYTES) {
+        if (message.action === "control" && Buffer.byteLength(content) > MAX_CONTROL_RESULT_BYTES + 8192) {
           throw new ControlRequestError("Clanky control result exceeds 1 MiB; inspect current state before retrying");
         }
-        const result = JSON.parse(content);
+        const response = JSON.parse(content);
         await unlink(join(directory, filename));
+        if (!isRecord(response) || typeof response.ok !== "boolean") {
+          throw new ControlRequestError("The controller returned an invalid response.");
+        }
         completed = true;
-        return result;
+        if (!response.ok) throw new ControlRequestError(response.error);
+        return response.value;
       }
       change = await changes.next();
     }
-    throw new ControlRequestError("The Clanky control response channel closed.");
+    throw new ControlRequestError("The execution response channel closed.");
   } catch (error) {
     if (signal.aborted) throw new Error("Aborted");
     if (controller.signal.aborted) {
       throw new Error("Clanky control request timed out; outcome may be unknown, inspect current state before retrying");
     }
     if (error instanceof ControlRequestError) throw error;
-    throw new Error("Clanky control response failed; outcome may be unknown, inspect current state before retrying");
+    throw new Error("Execution response failed; outcome may be unknown, inspect current state before retrying");
   } finally {
-    if (!completed) sendControl({ type: "control.cancel", id });
+    if (!completed) sendControl({ type: "request.cancel", id });
     await changes.return();
     clearTimeout(timer);
   }
@@ -218,44 +229,6 @@ async function executeWorkspaceCommand(message, signal) {
   }
 }
 
-async function executeWorkspacePrompt(message, signal) {
-  const baseUrl = process.env["CLANKY_BASE_URL"] || "";
-  const apiKey = process.env["CLANKY_API_KEY"] || "";
-  const chatId = process.env["CLANKY_CHAT_ID"] || "";
-  if (!baseUrl || !apiKey || !chatId) {
-    throw new Error(
-      "ctx.workspace.prompt is not available: workspace context credentials are not configured for this run",
-    );
-  }
-  if (signal.aborted) {
-    throw new Error("Aborted");
-  }
-
-  const response = await fetch(baseUrl + "/api/internal/agent-prompt", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + apiKey,
-    },
-    body: JSON.stringify({
-      chatId,
-      message: typeof message.message === "string" ? message.message : "",
-    }),
-    signal,
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      "Prompt request failed (" + response.status + "): " + (body || response.statusText),
-    );
-  }
-  const data = await response.json();
-  if (!isRecord(data) || typeof data.response !== "string") {
-    throw new Error("Prompt bridge returned an invalid response");
-  }
-  return data.response;
-}
-
 async function runWorker() {
   const abortController = new AbortController();
   const pending = new Map();
@@ -267,7 +240,7 @@ async function runWorker() {
 
   abortController.signal.addEventListener("abort", () => {
     for (const [id, request] of pending) {
-      if (request.action !== "control") continue;
+      if (request.action === "exec") continue;
       request.reject(new Error("Aborted"));
       pending.delete(id);
     }
@@ -419,7 +392,7 @@ async function runController() {
   }
 
   const abortController = new AbortController();
-  const controlAbortController = new AbortController();
+  const requestAbortController = new AbortController();
   let terminalMessageSeen = false;
   let workerExitCode = 1;
   let workerStderr = "";
@@ -443,7 +416,7 @@ async function runController() {
     sendControl({ type: "error", message });
   };
   const executePromptSerially = (message) => {
-    const current = promptQueue.then(() => executeWorkspacePrompt(message, abortController.signal));
+    const current = promptQueue.then(() => executeControllerRequest(message, requestAbortController.signal));
     promptQueue = current.then(() => undefined, () => undefined);
     return current;
   };
@@ -487,7 +460,7 @@ async function runController() {
       }
       pendingControlRequests += 1;
       try {
-        return await executeClankyControl(message, controlAbortController.signal);
+        return await executeControllerRequest(message, requestAbortController.signal);
       } finally {
         pendingControlRequests -= 1;
       }
@@ -497,7 +470,7 @@ async function runController() {
       : message.action === "prompt"
         ? executePromptSerially(message)
         : message.action === "exec"
-          ? executeWorkspaceCommand(message, abortController.signal)
+          ? executeWorkspaceCommand(message, requestAbortController.signal)
           : Promise.reject(new Error("Unknown runner request"));
     void operation.then(
       (value) => sendWorker({ type: "response", id: message.id, ok: true, value }),
@@ -512,11 +485,11 @@ async function runController() {
   worker.on("error", (error) => {
     finishWithError(errorMessage(error));
   });
-  worker.on("disconnect", () => controlAbortController.abort());
+  worker.on("disconnect", () => requestAbortController.abort());
 
   const onAbort = () => {
     abortController.abort();
-    controlAbortController.abort();
+    requestAbortController.abort();
     sendWorker({ type: "abort" });
     abortTimer = setTimeout(() => {
       try {
@@ -532,7 +505,7 @@ async function runController() {
   workerExitCode = await new Promise((resolve) => {
     worker.on("close", (code) => resolve(typeof code === "number" ? code : 1));
   });
-  controlAbortController.abort();
+  requestAbortController.abort();
   if (abortTimer) clearTimeout(abortTimer);
   process.off("SIGTERM", onAbort);
   process.off("SIGINT", onAbort);
@@ -590,7 +563,7 @@ export interface LaunchRunnerOptions {
   /** TypeScript source for the user module, executed by Node.js type stripping. */
   sourceCode: string;
   chatId: string;
-  credential?: ManagedRuntimeCredential;
+  control: ExecutionControlConnection;
   directory: string;
   signal: AbortSignal;
   output: DeterministicAgentOutput;
@@ -678,7 +651,7 @@ export async function launchDeterministicAgentOnHost(
     run,
     sourceCode,
     chatId,
-    credential,
+    control,
     directory,
     signal,
     output,
@@ -688,6 +661,7 @@ export async function launchDeterministicAgentOnHost(
   let tempDir: string | undefined;
   let executionError: unknown;
   const controlLifetime = new AbortController();
+  const executionSignal = AbortSignal.any([signal, controlLifetime.signal]);
   const controlRequests = new Map<string, { abort: AbortController; operation: Promise<void> }>();
   try {
     tempDir = await createHostTempDirectory(executor, directory, signal);
@@ -704,14 +678,6 @@ export async function launchDeterministicAgentOnHost(
     if (!codeOk) {
       throw new Error("Failed to write user code to workspace host");
     }
-
-    const runEnv: Record<string, string> = credential
-      ? {
-          CLANKY_BASE_URL: credential.baseUrl,
-          CLANKY_API_KEY: credential.token,
-          CLANKY_CHAT_ID: chatId,
-        }
-      : {};
 
     let lineBuffer = "";
     let runnerError: string | undefined;
@@ -732,28 +698,40 @@ export async function launchDeterministicAgentOnHost(
           continue;
         }
         switch (message.type) {
-          case "control": {
+          case "control":
+          case "prompt": {
             if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(message.id)
               || controlRequests.has(message.id) || controlRequests.size >= 128) {
               runnerError = "Invalid or excessive runner control requests";
+              controlLifetime.abort();
               break;
             }
             const abort = new AbortController();
-            const requestSignal = AbortSignal.any([signal, controlLifetime.signal, abort.signal]);
+            const requestSignal = AbortSignal.any([executionSignal, abort.signal]);
             const operation = (async () => {
-              let result: unknown;
+              let response: { ok: true; value: unknown } | { ok: false; error: string };
               try {
-                if (!credential) throw new Error("Execution-owned Clanky control is unavailable for this run.");
-                result = await requestControlTool({ credential: credential.token }, {
-                  operation: "call", name: message.name, input: message.input,
-                }, requestSignal);
+                if (message.type === "control") {
+                  let result: unknown;
+                  try {
+                    result = await requestControlTool(control, {
+                      operation: "call", name: message.name, input: message.input,
+                    }, requestSignal);
+                  } catch (error) {
+                    result = controlToolTransportFailure(error);
+                  }
+                  response = { ok: true, value: result };
+                } else {
+                  response = { ok: true, value: await promptDeterministicAgent(control.access, chatId, message.message, requestSignal) };
+                }
               } catch (error) {
-                result = controlToolTransportFailure(error);
+                log.error("Runner execution request failed", { runId: run.id, type: message.type, error: String(error) });
+                response = { ok: false, error: error instanceof Error ? error.message : "The execution request failed." };
               }
               if (requestSignal.aborted) return;
-              const responsePath = `${tempDir}/control-${message.id}.json`;
+              const responsePath = `${tempDir}/response-${message.id}.json`;
               const stagingPath = `${responsePath}.pending`;
-              if (!await executor.writeFile(stagingPath, JSON.stringify(result))) {
+              if (!await executor.writeFile(stagingPath, JSON.stringify(response))) {
                 throw new Error("Failed to write the runner control result on its execution host.");
               }
               const moved = await executor.movePath(stagingPath, responsePath);
@@ -761,11 +739,12 @@ export async function launchDeterministicAgentOnHost(
             })().catch((error: unknown) => {
               runnerError = "The runner control response could not be delivered; inspect the target before repeating a mutation.";
               log.error("Runner control response delivery failed", { runId: run.id, error: String(error) });
+              controlLifetime.abort();
             }).finally(() => { controlRequests.delete(message.id); });
             controlRequests.set(message.id, { abort, operation });
             break;
           }
-          case "control.cancel":
+          case "request.cancel":
             controlRequests.get(message.id)?.abort.abort();
             break;
           case "stdout":
@@ -791,8 +770,7 @@ export async function launchDeterministicAgentOnHost(
       [runnerPath, codePath],
       {
         cwd: directory,
-        env: runEnv,
-        signal,
+        signal: executionSignal,
         timeout: null,
         longRunning: true,
         logFailures: false,
@@ -808,11 +786,14 @@ export async function launchDeterministicAgentOnHost(
       }
     }
 
-    if (signal.aborted || runnerAborted) {
+    if (signal.aborted) {
       throw Object.assign(new Error("Deterministic agent run interrupted"), { cause: "aborted" });
     }
     if (runnerError) {
       throw new Error(runnerError);
+    }
+    if (runnerAborted) {
+      throw Object.assign(new Error("Deterministic agent run interrupted"), { cause: "aborted" });
     }
     if (!execResult.success) {
       const detail = execResult.stderr?.trim()

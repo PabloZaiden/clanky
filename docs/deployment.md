@@ -111,15 +111,21 @@ Clanky access** setting additionally permits in-scope cross-project and server
 control, within the user's existing permissions. It never grants account,
 API-key or session administration. Native tools, Live Voice, external MCP and
 deterministic programs share the application-control implementation; they do not
-need separate internal MCP servers. See [native control](control-chats.md) and
+need separate internal MCP servers or CLI credentials. The controller admits
+internal authority from the active execution source; native Mesh tools reuse
+the authenticated lease's event/RPC infrastructure without a return endpoint.
+See [native control](control-chats.md) and
 [Live Voice](voice.md#live-voice) for their client behavior.
 
 ACP model processes do not receive automatic Clanky control or CLI credentials,
 even when general access is enabled. Ordinary ACP chats and prompts still work.
-Deterministic code keeps its trusted runner control regardless of prompt
-adapter, without passing its key to ACP. Legacy nonterminal wildcard
-credentials are retired on startup; personal keys and interactive terminal
-behavior are unchanged.
+Deterministic code keeps its controller-owned control regardless of prompt
+adapter, without granting that authority to ACP. Old automatic nonterminal
+credentials are retired on startup; external integrations, personal keys and
+interactive terminal behavior are unchanged. Upgrade the controller and worker
+for lease-owned native control as described in
+[Mesh rollout](mesh-worker.md#execution-owned-control-tools); persisted pairing
+does not need to be recreated.
 
 External clients connect to **`https://clanky.example.com/mcp`** using Streamable
 HTTP. Set a stable `CLANKY_PUBLIC_BASE_URL`, preserve that origin through the

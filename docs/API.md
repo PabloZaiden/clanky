@@ -154,10 +154,11 @@ API keys and device tokens with limited scopes may access only routes declaring
 those scopes. Private routes without scopes and framework account/key/settings
 management require `*`. Browser sessions retain their normal authorization.
 
-Managed agent control keys are limited control credentials, not unrestricted
-CLI/raw REST credentials, even with general access. Prefer the provided native
-control tools or `ctx.clanky.call()`; do not bypass a `403` through CLI, key
-management or session endpoints. For external configuration, OAuth
+Internal native/deterministic control derives from the admitted execution,
+not CLI/raw REST credentials, even with general access. Use the provided native
+tools or `ctx.clanky.call()`; do not bypass a `403` through CLI, key management
+or session endpoints. External control credentials remain explicitly scoped.
+For external configuration, OAuth
 preregistration, service grants and human approval links, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
@@ -191,25 +192,30 @@ export default async function run(ctx) {
 }
 ```
 
-The trusted runner alone holds the temporary managed credential and calls the
-shared control endpoint. Its admitted project supplies control authority;
+The controller validates the run's active source, owner and admitted project;
+no temporary API key, base URL or CLI installation is needed on the host.
+The trusted runner forwards typed requests through the selected executor.
+Its admitted project supplies control authority;
 passing a workspace ID does not grant access. General access requires an
 explicit grant, and high-risk operations return `confirmation_required` /
 `not_executed` immediately rather than autoapproving or waiting for a browser
-or voice session. Treat these as pending, not completed operations. Control
-transport failures reject the call and are never retried automatically: inspect
-current state before retrying an uncertain mutation.
+or voice session. Treat these as pending, not completed operations. Tool
+results report explicit not-executed or uncertain transport outcomes; local
+validation and host response failures reject the call. Nothing is retried
+automatically: inspect current state before retrying an uncertain mutation.
 
 Control calls accept up to 256 KiB of request JSON and 1 MiB of result JSON, with
 a 30-second request deadline and cancellation through `ctx.signal`. The runner
 strips credentials and server configuration from both the user worker and
 `workspace.exec()` subprocess environments; neither the context nor control
-transport errors reveal them. `workspace.prompt()` retains its existing
-send/wait/cancel behavior and is scoped to the execution's exact chat. These
+transport errors reveal them. `workspace.prompt()` uses the same owned runner
+request protocol, not an HTTP API-key bridge. It retains send/wait/cancel
+behavior, waits for the conversation lifecycle rather than the tool deadline,
+and is scoped to the execution's exact chat. These
 restrictions apply to owner-started and collaborator-started runs alike.
 Direct `ctx.clanky.call()` access is independent of the selected prompt model
 or adapter: it remains available when `workspace.prompt()` uses ACP, without
-passing the runner's credential to the ACP subprocess.
+passing control authority to the ACP subprocess.
 
 ## Transcript snapshots
 

@@ -127,14 +127,14 @@ export const controlRoutes = defineRoutes({
   "/api/control/requests/:id": {
     auth: "user", sameOrigin: "mutations", scopes: [CLANKY_CONTROL_SCOPE],
     tags: ["control", CONTROL_INTERACTION_TAG],
-    description: "Read a bounded pending control request or its result. Agents can only inspect requests belonging to their original credential.",
+    description: "Read a bounded pending control request or its result. Agents can only inspect requests belonging to their original control grant.",
     operations: { GET: { responseSchema: ControlRequestSnapshotSchema, automation: { policy: "read" } } },
     async GET(req, ctx) {
       try {
         const api = control();
         if (ctx.auth.kind === "api-key") {
           const access = await api.access(req, ctx);
-          return Response.json(api.sessions.withCredential(access.grant.credentialId,
+          return Response.json(api.sessions.withGrant(access.grant.id,
             () => api.sessions.getRequest(ctx.params["id"]!)), { headers: NO_STORE });
         }
         if (ctx.auth.kind !== "server") api.requireHuman(req, ctx);

@@ -12,7 +12,7 @@ export async function requireControlChat(grant: ControlGrant, chatId: string): P
   const expected = grant.managedContext;
   const chat = await loadChatMetadata(chatId);
   if (!expected || !chat) {
-    throw new DomainError("control_origin_invalid", "Browser provenance requires the credential's actual managed chat.");
+    throw new DomainError("control_origin_invalid", "Chat provenance requires the execution's actual managed chat.");
   }
   const actual = await managedContextIdentityResolver.forChatSnapshot(chat, expected.workspaceId);
   if (actual.contextType !== expected.contextType || actual.contextId !== expected.contextId

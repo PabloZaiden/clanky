@@ -1,7 +1,7 @@
 import type { CurrentUser, WebAppUserRole } from "@pablozaiden/webapp/contracts";
 import { getDatabase } from "./database";
 
-function toCurrentUser(row: { id: string; username: string; role: WebAppUserRole }): CurrentUser {
+export function toCurrentUser(row: { id: string; username: string; role: WebAppUserRole }): CurrentUser {
   return {
     id: row.id,
     username: row.username,

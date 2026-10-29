@@ -6,49 +6,18 @@
  * Node.js type stripping in an isolated child process. A JSON control protocol on the runner
  * stdout delivers ctx.stdout/stderr writes; workspace.exec runs commands on the
  * host and returns results to the program without appending them to visible output.
- * workspace.prompt bridges to Clanky's chat via the /api/internal/agent-prompt
- * route; clanky.call uses the shared control endpoint. Only the trusted runner
- * receives the temporary scoped managed API key.
+ * The controller admits typed control and current-conversation prompt requests
+ * using this execution's authority. No API credentials are sent to the host.
  */
 
 import type { AgentRun } from "@/shared/agent";
 import type { ManagedContextIdentity } from "@/shared/context-api-key";
-import { AGENT_PROMPT_SCOPE, agentPromptChatScope } from "@/shared/context-api-key";
 import { backendManager } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
-import {
-  DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS,
-  DETERMINISTIC_AGENT_MANAGED_BY,
-  ManagedCredentialError,
-  managedCredentialService,
-  type ManagedRuntimeCredential,
-} from "./managed-credential-service";
+import { createExecutionControlConnection } from "./control-tool-transport";
 import { validateDeterministicAgentCode } from "./deterministic-agent-code";
 import { DeterministicAgentOutput } from "./deterministic-agent-output";
 import { assertNodeVersionOnHost, launchDeterministicAgentOnHost } from "./deterministic-agent-runner";
-import { createLogger } from "@pablozaiden/webapp/server";
-
-const log = createLogger("deterministic-agent-runtime");
-
-async function revokeCredentialWithRetry(credential: ManagedRuntimeCredential): Promise<void> {
-  try {
-    await managedCredentialService.revokeCredential(credential);
-  } catch (firstError) {
-    try {
-      await managedCredentialService.revokeCredential(credential);
-    } catch (secondError) {
-      throw new AggregateError(
-        [firstError, secondError],
-        "Failed to revoke deterministic agent runtime credential",
-      );
-    }
-  }
-}
-
-function isOptionalCredentialUnavailable(error: unknown): error is ManagedCredentialError {
-  return error instanceof ManagedCredentialError
-    && error.code === "managed_context_not_configured";
-}
 
 export interface DeterministicAgentRuntimeOptions {
   run: AgentRun;
@@ -75,73 +44,11 @@ export async function executeDeterministicAgent(
     throw new Error(diagnostics.map((diagnostic) => diagnostic.message).join("\n"));
   }
 
-  // Get the base executor (no managed env wrapping — env vars are passed explicitly).
   const executor = await backendManager.getCommandExecutorAsync(workspaceId, directory);
-
-  // Verify that the workspace host has a supported Node.js version.
   await assertNodeVersionOnHost(executor);
-
-  // The credential service adds project control scopes for this managed origin;
-  // the prompt bridge additionally requires this run's exact chat scope.
-  let credential: ManagedRuntimeCredential | undefined;
-  let executionError: unknown;
-  try {
-    try {
-      credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate", {
-        managedBy: DETERMINISTIC_AGENT_MANAGED_BY,
-        name: "Clanky deterministic agent runtime",
-        scopes: [AGENT_PROMPT_SCOPE, agentPromptChatScope(chatId)],
-        expiresAt: new Date(Date.now() + DETERMINISTIC_AGENT_CREDENTIAL_TTL_MS).toISOString(),
-        // Project control and this chat's prompt bridge do not require general
-        // CLI access. General control authority still requires an explicit grant.
-        allowWhenWorkspaceDisabled: true,
-      });
-    } catch (error) {
-      if (!isOptionalCredentialUnavailable(error)) {
-        throw error;
-      }
-      log.debug("Deterministic runtime credentials are not configured", {
-        runId: run.id,
-        reason: error.code,
-      });
-    }
-    if (signal.aborted) {
-      throw Object.assign(
-        new Error("Deterministic agent run interrupted"),
-        { cause: "aborted" },
-      );
-    }
-
-    return await launchDeterministicAgentOnHost({
-      run,
-      sourceCode: code,
-      chatId,
-      credential,
-      directory,
-      signal,
-      output,
-      executor,
-    });
-  } catch (error) {
-    executionError = error;
-    throw error;
-  } finally {
-    if (credential) {
-      try {
-        await revokeCredentialWithRetry(credential);
-      } catch (revokeError) {
-        log.error("Failed to revoke deterministic agent runtime credential", {
-          runId: run.id,
-          error: String(revokeError),
-        });
-        if (executionError !== undefined) {
-          throw new AggregateError(
-            [executionError, revokeError],
-            "Deterministic agent execution and credential cleanup failed",
-          );
-        }
-        throw revokeError;
-      }
-    }
-  }
+  const control = await createExecutionControlConnection(identity);
+  if (signal.aborted) throw new Error("Deterministic agent run interrupted", { cause: "aborted" });
+  return await launchDeterministicAgentOnHost({
+    run, sourceCode: code, chatId, control, directory, signal, output, executor,
+  });
 }
