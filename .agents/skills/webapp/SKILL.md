@@ -20,6 +20,10 @@ macOS CLI/controller.
 Native app icons are separate from web favicons: both Apple targets use the
 shared Xcode `AppIcon` catalog generated from `src/logo.png`. Follow the Apple
 guide's regeneration instructions when changing the logo.
+The framework mobile drawer applies at 800 CSS pixels and below; wider viewports
+use the desktop shell, including compact unfolded displays. Coordinate with its
+exported breakpoint and root mobile marker rather than adding a device-specific
+threshold. Sidebar width and safe-area clearance remain independent.
 The asset listener's origin belongs to the installation: allocate an available
 port on first use and persist it, then inject that origin into browser and
 native presentation guards. Do not silently rotate it on restart or fall back
