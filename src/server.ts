@@ -5,7 +5,7 @@
 import type { Server } from "bun";
 import { homedir } from "node:os";
 import { CLANKY_WEB_OPTIONS } from "./web-client-options";
-import { createWebAppServer, createRouteCatalog, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
 import {
   meshControllerInternalRoutes,
@@ -624,7 +624,7 @@ export async function getWebAppServer(
   let controlBaseUrl = controlRuntime.publicBaseUrl
     ?? getLocalManagedCredentialBaseUrl(controlRuntime.host, controlRuntime.port);
   const controlServer = meshWorker ? undefined : new ControlServer({
-    store, catalog: createRouteCatalog(routes), getBaseUrl: () => controlBaseUrl,
+    store, getBaseUrl: () => controlBaseUrl,
   });
   app = createWebAppServer<ClankyRealtimeEvent>({
     appName: "Clanky",
@@ -752,7 +752,7 @@ export async function getWebAppServer(
       runtimeChanged: (runtime) => workspaceRealtimeSources.update(runtime),
       runtimeStopped: (connectionId) => workspaceRealtimeSources.remove(connectionId),
     });
-    liveVoiceManager.configure(new ClankyOperationService(createRouteCatalog(routes)));
+    liveVoiceManager.configure(new ClankyOperationService(app.routeCatalog));
     configureLiveVoiceApi((req, ctx) => createVoiceOperationAuthority(appServer, req, ctx));
     registerClankyRealtimeBridge(app);
   }

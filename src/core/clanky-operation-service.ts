@@ -17,6 +17,8 @@ import { contentReadPage, readBytes, readRevision, DEFAULT_READ_BYTES } from "..
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";
 
 export const CONTROL_READ_BYTES = DEFAULT_READ_BYTES;
+// Leave room for JSON escaping inside the existing Live output envelope.
+const OPERATION_INDEX_BYTES = 24_000;
 
 export interface OperationRequest {
   method: HttpMethod;
@@ -124,7 +126,13 @@ export class ClankyOperationService {
 
   constructor(private readonly catalog: readonly RouteCatalogEntry[]) {
     for (const entry of catalog) {
-      for (const method of entry.methods) this.operations.set(`${method} ${entry.path}`, { entry, method });
+      for (const method of entry.methods) {
+        const automation = resolveRouteOperation(entry, method).automation;
+        if (automation.policy === "excluded" && !automation.reason) {
+          throw new Error(`Declare an automation policy or explicit exclusion reason for ${method} ${entry.path}.`);
+        }
+        this.operations.set(`${method} ${entry.path}`, { entry, method });
+      }
     }
   }
 
@@ -140,13 +148,38 @@ export class ClankyOperationService {
     return { ...operation, metadata };
   }
 
+  private *authorizedOperations(authority: OperationAuthority) {
+    for (const [id, { entry, method }] of this.operations) {
+      const metadata = resolveRouteOperation(entry, method);
+      if (metadata.automation.policy !== "excluded" && authority.allows(entry, method)) {
+        yield { id, entry, method, metadata };
+      }
+    }
+  }
+
+  list(authority: OperationAuthority) {
+    const entries = [...this.authorizedOperations(authority)];
+    for (let descriptionLength = 80; descriptionLength >= 10; descriptionLength = Math.floor(descriptionLength / 2)) {
+      const result = {
+        columns: ["operationId", "policy", "description"],
+        operations: entries.map(({ id, entry, metadata }) => {
+          const description = metadata.description ?? entry.description ?? id;
+          return [id, metadata.automation.policy, description.length > descriptionLength
+            ? `${description.slice(0, descriptionLength - 3)}...` : description];
+        }),
+        total: entries.length,
+      };
+      if (readBytes(result) <= OPERATION_INDEX_BYTES) return result;
+    }
+    throw new DomainError("control_operation_index_too_large",
+      "The complete operation index exceeds its delivery limit. Use filtered operation discovery.");
+  }
+
   find(authority: OperationAuthority, input: { text: string; domain: string | null; method: HttpMethod | null; cursor: number | null }, maxBytes = CONTROL_READ_BYTES) {
     const words = input.text.toLowerCase().split(/\s+/).filter(Boolean);
-    const entries = [...this.operations].flatMap(([id, { entry, method }]) => {
-      const metadata = resolveRouteOperation(entry, method);
-      const policy = metadata.automation?.policy;
-      if (!policy || policy === "excluded" || !authority.allows(entry, method)
-        || input.method && method !== input.method
+    const entries = [...this.authorizedOperations(authority)].flatMap(({ id, entry, method, metadata }) => {
+      const policy = metadata.automation.policy;
+      if (input.method && method !== input.method
         || input.domain && ![entry.path, ...entry.tags].some((value) => value.includes(input.domain!))) return [];
       const description = metadata.description ?? `${method} ${entry.path}`;
       const searchable = `${entry.path} ${entry.tags.join(" ")} ${description}`.toLowerCase();

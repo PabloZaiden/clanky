@@ -95,7 +95,7 @@ const voiceBaseRoutes = defineRoutes({
       GET: {
         requestSchema: undefined,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Voice provider credential configuration is managed privately in settings." },
+        automation: { policy: "read" },
       },
       PUT: {
         requestSchema: VoiceSettingsUpdateSchema,

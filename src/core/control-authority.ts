@@ -22,7 +22,6 @@ import { collaborationService } from "./collaboration-service";
 import { requireBoundWorkspaceResource } from "./workspace-operation-authority";
 import type { OperationAuthority, OperationRequest, OperationResult, PreparedOperation } from "./clanky-operation-service";
 
-export const CONTROL_RESOURCE_TAG = "clanky-control-resource";
 export const CONTROL_INTERACTION_TAG = "clanky-control-interaction";
 const WORKSPACE_RESOURCES = new Set(["chat", "task", "workspace", "review-comment"]);
 
@@ -150,7 +149,6 @@ export class ControlOperationAuthority implements OperationAuthority {
     const metadata = resolveRouteOperation(entry, method);
     if (!metadata.automation || metadata.automation.policy === "excluded") return false;
     if (entry.tags.includes(CONTROL_INTERACTION_TAG)) return metadata.automation.policy === "read";
-    if (!entry.tags.includes(CONTROL_RESOURCE_TAG)) return false;
     if (!this.workspaceId) return this.options.grant.general && this.current.general;
     const delegation = metadata.delegation;
     return !!delegation && WORKSPACE_RESOURCES.has(delegation.resource)

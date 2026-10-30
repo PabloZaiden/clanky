@@ -49,14 +49,7 @@ import { taskCreationContextRoutes } from "./task-creation-context";
 import { withResourceReads } from "./resource-reads";
 import { collaborationRoutes, workspaceClientInternalRoutes } from "./collaboration";
 import { withUnifiedWorkspaceResources } from "./workspace-federation";
-import { CONTROL_RESOURCE_TAG } from "../core/control-authority";
 import { controlRoutes } from "./control";
-
-function controlResources(routes: RouteTable): RouteTable {
-  return Object.fromEntries(Object.entries(routes).map(([path, route]) => [
-    path, { ...route, tags: [...new Set([...(route.tags ?? []), CONTROL_RESOURCE_TAG])] },
-  ]));
-}
 
 /**
  * All API routes combined.
@@ -65,29 +58,29 @@ function controlResources(routes: RouteTable): RouteTable {
  * realtime endpoint is also registered by the webapp server.
  */
 export const nativeApiRoutes = {
-  ...controlResources(tasksRoutes),
-  ...controlResources(modelsAndPreferencesRoutes),
+  ...tasksRoutes,
+  ...modelsAndPreferencesRoutes,
   ...settingsRoutes,
   ...gitRoutes,
-  ...controlResources(workspacesRoutes),
-  ...controlResources(sshServersRoutes),
+  ...workspacesRoutes,
+  ...sshServersRoutes,
   ...terminalSessionsRoutes,
-  ...controlResources(provisioningRoutes),
+  ...provisioningRoutes,
   ...workerUpdateRoutes,
-  ...controlResources(chatsRoutes),
-  ...controlResources(trashRoutes),
+  ...chatsRoutes,
+  ...trashRoutes,
   ...agentsRoutes,
   ...previewRoutes,
   ...meshRoutes,
   ...meshRelayRoutes,
   ...workspaceWorkerEnrollmentRoutes,
-  ...controlResources(executionHostRoutes),
-  ...controlResources(executionHostFilesRoutes),
+  ...executionHostRoutes,
+  ...executionHostFilesRoutes,
   ...voiceRoutes,
   ...liveVoiceRoutes,
   ...controlUiActionRoutes,
   ...controlRoutes,
-  ...controlResources(taskCreationContextRoutes),
+  ...taskCreationContextRoutes,
   ...collaborationRoutes,
 };
 

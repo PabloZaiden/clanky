@@ -56,6 +56,11 @@ interface RequestSnapshot {
   result?: Record<string, unknown>;
 }
 interface OAuthGrant { id: string; clientId: string; resource: string; scopes: string[] }
+interface OperationIndex {
+  columns: ["operationId", "policy", "description"];
+  operations: Array<[string, string, string]>;
+  total: number;
+}
 
 const COMMON_TOOLS = [
   "clanky_recent_work", "clanky_waiting_work", "clanky_list_chats", "clanky_read_chat",
@@ -63,7 +68,7 @@ const COMMON_TOOLS = [
   "clanky_interrupt_chat", "clanky_update_chat_lifecycle", "clanky_respond_chat_interaction",
   "clanky_list_tasks", "clanky_read_task", "clanky_create_task", "clanky_instruct_task",
   "clanky_control_task", "clanky_review_task_plan", "clanky_finish_task", "clanky_list_workspaces",
-  "clanky_list_servers", "clanky_create_workspace", "clanky_find_operations",
+  "clanky_list_servers", "clanky_create_workspace", "clanky_list_operations", "clanky_find_operations",
   "clanky_describe_operation", "clanky_execute_operation",
 ].sort();
 const WORKSPACE_TOOLS = COMMON_TOOLS.filter((name) =>
@@ -334,6 +339,46 @@ test("external MCP integrations receive explicit human grants, isolated control 
     const generalTools = (await generalClient.listTools(undefined, MCP_REQUEST)).tools;
     expect(projectTools.map(({ name }) => name).sort()).toEqual(WORKSPACE_TOOLS);
     expect(generalTools.map(({ name }) => name).sort()).toEqual(COMMON_TOOLS);
+    const index = await call<OperationIndex>(generalClient, "clanky_list_operations", {});
+    expect(index.columns).toEqual(["operationId", "policy", "description"]);
+    expect(index.total).toBe(index.operations.length);
+    const operationIds = index.operations.map(([id]) => id);
+    const discovered: string[] = [];
+    let cursor: number | null = null;
+    do {
+      const page: { operations: Array<{ operationId: string }>; nextCursor: number | null } = await call(
+        generalClient, "clanky_find_operations", { text: "", domain: null, method: null, cursor },
+      );
+      discovered.push(...page.operations.map(({ operationId }) => operationId));
+      cursor = page.nextCursor;
+    } while (cursor !== null);
+    expect(operationIds).toEqual(discovered);
+    expect(operationIds).toEqual(expect.arrayContaining([
+      "GET /api/health", "GET /api/config", "GET /api/git/branches",
+      "GET /api/agents", "GET /api/terminal-sessions", "GET /api/previews",
+      "GET /api/mesh/status", "GET /api/voice/settings", "GET /api/mesh/relay",
+      "POST /api/settings/purge-terminal-tasks",
+    ]));
+    for (const excluded of [
+      "POST /api/control/credentials", "POST /api/control/requests/:id/decision",
+      "POST /api/collaboration/invitations", "POST /api/collaboration/connections",
+      "POST /api/mesh/enrollment-tokens", "PUT /api/voice/settings",
+    ]) expect(operationIds).not.toContain(excluded);
+    const projectIndex = await call<OperationIndex>(projectClient, "clanky_list_operations", {});
+    expect(projectIndex.operations.map(([id]) => id)).not.toContain("GET /api/health");
+    const diagnostic = await call<{ policy: string }>(generalClient, "clanky_describe_operation", {
+      operationId: "GET /api/health",
+    });
+    expect(diagnostic.policy).toBe("read");
+    expect(await execute(generalClient, "GET /api/health")).toMatchObject({
+      ok: true, completion: "completed", data: await humanJson("/api/health"),
+    });
+    const branches = await call<{ ok: boolean; data: unknown }>(generalClient, "clanky_execute_operation", {
+      operationId: "GET /api/git/branches", parameters: [],
+      query: [{ name: "workspaceId", value: first.id }], bodyJson: null, confirmationDescription: null,
+    });
+    expect(branches.ok).toBe(true);
+    expect(JSON.stringify(branches.data)).toContain(firstGit.branch);
     const nativeTools = (await application.json<{ tools: ToolDefinition[] }>("/api/control/tools", {
       apiKey: scoped.token,
     })).data.tools;

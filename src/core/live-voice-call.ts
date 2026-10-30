@@ -249,7 +249,10 @@ export class LiveVoiceCall {
     const operation = (async () => {
       let outcome: Parameters<typeof completeTiming>[0] = { ok: false };
       try {
-        let result = await executeLiveVoiceTool({
+        let result = name === "clanky_list_operations" && itemBytes < LIVE_TOOL_BATCH_BYTES ? {
+          ok: false, code: "voice_operation_index_requires_standalone_call", completion: "not_executed",
+          message: "Call clanky_list_operations alone to receive the complete index within the Live output budget.",
+        } : await executeLiveVoiceTool({
           service: this.scope.service, actions: this.actions, observer: this.observer,
           requestId: callId, name, rawArguments: args, maxReadBytes: readBytes,
           onIntention: (intention) => this.setProcessing(true, intention),

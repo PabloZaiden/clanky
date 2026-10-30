@@ -30,7 +30,7 @@ export const meshRelayRoutes = defineRoutes({
     cliPath: "mesh/relay",
     description: "Inspect or pair named Mesh relays for this controller.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh relay pairing and trust configuration are managed outside model operations." } },
+      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
       POST: { requestSchema: PairControllerRelayRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Establishes Mesh relay trust; pairing is managed outside model operations." } },
     },
     tags: ["mesh", "relay"],

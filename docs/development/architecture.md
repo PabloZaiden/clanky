@@ -99,6 +99,14 @@ administration. General grants stay within the real user's in-scope authority,
 not wildcard scopes or a fabricated owner. Enforce the immutable grant ceiling
 and current source authorization for discovery, referenced resources and every
 dispatch, including after approval or private credential entry.
+General control uses canonical automation policies and explicit exclusions,
+not a second module/tag allowlist. Every catalogued method must declare a
+read/write/confirmation policy or an exclusion reason; missing classification
+fails initialization instead of silently hiding a new operation. The running
+framework's operational catalog is shared with control, including health and
+configuration, while private authentication protocols remain outside it.
+The compact single-call index uses the same authority as filtered discovery
+and execution; abbreviated descriptions never replace exact input contracts.
 Internal admission identity stays stable across transport reconnects only for
 the same source, permission ceiling and execution-host binding. Domain-owned
 pending requests must not be lost merely because a lease reconnects.

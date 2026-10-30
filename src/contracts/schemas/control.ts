@@ -13,7 +13,7 @@ export const ControlToolsQuerySchema = z.object({ chatId: z.string().min(1).max(
 export const ControlToolsResponseSchema = z.object({
   tools: z.array(z.object({
     name: z.string(), description: z.string(), inputSchema: z.record(z.string(), z.unknown()),
-  }).strict()).max(25),
+  }).strict()).max(26),
 }).strict();
 export type ControlToolDefinition = z.infer<typeof ControlToolsResponseSchema>["tools"][number];
 

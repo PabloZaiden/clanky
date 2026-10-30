@@ -32,6 +32,9 @@ export async function executeControlTool(options: {
     if (isControlUiToolName(name)) return await executeControlUiTool(context, name, input);
     if (isDirectToolName(name)) return await executeDirectControlTool(context, name, input);
     switch (name) {
+      case "clanky_list_operations":
+        controlToolSchemas.clanky_list_operations.parse(input);
+        return service.list(actions.authority);
       case "clanky_find_operations":
         return service.find(actions.authority, controlToolSchemas.clanky_find_operations.parse(input), maxBytes);
       case "clanky_describe_operation": {

@@ -72,7 +72,7 @@ and browser media are not ordinary JSON assistant operations.
 
 The application-control contracts and execution are shared with native agents,
 external MCP clients and deterministic programs. Live keeps its existing
-27-tool surface: 23 application tools plus UI context, UI actions, selective
+28-tool surface: 24 application tools plus UI context, UI actions, selective
 watching and goodbye. Direct common requests add no mandatory discovery/model
 rounds and do not go through MCP. Visual approval, private SSH handoff and
 voice-specific result/presentation budgets retain their existing behavior.
@@ -274,9 +274,18 @@ occupy one mutation queue slot through the navigation acknowledgement. Other
 queued writes wait until the compound action completes or fails. Stages return
 their outcomes, including partial failure; they are never replayed.
 
-The session has **27 tools**: these twenty-two direct intents, the existing
-selective `watch_work`, the three generic find/describe/execute tools for
+The session has **28 tools**: these twenty-two direct intents, the existing
+selective `watch_work`, the four generic list/find/describe/execute tools for
 uncovered intents, and the `clanky_accept_goodbye` lifecycle tool.
+For an uncovered intent, call `clanky_list_operations` alone to receive the
+complete authorized compact index in one result, then describe the selected
+operation's exact contract before executing it. The index abbreviates
+descriptions, not the set of operations, and fits the existing Live output
+budget. Mixing it with other calls returns an explicit request to call it alone;
+it never silently substitutes a paged catalog. Reuse the index instead of
+repeated keyword searches. This also exposes framework health/version and other
+ordinary operations within the user's real permissions; private authentication
+and credential protocols remain excluded.
 Direct tools skip model-side discovery, not authorization, credential exchange
 or visual approval. API results distinguish completed operations from admitted or
 queued background work. Entity navigation refreshes its shell data and reports
