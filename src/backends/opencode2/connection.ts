@@ -12,6 +12,7 @@ import { OpenCodeSessionService } from "./session-service";
 import { OpenCodeControl } from "./control";
 import { OpenCodeQuestionCoordinator } from "./question-coordinator";
 import { OpenCodeControlTools } from "./control-tools";
+import { SecretCoordinator } from "../secret-coordinator";
 
 const log = createLogger("opencode2-connection");
 
@@ -23,6 +24,7 @@ interface ConnectedServices {
   sessions: OpenCodeSessionService;
   questions: OpenCodeQuestionCoordinator;
   controlTools: OpenCodeControlTools;
+  secrets: SecretCoordinator;
 }
 
 export class OpenCodeConnection {
@@ -44,7 +46,8 @@ export class OpenCodeConnection {
     if (signal?.aborted) abort();
     this.opening = (async () => {
       await this.closing;
-      const controlTools = new OpenCodeControlTools(config.control);
+      const secrets = new SecretCoordinator(this.events);
+      const controlTools = new OpenCodeControlTools(secrets, config.control);
       let runtime: OpenCodeRuntime;
       try {
         const env = await controlTools.open({ ...config.env, ...config.managedEnvironment }, this.startupAbort?.signal);
@@ -66,7 +69,7 @@ export class OpenCodeConnection {
           log.error("Native connection cleanup after runtime failure failed", { error: String(cleanupError) });
         });
       });
-      this.services = { runtime, client, directory, catalog, sessions, questions, controlTools };
+      this.services = { runtime, client, directory, catalog, sessions, questions, controlTools, secrets };
     })().finally(() => {
       this.startupAbort = undefined;
       this.opening = undefined;

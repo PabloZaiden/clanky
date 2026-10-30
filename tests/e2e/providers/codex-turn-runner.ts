@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { readCodexImageReceipts } from "./image-input";
 import { createPng } from "../support/png-fixtures";
 import { inspectAttachedFiles } from "./file-input";
+import { SECRET_TOOL, consumeSecretFile, secretRequest, secretUnavailable } from "./secret-file";
 import {
   BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
 } from "./background-work";
@@ -55,16 +56,17 @@ function readToolText(value: unknown): { contentItems: unknown[]; success: boole
 async function runWorkspaceListTool(
   active: ActiveTurn,
   rpc: CodexJsonRpcSession,
+  tool = TOOL_NAME,
+  argumentsValue: Record<string, unknown> = {},
 ): Promise<string> {
   const { thread, turn } = active;
   const callId = randomUUID();
-  const argumentsValue = {};
   const startedAtMs = Date.now();
   const toolItem = {
     type: "dynamicToolCall",
     id: callId,
     namespace: null,
-    tool: TOOL_NAME,
+    tool,
     arguments: argumentsValue,
     status: "inProgress",
     contentItems: null,
@@ -82,7 +84,7 @@ async function runWorkspaceListTool(
     turnId: turn.id,
     callId,
     namespace: null,
-    tool: TOOL_NAME,
+    tool,
     arguments: argumentsValue,
   });
   const toolResult = readToolText(response.result);
@@ -101,7 +103,8 @@ async function runWorkspaceListTool(
     turnId: turn.id,
     completedAtMs: Date.now(),
   });
-  return `Clanky workspace list: ${toolResult.text}`;
+  return tool === SECRET_TOOL ? await consumeSecretFile(JSON.parse(toolResult.text))
+    : `Clanky workspace list: ${toolResult.text}`;
 }
 
 function emitAssistantMessage(active: ActiveTurn, text: string, rpc: CodexJsonRpcSession): void {
@@ -184,6 +187,17 @@ export async function runCodexTurn(
         )
       : [],
   ).join("\n");
+  const secret = secretRequest(prompt);
+  if (secret) {
+    const available = thread.dynamicTools.some((tool) => isRecord(tool) && tool["name"] === SECRET_TOOL);
+    const text = available ? await runWorkspaceListTool(active, rpc, SECRET_TOOL, secret)
+      : await secretUnavailable(prompt, thread.cwd);
+    if (turn.status !== "inProgress") return;
+    emitAssistantMessage(active, text, rpc);
+    await store.completeTurn(active);
+    notifyCodexTurnCompleted(active, rpc);
+    return;
+  }
   const delegated = backgroundWork(prompt);
   if (delegated) {
     const childThread = await store.createThread({ cwd: thread.cwd, parentThreadId: thread.id }, thread.model);

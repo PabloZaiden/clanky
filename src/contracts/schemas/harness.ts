@@ -16,6 +16,7 @@ export const HarnessConversationBindingSchema = z.object({
   directory: z.string().min(1),
   executionHost: ExecutionHostBindingSchema.optional(),
   questionPolicy: z.enum(["interactive", "unattended"]).optional(),
+  secretFiles: z.literal(1).optional(),
   controlTools: z.boolean().optional(),
   controlChatId: z.string().min(1).max(500).optional(),
 });
@@ -123,6 +124,7 @@ export const HarnessConversationStateSchema = z.object({
     stopScopes: z.array(z.enum(["child-execution", "command"])),
     questionPolicy: z.literal("session").optional(),
     clankyControlTools: z.boolean().optional(),
+    secretFiles: z.literal(1).optional(),
     history: z.literal("completed").optional(),
     subagentHistory: z.literal("completed").optional(),
     usage: z.literal("tokens").optional(),
@@ -159,6 +161,7 @@ export const HarnessConversationStateSchema = z.object({
     scope: HarnessEventScopeSchema, questions: z.array(HarnessQuestionInfoSchema).min(1).max(100),
     blocking: z.boolean(),
     responseMode: z.enum(["callback", "message"]).optional(),
+    secretIdentifier: z.string().min(1).max(128).optional(),
     status: HarnessQuestionStatusSchema,
     createdAt: z.string(), resolvedAt: z.string().optional(),
     answers: z.array(z.array(z.string().max(10_000)).max(100)).max(100).optional(),

@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { createLogger, defineRoutes, getRequestOriginInfo, readRuntimeConfig } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import {
   ReplyToChatPermissionRequestSchema,
@@ -9,10 +9,53 @@ import { errorResponse, internalErrorResponse, successResponse } from "../helper
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { ReplyToChatQuestionRequestSchema } from "@/contracts/schemas/harness";
+import { ReplyToSecretSchema } from "@/contracts/schemas/harness-secret";
+import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
+import { isDomainError } from "../../domain/domain-error";
 
 const log = createLogger("api:chats");
 
+function privateSecretResponse(response: Response): Response {
+  response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
+}
+
 export const chatsMessagingRoutes = defineRoutes({
+  "/api/chats/:id/secrets/:requestId": {
+    auth: "user",
+    sameOrigin: "always",
+    description: "Supply or decline a private secret using a real browser passkey session. Never records a chat answer.",
+    tags: ["chats"],
+    operations: {
+      POST: {
+        requestSchema: ReplyToSecretSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Private human-only secret entry; never an agent operation." },
+      },
+    },
+    async POST(req, ctx): Promise<Response> {
+      const config = readRuntimeConfig({ appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky" });
+      if (ctx.auth.kind !== "passkey" || config.passkeyDisabled
+        || req.headers.get("origin") !== getRequestOriginInfo(req, config).origin) {
+        return privateSecretResponse(errorResponse("secret_human_required", "Sign in with a browser passkey session to supply a secret.", 403));
+      }
+      const validation = await parseAndValidate(ReplyToSecretSchema, req, { maxBodyBytes: SECRET_MAX_BYTES * 6 + 1024 });
+      if (!validation.success) {
+        return privateSecretResponse(errorResponse("invalid_secret_response", "Provide a nonempty secret of at most 64 KiB, or decline.", 400));
+      }
+      try {
+        const chat = await chatManager.replyToSecret(ctx.params["id"]!, ctx.params["requestId"]!, validation.data.value);
+        return privateSecretResponse(successResponse({ chat: await toLightweightChat(chat) }));
+      } catch (error) {
+        const known = chatActionErrorResponse(error);
+        log[known && known.status < 500 ? "warn" : "error"]("Private secret delivery failed", {
+          code: isDomainError(error) ? error.code : "secret_reply_failed",
+        });
+        return privateSecretResponse(known ?? errorResponse("secret_reply_failed", "The private secret could not be delivered.", 500));
+      }
+    },
+  },
   "/api/chats/:id/questions/:requestId": {
     delegation: workspaceOperation("chat"),
     auth: "user",

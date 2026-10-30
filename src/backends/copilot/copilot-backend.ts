@@ -80,6 +80,9 @@ export class CopilotBackend implements Backend {
   async replyToQuestion(requestId: string, answers: string[][]): Promise<void> {
     this.connection.requireServices().questions.reply(requestId, answers);
   }
+  replyToSecret(requestId: string, value: string | null): Promise<void> {
+    return this.connection.requireServices().sessions.secrets.reply(requestId, value);
+  }
   async setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
     const { sessions } = this.connection.requireServices();
     if (configId === "model") return sessions.setModel(sessionId, value);

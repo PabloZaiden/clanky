@@ -346,6 +346,10 @@ export class ChatManager {
     return this.services.interaction.replyToQuestion(chatId, requestId, reply);
   }
 
+  replyToSecret(chatId: string, requestId: string, value: string | null): Promise<Chat> {
+    return this.services.interaction.replyToSecret(chatId, requestId, value);
+  }
+
   async deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean> {
     return this.services.lifecycle.deleteChat(chatId, options);
   }

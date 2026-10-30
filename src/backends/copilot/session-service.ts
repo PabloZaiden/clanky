@@ -17,6 +17,7 @@ import type { CopilotRuntime } from "./runtime";
 import type { CopilotModelCatalog } from "./model-catalog";
 import type { CopilotQuestionCoordinator } from "./question-coordinator";
 import { settleCopilotWork } from "./work-service";
+import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
 
 interface Conversation {
   native: CopilotSession;
@@ -46,6 +47,7 @@ export class CopilotSessionService {
   private readonly questions: CopilotQuestionCoordinator;
   private readonly control?: ControlToolConnection;
   private controlTools?: ClankyControlToolService;
+  readonly secrets: SecretCoordinator;
 
   constructor(dependencies: SessionServiceDependencies) {
     this.runtime = dependencies.runtime;
@@ -53,6 +55,7 @@ export class CopilotSessionService {
     this.events = dependencies.events;
     this.questions = dependencies.questions;
     this.control = dependencies.control;
+    this.secrets = new SecretCoordinator(this.events);
   }
 
   create(options: CreateSessionOptions): Promise<AgentSession> {
@@ -72,7 +75,7 @@ export class CopilotSessionService {
       excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
-      ...(options.ownership.controlTools ? { tools: await this.nativeControlTools(options.ownership.controlChatId) } : {}),
+      tools: await this.nativeTools(options.ownership),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -124,7 +127,7 @@ export class CopilotSessionService {
       excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(binding.questionPolicy),
-      ...(binding.controlTools ? { tools: await this.nativeControlTools(binding.controlChatId) } : {}),
+      tools: await this.nativeTools(binding),
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();
@@ -287,9 +290,9 @@ export class CopilotSessionService {
     const binding = conversation.info.binding;
     if (binding?.controlTools !== true) {
       if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
-      return;
+      if (binding?.questionPolicy !== "interactive") return;
     }
-    if (context && (context.chatId !== binding.controlChatId || !context.workspaceId || !context.turnId)) {
+    if (context && (context.chatId !== binding?.controlChatId || !context.workspaceId || !context.turnId)) {
       throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
     }
     if (conversation.activeControlTurn) {
@@ -301,6 +304,29 @@ export class CopilotSessionService {
   private endControlTurn(conversation: Conversation): void {
     conversation.activeControlTurn?.abort.abort();
     conversation.activeControlTurn = undefined;
+    this.secrets.cancel(conversation.info.id);
+  }
+
+  private async nativeTools(binding: Pick<HarnessConversationBinding, "controlTools" | "controlChatId" | "questionPolicy" | "secretFiles">): Promise<Tool[]> {
+    const tools = binding.controlTools ? await this.nativeControlTools(binding.controlChatId) : [];
+    if (binding.questionPolicy === "interactive" && binding.secretFiles === 1) tools.push({
+      name: secretToolDefinition.name,
+      description: secretToolDefinition.description,
+      parameters: secretToolDefinition.inputSchema,
+      skipPermission: true,
+      handler: async (input, invocation) => {
+        const conversation = this.conversations.get(invocation.sessionId);
+        const active = conversation?.activeControlTurn;
+        const binding = conversation?.info.binding;
+        if (!binding || !active || invocation.agentId || this.closing) {
+          throw new HarnessError("harness_session_not_owned", "Secret requests require an active interactive root conversation.");
+        }
+        return await this.secrets.request(binding, input, AbortSignal.any([
+          active.abort.signal, ...(invocation.signal ? [invocation.signal] : []),
+        ]));
+      },
+    });
+    return tools;
   }
 
   private async nativeControlTools(chatId?: string): Promise<Tool[]> {

@@ -17,7 +17,7 @@ interface PendingClientRequest {
   turnId: string;
   reject: (error: Error) => void;
   resolve: (message: JsonRpcMessage) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
 }
 
 const CLIENT_REQUEST_TIMEOUT_MS = 5_000;
@@ -84,7 +84,9 @@ export class CodexJsonRpcSession {
   ): Promise<JsonRpcMessage> {
     const id = `clanky-tool-${String(++this.nextRequestId)}`;
     return new Promise<JsonRpcMessage>((resolvePromise, rejectPromise) => {
-      const timer = setTimeout(() => {
+      const waitingForHuman = method === "item/tool/requestUserInput"
+        || method === "item/tool/call" && params["tool"] === "clanky_request_secret";
+      const timer = waitingForHuman ? undefined : setTimeout(() => {
         this.pendingRequests.delete(id);
         rejectPromise(new Error(`Clanky did not answer ${method} within ${CLIENT_REQUEST_TIMEOUT_MS}ms.`));
       }, CLIENT_REQUEST_TIMEOUT_MS);

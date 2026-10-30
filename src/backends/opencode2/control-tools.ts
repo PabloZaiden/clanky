@@ -13,6 +13,8 @@ import { ClankyControlToolService, type ClankyControlToolDefinition } from "../c
 import { HarnessError } from "../harness-errors";
 import { OPENCODE_CONTROL_PLUGIN_ID, OPENCODE_CONTROL_PLUGIN_SOURCE } from "./control-plugin";
 import type { ControlToolConnection } from "../../core/control-tool-transport";
+import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
+import { SECRET_TOOL_NAME } from "@/shared/harness-secrets";
 
 const log = createLogger("opencode2-control-tools");
 const SessionInputSchema = z.object({ sessionId: z.string().min(1).max(500) }).strict();
@@ -42,11 +44,13 @@ export class OpenCodeControlTools {
   private closing?: Promise<void>;
   private definitions: readonly ClankyControlToolDefinition[] = [];
 
-  constructor(private readonly control?: ControlToolConnection) {}
+  constructor(private readonly secrets: SecretCoordinator, private readonly control?: ControlToolConnection) {}
 
   async open(environment: NodeJS.ProcessEnv, signal?: AbortSignal): Promise<NodeJS.ProcessEnv> {
-    if (!this.control) return environment;
-    this.definitions = await this.getToolService().listTools({ signal });
+    this.definitions = [
+      ...(this.control ? await this.getToolService().listTools({ signal }) : []),
+      secretToolDefinition,
+    ];
     const profile = join(resolveAppDataDir({ envPrefix: "CLANKY", appDirectoryName: ".clanky" }), "native", "opencode2");
     await mkdir(profile, { recursive: true, mode: 0o700 });
     await this.removeAbandonedPlugins(profile);
@@ -63,13 +67,16 @@ export class OpenCodeControlTools {
         hostname: "127.0.0.1",
         port: 0,
         maxRequestBodySize: 1024 * 1024,
-        fetch: (request) => {
+        fetch: (request, server) => {
           if (request.headers.get("authorization") !== `Bearer ${token}`) {
             return new Response(null, { status: 401 });
           }
           if (this.closing) return new Response(null, { status: 503 });
           if (this.pending.size >= 128) return new Response(null, { status: 429 });
-          const operation = this.handle(request).catch((error: unknown) => {
+          const operation = this.handle(request, server).catch((error: unknown) => {
+            if (error instanceof HarnessError && error.code === "harness_transport_closed") {
+              return Response.json({ error: "native_tool_cancelled" }, { status: 409 });
+            }
             log.error("Native Control bridge request failed", { error: String(error) });
             return Response.json({ error: "control_bridge_failed" }, { status: 500 });
           }).finally(() => { this.pending.delete(operation); });
@@ -93,7 +100,6 @@ export class OpenCodeControlTools {
 
   async requireAvailable(client: OpenCodeClient, directory: string): Promise<void> {
     if (this.closing || !this.server) throw new HarnessError("harness_transport_closed", "OpenCode Control is disconnected.");
-    this.getToolService();
     // Inventory alone does not wait for a cold location's plugin activation.
     await client.integration.list({ location: { directory } });
     const plugins = await client.plugin.list({ location: { directory } });
@@ -109,11 +115,14 @@ export class OpenCodeControlTools {
 
   async register(binding: HarnessConversationBinding): Promise<void> {
     this.end(binding.nativeId);
-    if (binding.controlTools) {
+    if (binding.controlTools || binding.questionPolicy === "interactive") {
       if (!this.conversations.has(binding.nativeId) && this.conversations.size >= 128) {
         throw new HarnessError("harness_request_failed", "OpenCode Control conversation capacity reached.");
       }
-      const definitions = await this.getToolService().listTools({ chatId: binding.controlChatId });
+      const definitions = [
+        ...(binding.controlTools ? await this.getToolService().listTools({ chatId: binding.controlChatId }) : []),
+        ...(binding.questionPolicy === "interactive" && binding.secretFiles === 1 ? [secretToolDefinition] : []),
+      ];
       this.conversations.set(binding.nativeId, { binding, definitions });
     } else {
       this.conversations.delete(binding.nativeId);
@@ -145,6 +154,7 @@ export class OpenCodeControlTools {
     const conversation = this.conversations.get(id);
     conversation?.active?.abort.abort();
     if (conversation) conversation.active = undefined;
+    this.secrets.cancel(id);
   }
 
   forget(id: string): void {
@@ -204,7 +214,7 @@ export class OpenCodeControlTools {
     }
   }
 
-  private async handle(request: Request): Promise<Response> {
+  private async handle(request: Request, server: Bun.Server<undefined>): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/tools" && request.method === "GET") {
       return Response.json(this.definitions);
@@ -235,8 +245,11 @@ export class OpenCodeControlTools {
         error: { code: "unknown_control_tool", message: "The requested Clanky tool is not available for this root." },
       });
     }
-    const result = await this.getToolService().invoke(invocation.name, invocation.input, active.context,
-      AbortSignal.any([request.signal, active.abort.signal]));
+    const signal = AbortSignal.any([request.signal, active.abort.signal]);
+    if (invocation.name === SECRET_TOOL_NAME) server.timeout(request, 0);
+    const result = invocation.name === SECRET_TOOL_NAME
+      ? await this.secrets.request(conversation!.binding, invocation.input, signal)
+      : await this.getToolService().invoke(invocation.name, invocation.input, active.context, signal);
     return Response.json(result);
   }
 }

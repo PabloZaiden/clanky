@@ -589,6 +589,13 @@ export class MeshHarnessBackend implements Backend {
   async replyToQuestion(requestId: string, answers: string[][]): Promise<void> {
     await this.rpc({ operation: "question", sessionId: this.interaction(requestId), requestId, answers }); this.interactions.delete(requestId);
   }
+  async replyToSecret(requestId: string, value: string | null): Promise<void> {
+    if (this.capabilities.secretFiles !== 1) {
+      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support private secret files.");
+    }
+    await this.rpc({ operation: "secret.reply", sessionId: this.interaction(requestId), requestId, value });
+    this.interactions.delete(requestId);
+  }
   private interaction(id: string): string {
     const session = this.interactions.get(id);
     if (!session) throw new HarnessError("harness_session_not_owned", "The interaction is not owned by this proxy.");

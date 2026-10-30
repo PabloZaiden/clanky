@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { inspectAttachedFiles } from "./file-input";
 import { createPng } from "../support/png-fixtures";
+import { SECRET_TOOL, consumeSecretFile, secretRequest, secretUnavailable } from "./secret-file";
 import {
   BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
 } from "./background-work";
@@ -206,6 +207,8 @@ async function execute(session: Session): Promise<void> {
     const requests: Array<{ name: string; input: unknown }> = execution.prompt.split("\n")
       .filter((line) => line.startsWith("Control request: "))
       .flatMap((line) => JSON.parse(line.slice("Control request: ".length)));
+    const secret = secretRequest(execution.prompt);
+    if (secret && event.tools[SECRET_TOOL]) requests.push({ name: SECRET_TOOL, input: secret });
     if (execution.prompt.includes("then list workspaces for the Live caller.")) {
       requests.push({ name: "clanky_list_workspaces", input: {} });
     }
@@ -223,7 +226,9 @@ async function execute(session: Session): Promise<void> {
     if (execution.abort.signal.aborted) return;
     const fileReceipt = await inspectAttachedFiles(execution.prompt, session.location.directory);
     const text = [
-      requests.length > 0 ? `Control results: ${JSON.stringify(results)}` : `Agent received: ${execution.prompt}`,
+      secret ? event.tools[SECRET_TOOL] ? await consumeSecretFile(results[0])
+        : await secretUnavailable(execution.prompt, session.location.directory)
+        : requests.length > 0 ? `Control results: ${JSON.stringify(results)}` : `Agent received: ${execution.prompt}`,
       fileReceipt,
     ].filter(Boolean).join("\n");
     emit(session, "session.text.ended", { assistantMessageID: messageID, ordinal: 0, text });
@@ -314,7 +319,7 @@ function startExecution(session: Session): void {
 const password = process.env["OPENCODE_SERVER_PASSWORD"]!;
 const server = Bun.serve({
   hostname: "127.0.0.1", port: 0,
-  async fetch(request) {
+  async fetch(request, server) {
     if (request.headers.get("authorization") !== `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}`) {
       return new Response(null, { status: 401 });
     }
@@ -328,6 +333,7 @@ const server = Bun.serve({
     }] });
     if (path === "/api/shell") return Response.json({ data: [] });
     if (path === "/api/event") {
+      server.timeout(request, 0);
       let controller: ReadableStreamDefaultController<Uint8Array>;
       return new Response(new ReadableStream<Uint8Array>({
         start(stream) {

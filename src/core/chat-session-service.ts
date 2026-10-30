@@ -435,6 +435,7 @@ export class ChatSessionService implements ChatSessionPort {
       ownerId: requireExecutionOwnerUserId(),
       contextId: chat.config.id,
       questionPolicy: unattended ? "unattended" as const : "interactive" as const,
+      ...(!unattended && backend.harness.capabilities.secretFiles === 1 ? { secretFiles: 1 as const } : {}),
       directory: backend.getDirectory(),
       executionHost: chat.config.source?.kind === "execution_host" ? chat.config.source.executionHost : chat.config.executionHostBinding,
       ...(controlTools ? {

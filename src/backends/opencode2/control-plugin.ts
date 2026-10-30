@@ -13,12 +13,12 @@ export default {
     if (!url || !token) throw new Error("The managed Clanky Control bridge is unavailable.");
     if (typeof ctx.tool.reload !== "function") throw new Error("Managed Clanky Control requires OpenCode tool reload support.");
     const lifetime = new AbortController();
-    const request = async (path, body, signal) => {
+    const request = async (path, body, signal, waitForHuman = false) => {
       const response = await fetch(url + path, {
         method: body === undefined ? "GET" : "POST",
         headers: { authorization: "Bearer " + token, "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.any([lifetime.signal, AbortSignal.timeout(35000), ...(signal ? [signal] : [])]),
+        signal: AbortSignal.any([lifetime.signal, ...(waitForHuman ? [] : [AbortSignal.timeout(35000)]), ...(signal ? [signal] : [])]),
       });
       if (!response.ok) throw new Error("The managed Clanky Control bridge request failed.");
       return await response.json();
@@ -37,7 +37,7 @@ export default {
             execute: async (input, invocation) => {
               const result = await request("/invoke", {
                 sessionId: invocation.sessionID, name: definition.name, input,
-              }, invocation.signal);
+              }, invocation.signal, definition.name === "clanky_request_secret");
               return { output: result, content: JSON.stringify(result) };
             },
           });

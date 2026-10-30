@@ -7,6 +7,7 @@ import { MessageAttachmentsSchema } from "./task";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 import { ControlToolRequestSchema, ControlToolReplySchema } from "./control-tool-transport";
+import { ReplyToSecretSchema } from "./harness-secret";
 import {
   HARNESS_HISTORY_MAX_BYTES,
   HARNESS_HISTORY_MAX_EVENTS,
@@ -92,6 +93,7 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("model"), modelId: Id }),
   Session.extend({ operation: z.literal("permission"), requestId: Id, response: Id }),
   Session.extend({ operation: z.literal("question"), requestId: Id, answers: z.array(z.array(z.string().max(10000)).max(100)).max(100) }),
+  Session.extend({ operation: z.literal("secret.reply"), requestId: Id, value: ReplyToSecretSchema.shape.value }).strict(),
   z.object({ operation: z.literal("models"), directory: Path }),
   z.object({ operation: z.literal("variants"), directory: Path, modelId: Id }),
 ]);
@@ -141,6 +143,7 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   z.object({ type: z.literal("question.asked"), requestId: Id, sessionId: Id,
     questions: z.array(HarnessQuestionInfoSchema).min(1).max(100), blocking: z.boolean().optional(),
     responseMode: z.enum(["callback", "message"]).optional(),
+    secretIdentifier: z.string().min(1).max(128).optional(),
   }),
   z.object({ type: z.literal("question.resolved"), requestId: Id, outcome: z.enum(["answered", "cancelled", "expired"]) }),
   z.object({ type: z.literal("prompt.complete"), outcome: z.enum(["completed", "interrupted"]) }),
