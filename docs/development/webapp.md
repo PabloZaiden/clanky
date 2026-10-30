@@ -71,11 +71,21 @@ right-aligned. Keep short fields compact, related fields together, and ordinary
 validation/status inline. Dialog actions stay in one right-aligned wrapping
 row, not reversed or left-aligned mobile columns.
 
+For an individual setting, put the input in `content` and its buttons in
+`actions`; do not place a field-plus-action-footer form inside `content`.
+When they share a native form, wrap `SettingsFieldRow` in that form so the
+framework aligns the input with the setting label rather than a stacked block.
+Let the framework wrap controls below the label when the row has insufficient
+space; do not force inline controls at the expense of readable labels.
+
 ## Product presentation
 
 Operational screens show labels, values, actions, status, errors, and actionable
 warnings, not paragraphs about mechanics/navigation/persistence. Add helper
 text only for valid/safe input or irreversible consequences.
+Do not use setting subtitles or hints as feature documentation. Behavior,
+authorization and storage explanations belong in the relevant guides, not
+repeated underneath controls. Keep useful input constraints and counters.
 
 Do not show internal IDs as names or default detail fields. Use workspace/host
 names rather than directory paths as identity. Preserve IDs in protocols,
