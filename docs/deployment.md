@@ -216,13 +216,6 @@ Real browser passkey authentication is required for approval, approval-policy
 changes, credential handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
 not grant those human capabilities, even on loopback.
 
-## Production access
-
-When inspecting production, use the configured `CLANKY_` environment variables,
-such as `CLANKY_BASE_URL` and `CLANKY_API_KEY`, for the actual production API.
-Do not substitute local development defaults or print credential values.
-Keep passkey and same-origin enforcement enabled.
-
 ## Reset persisted data
 
 **Reset all settings** in Server Settings and `POST /api/settings/reset-all`
