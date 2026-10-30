@@ -295,12 +295,24 @@ export class MeshRelayConnectorManager {
         }
       } finally {
         connector?.close(1000, "Mesh relay connection replaced");
-        try {
-          await connector?.waitUntilTransportClosed();
-        } catch (error) {
-          this.running = false;
-          this.rejectWaiters(error);
-          this.log.error("The Mesh relay transport could not finish closing", { error: String(error) });
+        while (connector) {
+          try {
+            await connector.waitUntilTransportClosed();
+            break;
+          } catch (error) {
+            this.log.warn("The Mesh relay transport could not finish closing", {
+              relayUrl: request.config.relayUrl,
+              retrying: this.running,
+              error: String(error),
+            });
+            if (!this.running) {
+              this.rejectWaiters(error);
+              break;
+            }
+            attempt += 1;
+            await this.backoff(attempt);
+            if (!this.running) break;
+          }
         }
         resolveClosed();
       }
@@ -308,15 +320,16 @@ export class MeshRelayConnectorManager {
         return;
       }
       attempt += 1;
-      await this.backoff(backoffDelay(
-        attempt,
-        this.options.baseDelayMs ?? MESH_RELAY_RECONNECT_BASE_DELAY_MS,
-        this.options.maxDelayMs ?? MESH_RELAY_RECONNECT_MAX_DELAY_MS,
-      ));
+      await this.backoff(attempt);
     }
   }
 
-  private async backoff(delayMs: number): Promise<void> {
+  private async backoff(attempt: number): Promise<void> {
+    const delayMs = backoffDelay(
+      attempt,
+      this.options.baseDelayMs ?? MESH_RELAY_RECONNECT_BASE_DELAY_MS,
+      this.options.maxDelayMs ?? MESH_RELAY_RECONNECT_MAX_DELAY_MS,
+    );
     await new Promise<void>((resolve) => {
       this.wake = resolve;
       this.wakeTimer = setTimeout(() => {
