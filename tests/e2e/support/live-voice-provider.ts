@@ -24,7 +24,11 @@ export const GLOBAL_LIVE_INTENT = {
 interface FixtureTool { name: string; arguments: Record<string, unknown> }
 type FixtureStep = FixtureTool | { wait: "confirmation" } | { wait: "work"; chatId: string };
 interface OperationDescription { operationId: string; parameters: string[] }
-interface OperationPage { operations: Array<{ operationId: string }>; nextCursor: number | null }
+interface OperationIndex {
+  columns: string[];
+  operations: Array<[string, string, string]>;
+  total: number;
+}
 interface Workspace { id: string; name: string }
 interface Host { ref: { kind: string; serverId?: string } }
 interface Server { id: string; repositoriesBasePath: string }
@@ -103,6 +107,7 @@ function restoreContent(parts: ContentPart[]): unknown {
 
 function operationTools() {
   const descriptions = new Map<string, OperationDescription>();
+  let index: OperationIndex | undefined;
   return function* operation<T>(id: string, options: {
     parameters?: Record<string, string>;
     query?: Record<string, string>;
@@ -111,17 +116,10 @@ function operationTools() {
   } = {}): Generator<FixtureStep, T, unknown> {
     let description = descriptions.get(id);
     if (!description) {
-      const [method, path] = id.split(" ");
-      let cursor: number | null = null;
-      let found: string | undefined;
-      do {
-        const page = (yield {
-          name: "clanky_find_operations",
-          arguments: { text: path, method, domain: null, cursor },
-        }) as OperationPage;
-        found = page.operations.find((entry) => entry.operationId === id)?.operationId;
-        cursor = page.nextCursor;
-      } while (!found && cursor !== null);
+      index ??= (yield { name: "clanky_list_operations", arguments: {} }) as OperationIndex;
+      if (JSON.stringify(index.columns) !== JSON.stringify(["operationId", "policy", "description"])
+        || index.total !== index.operations.length) throw new Error("The complete operation index was not delivered.");
+      const found = index.operations.find(([operationId]) => operationId === id)?.[0];
       if (!found) throw new Error(`Required product operation is unavailable: ${id}`);
       description = (yield {
         name: "clanky_describe_operation", arguments: { operationId: found, section: null, cursor: null },
@@ -194,6 +192,8 @@ function* directContent(name: string, args: Record<string, unknown>): Generator<
 
 function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const operation = operationTools();
+  const health = yield* operation<{ ok: boolean; version: string }>("GET /api/health");
+  if (!health.ok || !health.version) throw new Error("The running instance health and version are unavailable.");
   yield { name: "clanky_get_ui_state", arguments: { section: null, cursor: null } };
   const workspaces = yield* directCollection<Workspace>("clanky_list_workspaces", { limit: null });
   const workspaceA = workspaces.find((workspace) => workspace.name === GLOBAL_LIVE_INTENT.workspaceA)!;

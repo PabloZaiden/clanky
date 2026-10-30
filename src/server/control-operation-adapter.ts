@@ -28,6 +28,7 @@ export function createControlOperationAuthority(
           });
           const response = await app.dispatchAuthenticated(request, {
             userId: access.grant.user.id,
+            allowPublic: true,
             authorize: (operation) => operation.path === authorized.entry.path
               && operation.method === authorized.method
               && JSON.stringify(operation.params) === JSON.stringify(authorized.params) ? authorized : false,

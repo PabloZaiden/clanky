@@ -47,7 +47,7 @@ export const collaborationRoutes = defineRoutes({
       GET: { automation: { policy: "read" } },
       POST: {
         requestSchema: CreateCollaborationInvitationSchema,
-        automation: { policy: "confirm", reason: "Grants selected workspace access or Work access to all current and future owned workspaces." },
+        automation: { policy: "excluded", reason: "Creates a private invitation token granting workspace access; use human-only sharing." },
       },
     },
     GET() {
@@ -139,7 +139,7 @@ export const collaborationRoutes = defineRoutes({
     description: "List controller connection health or accept a signed workspace invitation.",
     operations: {
       GET: { automation: { policy: "read" } },
-      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: { policy: "confirm", reason: "Pairs this user with the invitation's pinned controller and selected transport." } },
+      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: { policy: "excluded", reason: "Consumes a private workspace invitation to establish controller trust; use human-only pairing." } },
     },
     GET() {
       return Response.json(workspaceConnections.list());

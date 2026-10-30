@@ -228,6 +228,9 @@ export const workspaceIconRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Upload a private SVG, PNG, or ICO icon for a workspace.",
+    operations: {
+      POST: { automation: { policy: "excluded", reason: "Multipart binary icon upload belongs to the browser upload flow." } },
+    },
     async POST(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
       if (workspaceResult instanceof Response) {
@@ -327,6 +330,9 @@ export const workspaceIconRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Preview a validated icon candidate from a workspace Git repository.",
     querySchema: WorkspaceIconCandidateQuerySchema,
+    operations: {
+      GET: { automation: { policy: "excluded", reason: "Raw icon image bytes belong to browser media rendering; use JSON icon candidates." } },
+    },
     async GET(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
       if (workspaceResult instanceof Response) {

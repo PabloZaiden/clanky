@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
   authenticateApiKey, createLogger, getRequestOriginInfo, parseOAuthClients,
-  type OAuthConfig, type OAuthPrincipal, type RouteCatalogEntry, type RouteContext,
+  type OAuthConfig, type OAuthPrincipal, type RouteContext,
   type WebAppServer, type WebAppStore,
 } from "@pablozaiden/webapp/server";
 import { routeToHash } from "@pablozaiden/webapp/web";
@@ -49,25 +49,13 @@ export class ControlServer {
   private app?: WebAppServer<ClankyRealtimeEvent>;
   private readonly access = new AsyncLocalStorage<ControlAccess>();
   private readonly integrations: ControlIntegrationService;
-  private readonly sessions: ControlSessionService;
+  private sessionService?: ControlSessionService;
   private readonly mcp;
 
   constructor(private readonly options: {
-    store: WebAppStore; catalog: readonly RouteCatalogEntry[]; getBaseUrl: () => string | undefined;
+    store: WebAppStore; getBaseUrl: () => string | undefined;
   }) {
     this.integrations = new ControlIntegrationService(options.store);
-    this.sessions = new ControlSessionService({
-      service: new ClankyOperationService(options.catalog),
-      createAuthority: (access) => createControlOperationAuthority(this.requireApp(), options.catalog, access),
-      approvalUrl: (requestId) => {
-        const url = new URL(this.baseUrl());
-        url.hash = routeToHash({ view: "control-request", requestId });
-        return url.href;
-      },
-      changed: (userId, id, pendingChanged) => this.requireApp().realtime.publishChanged(
-        CLANKY_REALTIME_RESOURCES.controlRequests, { id, scope: pendingChanged ? "pending" : "request", target: { userId } },
-      ),
-    });
     this.mcp = createMcpHandler(async () => {
       const access = this.access.getStore();
       if (!access) throw new DomainError("control_scope_required", "MCP requires authenticated control admission.");
@@ -153,6 +141,18 @@ export class ControlServer {
 
   configure(app: WebAppServer<ClankyRealtimeEvent>): void {
     this.app = app;
+    this.sessionService = new ControlSessionService({
+      service: new ClankyOperationService(app.routeCatalog),
+      createAuthority: (access) => createControlOperationAuthority(app, app.routeCatalog, access),
+      approvalUrl: (requestId) => {
+        const url = new URL(this.baseUrl());
+        url.hash = routeToHash({ view: "control-request", requestId });
+        return url.href;
+      },
+      changed: (userId, id, pendingChanged) => app.realtime.publishChanged(
+        CLANKY_REALTIME_RESOURCES.controlRequests, { id, scope: pendingChanged ? "pending" : "request", target: { userId } },
+      ),
+    });
     configureExecutionControl(async (identity) => {
       if (identity.userId !== requireExecutionOwnerUserId()) {
         throw new DomainError("control_actor_mismatch", "The control source belongs to another execution owner.");
@@ -264,8 +264,13 @@ export class ControlServer {
     return this.app;
   }
 
+  private get sessions(): ControlSessionService {
+    if (!this.sessionService) throw new DomainError("control_unavailable", "The control server is not initialized.");
+    return this.sessionService;
+  }
+
   async close(): Promise<void> {
-    await this.sessions.close();
+    await this.sessionService?.close();
     await this.mcp.close();
   }
 }

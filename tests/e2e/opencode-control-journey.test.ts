@@ -32,6 +32,9 @@ interface ToolResult {
   code?: string;
   requestId?: string;
   items?: Array<{ id: string }>;
+  columns?: string[];
+  operations?: Array<[string, string, string]>;
+  total?: number;
   content?: unknown;
   data?: { id?: string };
   error?: { code: string };
@@ -183,6 +186,25 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
     expect(collaboration[2]?.ok).toBe(false);
     const unchangedForeign = (await application.json<Snapshot>(`/api/chats/${foreignId}/snapshot?full=1`)).data;
     expect(unchangedForeign.transcript.messages.some((message) => message.content.includes(unauthorizedMessage))).toBe(false);
+
+    await application.json(`/api/workspaces/${foreign.workspace.id}`, {
+      method: "PUT", body: JSON.stringify({ allowClankyContext: true }),
+    });
+    const generalId = await foreign.createChat("OpenCode general Clanky access");
+    await send(application, generalId, instruction([
+      { name: "clanky_list_operations", input: {} },
+      {
+        name: "clanky_execute_operation", input: {
+          operationId: "GET /api/health", parameters: [], query: [],
+          bodyJson: null, confirmationDescription: null,
+        },
+      },
+    ]));
+    const generalResults = await results(application, generalId);
+    expect(generalResults[0]?.columns).toEqual(["operationId", "policy", "description"]);
+    expect(generalResults[0]?.total).toBe(generalResults[0]?.operations?.length);
+    expect(generalResults[0]?.operations?.some(([operationId]) => operationId === "GET /api/health")).toBe(true);
+    expect(generalResults[1]).toMatchObject({ ok: true, completion: "completed" });
 
     const key = (await application.json<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "OpenCode browser clients", scopes: ["*"] }),

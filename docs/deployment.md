@@ -107,15 +107,42 @@ data directory whenever passkey enforcement is disabled.
 Supported native agents and deterministic programs collaborate within their
 own project without enabling general Clanky access or installing a CLI/skill.
 The workspace's **Allow general
-Clanky access** setting additionally permits in-scope cross-project and server
-control, within the user's existing permissions. It never grants account,
-API-key or session administration. Native tools, Live Voice, external MCP and
+Clanky access** setting permits all normal catalogued JSON operations within
+the user's existing permissions, including cross-project work, Git, scheduled
+agents, terminals, previews, maintenance, Mesh administration and framework
+diagnostics. There is no separate list of enabled control modules. Operations
+declare their read/write/confirmation policy or an explicit exclusion at their
+canonical route definition. General access does not make the user an admin or
+owner and does not bypass confirmations or private SSH handoffs.
+
+Exclusions cover account/key/session and control-grant administration, private
+credentials and invitation/enrollment/trust material, approving one's own
+actions or changing approval policy, client-provenance acknowledgements,
+internal protocols and browser-owned binary/media/streaming flows. Public
+configuration/status projections without secrets remain readable, including
+Voice settings and relay status. Native tools, Live Voice, external MCP and
 deterministic programs share the application-control implementation; they do not
 need separate internal MCP servers or CLI credentials. The controller admits
 internal authority from the active execution source; native Mesh tools reuse
 the authenticated lease's event/RPC infrastructure without a return endpoint.
 See [native control](control-chats.md) and
 [Live Voice](voice.md#live-voice) for their client behavior.
+
+For an intent not covered by a direct tool, use `clanky_list_operations` with
+`{}` once instead of guessing search keywords. It returns the complete authorized
+index without schemas or pagination: `columns` identifies the `operationId`,
+`policy` and abbreviated `description` in each `operations` row, and `total`
+counts all rows. Then use `clanky_describe_operation` for the chosen operation's
+exact inputs and `clanky_execute_operation` to invoke it. Filtered, paged search
+remains available when needed. The index follows the same current authority as
+description/execution; it cannot broaden a workspace grant. A catalog that
+cannot fit reports an explicit error, never a partial index.
+
+General control can read `GET /api/health` to obtain the connected instance's
+health and running application version, plus public framework configuration and
+authorized operational settings. This diagnoses the instance owning the control
+connection, not an arbitrary production URL or the browser's loaded frontend
+version. Account/authentication protocols are not part of this operational catalog.
 
 ACP model processes do not receive automatic Clanky control or CLI credentials,
 even when general access is enabled. Ordinary ACP chats and prompts still work.

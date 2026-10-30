@@ -62,6 +62,20 @@ permissions and human-approval policies. Explicit general access is required
 for other workspaces and in-scope workspace/server administration. A workspace
 agent cannot grant itself that authority.
 
+General access uses explicit route exclusions rather than an additional list of
+permitted modules. It includes ordinary application and framework diagnostics
+such as health/version, subject to the real user's roles and existing
+confirmation policies. Private credentials, account/session administration,
+self-approval and internal/binary protocols remain excluded; see the canonical
+[access and discovery policy](deployment.md#agent-control-and-mcp).
+
+Common direct tools need no discovery. For other intents, request
+`clanky_list_operations` once to receive the complete compact authorized index,
+then describe and execute the chosen operation. Its abbreviated descriptions
+are an index, not input contracts. Do not repeatedly guess keywords or invent
+API paths. The index adds no authority, and existing Codex threads still retain
+their originally registered definitions as described below.
+
 For work on another repository, an authorized agent delegates by sending an
 instruction to that repository's chat. It does not run Git commands directly
 against another workspace. To read a file's contents, use the file-reading

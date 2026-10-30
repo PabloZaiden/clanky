@@ -126,6 +126,7 @@ export const controlDirectDescriptions: Record<DirectToolName, string> = {
 
 export const controlToolSchemas = {
   ...controlDirectSchemas,
+  clanky_list_operations: z.object({}).strict(),
   clanky_find_operations: z.object({
     text: z.string().max(500),
     domain: z.string().max(100).nullable(),
@@ -147,7 +148,8 @@ export type ControlToolInput<T extends ControlToolName> = z.input<typeof control
 
 export const controlToolDescriptions: Record<ControlToolName, string> = {
   ...controlDirectDescriptions,
-  clanky_find_operations: "Fallback only for intents not covered by a direct tool. Find authorized Clanky operations by words/domain/method. Empty text lists a page.",
+  clanky_list_operations: "Get the complete authorized operation index in one call, without schemas or pagination. columns names the fields in each operations row: operationId, policy, description. Descriptions are abbreviated; describe the selected operation for its exact inputs and consequences. Prefer this index over repeated keyword searches for uncovered intents. Direct tools need no discovery. In Live Voice call this tool alone.",
+  clanky_find_operations: "Filtered lookup for intents not covered by a direct tool. Matches all words literally, with optional domain/method filters. Empty text lists a page; follow nextCursor. Use clanky_list_operations for the complete compact index in one call instead of repeated keyword guesses.",
   clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",
   clanky_execute_operation: "Execute a described API operation with exact parameters/query and bodyJson (null without a body). Reads automatically select compact pages or literal conversation history. Follow nextCursor with the same read operation, filters and public body to read more; section=details and item read a row's original content. Content parts contain JSON paths and string offsets, not a generated summary. For policy confirm, supply confirmationDescription: one or two short plain-text sentences in the user's language describing the exact action, named target and material consequences. No API paths, technical identifiers, JSON or credentials. Use null for other policies. Confirm-class actions wait for a visual decision unless the user's nonvoice approval setting is off; Voice always confirms. Inspect the returned pending/completion status. Mutations are never retried automatically.",
 };

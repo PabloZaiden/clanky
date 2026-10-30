@@ -973,6 +973,10 @@ The table below is the public Clanky-owned route catalog. Use
 for the endpoint list exposed by the running server. Framework-owned routes
 such as `/api/auth/*`, `/api/config`, `/api/health`, and `/api/ws` are not
 included in this table.
+The shared agent-control index additionally includes the framework's canonical
+operational routes, such as health/version and public configuration. It does
+not expose authentication or raw transport protocols; see
+[access and discovery](deployment.md#agent-control-and-mcp).
 
 <details>
 <summary>Show all catalogued Clanky routes</summary>
