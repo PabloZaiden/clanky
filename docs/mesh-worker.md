@@ -634,7 +634,10 @@ unsupported versions fail visibly rather than silently using another channel.
 Updating a workspace worker uses
 Mesh directly: it does not need SSH credentials, contact the provisioning host,
 rerun provisioning, or restart the container. Restart response
-and recovery checks share a 20-second deadline. Restart runs as a host-owned
+and recovery checks share a 20-second deadline. Service-status commands have a
+10-second timeout. During recovery, each health-and-status probe is capped at
+10 seconds or the remaining shared deadline, whichever is shorter.
+Restart runs as a host-owned
 asynchronous command: stopping response observation neither cancels nor resends
 it. A still-running command remains under observation until it finishes, loses
 its connection, or reaches the deadline. Recovery polls every second for a fresh signed Mesh

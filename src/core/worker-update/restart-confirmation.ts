@@ -5,7 +5,7 @@ import { meshManager } from "../mesh-manager";
 
 export const WORKER_RESTART_TIMEOUT_MS = 20_000;
 const RESTART_POLL_INTERVAL_MS = 1000;
-const RESTART_PROBE_TIMEOUT_MS = 5000;
+const RESTART_PROBE_TIMEOUT_MS = 10_000;
 const WorkerServiceStatusSchema = z.object({
   installed: z.boolean(),
   running: z.boolean(),
