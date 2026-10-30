@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { createLogger, defineRoutes, getRequestOriginInfo, readRuntimeConfig } from "@pablozaiden/webapp/server";
+import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import {
   ReplyToChatPermissionRequestSchema,
@@ -23,23 +23,19 @@ function privateSecretResponse(response: Response): Response {
 
 export const chatsMessagingRoutes = defineRoutes({
   "/api/chats/:id/secrets/:requestId": {
+    delegation: workspaceOperation("chat"),
     auth: "user",
-    sameOrigin: "always",
-    description: "Supply or decline a private secret using a real browser passkey session. Never records a chat answer.",
+    sameOrigin: "mutations",
+    description: "Supply or decline a private secret for a pending owned chat request. Never records a chat answer.",
     tags: ["chats"],
     operations: {
       POST: {
         requestSchema: ReplyToSecretSchema,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Private human-only secret entry; never an agent operation." },
+        automation: { policy: "excluded", reason: "Private user input is not an agent operation." },
       },
     },
     async POST(req, ctx): Promise<Response> {
-      const config = readRuntimeConfig({ appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky" });
-      if (ctx.auth.kind !== "passkey" || !ctx.auth.passkeyId || config.passkeyDisabled
-        || req.headers.get("origin") !== getRequestOriginInfo(req, config).origin) {
-        return privateSecretResponse(errorResponse("secret_human_required", "Sign in again using a passkey to supply a secret.", 403));
-      }
       const validation = await parseAndValidate(ReplyToSecretSchema, req, { maxBodyBytes: SECRET_MAX_BYTES * 6 + 1024 });
       if (!validation.success) {
         return privateSecretResponse(errorResponse("invalid_secret_response", "Provide a nonempty secret of at most 64 KiB, or decline.", 400));

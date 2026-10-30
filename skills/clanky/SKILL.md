@@ -48,7 +48,7 @@ When an interactive native chat provides `clanky_request_secret`, use it instead
 of asking the user to paste a credential into chat. Pass only a logical
 `identifier`, human-readable `label` and `reason`, never the value or a chosen
 path. The user supplies it through the private browser form; do not call its
-human-only reply API from CLI or another tool.
+private reply API from CLI or another tool.
 
 Call again with the same identifier whenever needed. A valid file in this
 conversation is reused for 24 hours without renewing expiry; otherwise the

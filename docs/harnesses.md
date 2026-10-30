@@ -100,13 +100,12 @@ unprotected files.
 
 The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
 miss, the same native invocation waits for the user's private chat form, with
-no human-input deadline. A real, same-origin browser session with verified
-WebAuthn provenance must supply or decline the value; API keys, including
-API-key browser sign-in, automation and disabled-passkey mode cannot submit it.
-Older browser sessions must sign in again using a passkey. For shared workspaces,
-enter secrets on the conversation's owning controller, not through a delegated
-server session. Closing the browser tab
-does not cancel the request. Stop, turn completion or native session loss does.
+no human-input deadline. Replies use the same user/resource authorization,
+workspace delegation and browser same-origin protection as ordinary chat
+questions, following the server's configured authentication policy. No
+passkey-specific sign-in is required. The private reply endpoint is excluded
+from agent tools. Closing the browser tab does not cancel the request.
+Stop, turn completion or native session loss does.
 Supplying a value resumes the invocation automatically, returning only
 `{ status: "saved", path, expiresAt }`, with expiry in Unix milliseconds.
 Declining returns `{ status: "declined" }`.
