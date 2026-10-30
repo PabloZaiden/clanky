@@ -112,6 +112,7 @@ const supportedTemplateVariables = new Set([
   "BUN_TARGET",
   "BINARY_NAME",
   "ASSET_PREFIX",
+  "ASSET_EXTENSION",
   "ASSET_NAME",
   "ASSET_PATH",
   "OUTPUT_PATH",
@@ -380,12 +381,12 @@ function validateTargets(targets: ReleaseTarget[]): void {
     if (target.bunTarget !== `bun-${target.os}-${target.architecture}`) {
       throw new Error(`${path}.bunTarget does not match its OS and architecture`);
     }
-    const expectedRunnerPrefix = {
-      linux: "ubuntu-",
-      darwin: "macos-",
-      windows: "windows-",
+    const supportedRunnerPrefixes = {
+      linux: ["ubuntu-"],
+      darwin: ["macos-"],
+      windows: ["ubuntu-", "windows-"],
     }[target.os];
-    if (!target.runner.startsWith(expectedRunnerPrefix)) {
+    if (!supportedRunnerPrefixes.some((prefix) => target.runner.startsWith(prefix))) {
       throw new Error(`${path}.runner does not support its target OS`);
     }
     const expectedExtension = target.os === "windows" ? ".exe" : "";

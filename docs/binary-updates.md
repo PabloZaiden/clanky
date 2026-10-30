@@ -54,6 +54,13 @@ each build; `release.json` selects its binaries and checksum files. The workflow
 skips superseded main commits, preserves macOS signing, and removes obsolete
 rolling assets without deleting versioned releases.
 
+Stable and rolling binary builds share two compilation jobs: `ubuntu-latest`
+cross-compiles Linux and Windows x64/arm64, while `macos-latest` builds both
+Darwin architectures and applies the configured signing. The default macOS
+runner is ARM64. Each job installs dependencies and runs prebuild once, then
+builds its targets in sequence. Metadata and publication remain separate jobs;
+native platform E2E tests are unchanged.
+
 GitHub's latest **stable** release endpoint is separate from the tag `latest`.
 This channel does not add unattended updates or restart running servers.
 Stop processes using the binary before updating when required by the platform,
