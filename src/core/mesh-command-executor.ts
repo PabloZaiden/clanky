@@ -100,18 +100,7 @@ export class MeshCommandExecutor implements CommandExecutor {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       throw new Error(`Invalid environment variable name: ${name}`);
     }
-    const result = this.pathStyle === "windows"
-      ? await this.client.exec(
-          "powershell.exe",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "[Console]::Out.Write([Environment]::GetEnvironmentVariable($env:CLANKY_ENV_NAME))",
-          ],
-          { env: { CLANKY_ENV_NAME: name } },
-        )
-      : await this.client.exec("printenv", [name]);
+    const result = await this.client.exec("printenv", [name]);
     return result.success ? result.stdout.trim() || null : null;
   }
 
@@ -262,13 +251,10 @@ export class MeshCommandExecutor implements CommandExecutor {
     }
     const paths = new Set<string>();
     for (const entry of entries) {
-      const segments = this.pathStyle === "windows"
-        ? entry.path.split(/[\\/]/)
-        : entry.path.split("/");
+      const segments = entry.path.split("/");
       if (
         isAbsoluteExecutionPath(entry.path, this.pathStyle)
         || segments.some((segment) => !segment || segment === "." || segment === "..")
-        || (this.pathStyle === "windows" && entry.path.includes(":"))
         || paths.has(entry.path)
       ) {
         throw new DomainError(

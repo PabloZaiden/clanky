@@ -2,7 +2,7 @@
  * DAV live properties and honest failures for unsupported property mutations.
  */
 
-import type { FileSystemEntry, FileSystemInfo, FileSystemLock } from "../../contracts/schemas/file-system";
+import type { FileSystemEntry, FileSystemLock } from "../../contracts/schemas/file-system";
 import { davHref } from "./paths";
 import { DAV_NAMESPACE, DavError, isDav, xml, xmlResponse, type DavXmlNode } from "./protocol";
 
@@ -27,32 +27,31 @@ function* propertyTag(
   yield `</${qualified}>`;
 }
 
-export function activeLockXml(lock: FileSystemLock, style: FileSystemInfo["pathStyle"]): string {
+export function activeLockXml(lock: FileSystemLock): string {
   const seconds = Math.max(0, Math.ceil((lock.expiresAt - Date.now()) / 1_000));
   return `<D:activelock><D:locktype><D:write/></D:locktype><D:lockscope><D:${lock.scope}/></D:lockscope>`
     + `<D:depth>${lock.depth}</D:depth><D:owner>${xml(lock.owner)}</D:owner>`
     + `<D:timeout>Second-${String(seconds)}</D:timeout><D:locktoken><D:href>${xml(lock.token)}</D:href></D:locktoken>`
-    + `<D:lockroot><D:href>${xml(davHref(lock.path, "file", style))}</D:href></D:lockroot></D:activelock>`;
+    + `<D:lockroot><D:href>${xml(davHref(lock.path, "file"))}</D:href></D:lockroot></D:activelock>`;
 }
 
-function locksFor(entry: FileSystemEntry, locks: FileSystemLock[], style: FileSystemInfo["pathStyle"]): FileSystemLock[] {
-  const normalize = (path: string) => style === "windows" ? path.replaceAll("\\", "/").toLowerCase() : path;
-  const path = normalize(entry.path);
+function locksFor(entry: FileSystemEntry, locks: FileSystemLock[]): FileSystemLock[] {
+  const path = entry.path;
   return locks.filter((lock) => {
-    const root = normalize(lock.path);
+    const root = lock.path;
     return root === path || (lock.depth === "infinity" && path.startsWith(root.endsWith("/") ? root : `${root}/`));
   });
 }
 
 function* lockDiscoveryXml(
-  entry: FileSystemEntry, locks: FileSystemLock[], style: FileSystemInfo["pathStyle"],
+  entry: FileSystemEntry, locks: FileSystemLock[],
 ): Generator<string, void, unknown> {
-  for (const lock of locksFor(entry, locks, style)) yield activeLockXml(lock, style);
+  for (const lock of locksFor(entry, locks)) yield activeLockXml(lock);
 }
 
 function liveProperty(
   name: string, entry: FileSystemEntry,
-  { locks, style, readOnly }: { locks: FileSystemLock[]; style: FileSystemInfo["pathStyle"]; readOnly: boolean },
+  { locks, readOnly }: { locks: FileSystemLock[]; readOnly: boolean },
 ): string | Iterable<string> | undefined {
   switch (name) {
     case "displayname": return xml(entry.name || "/");
@@ -64,7 +63,7 @@ function liveProperty(
     case "supportedlock": return readOnly ? "" : ["exclusive", "shared"].map((scope) => (
       `<D:lockentry><D:lockscope><D:${scope}/></D:lockscope><D:locktype><D:write/></D:locktype></D:lockentry>`
     )).join("");
-    case "lockdiscovery": return lockDiscoveryXml(entry, locks, style);
+    case "lockdiscovery": return lockDiscoveryXml(entry, locks);
     default: return undefined;
   }
 }
@@ -99,8 +98,8 @@ function* propertyStatus(properties: Array<Iterable<string>>, status: string): G
 
 export function propfindResponse(
   root: DavXmlNode | null,
-  { entries, locks, style, readOnly }: {
-    entries: FileSystemEntry[]; locks: FileSystemLock[]; style: FileSystemInfo["pathStyle"]; readOnly: boolean;
+  { entries, locks, readOnly }: {
+    entries: FileSystemEntry[]; locks: FileSystemLock[]; readOnly: boolean;
   },
 ): Response {
   const requested = requestedProperties(root);
@@ -110,11 +109,11 @@ export function propfindResponse(
       const found: Array<Iterable<string>> = [];
       const missing: Array<Iterable<string>> = [];
       for (const property of requested.properties) {
-        const content = property.namespace === DAV_NAMESPACE ? liveProperty(property.name, entry, { locks, style, readOnly }) : undefined;
+        const content = property.namespace === DAV_NAMESPACE ? liveProperty(property.name, entry, { locks, readOnly }) : undefined;
         if (content === undefined) missing.push(propertyTag(property.namespace, property.name));
         else found.push(propertyTag(property.namespace, property.name, requested.namesOnly ? undefined : content));
       }
-      yield `<D:response><D:href>${xml(davHref(entry.path, entry.kind, style))}</D:href>`;
+      yield `<D:response><D:href>${xml(davHref(entry.path, entry.kind))}</D:href>`;
       yield* propertyStatus(found, "200 OK");
       yield* propertyStatus(missing, "404 Not Found");
       yield "</D:response>";

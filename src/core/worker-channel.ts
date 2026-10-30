@@ -1,13 +1,12 @@
-import { posix, win32 } from "node:path";
+import { posix } from "node:path";
 import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { DomainError } from "../domain/domain-error";
 import type { CommandExecutor } from "./command-executor";
 
 export function getWorkerChannelPath(
   root: string,
-  pathStyle: "posix" | "win32" = process.platform === "win32" ? "win32" : "posix",
 ): string {
-  return (pathStyle === "win32" ? win32 : posix).join(root, "update-channel");
+  return posix.join(root, "update-channel");
 }
 
 export function parseWorkerChannel(raw: string): WorkerReleaseChannel {

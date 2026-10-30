@@ -1298,7 +1298,7 @@ export class PreviewSessionManager {
     }
     const executor = await executionHostService.getCommandExecutor(preview.config.executionHostBinding, {
       operationId: preview.config.id,
-      directory: ownership.pathStyle === "windows" ? "\\" : "/",
+      directory: "/",
     });
     try {
       await cleanupCodeSession({ executor, id: preview.config.id, ownership });

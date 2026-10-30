@@ -212,20 +212,8 @@ test("compiled Mesh hosts deliver large images to native Codex and Copilot", asy
     ] as const;
     for (const provider of providers) {
       const workspaceDirectory = join(worker.dataDir, `workspace-${provider.provider}`);
-      const createDirectory = process.platform === "win32"
-        ? {
-            command: "powershell.exe",
-            args: [
-              "-NoLogo",
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `[System.IO.Directory]::CreateDirectory('${workspaceDirectory.replaceAll("'", "''")}') | Out-Null`,
-            ],
-          }
-        : { command: "mkdir", args: ["-p", workspaceDirectory] };
       await executeOnWorker(controller, workerNodeId, {
-        ...createDirectory,
+        command: "mkdir", args: ["-p", workspaceDirectory],
         cwd: worker.dataDir,
       });
 

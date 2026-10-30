@@ -9,7 +9,7 @@
       "installedFilename": "clanky",
       "assetPrefix": "clanky",
       "buildCommand": "bun src/build.ts --target=$BUN_TARGET",
-      "outputPath": "dist/clanky-$RELEASE_TARGET$ASSET_EXTENSION",
+      "outputPath": "dist/clanky-$RELEASE_TARGET",
       "postInstallMessage": "Run 'clanky serve' to start the local server, or 'clanky --help' for CLI commands.",
       "checksum": {
         "required": true,
@@ -23,48 +23,28 @@
       "os": "linux",
       "architecture": "x64",
       "runner": "ubuntu-latest",
-      "bunTarget": "bun-linux-x64",
-      "executableExtension": ""
+      "bunTarget": "bun-linux-x64"
     },
     {
       "id": "linux-arm64",
       "os": "linux",
       "architecture": "arm64",
       "runner": "ubuntu-latest",
-      "bunTarget": "bun-linux-arm64",
-      "executableExtension": ""
+      "bunTarget": "bun-linux-arm64"
     },
     {
       "id": "darwin-x64",
       "os": "darwin",
       "architecture": "x64",
       "runner": "macos-latest",
-      "bunTarget": "bun-darwin-x64",
-      "executableExtension": ""
+      "bunTarget": "bun-darwin-x64"
     },
     {
       "id": "darwin-arm64",
       "os": "darwin",
       "architecture": "arm64",
       "runner": "macos-latest",
-      "bunTarget": "bun-darwin-arm64",
-      "executableExtension": ""
-    },
-    {
-      "id": "windows-x64",
-      "os": "windows",
-      "architecture": "x64",
-      "runner": "ubuntu-latest",
-      "bunTarget": "bun-windows-x64",
-      "executableExtension": ".exe"
-    },
-    {
-      "id": "windows-arm64",
-      "os": "windows",
-      "architecture": "arm64",
-      "runner": "ubuntu-latest",
-      "bunTarget": "bun-windows-arm64",
-      "executableExtension": ".exe"
+      "bunTarget": "bun-darwin-arm64"
     }
   ],
   "docker": {

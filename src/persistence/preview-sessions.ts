@@ -20,7 +20,7 @@ const CodeCleanupSchema = z.object({
   kind: z.literal("owned"),
   temporaryDirectory: z.string().min(1),
   directory: z.string().min(1),
-  pathStyle: z.enum(["posix", "windows"]),
+  pathStyle: z.literal("posix"),
 }).strict();
 
 function parseCodeCleanup(raw: unknown, id: unknown): CodePreviewCleanup | undefined {

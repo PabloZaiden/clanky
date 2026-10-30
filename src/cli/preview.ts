@@ -213,14 +213,9 @@ function registerDefaultSignalHandler(signal: NodeJS.Signals, handler: () => voi
 }
 
 async function defaultOpenUrl(url: string): Promise<void> {
-  const command = process.platform === "darwin"
-    ? "open"
-    : process.platform === "win32"
-      ? "cmd"
-      : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  const command = process.platform === "darwin" ? "open" : "xdg-open";
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "ignore" });
+    const child = spawn(command, [url], { stdio: "ignore" });
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new Error("Browser launcher timed out"));

@@ -20,29 +20,18 @@ const EXTENSIONLESS_FILE_NAME_SET = new Set([
   "Vagrantfile",
 ]);
 
-function normalizeSeparators(value: string): string {
-  return value.replaceAll("\\", "/");
-}
-
 function collapseSlashes(value: string): string {
   return value.replace(/\/{2,}/g, "/");
 }
 
-function isWindowsAbsolutePath(value: string): boolean {
-  return /^[A-Za-z]:\//.test(value);
-}
-
 function isAbsolutePath(value: string): boolean {
-  return value.startsWith("/") || isWindowsAbsolutePath(value);
+  return value.startsWith("/");
 }
 
 function normalizePath(value: string): string {
-  const normalizedValue = collapseSlashes(normalizeSeparators(value.trim()));
-  const windowsDrivePrefix = normalizedValue.match(/^[A-Za-z]:/)?.[0] ?? "";
-  const hasWindowsDrivePrefix = windowsDrivePrefix.length > 0;
-  const isAbsolute = normalizedValue.startsWith("/") || hasWindowsDrivePrefix;
-  const pathWithoutPrefix = hasWindowsDrivePrefix ? normalizedValue.slice(windowsDrivePrefix.length) : normalizedValue;
-  const segments = pathWithoutPrefix.split("/");
+  const normalizedValue = collapseSlashes(value.trim());
+  const isAbsolute = normalizedValue.startsWith("/");
+  const segments = normalizedValue.split("/");
   const resolvedSegments: string[] = [];
 
   for (const segment of segments) {
@@ -64,9 +53,6 @@ function normalizePath(value: string): string {
   }
 
   const joinedSegments = resolvedSegments.join("/");
-  if (hasWindowsDrivePrefix) {
-    return joinedSegments ? `${windowsDrivePrefix}/${joinedSegments}` : `${windowsDrivePrefix}/`;
-  }
   if (isAbsolute) {
     return joinedSegments ? `/${joinedSegments}` : "/";
   }
@@ -82,10 +68,6 @@ function dirname(value: string): string {
   if (lastSlashIndex < 0) {
     return "";
   }
-  const windowsDrivePrefix = normalizedValue.match(/^[A-Za-z]:/)?.[0];
-  if (windowsDrivePrefix && lastSlashIndex === windowsDrivePrefix.length) {
-    return `${windowsDrivePrefix}/`;
-  }
   return normalizedValue.slice(0, lastSlashIndex);
 }
 
@@ -98,8 +80,7 @@ function parentDirectory(value: string): string {
   if (normalizedValue.startsWith("/")) {
     return "/";
   }
-  const windowsDrivePrefix = normalizedValue.match(/^[A-Za-z]:/)?.[0];
-  return windowsDrivePrefix ? `${windowsDrivePrefix}/` : "";
+  return "";
 }
 
 function basename(value: string): string {
@@ -158,7 +139,6 @@ function hasAbsolutePathShape(value: string): boolean {
 
 export function looksLikeFileLinkCandidate(value: string): boolean {
   const trimmedValue = value.trim();
-  const normalizedSeparators = normalizeSeparators(trimmedValue);
   if (
     !trimmedValue
     || trimmedValue.length > 260
@@ -168,10 +148,7 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
     || trimmedValue.includes("`")
     || trimmedValue.startsWith("-")
     || trimmedValue.startsWith("//")
-    || (
-      /^[A-Za-z][A-Za-z\d+.-]*:/.test(normalizedSeparators)
-      && !isWindowsAbsolutePath(normalizedSeparators)
-    )
+    || /^[A-Za-z][A-Za-z\d+.-]*:/.test(trimmedValue)
     || !isSafePathCharacterString(trimmedValue)
   ) {
     return false;
@@ -195,24 +172,20 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
 
 function getMarkdownPathCandidate(value: string): string | null {
   const trimmedValue = value.trim();
-  const normalizedSeparators = normalizeSeparators(trimmedValue);
   if (
     !trimmedValue
     || trimmedValue.startsWith("#")
     || trimmedValue.startsWith("?")
     || trimmedValue.startsWith("//")
-    || (
-      /^[A-Za-z][A-Za-z\d+.-]*:/.test(normalizedSeparators)
-      && !isWindowsAbsolutePath(normalizedSeparators)
-    )
+    || /^[A-Za-z][A-Za-z\d+.-]*:/.test(trimmedValue)
   ) {
     return null;
   }
 
-  const queryIndex = normalizedSeparators.search(/[?#]/);
+  const queryIndex = trimmedValue.search(/[?#]/);
   const pathCandidate = queryIndex >= 0
-    ? normalizedSeparators.slice(0, queryIndex)
-    : normalizedSeparators;
+    ? trimmedValue.slice(0, queryIndex)
+    : trimmedValue;
   if (!pathCandidate) {
     return null;
   }

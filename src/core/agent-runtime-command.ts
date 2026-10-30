@@ -6,7 +6,6 @@ export interface AgentRuntimeCommand {
   command: string;
   args: string[];
   env?: Record<string, string>;
-  windowsVerbatimArguments?: boolean;
 }
 
 interface AgentProviderRuntime {
@@ -21,8 +20,6 @@ const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const PI_ACP_PACKAGE = "pi-acp";
 const GROK_PACKAGE = "@xai-official/grok";
-const WINDOWS_COMMAND_SHIM_PATTERN = /\.(?:cmd|bat)$/i;
-const WINDOWS_CMD_META_PATTERN = /([()\][%!^"`<>&|;, *?])/g;
 const CODEX_ACP_ENV = {
   INITIAL_AGENT_MODE: "agent-full-access",
   CODEX_CONFIG: JSON.stringify({
@@ -113,24 +110,6 @@ const CODEX_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   },
 };
 
-function escapeWindowsCmdCommand(value: string): string {
-  return value.replace(WINDOWS_CMD_META_PATTERN, "^$1");
-}
-
-function escapeWindowsCmdArgument(value: string): string {
-  const escaped = value
-    .replace(/(?=(\\+?)?)\1"/g, "$1$1\\\"")
-    .replace(/(?=(\\+?)?)\1$/, "$1$1");
-  return `"${escaped}"`.replace(WINDOWS_CMD_META_PATTERN, "^$1");
-}
-
-function buildWindowsCommandShimInvocation(command: string, args: string[]): string {
-  return `"${[
-    escapeWindowsCmdCommand(command),
-    ...args.map(escapeWindowsCmdArgument),
-  ].join(" ")}"`;
-}
-
 const COPILOT_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   executable: "copilot",
   packageName: COPILOT_PACKAGE,
@@ -219,7 +198,6 @@ export function getProviderAcpCommand(
 export function resolveProviderAcpCommand(
   provider: AgentProvider,
   which: (command: string) => string | null = Bun.which,
-  platform: NodeJS.Platform = process.platform,
 ): AgentRuntimeCommand {
   const runtime = AGENT_PROVIDER_RUNTIMES[provider];
   const requiredCli = runtime.options.requiredCli;
@@ -227,95 +205,35 @@ export function resolveProviderAcpCommand(
     throw new AgentRuntimeUnavailableError(provider, requiredCli.errorMessage);
   }
 
-  const executable = runtime.options.executable
+  let command = runtime.options.executable
     ? which(runtime.options.executable)
     : null;
-  if (executable) {
-    return adaptProviderCommandForPlatform(
-      provider,
-      executable,
-      runtime.args,
-      runtime.env,
-      which,
-      platform,
-    );
+  let args = [...runtime.args];
+  if (!command) {
+    command = which("npx") ?? which("bunx");
+    args = ["--yes", runtime.options.packageName, ...runtime.args];
   }
-
-  const npx = which("npx");
-  if (npx) {
-    return adaptProviderCommandForPlatform(
-      provider,
-      npx,
-      ["--yes", runtime.options.packageName, ...runtime.args],
-      runtime.env,
-      which,
-      platform,
-    );
-  }
-
-  const bunx = which("bunx");
-  if (bunx) {
-    return adaptProviderCommandForPlatform(
-      provider,
-      bunx,
-      ["--yes", runtime.options.packageName, ...runtime.args],
-      runtime.env,
-      which,
-      platform,
-    );
-  }
-
-  throw new AgentRuntimeUnavailableError(
-    provider,
-    `clanky: ${runtime.options.errorLabel} not found. ${
-      buildResolverErrorHint(runtime.options)
-    }`,
-  );
-}
-
-function adaptProviderCommandForPlatform(
-  provider: AgentProvider,
-  command: string,
-  args: string[],
-  env: Record<string, string> | undefined,
-  which: (command: string) => string | null,
-  platform: NodeJS.Platform,
-): AgentRuntimeCommand {
-  if (platform !== "win32" || !WINDOWS_COMMAND_SHIM_PATTERN.test(command)) {
-    return {
-      command,
-      args: [...args],
-      ...(env ? { env } : {}),
-    };
-  }
-
-  const commandProcessor = which("cmd.exe") ?? which("cmd");
-  if (!commandProcessor) {
+  if (!command) {
     throw new AgentRuntimeUnavailableError(
       provider,
-      "clanky: Windows Command Processor is required to run the resolved ACP command shim.",
+      `clanky: ${runtime.options.errorLabel} not found. ${
+        buildResolverErrorHint(runtime.options)
+      }`,
     );
   }
   return {
-    command: commandProcessor,
-    args: [
-      "/d",
-      "/s",
-      "/c",
-      buildWindowsCommandShimInvocation(command, args),
-    ],
-    ...(env ? { env } : {}),
-    windowsVerbatimArguments: true,
+    command,
+    args,
+    ...(runtime.env ? { env: runtime.env } : {}),
   };
 }
 
 export function isAgentProviderAvailable(
   provider: AgentProvider,
   which: (command: string) => string | null = Bun.which,
-  platform: NodeJS.Platform = process.platform,
 ): boolean {
   try {
-    resolveProviderAcpCommand(provider, which, platform);
+    resolveProviderAcpCommand(provider, which);
     return true;
   } catch (error) {
     if (error instanceof AgentRuntimeUnavailableError) {

@@ -31,15 +31,11 @@ import { TerminalOutput } from "./terminal-output";
 import { DomainError } from "../../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import {
-  isSubprocessTreeTerminationConfirmed,
   SubprocessTreeTerminationError,
   terminateSubprocessTree,
 } from "../subprocess-termination";
 import {
   buildLocalTerminalEnvironment,
-  buildWindowsTerminalFallbackNotice,
-  isWindowsTerminalRuntime,
-  resolveWindowsTerminalSpawn,
   type LocalTerminalSpawnConfig,
 } from "./local-terminal-runtime";
 
@@ -192,27 +188,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     this.assertNotDisposed();
 
     let notice: string | undefined;
-    if (isWindowsTerminalRuntime()) {
-      notice = buildWindowsTerminalFallbackNotice(
-        this.config.connectionMode === "dtach",
-        this.config.useTmux,
-      );
-      this.activeMode = "direct";
-      if (
-        this.config.runtimeConnectionMode !== "direct"
-        || notice !== undefined
-      ) {
-        await this.config.onRuntimeConnectionState?.({
-          runtimeConnectionMode: this.config.connectionMode === "direct"
-            ? undefined
-            : "direct",
-          notice,
-        });
-        this.assertNotDisposed();
-      }
-      return await this.connectPty(executionDirectory, notice);
-    }
-
     if (this.config.connectionMode === "dtach") {
       const probe = await this.config.executor.exec(
         "bash",
@@ -342,13 +317,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       if (shouldRetry) {
         this.suppressNextExitNotification = true;
       }
-      if (
-        processHandle.exitCode === null
-        || (
-          isWindowsTerminalRuntime()
-          && !isSubprocessTreeTerminationConfirmed(processHandle)
-        )
-      ) {
+      if (processHandle.exitCode === null) {
         try {
           await this.terminateProcess(processHandle);
         } catch (terminationError) {
@@ -448,10 +417,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       && (
         processHandle.exitCode === null
         || this.processTreeCleanupFailure === processHandle
-        || (
-          isWindowsTerminalRuntime()
-          && !isSubprocessTreeTerminationConfirmed(processHandle)
-        )
       )
     ) {
       try {
@@ -465,10 +430,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
       && (
         processHandle.exitCode === null
         || this.processTreeCleanupFailure === processHandle
-        || (
-          isWindowsTerminalRuntime()
-          && !isSubprocessTreeTerminationConfirmed(processHandle)
-        )
       )
     ) {
       this.watchRetainedProcess(processHandle);
@@ -671,19 +632,14 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     }
     this.ready = false;
     this.terminal = null;
-    if (isWindowsTerminalRuntime()) {
-      // Closing an unconfirmed ConPTY tree can block on older Windows builds.
-      quarantineTerminal(terminal);
-    } else {
-      const cleanupErrors: unknown[] = [];
-      this.closeTerminalResource(terminal, cleanupErrors);
-      this.quarantineFailedTerminalClose(
-        terminal,
-        cleanupErrors,
-        processHandle,
-        "Failed to close the abandoned terminal",
-      );
-    }
+    const cleanupErrors: unknown[] = [];
+    this.closeTerminalResource(terminal, cleanupErrors);
+    this.quarantineFailedTerminalClose(
+      terminal,
+      cleanupErrors,
+      processHandle,
+      "Failed to close the abandoned terminal",
+    );
     log.error("Abandoned terminal resources after bounded process-tree cleanup failed", {
       sessionId: this.config.sessionId,
       pid: processHandle.pid,
@@ -733,15 +689,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     processHandle: Bun.Subprocess,
     executionDirectory: string,
   ): Promise<void> {
-    if (isWindowsTerminalRuntime()) {
-      if (processHandle.exitCode !== null) {
-        throw new DomainError(
-          "terminal_process_exited",
-          `The terminal process exited before it became ready (code ${String(processHandle.exitCode)}).`,
-        );
-      }
-      return;
-    }
     const deadline = Date.now() + (this.config.readyTimeoutMs ?? DEFAULT_SESSION_READY_TIMEOUT_MS);
     const command = this.activeMode === "dtach"
       ? buildPersistentSessionReadyCommand({
@@ -826,20 +773,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     processHandle: Bun.Subprocess,
     closeErrorMessage: string,
   ): void {
-    if (
-      isWindowsTerminalRuntime()
-      && !isSubprocessTreeTerminationConfirmed(processHandle)
-    ) {
-      if (this.terminal === terminal) {
-        this.terminal = null;
-      }
-      quarantineTerminal(terminal);
-      log.warn("Quarantined terminal after an unverified Windows process-tree exit", {
-        sessionId: this.config.sessionId,
-        pid: processHandle.pid,
-      });
-      return;
-    }
     const cleanupErrors: unknown[] = [];
     this.closeTerminal(cleanupErrors);
     this.quarantineFailedTerminalClose(
@@ -862,10 +795,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
 
   private async cleanupClientTtyFile(): Promise<void> {
     if (this.clientTtyCleanupDone) {
-      return;
-    }
-    if (isWindowsTerminalRuntime()) {
-      this.clientTtyCleanupDone = true;
       return;
     }
     const result = await this.config.executor.exec(
@@ -915,9 +844,6 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     executionDirectory: string,
     environment: Record<string, string>,
   ): LocalTerminalSpawnConfig {
-    if (isWindowsTerminalRuntime()) {
-      return resolveWindowsTerminalSpawn(executionDirectory, environment);
-    }
     const command = this.activeMode === "dtach"
       ? buildPersistentSessionAttachCommand({
           config: {

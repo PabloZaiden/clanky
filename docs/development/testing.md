@@ -28,8 +28,7 @@ CLANKY_LOG_LEVEL=info bun run test:mesh
 
 The Linux suite requires `iproute2`, `openssh-server`, `sshpass`, `dtach`, and
 `util-linux`. Automatic Devbox workspace scenarios require `flock`
-(`util-linux` on Linux, `brew install flock` on macOS); Devbox is not supported
-on Windows.
+(`util-linux` on Linux, `brew install flock` on macOS).
 Install prerequisites before running the relevant journey.
 
 The voice-provider fixture requires OpenSSL and listens on an ephemeral HTTPS
@@ -142,8 +141,8 @@ also present in echoed input.
 | Whole journey, final slow-CI backstop | 120 seconds |
 
 The Mesh exception covers bootstrap, enrollment, HTTP/health, remote commands,
-Windows termination, and the external Devbox fixture. Keep existing
-lifecycle/polling, Windows startup, large-image, and whole-journey budgets;
+and the external Devbox fixture. Keep existing
+lifecycle/polling, startup, large-image, and whole-journey budgets;
 the exception does not change production or non-Mesh timeouts.
 
 Use shared polling/timeout helpers in `tests/e2e/support/`. Preserve original

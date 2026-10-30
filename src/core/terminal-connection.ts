@@ -318,7 +318,6 @@ export async function createTerminalConnection(
   const runtimeMode = resolved.session.state.runtimeConnectionMode
     ?? resolved.session.config.connectionMode;
   const persistentRuntimeExists = runtimeMode === "dtach"
-    && resolved.executionHostPlatform?.os !== "windows"
     && await hasPersistentSession(
       executor,
       {

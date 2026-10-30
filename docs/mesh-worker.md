@@ -183,7 +183,7 @@ the existing Mesh generation and does not require Bash or `commandExecution`.
 `deferredDirectoryNames` (an array of directory basenames, including an empty
 array when nothing should be deferred). Its result is an array of
 `{ path, kind, isSymbolicLink }`, with paths relative to the root using the
-worker's POSIX or Windows path semantics, and `kind` equal to `file` or `directory`.
+worker's POSIX path semantics, and `kind` equal to `file` or `directory`.
 The root itself is omitted. Empty directories are included; deferred directories
 are included without their contents. Descendant symlinks are classified by their
 targets where possible but never traversed. An explicitly selected root may be a
@@ -542,10 +542,7 @@ runtime, the workspace directory, and any other tools used by tasks.
 
 On Linux, installation creates systemd services. On macOS, it installs a
 per-user LaunchAgent; the worker can request Accessibility, Screen Recording,
-and Files and Folders permissions when those capabilities are used. On
-Windows, install a trusted WinSW executable separately and set
-`CLANKY_WORKER_SERVICE_WRAPPER` to its absolute path during service
-installation.
+and Files and Folders permissions when those capabilities are used.
 
 ## Enroll a worker
 

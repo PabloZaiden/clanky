@@ -27,7 +27,6 @@ class HarnessSecretFiles {
   }
 
   private async open(): Promise<void> {
-    if (process.platform === "win32") return;
     const root = join(getDataDir(), "native", "secrets");
     await mkdir(root, { recursive: true, mode: 0o700 });
     await this.secureDirectory(root);
@@ -77,7 +76,7 @@ class HarnessSecretFiles {
 
   async get(key: string): Promise<SecretFileReference | undefined> {
     await this.initialize();
-    if (!this.directory) throw new DomainError("secret_file_unavailable", "Private secret files require POSIX permissions; Windows ACL protection is not supported.");
+    if (!this.directory) throw new DomainError("secret_file_unavailable", "The private secret directory is unavailable.");
     return await this.operations.run(key, async () => {
       const entry = this.files.get(key);
       if (!entry) return undefined;
@@ -100,7 +99,7 @@ class HarnessSecretFiles {
   async save(key: string, value: string, signal: AbortSignal): Promise<SecretFileReference> {
     await this.initialize();
     const directory = this.directory;
-    if (!directory) throw new DomainError("secret_file_unavailable", "Private secret files require POSIX permissions; Windows ACL protection is not supported.");
+    if (!directory) throw new DomainError("secret_file_unavailable", "The private secret directory is unavailable.");
     return await this.operations.run(key, async () => {
       signal.throwIfAborted();
       if (this.files.size >= 1024) throw new DomainError("secret_file_capacity", "Too many private secret files are in use.");

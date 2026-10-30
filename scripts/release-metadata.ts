@@ -1,4 +1,4 @@
-export type ReleaseOs = "linux" | "darwin" | "windows";
+export type ReleaseOs = "linux" | "darwin";
 export type ReleaseArchitecture = "x64" | "arm64";
 export type DockerChannelName = "release" | "main";
 
@@ -24,7 +24,6 @@ export interface ReleaseTarget {
   architecture: ReleaseArchitecture;
   runner: string;
   bunTarget: string;
-  executableExtension: string;
 }
 
 export interface DockerImage {
@@ -112,12 +111,11 @@ const supportedTemplateVariables = new Set([
   "BUN_TARGET",
   "BINARY_NAME",
   "ASSET_PREFIX",
-  "ASSET_EXTENSION",
   "ASSET_NAME",
   "ASSET_PATH",
   "OUTPUT_PATH",
 ]);
-const releaseOsValues: ReleaseOs[] = ["linux", "darwin", "windows"];
+const releaseOsValues: ReleaseOs[] = ["linux", "darwin"];
 const releaseArchitectureValues: ReleaseArchitecture[] = ["x64", "arm64"];
 const dockerChannelNames: DockerChannelName[] = ["release", "main"];
 
@@ -258,14 +256,12 @@ function parseTarget(value: unknown, index: number): ReleaseTarget {
   );
   const runner = requireString(record, "runner", path);
   const bunTarget = requireString(record, "bunTarget", path);
-  const executableExtension = requireStringAllowEmpty(record, "executableExtension", path);
   return {
     id,
     os,
     architecture,
     runner,
     bunTarget,
-    executableExtension,
   };
 }
 
@@ -384,14 +380,9 @@ function validateTargets(targets: ReleaseTarget[]): void {
     const supportedRunnerPrefixes = {
       linux: ["ubuntu-"],
       darwin: ["macos-"],
-      windows: ["ubuntu-", "windows-"],
     }[target.os];
     if (!supportedRunnerPrefixes.some((prefix) => target.runner.startsWith(prefix))) {
       throw new Error(`${path}.runner does not support its target OS`);
-    }
-    const expectedExtension = target.os === "windows" ? ".exe" : "";
-    if (target.executableExtension !== expectedExtension) {
-      throw new Error(`${path}.executableExtension must be ${JSON.stringify(expectedExtension)}`);
     }
   }
 }
@@ -576,7 +567,7 @@ export function buildReleaseAssetName(
   target: ReleaseTarget,
 ): string {
   requireSafeToken(tag, "release tag");
-  return `${binary.assetPrefix}-${tag}-${target.id}${target.executableExtension}`;
+  return `${binary.assetPrefix}-${tag}-${target.id}`;
 }
 
 export function buildReleaseChecksumName(

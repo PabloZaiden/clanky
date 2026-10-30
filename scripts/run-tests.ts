@@ -62,16 +62,12 @@ const architectureRules: ArchitectureRule[] = [
   },
 ];
 
-function normalizePath(path: string): string {
-  return path.replaceAll("\\", "/");
-}
-
 async function globFiles(pattern: string): Promise<string[]> {
   const files = await Array.fromAsync(new Bun.Glob(pattern).scan({
     cwd: rootDirectory,
     onlyFiles: true,
   }));
-  return files.map(normalizePath).sort();
+  return files.sort();
 }
 
 function parseMode(rawMode: string | undefined): TestMode {

@@ -595,8 +595,8 @@ data directory. The selected runtime and voice remain there across restarts.
 The first use needs outbound access to GitHub Releases and Hugging Face; later
 speech synthesis uses the cached files.
 
-Supported server targets are Linux x64/arm64, macOS x64/arm64, and Windows
-x64. `/api/voice/settings` reports this platform support as `piper.available`;
+Supported server targets are Linux x64/arm64 and macOS x64/arm64.
+`/api/voice/settings` reports this platform support as `piper.available`;
 it does not indicate whether the runtime or models have already been
 downloaded.
 

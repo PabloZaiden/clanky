@@ -161,7 +161,7 @@ export async function startWorkspaceWebDav(
     await close();
     signal.throwIfAborted();
   }
-  return { url: origin + davHref(client.info.directory, "directory", client.info.pathStyle), origin, username, password, close };
+  return { url: origin + davHref(client.info.directory, "directory"), origin, username, password, close };
 }
 
 export async function runWorkspaceWebDav(

@@ -536,10 +536,9 @@ The selected workspace host (local, SSH or Mesh) must already have a `code`
 CLI supporting `serve-web`, `--port 0`, `--connection-token-file`, and
 `--default-folder`. Some Remote SSH/Codespaces `code` commands only launch an
 existing editor and cannot serve one. Clanky does not install or replace VS
-Code and does not use Microsoft's tunnel service. POSIX hosts also need
+Code and does not use Microsoft's tunnel service. Hosts also need
 `bash`, `ps`, `awk`, and `sort` for the session's process ownership supervision,
-including inherited terminals that change process groups. Windows uses the native
-process-tree termination path.
+including inherited terminals that change process groups.
 
 Clanky passes `DONT_PROMPT_WSL_INSTALL=1` to VS Code's availability check and
 server process, avoiding the Linux launcher's interactive WSL installation
@@ -593,8 +592,6 @@ retried after the controller connection is authenticated and worker authorizatio
 has synchronized.
 Pre-upgrade previews have no recoverable ownership metadata: their stale bridges
 are removed, but Clanky cannot safely infer or delete their old host resources.
-On Windows, normal shutdown uses native process-tree termination; after abrupt
-controller loss, resources remain pending when termination cannot be confirmed.
 
 The first launch may download VS Code server components and needs the host's
 network access and supported system libraries. Startup waits for the editor
@@ -833,8 +830,7 @@ local listener; WebDAV does not provide a complete POSIX filesystem or offline
 synchronization.
 
 URLs represent absolute paths on the selected host, percent-encoding each
-component: `/home/user/project/` for POSIX, `/C%3A/project/` for a Windows
-drive, and `/UNC/server/share/project/` for UNC paths. The initial URL is the
+component, for example `/home/user/project/`. The initial URL is the
 workspace directory. To access another directory, mount its URL under the
 same endpoint; native clients may not allow `..` above a mounted volume.
 Existing host symlink semantics apply. Atomic replacement of a destination
@@ -905,7 +901,7 @@ and DAV XML; names containing XML-forbidden controls fail explicitly.
 
 Single-range GET seeks on the selected host rather than transferring its prefix.
 Local hosts use native file slices; SSH and Mesh use bounded existing `exec`
-windows (POSIX `sh`, `dd` and `base64`, or Windows PowerShell). Hosts lacking
+windows using `sh`, `dd` and `base64`. Hosts lacking
 `commandExecution` cannot provide remote ranged reads. Ordinary ranges and
 date-based If-Range use metadata only; a strong ETag condition still requires
 hashing the whole file. Metadata-only 206 responses omit ETag, since weak
@@ -936,9 +932,8 @@ filenames, exclusive locks rejecting concurrent tokenless writes, mkdir,
 rename/delete, editor-style replacement, alternate mounting outside the initial
 workspace directory, unmount and CLI shutdown. No extra mounting software or
 TLS certificate was needed on the Mac.
-Windows WebClient and Linux desktop mounting remain unverified. Windows
-WebClient is deprecated and normally requires trusted HTTPS for Basic auth,
-while Linux may require additional client components.
+Linux desktop mounting remains unverified and may require additional client
+components.
 
 ### Direct execution-host commands
 

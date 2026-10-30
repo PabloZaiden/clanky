@@ -16,9 +16,7 @@ interface StoredLock extends FileSystemLock {
 export function containsExecutionPath(parent: string, child: string, style: ExecutionPathStyle): boolean {
   const relative = relativeExecutionPath(parent, child, style);
   return relative === "" || (
-    relative !== ".." && !relative.startsWith("../") && !relative.startsWith("..\\")
-    && !(style === "windows" && relative.startsWith("\\"))
-    && !relative.startsWith("/") && !/^[A-Za-z]:/.test(relative)
+    relative !== ".." && !relative.startsWith("../") && !relative.startsWith("/")
   );
 }
 

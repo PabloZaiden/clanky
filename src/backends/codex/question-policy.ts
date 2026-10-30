@@ -35,17 +35,15 @@ export async function codexQuestionConfig(
     },
   });
   const command = `printf '%s\\n' '${output}'`;
-  const windowsOutput = Buffer.from(`[Console]::WriteLine('${output}')`, "utf16le").toString("base64");
-  const commandWindows = `powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand ${windowsOutput}`;
-  const handler = { type: "command", command, commandWindows, timeout: 10, async: false };
+  const handler = { type: "command", command, timeout: 10, async: false };
   // Codex trusts a normalized, alphabetically ordered identity, not the source text.
   const identity = {
     event_name: "pre_tool_use",
-    hooks: [{ async: false, command: process.platform === "win32" ? commandWindows : command, timeout: 10, type: "command" }],
+    hooks: [{ async: false, command, timeout: 10, type: "command" }],
     matcher,
   };
   const trustedHash = `sha256:${new Bun.CryptoHasher("sha256").update(JSON.stringify(identity)).digest("hex")}`;
-  const source = join(process.platform === "win32" ? "C:\\" : "/", "<session-flags>", "config.toml");
+  const source = join("/", "<session-flags>", "config.toml");
   config["hooks"] = {
     PreToolUse: [{ matcher, hooks: [handler] }],
     state: { [`${source}:pre_tool_use:0:0`]: { enabled: true, trusted_hash: trustedHash } },

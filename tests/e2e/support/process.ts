@@ -46,13 +46,6 @@ export function currentEnvironment(overrides: Record<string, string | undefined>
     }
   }
   for (const [name, value] of Object.entries(overrides)) {
-    if (process.platform === "win32") {
-      for (const inheritedName of Object.keys(environment)) {
-        if (inheritedName.toLowerCase() === name.toLowerCase()) {
-          delete environment[inheritedName];
-        }
-      }
-    }
     if (value === undefined) {
       delete environment[name];
     } else {
@@ -89,7 +82,6 @@ export function startManagedProcess(
     stderrPath: string;
   },
 ): ManagedProcess {
-  const detached = process.platform !== "win32";
   const child = Bun.spawn({
     cmd: [...command],
     cwd: options.cwd,
@@ -97,14 +89,14 @@ export function startManagedProcess(
     stdin: "ignore",
     stdout: Bun.file(options.stdoutPath),
     stderr: Bun.file(options.stderrPath),
-    detached,
+    detached: true,
   });
   return {
     child,
     command,
     stdoutPath: options.stdoutPath,
     stderrPath: options.stderrPath,
-    processGroupId: detached ? child.pid : null,
+    processGroupId: child.pid,
   };
 }
 

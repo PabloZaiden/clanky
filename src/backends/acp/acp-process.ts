@@ -16,7 +16,6 @@ export interface AcpProcessOptions {
   maxBufferedBytes?: number;
   maxLineBytes?: number;
   onOutputLimitExceeded?: (source: AcpProcessStream) => void;
-  windowsVerbatimArguments?: boolean;
 }
 
 export interface AcpProcessStopOptions {
@@ -42,7 +41,6 @@ export class AcpProcess {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
-      windowsVerbatimArguments: options.windowsVerbatimArguments,
     });
     if (
       !child.stdin

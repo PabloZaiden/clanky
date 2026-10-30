@@ -31,7 +31,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Resolve client build version
-        uses: pablozaiden/installer/.github/actions/resolve-version@bd5fa6697c003e620d8d7b92734aea506f31e3fa
+        uses: pablozaiden/installer/.github/actions/resolve-version@b30e7af9e43cd41f8511d555e06ea60d066c4e9f
         with:
           mode: main
           github_token: ${{ github.token }}

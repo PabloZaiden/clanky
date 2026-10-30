@@ -70,8 +70,8 @@ export class ProvisioningRemoteExecutor {
       });
       // A separate read-only probe establishes the connection boundary before job commands.
       const probe = await executor.exec(
-        executor.pathStyle === "windows" ? "cmd.exe" : "true",
-        executor.pathStyle === "windows" ? ["/c", "exit", "0"] : [],
+        "true",
+        [],
         { cwd: "/", timeout: 5000, signal: record.abortController.signal, logFailures: false },
       );
       if (!probe.success) {

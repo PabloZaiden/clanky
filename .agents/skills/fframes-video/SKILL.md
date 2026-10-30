@@ -41,11 +41,6 @@ sudo apt-get install -y yasm nasm ffmpeg libx264-dev libx265-dev libopus-dev lib
 sudo pacman -S ninja yasm nasm ffmpeg x264 x265 opus clang
 ```
 
-Windows links a prebuilt FFmpeg 9 shared build instead (set `FFMPEG_DIR` to the unzipped
-`ffmpeg-n9.0-latest-win64-gpl-shared` build from BtbN/FFmpeg-Builds, add its `bin` to `PATH`,
-install LLVM with `winget install LLVM.LLVM` and set `LIBCLANG_PATH`). Details are in the
-fframes README.
-
 ## 2. Create a project
 
 ```bash
@@ -69,7 +64,7 @@ The template content is placeholder code that shows the API. Replace its layout,
 fonts and decorations with a design made for the video the user asked for.
 
 **Use the Skia GPU backend (the default).** `cargo fframes new` picks Skia on Metal (macOS) or
-Vulkan (Linux, Windows). It renders about 10x faster than the CPU backend and gives you the
+Vulkan (Linux). It renders about 10x faster than the CPU backend and gives you the
 real-time `preview` window. On macOS and Linux the first build downloads prebuilt Skia and ffmpeg
 and only compiles the Rust dependencies (about a minute; other targets, or `metal` and `vulkan`
 together, compile Skia from source for ~20 minutes). Start it right away and write the video

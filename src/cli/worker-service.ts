@@ -9,7 +9,7 @@ import {
   stat,
 } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { dirname, join, resolve, win32 } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { type RuntimeEnvironment } from "@pablozaiden/webapp/server";
 import {
   type CliCommandResult,
@@ -38,18 +38,6 @@ import { resolveWorkerRuntimeConfiguration } from "./worker-runtime";
 import { runWorkspaceWorkerService } from "./worker-supervisor";
 import { CLANKY_VERSION } from "../version";
 import { getEffectiveWorkerChannel } from "./worker-channel";
-import {
-  getWindowsWorkerServicePaths,
-  getWindowsWorkerServiceStatus,
-  installWindowsWorkerService,
-  renderWindowsWorkerService as renderWindowsWorkerServiceDefinition,
-  runWindowsWorkerServiceOperation,
-  uninstallWindowsWorkerService,
-  type WindowsWorkerServiceDefinition,
-  type WindowsWorkerServicePaths,
-  type WindowsWorkerServiceProcessResult,
-  type WindowsWorkerServiceProcessRunner,
-} from "./worker-service-windows";
 
 const MACOS_LABEL = "com.pablozaiden.clanky.worker";
 const MACOS_SERVICE_POLL_INTERVAL_MS = 100;
@@ -67,7 +55,7 @@ const SAFE_ENVIRONMENT_KEYS = [
   "CLANKY_DISABLE_SAME_ORIGIN_CHECK",
 ] as const;
 
-export type WorkerServicePlatform = "darwin" | "linux" | "win32";
+export type WorkerServicePlatform = "darwin" | "linux";
 export type WorkerServiceOperation =
   | "install"
   | "uninstall"
@@ -87,9 +75,6 @@ export interface WorkerServicePaths {
   servicePath: string;
   supervisorTarget: string;
   supervisorDomain?: string;
-  serviceDirectory?: string;
-  managedBinaryPath?: string;
-  wrapperPath?: string;
 }
 
 export interface WorkerServiceConfiguration {
@@ -104,8 +89,6 @@ export interface WorkerServiceConfiguration {
   port: number;
   homeDirectory: string;
   userName: string;
-  userDomain?: string;
-  serviceWrapperPath?: string;
   environment: Readonly<Record<string, string>>;
   sshAgent?: WorkerSshAgentConfiguration;
 }
@@ -119,11 +102,19 @@ interface WorkerServiceResolutionInput {
   homeDirectory?: string;
   userName?: string;
   uid?: number;
-  serviceWrapperPath?: string;
 }
 
-export type WorkerServiceProcessResult = WindowsWorkerServiceProcessResult;
-export type WorkerServiceProcessRunner = WindowsWorkerServiceProcessRunner;
+export interface WorkerServiceProcessResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+export type WorkerServiceProcessRunner = (
+  command: string,
+  args: readonly string[],
+  options?: { inheritOutput?: boolean },
+) => Promise<WorkerServiceProcessResult>;
 
 type ProcessResult = WorkerServiceProcessResult;
 type ProcessRunner = WorkerServiceProcessRunner;
@@ -154,11 +145,11 @@ function currentMainPath(): string {
 export function detectWorkerServicePlatform(
   platform: string = process.platform,
 ): WorkerServicePlatform {
-  if (platform === "darwin" || platform === "linux" || platform === "win32") {
+  if (platform === "darwin" || platform === "linux") {
     return platform;
   }
   throw new Error(
-    "Worker services are supported on macOS, Linux, and Windows only.",
+    "Worker services are supported on macOS and Linux only. Use WSL for a Linux environment.",
   );
 }
 
@@ -167,12 +158,10 @@ export function isStandaloneClankyInvocation(
   executablePath: string,
 ): boolean {
   if (!mainPath) return false;
-  const normalizedMainPath = mainPath.replaceAll("\\", "/");
   return (
     resolve(mainPath) === resolve(executablePath) ||
-    normalizedMainPath.startsWith("/$bunfs/") ||
-    normalizedMainPath.includes("/$bunfs/") ||
-    /^[A-Za-z]:\/~BUN\//iu.test(normalizedMainPath)
+    mainPath.startsWith("/$bunfs/") ||
+    mainPath.includes("/$bunfs/")
   );
 }
 
@@ -207,7 +196,6 @@ export function getWorkerServicePaths(
   platform: WorkerServicePlatform,
   homeDirectory: string,
   uid?: number,
-  dataDir?: string,
 ): WorkerServicePaths {
   if (platform === "darwin") {
     if (uid === undefined || !Number.isInteger(uid) || uid <= 0) {
@@ -221,11 +209,6 @@ export function getWorkerServicePaths(
       supervisorDomain: `gui/${String(uid)}`,
     };
   }
-  if (platform === "win32") {
-    return getWindowsWorkerServicePaths(
-      dataDir ?? win32.join(homeDirectory, ".clanky"),
-    );
-  }
   return {
     platform,
     label: LINUX_UNIT_NAME,
@@ -237,33 +220,16 @@ export function getWorkerServicePaths(
 function resolveHomeDirectory(
   environment: RuntimeEnvironment,
   explicitHomeDirectory?: string,
-  platform: WorkerServicePlatform = detectWorkerServicePlatform(),
 ): string {
   const configured =
     explicitHomeDirectory ??
-    environment[platform === "win32" ? "USERPROFILE" : "HOME"]?.trim() ??
     environment["HOME"]?.trim() ??
     homedir();
-  return platform === "win32" ? win32.resolve(configured) : resolve(configured);
+  return resolve(configured);
 }
 
 function resolveUserName(explicitUserName?: string): string {
   return explicitUserName?.trim() || userInfo().username;
-}
-
-export function resolveWindowsServiceUserDomain(
-  environment: RuntimeEnvironment,
-): string {
-  const domain = environment["USERDOMAIN"]?.trim();
-  const computerName = environment["COMPUTERNAME"]?.trim();
-  if (
-    !domain ||
-    domain.toUpperCase() === "WORKGROUP" ||
-    (computerName && domain.toLowerCase() === computerName.toLowerCase())
-  ) {
-    return ".";
-  }
-  return domain;
 }
 
 function resolveUid(explicitUid?: number): number | undefined {
@@ -303,7 +269,6 @@ async function assertDirectory(
 async function assertStandaloneBinary(
   binaryPath: string,
   mainPath: string,
-  platform: WorkerServicePlatform,
 ): Promise<void> {
   if (!isStandaloneClankyInvocation(mainPath, binaryPath)) {
     throw new Error(
@@ -322,49 +287,9 @@ async function assertStandaloneBinary(
   if (!binary.isFile()) {
     throw new Error(`The Clanky executable is not a file: ${binaryPath}`);
   }
-  if (platform !== "win32" && (binary.mode & 0o111) === 0) {
+  if ((binary.mode & 0o111) === 0) {
     throw new Error(`The Clanky executable is not executable: ${binaryPath}`);
   }
-}
-
-async function assertFile(path: string, description: string): Promise<void> {
-  let file;
-  try {
-    file = await stat(path);
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      throw new Error(`${description} does not exist: ${path}`, {
-        cause: error,
-      });
-    }
-    throw new Error(`Unable to inspect ${description.toLowerCase()}: ${path}`, {
-      cause: error,
-    });
-  }
-  if (!file.isFile()) {
-    throw new Error(`${description} is not a file: ${path}`);
-  }
-}
-
-function resolveWindowsServiceWrapper(
-  environment: RuntimeEnvironment,
-  explicitPath?: string,
-): string {
-  const configured =
-    explicitPath ?? environment["CLANKY_WORKER_SERVICE_WRAPPER"]?.trim();
-  if (configured) return win32.resolve(configured);
-  for (const name of [
-    "WinSW-x64.exe",
-    "WinSW-arm64.exe",
-    "WinSW.exe",
-    "winsw.exe",
-  ]) {
-    const resolved = Bun.which(name);
-    if (resolved) return resolved;
-  }
-  throw new Error(
-    "Windows worker service installation requires a WinSW executable. Install WinSW separately and set CLANKY_WORKER_SERVICE_WRAPPER to its absolute path.",
-  );
 }
 
 function buildServiceEnvironment(input: {
@@ -374,7 +299,6 @@ function buildServiceEnvironment(input: {
   host: string;
   port: number;
   platform: WorkerServicePlatform;
-  userName: string;
 }): Record<string, string> {
   const result: Record<string, string> = {
     CLANKY_DATA_DIR: input.dataDir,
@@ -392,14 +316,6 @@ function buildServiceEnvironment(input: {
     result["PATH"] =
       input.environment["PATH"]?.trim() ||
       "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-  } else if (input.platform === "win32") {
-    const root = win32.parse(input.homeDirectory).root;
-    const path = input.environment["PATH"]?.trim();
-    if (path) result["PATH"] = path;
-    result["USERPROFILE"] = input.homeDirectory;
-    result["USERNAME"] = input.userName;
-    result["HOMEDRIVE"] = root.replace(/[\\/]$/u, "");
-    result["HOMEPATH"] = input.homeDirectory.slice(root.length - 1);
   }
   return result;
 }
@@ -412,7 +328,6 @@ export async function resolveWorkerServiceConfiguration(
   const homeDirectory = resolveHomeDirectory(
     environment,
     input.homeDirectory,
-    platform,
   );
   const uid = resolveUid(input.uid);
   assertNonRootUser(platform, uid);
@@ -421,20 +336,16 @@ export async function resolveWorkerServiceConfiguration(
     cwd: input.cwd,
   });
   const dataDir = runtimeConfiguration.dataDir;
-  const paths = getWorkerServicePaths(platform, homeDirectory, uid, dataDir);
+  const paths = getWorkerServicePaths(platform, homeDirectory, uid);
   if (!(await pathExists(join(dataDir, "clanky.db")))) {
     throw new Error(`The worker data directory is not initialized: ${dataDir}`);
   }
   const workerDirectory = runtimeConfiguration.workerDirectory;
   await assertDirectory(workerDirectory, "The Mesh worker directory");
-  const binaryPath =
-    platform === "win32"
-      ? win32.resolve(input.executablePath ?? process.execPath)
-      : resolve(input.executablePath ?? process.execPath);
+  const binaryPath = resolve(input.executablePath ?? process.execPath);
   await assertStandaloneBinary(
     binaryPath,
     input.mainPath ?? currentMainPath(),
-    platform,
   );
   const userName = resolveUserName(input.userName);
   if (!userName) {
@@ -449,13 +360,6 @@ export async function resolveWorkerServiceConfiguration(
           binaryPath,
         })
       : undefined;
-  const serviceWrapperPath =
-    platform === "win32"
-      ? resolveWindowsServiceWrapper(environment, input.serviceWrapperPath)
-      : undefined;
-  if (serviceWrapperPath) {
-    await assertFile(serviceWrapperPath, "The WinSW executable");
-  }
   return {
     platform,
     paths,
@@ -468,12 +372,6 @@ export async function resolveWorkerServiceConfiguration(
     port: runtimeConfiguration.port,
     homeDirectory,
     userName,
-    ...(platform === "win32"
-      ? {
-          userDomain: resolveWindowsServiceUserDomain(environment),
-          serviceWrapperPath,
-        }
-      : {}),
     environment: buildServiceEnvironment({
       environment,
       dataDir,
@@ -481,7 +379,6 @@ export async function resolveWorkerServiceConfiguration(
       host: runtimeConfiguration.host,
       port: runtimeConfiguration.port,
       platform,
-      userName,
     }),
     sshAgent,
   };
@@ -525,10 +422,9 @@ function renderPlistEnvironment(environment: Readonly<Record<string, string>>): 
 
 function workerCommand(
   configuration: WorkerServiceConfiguration,
-  binaryPath: string = configuration.binaryPath,
 ): string[] {
   return [
-    binaryPath,
+    configuration.binaryPath,
     "serve",
     "--mesh-worker",
     "true",
@@ -539,56 +435,6 @@ function workerCommand(
     "--worker-execution-enabled",
     String(configuration.workerExecutionEnabled),
   ];
-}
-
-function requireWindowsServicePaths(
-  paths: WorkerServicePaths,
-): WindowsWorkerServicePaths {
-  if (
-    paths.platform !== "win32" ||
-    !paths.serviceDirectory ||
-    !paths.managedBinaryPath ||
-    !paths.wrapperPath
-  ) {
-    throw new Error("Windows worker service paths are incomplete.");
-  }
-  return {
-    platform: "win32",
-    label: paths.label,
-    servicePath: paths.servicePath,
-    supervisorTarget: paths.supervisorTarget,
-    serviceDirectory: paths.serviceDirectory,
-    managedBinaryPath: paths.managedBinaryPath,
-    wrapperPath: paths.wrapperPath,
-  };
-}
-
-function windowsServiceDefinition(
-  configuration: WorkerServiceConfiguration,
-): WindowsWorkerServiceDefinition {
-  const paths = requireWindowsServicePaths(configuration.paths);
-  if (!configuration.serviceWrapperPath) {
-    throw new Error("The WinSW executable is unavailable.");
-  }
-  return {
-    paths,
-    sourceBinaryPath: configuration.binaryPath,
-    sourceWrapperPath: configuration.serviceWrapperPath,
-    dataDir: configuration.dataDir,
-    workerDirectory: configuration.workerDirectory,
-    userName: configuration.userName,
-    userDomain: configuration.userDomain ?? ".",
-    environment: configuration.environment,
-    arguments: workerCommand(configuration, paths.managedBinaryPath).slice(1),
-  };
-}
-
-export function renderWindowsService(
-  configuration: WorkerServiceConfiguration,
-): string {
-  return renderWindowsWorkerServiceDefinition(
-    windowsServiceDefinition(configuration),
-  );
 }
 
 export function renderLaunchAgent(configuration: WorkerServiceConfiguration): string {
@@ -1068,14 +914,6 @@ async function installService(
   await mkdir(join(configuration.dataDir, SERVICE_LOG_DIRECTORY), {
     recursive: true,
   });
-  if (configuration.platform === "win32") {
-    await installWindowsWorkerService(
-      windowsServiceDefinition(configuration),
-      noStart,
-      runner,
-    );
-    return;
-  }
   if (configuration.platform === "darwin") {
     await unloadMacService(configuration.paths, runner);
     await writeAtomic(
@@ -1127,13 +965,6 @@ async function uninstallService(
   sshAgentPaths: WorkerSshAgentPaths | undefined,
   runner: ProcessRunner,
 ): Promise<void> {
-  if (paths.platform === "win32") {
-    await uninstallWindowsWorkerService(
-      requireWindowsServicePaths(paths),
-      runner,
-    );
-    return;
-  }
   if (paths.platform === "darwin") {
     await unloadMacService(paths, runner);
     await rm(paths.servicePath, { force: true });
@@ -1162,12 +993,6 @@ export async function getWorkerServiceStatus(
   runner: ProcessRunner,
   sshAgentPaths?: WorkerSshAgentPaths,
 ): Promise<Record<string, unknown>> {
-  if (paths.platform === "win32") {
-    return await getWindowsWorkerServiceStatus(
-      requireWindowsServicePaths(paths),
-      runner,
-    );
-  }
   const installed = await pathExists(paths.servicePath);
   if (paths.platform === "darwin") {
     const macStatus = await inspectMacService(paths, runner);
@@ -1289,15 +1114,11 @@ async function runWorkerServiceOperation(
   }
   const platform = detectWorkerServicePlatform();
   assertNonRootUser(platform, resolveUid());
-  const homeDirectory = resolveHomeDirectory(environment, undefined, platform);
-  const runtimeConfiguration = resolveWorkerRuntimeConfiguration({
-    environment,
-  });
+  const homeDirectory = resolveHomeDirectory(environment);
   const paths = getWorkerServicePaths(
     platform,
     homeDirectory,
     resolveUid(),
-    runtimeConfiguration.dataDir,
   );
   const sshAgentPaths =
     platform === "linux" ? getWorkerSshAgentPaths(homeDirectory) : undefined;
@@ -1346,20 +1167,10 @@ async function runWorkerServiceOperation(
     return await getWorkerServiceStatus(paths, runner, sshAgentPaths);
   }
   if (!(await pathExists(paths.servicePath))) {
-    if (platform !== "win32") {
-      throw new Error(
-        `The worker service is not installed: ${paths.servicePath}`,
-      );
-    }
+    throw new Error(`The worker service is not installed: ${paths.servicePath}`);
   }
   if (platform === "darwin") {
     await runMacWorkerServiceOperation(command.operation, paths, runner);
-  } else if (platform === "win32") {
-    await runWindowsWorkerServiceOperation(
-      command.operation,
-      requireWindowsServicePaths(paths),
-      runner,
-    );
   } else {
     await assertSystemctlSuccess(runner, [command.operation, paths.label]);
   }
