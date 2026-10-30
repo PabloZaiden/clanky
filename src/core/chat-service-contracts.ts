@@ -274,6 +274,7 @@ export interface ChatInteractionPort {
   beginShutdown(): void;
   shutdown(): Promise<void>;
   replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat>;
+  replyToSecret(chatId: string, requestId: string, value: string | null): Promise<Chat>;
   reconcileQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   steerQueuedMessage(chatId: string, queuedMessageId: string): Promise<{ chat: Chat; admission: HarnessInputAdmission }>;
   sendMessage(chatId: string, options: ChatMessageOptions): Promise<Chat>;

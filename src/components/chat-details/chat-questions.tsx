@@ -11,12 +11,82 @@ import { toMessageAttachments } from "../../lib/image-attachments";
 import { ImageAttachmentControl, type ImageAttachmentControlHandle } from "../ImageAttachmentControl";
 import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
-function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputElement {
-  return target instanceof HTMLInputElement
+function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement {
+  return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement
     && (target.type === "text" || target.type === "number");
+}
+
+function SecretForm({ chatId, request, onChatSnapshot }: {
+  chatId: string;
+  request: HarnessQuestionRequest;
+  onChatSnapshot: (chat: Chat) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [show, setShow] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
+  const disabled = submitting || request.status !== "pending";
+  const tooLarge = new TextEncoder().encode(value).byteLength > SECRET_MAX_BYTES;
+
+  async function submit(declined: boolean): Promise<void> {
+    if (disabled || !declined && (!value.length || tooLarge)) return;
+    const body = JSON.stringify({ value: declined ? null : value });
+    setValue("");
+    setShow(false);
+    setError(undefined);
+    setSubmitting(true);
+    const controller = new AbortController();
+    operation.current = controller;
+    try {
+      const { chat } = await apiRequest<{ chat: Chat }>(
+        `/api/chats/${encodeURIComponent(chatId)}/secrets/${encodeURIComponent(request.requestId)}`, {
+          method: "POST", body, headers: { "content-type": "application/json" },
+          signal: controller.signal, action: "Supply private secret",
+        },
+      );
+      onChatSnapshot(chat);
+    } catch {
+      if (!controller.signal.aborted) setError("Private delivery could not be confirmed. Refresh the conversation before entering the secret again.");
+    } finally {
+      if (!controller.signal.aborted) setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
+      <div className="break-words text-sm font-medium">Private secret: {request.questions[0]?.header}</div>
+      <p className="break-words text-sm">{request.questions[0]?.question}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Saved privately on the execution host, not in chat. Reusable in this conversation for 24 hours.
+        {" "}Agent commands and processes running as the same OS user can read it. The CLI may print or retain it.
+      </p>
+      <label className="block text-xs text-gray-500 dark:text-gray-400">
+        Your secret
+        <textarea
+          aria-label="Your secret" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+          rows={3} maxLength={SECRET_MAX_BYTES} disabled={disabled}
+          className={`mt-1 block w-full resize-y rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100 ${show ? "" : "[-webkit-text-security:disc]"}`}
+          value={value} onChange={(event) => setValue(event.target.value)} />
+      </label>
+      {tooLarge && <p className="text-xs text-red-600 dark:text-red-400">The secret must be at most 64 KiB.</p>}
+      {(request.error ?? error) && <ErrorState title="Secret could not be delivered" description={request.error ?? error} />}
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <button type="button" className={actionClass} disabled={disabled || !value.length || tooLarge} onClick={() => void submit(false)}>
+          {submitting || request.status === "submitting" ? "Delivering secret" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Provide secret"}
+        </button>
+        <button type="button" className={actionClass} disabled={disabled} onClick={() => void submit(true)}>Decline</button>
+        <button type="button" className={actionClass} disabled={disabled} aria-pressed={show} onClick={() => setShow((current) => !current)}>
+          {show ? "Hide secret" : "Show secret"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function QuestionField({ question, index, requestId, values, custom, attachments, otherAttachments, disabled, numbered, onValues, onCustom, onAttachments, onProcessingChange }: {
@@ -214,14 +284,9 @@ export function ChatQuestions({
         }
       }}
     >
-      {visible.map((request) => (
-        <QuestionForm
-          key={request.requestId}
-          chatId={chatId}
-          request={request}
-          onChatSnapshot={onChatSnapshot}
-        />
-      ))}
+      {visible.map((request) => request.secretIdentifier !== undefined
+        ? <SecretForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />
+        : <QuestionForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />)}
     </div>
   );
 }

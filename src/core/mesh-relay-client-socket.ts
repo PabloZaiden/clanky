@@ -16,6 +16,7 @@ export interface MeshRelayClientSocket {
   binaryType: BinaryType;
   send(data: string | Uint8Array<ArrayBuffer>): void;
   close(code?: number, reason?: string): void;
+  terminate?(): void;
   addEventListener(type: "open", listener: (event: Event) => void): void;
   addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
   addEventListener(type: "close", listener: (event: CloseEvent) => void): void;

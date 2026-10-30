@@ -27,7 +27,7 @@ export function projectQuestionMessages(
       timestamp: previous?.timestamp ?? request.createdAt,
       question,
     });
-    if (transcript.answerTimestamp && request.answers) {
+    if (request.secretIdentifier === undefined && transcript.answerTimestamp && request.answers) {
       updates.push({
         ...existing.get(transcript.answerMessageId),
         id: transcript.answerMessageId,

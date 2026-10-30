@@ -110,7 +110,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     state: ChatStatePort;
     conversation: ChatConversationPort;
     session: ChatSessionPort;
-    questions?: Pick<ChatQuestionService, "reply">;
+    questions?: Pick<ChatQuestionService, "reply" | "replySecret">;
     attachments: ChatAttachmentService;
   }) {
     this.state = dependencies.state;
@@ -119,7 +119,14 @@ export class ChatInteractionService implements ChatInteractionPort {
     this.questions = dependencies.questions;
     this.attachments = dependencies.attachments;
   }
-  private readonly questions?: Pick<ChatQuestionService, "reply">;
+  private readonly questions?: Pick<ChatQuestionService, "reply" | "replySecret">;
+
+  replyToSecret(chatId: string, requestId: string, value: string | null): Promise<Chat> {
+    return this.trackReply(async () => {
+      if (!this.questions) throw new HarnessError("harness_unsupported_feature", "Private secret requests are unavailable.");
+      return await this.questions.replySecret(chatId, requestId, value);
+    });
+  }
 
   replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat> {
     return this.trackReply(async () => {

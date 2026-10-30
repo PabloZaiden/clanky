@@ -70,6 +70,7 @@ export class ChatQuestionService {
         requestId: event.requestId, conversation: binding, scope: event.scope,
         questions: event.questions, blocking: event.blocking !== false,
         responseMode: event.responseMode,
+        secretIdentifier: event.secretIdentifier,
         status: "pending", createdAt: event.timestamp ?? new Date().toISOString(),
         transcript: {
           questionMessageId: event.responseMode === "message" && event.scope.native?.messageId
@@ -87,6 +88,9 @@ export class ChatQuestionService {
       if (!chat) throw new HarnessError("harness_question_not_found", "The chat question is unavailable.");
       const request = chat.state.harness?.questions?.find((entry) => entry.requestId === requestId);
       if (!request) throw new HarnessError("harness_question_not_found", "The chat question is unavailable.");
+      if (request.secretIdentifier !== undefined) {
+        throw new HarnessError("harness_unsupported_feature", "Use the private secret form; secrets cannot be submitted as chat answers.");
+      }
       const binding = chat.state.session?.binding;
       if (!binding || binding.ownerId !== requireExecutionOwnerUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this conversation.");
       requireMatchingHarnessBinding(JSON.stringify(request.conversation), binding);
@@ -162,6 +166,45 @@ export class ChatQuestionService {
       }
       return this.replace(await this.requireChat(chatId), requestId, {
         status: "answered", answers, resolvedAt: new Date().toISOString(), error: undefined,
+      });
+    });
+  }
+
+  replySecret(chatId: string, requestId: string, value: string | null): Promise<Chat> {
+    return this.operations.run(chatId, async () => {
+      const chat = await this.requireChat(chatId);
+      const request = chat.state.harness?.questions?.find((entry) => entry.requestId === requestId);
+      if (!request || request.secretIdentifier === undefined) {
+        throw new HarnessError("harness_question_not_found", "The private secret request is unavailable.");
+      }
+      const binding = chat.state.session?.binding;
+      if (!binding || binding.ownerId !== requireExecutionOwnerUserId()
+        || binding.questionPolicy !== "interactive" || binding.secretFiles !== 1) {
+        throw new HarnessError("harness_session_not_owned", "The secret request is not owned by this interactive conversation.");
+      }
+      requireMatchingHarnessBinding(JSON.stringify(request.conversation), binding);
+      if (request.status !== "pending") throw new HarnessError("harness_question_closed", "This secret request can no longer receive input.");
+      const backend = this.dependencies.session.getChatBackend(chatId, chat.config.workspaceId);
+      if (!backend.isConnected()) throw new HarnessError("harness_transport_closed", "Reconnect the conversation before supplying a secret.");
+      if (!backend.replyToSecret || backend.harness.capabilities.secretFiles !== 1) {
+        throw new HarnessError("harness_unsupported_feature", "This execution host does not support private secret files.");
+      }
+      const submitting = await this.replace(chat, requestId, { status: "submitting", error: undefined });
+      if (submitting.state.harness?.questions?.find((entry) => entry.requestId === requestId)?.status !== "submitting") {
+        throw new HarnessError("harness_question_closed", "The secret request closed before delivery.");
+      }
+      try {
+        await backend.replyToSecret(requestId, value);
+      } catch {
+        await this.replace(await this.requireChat(chatId), requestId, {
+          status: "unconfirmed",
+          error: "Private delivery could not be confirmed. Stop or reconnect the conversation; do not submit the value again.",
+        });
+        throw new HarnessError("harness_question_unconfirmed", "Private secret delivery could not be confirmed.");
+      }
+      return await this.replace(await this.requireChat(chatId), requestId, {
+        status: value === null ? "cancelled" : "answered",
+        resolvedAt: new Date().toISOString(), error: undefined,
       });
     });
   }

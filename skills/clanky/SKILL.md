@@ -42,6 +42,25 @@ Clanky extracts text. Use the normal SSH credential flow when required.
 Storage, download, recovery and cleanup details are in
 [`docs/attachments.md`](../../docs/attachments.md).
 
+## Private CLI secrets
+
+When an interactive native chat provides `clanky_request_secret`, use it instead
+of asking the user to paste a credential into chat. Pass only a logical
+`identifier`, human-readable `label` and `reason`, never the value or a chosen
+path. The user supplies it through the private browser form; do not call its
+private reply API from CLI or another tool.
+
+Call again with the same identifier whenever needed. A valid file in this
+conversation is reused for 24 hours without renewing expiry; otherwise the
+same invocation waits for human input. Use only its returned execution-host
+path with stdin, a CLI file option or a temporary environment variable read
+inside the shell command. Do not print it, use shell tracing, put its bytes in
+arguments or copy it into project files. Respect a declined request.
+The file is readable by agent commands and same-OS-user processes; a CLI may
+print or retain it. Restart invalidates old paths. There is no tool-to-tool
+secret reference or autonomous-task access, and no ACP/Windows fallback.
+See [the native secret contract](../../docs/harnesses.md#private-secrets-for-cli-commands).
+
 ## Native Control chats
 
 Supported native Codex, Copilot and OpenCode 2 executions receive the shared

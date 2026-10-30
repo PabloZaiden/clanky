@@ -20,7 +20,8 @@ import { toCodexInput } from "./prompt";
 import { codexQuestionConfig } from "./question-policy";
 import { ClankyControlToolService } from "../clanky-control-tools";
 import type { ControlToolConnection } from "../../core/control-tool-transport";
-import type { ClankyControlToolResult } from "../clanky-control-tools";
+import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
+import { SECRET_TOOL_NAME } from "@/shared/harness-secrets";
 import { z } from "zod";
 import type { HarnessUsageSnapshot, TokenCounts } from "@/shared/harness-usage";
 
@@ -33,7 +34,7 @@ const DynamicToolCallParamsSchema = z.object({
   arguments: z.unknown(),
 }).strict();
 
-function dynamicToolResponse(result: ClankyControlToolResult) {
+function dynamicToolResponse(result: unknown) {
   return {
     contentItems: [{ type: "inputText" as const, text: JSON.stringify(result) }],
     success: !(typeof result === "object" && result !== null && "ok" in result && result.ok === false),
@@ -68,6 +69,7 @@ export class CodexSessionService {
   private readonly resumingUsage = new Map<string, TokenCounts>();
   private closing = false;
   private controlTools?: ClankyControlToolService;
+  readonly secrets: SecretCoordinator;
 
   constructor(private readonly dependencies: {
     runtime: CodexRuntime;
@@ -75,6 +77,7 @@ export class CodexSessionService {
     events: HarnessEventHub;
     control?: ControlToolConnection;
   }) {
+    this.secrets = new SecretCoordinator(dependencies.events);
     this.unsubscribe = dependencies.runtime.rpc.onNotification((event) => {
       try { this.receive(event); } catch (error) {
         const failure = new HarnessError("harness_event_gap", "Codex event observation failed.", { cause: error });
@@ -102,7 +105,13 @@ export class CodexSessionService {
     }
     if (this.conversations.size >= 128) throw new HarnessError("harness_request_failed", "Native thread capacity reached.");
     if (options.model) await this.dependencies.catalog.requireModel(options.model);
-    const dynamicTools = options.ownership.controlTools ? await this.nativeControlTools(options.ownership.controlChatId) : undefined;
+    const dynamicTools = options.ownership.controlTools ? await this.nativeControlTools(options.ownership.controlChatId) : [];
+    if (options.ownership.questionPolicy === "interactive" && options.ownership.secretFiles === 1) dynamicTools.push({
+      type: "function",
+      name: secretToolDefinition.name,
+      description: secretToolDefinition.description,
+      inputSchema: secretToolDefinition.inputSchema,
+    });
     const result = await this.dependencies.runtime.rpc.request("thread/start", {
       cwd: options.directory, model: options.model, ephemeral: false,
       approvalPolicy: "never", sandbox: "danger-full-access", allowProviderModelFallback: false,
@@ -265,7 +274,7 @@ export class CodexSessionService {
     const active = conversation?.activeControlTurn;
     if (
       !tracked
-      || !conversation?.info.binding?.controlTools
+      || !conversation?.info.binding
       || !active
       || tracked.turnId !== params.turnId
       || params.namespace !== null
@@ -277,6 +286,18 @@ export class CodexSessionService {
           message: "This Clanky tool call is not correlated with an active owned turn.",
         },
       });
+    }
+    if (params.tool === SECRET_TOOL_NAME) {
+      return dynamicToolResponse(await this.secrets.request(
+        conversation.info.binding,
+        params.arguments,
+        AbortSignal.any([request.signal, active.abort.signal]),
+      ));
+    }
+    if (!conversation.info.binding.controlTools) {
+      return dynamicToolResponse({ ok: false, error: {
+        code: "control_context_unavailable", message: "Clanky Control is unavailable for this conversation.",
+      } });
     }
     return dynamicToolResponse(await this.getControlToolService().invoke(
       params.tool,
@@ -436,9 +457,9 @@ export class CodexSessionService {
     const binding = conversation.info.binding;
     if (binding?.controlTools !== true) {
       if (context) throw new HarnessError("harness_session_not_owned", "Clanky control context is not enabled for this conversation.");
-      return;
+      if (binding?.questionPolicy !== "interactive") return;
     }
-    if (context && (context.chatId !== binding.controlChatId || !context.workspaceId || !context.turnId)) {
+    if (context && (context.chatId !== binding?.controlChatId || !context.workspaceId || !context.turnId)) {
       throw new HarnessError("harness_session_not_owned", "The active Clanky control turn does not match its native conversation.");
     }
     if (conversation.activeControlTurn) {
@@ -450,6 +471,7 @@ export class CodexSessionService {
   private endControlTurn(conversation: Conversation): void {
     conversation.activeControlTurn?.abort.abort();
     conversation.activeControlTurn = undefined;
+    this.secrets.cancel(conversation.info.id);
   }
 
   cancelControlTurn(id: string): void {

@@ -22,6 +22,7 @@ export class CodexControl implements HarnessControl {
     stopScopes: ["child-execution", "command"],
     questionPolicy: "session",
     clankyControlTools: true,
+    secretFiles: process.platform === "win32" ? undefined : 1,
     history: "completed",
     subagentHistory: "completed",
     usage: "tokens",

@@ -227,6 +227,9 @@ export interface Backend {
   /** Reply to a question request */
   replyToQuestion(requestId: string, answers: string[][]): Promise<void>;
 
+  /** Private human input; never a normal question answer or a model tool argument. */
+  replyToSecret?(requestId: string, value: string | null): Promise<void>;
+
   /** Set a session config option (per ACP session-config-options spec) */
   setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]>;
 
