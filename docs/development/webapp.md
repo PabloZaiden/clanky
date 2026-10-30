@@ -36,6 +36,10 @@ together without changing sidebar width or safe-area clearance for system bars.
 Follow the framework mobile mode instead of adding a device-specific threshold
 or shell CSS override.
 
+The code explorer places its file tree beside the editor from 768 CSS pixels,
+so an unfolded Duo in landscape can use both panels with the app sidebar
+collapsed. Narrower views keep the stacked layout.
+
 Route views use `Page` as their top-level wrapper. Prefer framework panels,
 lists, form groups/actions, danger zones, loading/error states, and code values
 before custom CSS. Do not recreate main-content spacing or repeat the fixed
