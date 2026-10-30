@@ -63,8 +63,6 @@ jobs:
             expected_os: linux
           - runner: macos-15-intel
             expected_os: darwin
-          - runner: windows-2025
-            expected_os: windows
 
     steps:
       - name: Checkout repository

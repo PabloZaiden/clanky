@@ -26,7 +26,7 @@ export interface CodePreviewOptions {
 }
 
 export type CodePreviewCleanup =
-  | { kind: "owned"; temporaryDirectory: string; directory: string; pathStyle: "posix" | "windows" }
+  | { kind: "owned"; temporaryDirectory: string; directory: string; pathStyle: "posix" }
   | { kind: "invalid" };
 
 export interface PreviewSessionConfig {

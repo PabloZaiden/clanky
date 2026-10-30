@@ -855,15 +855,13 @@ describe("compiled local protocol journey", () => {
         baseUrl: application.baseUrl, apiKey,
         homeDirectory: application.homeDirectory, logsDirectory: application.logsDirectory,
         workspace: "Local protocols", workspaceId: workspace.id, expectedDirectory: workspace.directory,
-        ...(process.platform !== "win32" ? {
-          restartController: async () => {
-            const ownedDirectories = (await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"));
-            expect(ownedDirectories).toHaveLength(1);
-            await application!.restart({ force: true, env });
-            expect((await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"))).toEqual([]);
-            return application!.baseUrl;
-          },
-        } : {}),
+        restartController: async () => {
+          const ownedDirectories = (await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"));
+          expect(ownedDirectories).toHaveLength(1);
+          await application!.restart({ force: true, env });
+          expect((await readdir(temporaryDirectory)).filter((name) => name.startsWith("clanky-code-"))).toEqual([]);
+          return application!.baseUrl;
+        },
       });
       const terminalWorktreeDirectory = join(application.runDirectory, "terminal-worktree");
       await requireCommand([

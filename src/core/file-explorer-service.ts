@@ -251,7 +251,7 @@ function toRelativePath(
   const root = normalizeRootDirectory(rootDirectory, pathStyle);
   const normalizedPath = normalizeExecutionPath(absolutePath, pathStyle);
   const relativePath = relativeExecutionPath(root, normalizedPath, pathStyle);
-  return relativePath === "." ? "" : relativePath.replaceAll("\\", "/");
+  return relativePath === "." ? "" : relativePath;
 }
 
 function assertOverwriteKindCompatible(
@@ -357,7 +357,6 @@ function assertSafeBaseName(name: string): string {
     trimmedName === "."
     || trimmedName === ".."
     || trimmedName.includes("/")
-    || trimmedName.includes("\\")
     || trimmedName.includes("\0")
   ) {
     throw new FileExplorerError(

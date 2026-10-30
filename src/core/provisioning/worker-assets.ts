@@ -80,8 +80,8 @@ function workerPaths(hostRoot: string, containerRoot: string): WorkerPaths {
     containerSupervisor: pathPosix.join(containerRoot, "supervisor.sh"),
     containerLog: pathPosix.join(containerRoot, "worker.log"),
     containerPid: pathPosix.join(containerRoot, "worker.pid"),
-    hostChannel: getWorkerChannelPath(hostRoot, "posix"),
-    containerChannel: getWorkerChannelPath(containerRoot, "posix"),
+    hostChannel: getWorkerChannelPath(hostRoot),
+    containerChannel: getWorkerChannelPath(containerRoot),
     containerRuntime: pathPosix.join(containerRoot, "runtime.json"),
     hostInstalledChannel: pathPosix.join(hostRoot, "release-channel"),
   };

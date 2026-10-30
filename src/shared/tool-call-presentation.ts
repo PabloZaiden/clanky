@@ -36,9 +36,6 @@ const RG_STYLE_KEYS = [
 
 const PATCH_SCAN_LIMIT = 128 * 1024;
 
-const WINDOWS_DRIVE_ROOT_PATTERN = /^[A-Za-z]:\/$/;
-const WINDOWS_ABSOLUTE_PATH_PATTERN = /^[A-Za-z]:\//;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -216,16 +213,15 @@ function truncateSummary(value: string, maxLength = 160): string {
 }
 
 function normalizeDisplayPath(path: string): string {
-  const normalizedSlashes = path.replaceAll("\\", "/");
-  const collapsed = normalizedSlashes.replace(/\/{2,}/g, "/");
-  if (collapsed.length > 1 && collapsed.endsWith("/") && !WINDOWS_DRIVE_ROOT_PATTERN.test(collapsed)) {
+  const collapsed = path.replace(/\/{2,}/g, "/");
+  if (collapsed.length > 1 && collapsed.endsWith("/")) {
     return collapsed.slice(0, -1);
   }
   return collapsed;
 }
 
 function isAbsoluteDisplayPath(path: string): boolean {
-  return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_PATTERN.test(path);
+  return path.startsWith("/");
 }
 
 export function formatToolPathForDisplay(path: string, displayRoot?: string): string {

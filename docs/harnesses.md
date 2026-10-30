@@ -94,9 +94,6 @@ operation, approval, MCP tool or tool-to-tool secret reference. It needs no
 general-access grant. ACP and native subagent calls are unsupported. Autonomous
 tasks, scheduled runs and helper conversations do not receive the tool and
 cannot access its cache.
-Windows does not advertise this capability: verified Windows ACL protection is
-not implemented, and secret-file requests fail explicitly rather than writing
-unprotected files.
 
 The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
 miss, the same native invocation waits for the user's private chat form, with

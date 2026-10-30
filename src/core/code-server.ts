@@ -2,7 +2,7 @@
  * Owns one execution-host VS Code process tree and its temporary credentials.
  */
 
-import { posix, win32 } from "node:path";
+import { posix as paths } from "node:path";
 import type { CommandExecutor, CommandResult } from "./command-executor";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { CODE_PROCESS_CLEANUP, CODE_PROCESS_WRAPPER } from "./code-process-supervision";
@@ -27,8 +27,8 @@ async function assertCodeAvailable(executor: CommandExecutor, directory: string,
   signal.throwIfAborted();
   if (!help.success) {
     const lookup = await executor.exec(
-      executor.pathStyle === "windows" ? "where.exe" : "sh",
-      executor.pathStyle === "windows" ? ["code"] : ["-c", "command -v code >/dev/null 2>&1 || exit 1"],
+      "sh",
+      ["-c", "command -v code >/dev/null 2>&1 || exit 1"],
       { cwd: directory, timeout: 5_000, signal, logFailures: false },
     );
     signal.throwIfAborted();
@@ -43,11 +43,9 @@ async function assertCodeAvailable(executor: CommandExecutor, directory: string,
   if (!["--connection-token-file", "--default-folder", "--port"].every((flag) => help.stdout.includes(flag))) {
     throw new DomainError("code_unsupported", "The workspace host's code CLI does not advertise the required serve-web options: --connection-token-file, --default-folder, and --port. Use a VS Code CLI that supports serve-web, not a Remote SSH/Codespaces editor launcher.");
   }
-  if (executor.pathStyle !== "windows") {
-    const bash = await executor.exec("bash", ["--version"], { cwd: directory, timeout: 5_000, signal, logFailures: false });
-    if (!bash.success) {
-      throw new DomainError("code_runtime_unavailable", "VS Code sessions require bash on POSIX workspace hosts for process-tree cleanup.");
-    }
+  const bash = await executor.exec("bash", ["--version"], { cwd: directory, timeout: 5_000, signal, logFailures: false });
+  if (!bash.success) {
+    throw new DomainError("code_runtime_unavailable", "VS Code sessions require bash on workspace hosts for process-tree cleanup.");
   }
 }
 
@@ -63,8 +61,8 @@ function launchCodeProcess(options: {
   let resolvePort!: (port: number) => void;
   const listening = new Promise<number>((resolve) => { resolvePort = resolve; });
   const run = options.executor.exec(
-    options.executor.pathStyle === "windows" ? "code" : "bash",
-    options.executor.pathStyle === "windows" ? options.args : ["-c", CODE_PROCESS_WRAPPER, "clanky-code", "code", ...options.args],
+    "bash",
+    ["-c", CODE_PROCESS_WRAPPER, "clanky-code", "code", ...options.args],
     {
       cwd: options.directory, timeout: null, signal: options.signal,
       env: { ...CODE_ENV, CLANKY_CODE_PID_FILE: options.pidPath, CLANKY_CODE_CLEANUP_FILE: options.cleanupPath },
@@ -92,7 +90,7 @@ async function stopCodeProcess(options: {
 }): Promise<void> {
   const { executor, directory, pidPath, cleanupPath, controller, run } = options;
   let stopped = false;
-  if (run && executor.pathStyle !== "windows") {
+  if (run) {
     const result = await executor.exec("bash", [cleanupPath, pidPath], {
       cwd: directory, timeout: 5_000, logFailures: false,
     });
@@ -106,8 +104,7 @@ async function stopCodeProcess(options: {
   const timer = setTimeout(() => controller.abort(), 5_000);
   try {
     const result = await run;
-    if ((!stopped && result?.termination === "failed")
-      || (executor.pathStyle === "windows" && result && !result.success && result.termination !== "confirmed")) {
+    if (!stopped && result?.termination === "failed") {
       throw new DomainError("code_cleanup_failed", "VS Code process-tree cleanup could not be confirmed.");
     }
   } catch (error) {
@@ -136,7 +133,6 @@ export async function startCodeServer(options: {
     executor, directory, id: options.id, persist: options.persistOwnership,
   });
   const temporaryDirectory = ownership.temporaryDirectory;
-  const paths = executor.pathStyle === "windows" ? win32 : posix;
   const token = crypto.randomUUID().replaceAll("-", "");
   const tokenPath = paths.join(temporaryDirectory, "token");
   const pidPath = paths.join(temporaryDirectory, "process");
@@ -150,7 +146,7 @@ export async function startCodeServer(options: {
   const close = (): Promise<void> => closing ??= (async () => {
     try {
       await stopCodeProcess({ executor, directory, pidPath, cleanupPath, controller, run });
-      await cleanupCodeSession({ executor, id: options.id, ownership, processStopped: true });
+      await cleanupCodeSession({ executor, id: options.id, ownership });
     } finally {
       controller.abort();
       signal.removeEventListener("abort", abort);
@@ -164,16 +160,14 @@ export async function startCodeServer(options: {
     if (!(await executor.writeFile(tokenPath, token))) {
       throw new DomainError("code_start_failed", "Unable to write the VS Code session credential.");
     }
-    if (executor.pathStyle !== "windows") {
-      if (!(await executor.writeFile(cleanupPath, CODE_PROCESS_CLEANUP))) {
-        throw new DomainError("code_start_failed", "Unable to write the VS Code process cleanup script.");
-      }
-      const cleanupCheck = await executor.exec("bash", [cleanupPath, pidPath], {
-        cwd: directory, timeout: 5_000, signal: controller.signal, logFailures: false,
-      });
-      if (!cleanupCheck.success) {
-        throw new DomainError("code_runtime_unavailable", `VS Code sessions require process inspection with bash, ps, awk, and sort on this workspace host (exit ${cleanupCheck.exitCode}).`);
-      }
+    if (!(await executor.writeFile(cleanupPath, CODE_PROCESS_CLEANUP))) {
+      throw new DomainError("code_start_failed", "Unable to write the VS Code process cleanup script.");
+    }
+    const cleanupCheck = await executor.exec("bash", [cleanupPath, pidPath], {
+      cwd: directory, timeout: 5_000, signal: controller.signal, logFailures: false,
+    });
+    if (!cleanupCheck.success) {
+      throw new DomainError("code_runtime_unavailable", `VS Code sessions require process inspection with bash, ps, awk, and sort on this workspace host (exit ${cleanupCheck.exitCode}).`);
     }
     controller.signal.throwIfAborted();
     const args = [

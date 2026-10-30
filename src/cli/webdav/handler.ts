@@ -8,13 +8,13 @@ import { activeLockXml, propfindResponse, proppatchResponse } from "./properties
 import { DavError, isDav, parseDavIf, readDavXml, xmlResponse, type DavXmlNode } from "./protocol";
 import type { WebDavFileClient } from "./remote";
 
-function conditions(req: Request, client: WebDavFileClient): FileSystemConditions {
+function conditions(req: Request): FileSystemConditions {
   const url = new URL(req.url);
   const header = req.headers.get("if");
   return {
     ...(req.headers.has("if-match") ? { ifMatch: req.headers.get("if-match")! } : {}),
     ...(req.headers.has("if-none-match") ? { ifNoneMatch: req.headers.get("if-none-match")! } : {}),
-    ...(header === null ? {} : { davIf: parseDavIf(header, (value) => davDestination(value, url, client.info)) }),
+    ...(header === null ? {} : { davIf: parseDavIf(header, (value) => davDestination(value, url)) }),
   };
 }
 
@@ -59,16 +59,16 @@ async function lock(req: Request, path: string, client: WebDavFileClient, ownerI
       operation: "lock", path, ownerId, scope: exclusive ? "exclusive" : "shared",
       depth: depth(req, ["0", "infinity"], "infinity") === "0" ? "0" : "infinity",
       owner: ownerText(body.children.find((node) => isDav(node, "owner")) ?? { text: "", children: [], namespace: "", name: "" }),
-      timeoutSeconds: timeout(req), conditions: conditions(req, client),
+      timeoutSeconds: timeout(req), conditions: conditions(req),
     }, signal);
   } else {
     if (!req.headers.has("if")) throw new DavError(400, "Refreshing a DAV lock requires an If header.");
     result = await client.command({
-      operation: "refreshLock", path, ownerId, timeoutSeconds: timeout(req), conditions: conditions(req, client),
+      operation: "refreshLock", path, ownerId, timeoutSeconds: timeout(req), conditions: conditions(req),
     }, signal);
   }
   if (!result.lock) throw new DavError(502, "Clanky returned no DAV lock.");
-  return xmlResponse(`<D:prop xmlns:D="DAV:"><D:lockdiscovery>${activeLockXml(result.lock, client.info.pathStyle)}</D:lockdiscovery></D:prop>`,
+  return xmlResponse(`<D:prop xmlns:D="DAV:"><D:lockdiscovery>${activeLockXml(result.lock)}</D:lockdiscovery></D:prop>`,
     result.created ? 201 : 200, { "lock-token": `<${result.lock.token}>` });
 }
 
@@ -110,7 +110,7 @@ export async function handleDavRequest(
   req: Request, client: WebDavFileClient,
   options: { readOnly: boolean; ownerId: string; signal: AbortSignal },
 ): Promise<Response> {
-  const path = davHostPath(new URL(req.url).pathname, client.info);
+  const path = davHostPath(new URL(req.url).pathname);
   const signal = options.signal;
   const writableMethods = ["PUT", "MKCOL", "MOVE", "COPY", "DELETE", "PROPPATCH", "LOCK", "UNLOCK"];
   if (options.readOnly && writableMethods.includes(req.method)) throw new DavError(403, "This DAV endpoint is read-only.");
@@ -129,15 +129,15 @@ export async function handleDavRequest(
       const entry = requireEntry(result.entry);
       return propfindResponse(body, {
         entries: [entry, ...(result.entries ?? [])], locks: result.locks ?? [],
-        style: client.info.pathStyle, readOnly: options.readOnly,
+        readOnly: options.readOnly,
       });
     }
     case "PROPPATCH": {
       const entry = requireEntry((await client.command({ operation: "stat", path }, signal)).entry);
-      return proppatchResponse(await readDavXml(req), davHref(entry.path, entry.kind, client.info.pathStyle));
+      return proppatchResponse(await readDavXml(req), davHref(entry.path, entry.kind));
     }
     case "PUT": {
-      const result = await client.write({ path, req, conditions: conditions(req, client), signal });
+      const result = await client.write({ path, req, conditions: conditions(req), signal });
       return new Response(null, { status: result.created ? 201 : 204,
         headers: result.entry ? { etag: result.entry.etag } : undefined });
     }
@@ -152,11 +152,11 @@ export async function handleDavRequest(
           }
         } finally { reader.releaseLock(); }
       }
-      await client.command({ operation: "mkdir", path, conditions: conditions(req, client) }, signal);
+      await client.command({ operation: "mkdir", path, conditions: conditions(req) }, signal);
       return new Response(null, { status: 201 });
     }
     case "DELETE":
-      await client.command({ operation: "delete", path, conditions: conditions(req, client) }, signal);
+      await client.command({ operation: "delete", path, conditions: conditions(req) }, signal);
       return new Response(null, { status: 204 });
     case "MOVE":
     case "COPY": {
@@ -164,9 +164,9 @@ export async function handleDavRequest(
       if (!destination) throw new DavError(400, "A DAV Destination is required.");
       const result = await client.command({
         operation: req.method === "MOVE" ? "move" : "copy", path,
-        destination: davDestination(destination, new URL(req.url), client.info), overwrite: overwrite(req),
+        destination: davDestination(destination, new URL(req.url)), overwrite: overwrite(req),
         depth: depth(req, req.method === "MOVE" ? ["infinity"] : ["0", "infinity"], "infinity") === "0" ? "0" : "infinity",
-        conditions: conditions(req, client),
+        conditions: conditions(req),
       }, signal);
       return new Response(null, { status: result.overwritten ? 204 : 201 });
     }

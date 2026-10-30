@@ -466,12 +466,9 @@ export class TerminalSessionManager {
     }
 
     try {
-      const executionHost = executionHostService.validateBinding(
+      executionHostService.validateBinding(
         session.config.executionHostBinding,
       );
-      if (executionHost.runtime.platform?.os === "windows") {
-        return;
-      }
       const workspace = session.config.workspaceId
         ? await getWorkspace(session.config.workspaceId)
         : null;

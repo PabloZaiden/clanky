@@ -19,18 +19,7 @@ async function readWindow({ executor, path, start, length, signal }: {
   signal.throwIfAborted();
   const options = { signal, timeout: 120_000, maxOutputBytes: 2 * WINDOW_BYTES, longRunning: true };
   const offset = start % BLOCK_BYTES;
-  const result: CommandResult = executor.pathStyle === "windows"
-    ? await executor.exec("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-        "$ErrorActionPreference='Stop'; "
-        + "$f=[IO.File]::Open($env:CLANKY_RANGE_PATH,'Open','Read',([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)); "
-        + "try { $f.Seek([int64]$env:CLANKY_RANGE_START,'Begin') | Out-Null; "
-        + "$b=New-Object byte[] ([int]$env:CLANKY_RANGE_LENGTH); $i=0; "
-        + "while($i -lt $b.Length) { $n=$f.Read($b,$i,$b.Length-$i); if($n -eq 0) { throw 'Short range read' }; $i+=$n }; "
-        + "[Console]::Write([Convert]::ToBase64String($b)) } finally { $f.Dispose() }",
-      ], { ...options, env: {
-        CLANKY_RANGE_PATH: path, CLANKY_RANGE_START: String(start), CLANKY_RANGE_LENGTH: String(length),
-      } })
-    : await executor.exec("sh", ["-c",
+  const result: CommandResult = await executor.exec("sh", ["-c",
         // A fixed-width status trailer preserves dd failure across the POSIX pipe.
         '{ dd if="$1" bs=65536 skip="$2" count="$3"; code=$?; printf "%03d" "$code"; } | base64',
         "clanky-range", path, String(Math.floor(start / BLOCK_BYTES)),
@@ -44,10 +33,6 @@ async function readWindow({ executor, path, start, length, signal }: {
   }
   const decoded = Buffer.from(encoded, "base64");
   if (decoded.toString("base64") !== encoded) throw failure("Host returned invalid range data.");
-  if (executor.pathStyle === "windows") {
-    if (decoded.length !== length) throw failure("Host range read was truncated.");
-    return decoded;
-  }
   if (decoded.length < 3 || decoded.subarray(-3).toString("ascii") !== "000") {
     throw failure("Host range read failed.");
   }

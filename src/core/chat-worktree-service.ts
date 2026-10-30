@@ -605,10 +605,9 @@ export class ChatWorktreeService implements ChatWorktreePort {
 
 function normalizeWorktreeRepositoryKey(
   repositoryRoot: string,
-  pathStyle: "posix" | "windows",
+  pathStyle: "posix",
 ): string {
-  const normalized = normalizeExecutionPath(repositoryRoot, pathStyle);
-  return pathStyle === "windows" ? normalized.toLowerCase() : normalized;
+  return normalizeExecutionPath(repositoryRoot, pathStyle);
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

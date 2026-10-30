@@ -58,7 +58,7 @@ inside the shell command. Do not print it, use shell tracing, put its bytes in
 arguments or copy it into project files. Respect a declined request.
 The file is readable by agent commands and same-OS-user processes; a CLI may
 print or retain it. Restart invalidates old paths. There is no tool-to-tool
-secret reference or autonomous-task access, and no ACP/Windows fallback.
+secret reference or autonomous-task access, and no ACP fallback.
 See [the native secret contract](../../docs/harnesses.md#private-secrets-for-cli-commands).
 
 ## Native Control chats
@@ -546,8 +546,8 @@ umount "$HOME/Clanky"
 ```
 
 `--local-port PORT` selects the loopback port. Optional
-`--tls-cert FILE --tls-key FILE` must be paired and trusted by the native client;
-Windows WebClient normally requires HTTPS for Basic auth. Do not weaken OS
+`--tls-cert FILE --tls-key FILE` must be paired and trusted by the native client.
+Do not weaken OS
 authentication policy or assume every Linux installation has a DAV client.
 
 The workspace directory is an initial location, not a sandbox: mount another

@@ -209,19 +209,14 @@ export class FileSystemService {
     return tokens;
   }
 
-  private async command({ target, posix, powershell, paths, signal }: {
-    target: FileExplorerTarget; posix: string[]; powershell: string; paths: string[]; signal?: AbortSignal;
+  private async command({ target, args, paths, signal }: {
+    target: FileExplorerTarget; args: [string, ...string[]]; paths: string[]; signal?: AbortSignal;
   }): Promise<void> {
     assertActive(signal);
     if (!target.commandExecutionAvailable) {
       throw new DomainError("execution_host_capability_unavailable", "commandExecution is required for this operation.");
     }
-    const env = Object.fromEntries(paths.map((path, index) => [`CLANKY_FILE_PATH_${String(index)}`, path]));
-    const result = target.executor.pathStyle === "windows"
-      ? await target.executor.exec("powershell.exe", [
-          "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; ${powershell}`,
-        ], { env, signal, timeout: 120_000 })
-      : await target.executor.exec(posix[0]!, [...posix.slice(1), ...paths], { signal, timeout: 120_000 });
+    const result = await target.executor.exec(args[0], [...args.slice(1), ...paths], { signal, timeout: 120_000 });
     if (!result.success) {
       throw new DomainError("file_system_operation_failed", "Filesystem command failed.", {
         details: { exitCode: result.exitCode },
@@ -232,8 +227,7 @@ export class FileSystemService {
   private async mkdir(target: FileExplorerTarget, path: string, signal?: AbortSignal): Promise<void> {
     await this.parent(target, path);
     await this.command({
-      target, posix: ["mkdir", "--"],
-      powershell: "[IO.Directory]::CreateDirectory($env:CLANKY_FILE_PATH_0) | Out-Null",
+      target, args: ["mkdir", "--"],
       paths: [path], signal,
     });
   }
@@ -424,9 +418,7 @@ export class FileSystemService {
       await this.withStagedPath({ target, destination, kind: source.kind }, async (stage) => {
         if (source.kind === "directory" && command.depth === "0") await this.mkdir(target, stage.path, signal);
         else await this.command({
-          target, posix: source.kind === "directory" ? ["cp", "-R", "-H", "--"] : ["cp", "--"],
-          powershell: "Copy-Item -LiteralPath $env:CLANKY_FILE_PATH_0 -Destination $env:CLANKY_FILE_PATH_1"
-            + (source.kind === "directory" ? " -Recurse" : ""),
+          target, args: source.kind === "directory" ? ["cp", "-R", "-H", "--"] : ["cp", "--"],
           paths: [path, stage.path], signal,
         });
         assertActive(signal);

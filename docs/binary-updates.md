@@ -1,6 +1,7 @@
 # Binary installation and update channels
 
-Clanky binaries are distributed through GitHub releases, not npm.
+Clanky binaries for Linux and macOS (x64/arm64) are distributed through
+GitHub releases, not npm. Use WSL for a Linux environment.
 The default installer selects the latest stable release:
 
 ```bash
@@ -13,12 +14,6 @@ Opt in to the rolling build from main:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh \
   | sh -s -- pablozaiden/clanky --channel latest
-```
-
-On Windows, use the PowerShell installer with `-Channel latest`:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/pablozaiden/installer/main/install.ps1))) pablozaiden/clanky -Channel latest
 ```
 
 The CLI follows the installed channel:
@@ -47,7 +42,7 @@ after verification. **Default** preserves each worker's selection.
 The same selector controls automatic workspace creation and Restart/Rebuild;
 see [Mesh worker maintenance](mesh-worker.md#update-servers-and-automatic-workspaces-together).
 
-Every main push builds the supported Linux, macOS and Windows targets. After
+Every main push builds the supported Linux and macOS targets. After
 all target builds succeed, the shared installer workflow replaces assets in
 one prerelease tagged `latest`. A unique version and source revision identify
 each build; `release.json` selects its binaries and checksum files. The workflow
@@ -55,7 +50,7 @@ skips superseded main commits, preserves macOS signing, and removes obsolete
 rolling assets without deleting versioned releases.
 
 Stable and rolling binary builds share two compilation jobs: `ubuntu-latest`
-cross-compiles Linux and Windows x64/arm64, while `macos-latest` builds both
+cross-compiles Linux x64/arm64, while `macos-latest` builds both
 Darwin architectures and applies the configured signing. The default macOS
 runner is ARM64. Each job installs dependencies and runs prebuild once, then
 builds its targets in sequence. Metadata and publication remain separate jobs;

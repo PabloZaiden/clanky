@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pollUntil } from "./polling";
-import { currentEnvironment, waitForExit } from "./process";
+import { currentEnvironment } from "./process";
 import { getMeshTestTls } from "./mesh-tls";
 import {
   LIFECYCLE_TIMEOUT_MS,
@@ -82,16 +82,10 @@ export async function availablePort(): Promise<number> {
 }
 
 export async function compiledClankyCommand(): Promise<string[]> {
-  const candidates = process.platform === "win32"
-    ? [resolve(rootDirectory, "dist", "clanky.exe"), resolve(rootDirectory, "dist", "clanky")]
-    : [resolve(rootDirectory, "dist", "clanky"), resolve(rootDirectory, "dist", "clanky.exe")];
-  for (const candidate of candidates) {
-    if (await Bun.file(candidate).exists()) {
-      return [candidate];
-    }
-  }
+  const binary = resolve(rootDirectory, "dist", "clanky");
+  if (await Bun.file(binary).exists()) return [binary];
   throw new Error(
-    `Compiled Clanky binary not found. Expected one of: ${candidates.join(", ")}. Run bun run build first.`,
+    `Compiled Clanky binary not found: ${binary}. Run bun run build first.`,
   );
 }
 
@@ -180,31 +174,7 @@ export function meshNodeDiagnostics(node: ManagedMeshNode): string {
 
 async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
   if (node.child.exitCode === null) {
-    if (process.platform === "win32") {
-      const terminated = Bun.spawnSync(
-        ["taskkill", "/PID", String(node.child.pid), "/T", "/F"],
-        {
-          cwd: rootDirectory,
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: MESH_OPERATION_TIMEOUT_MS,
-          killSignal: "SIGKILL",
-        },
-      );
-      if (!(await waitForExit(node.child, MESH_OPERATION_TIMEOUT_MS))) {
-        const output = [
-          terminated.stdout.toString().trim(),
-          terminated.stderr.toString().trim(),
-        ].filter((value) => value.length > 0).join("\n");
-        throw new Error(
-          `Failed to terminate Mesh process tree ${String(node.child.pid)}: ${
-            output || `exit code ${String(terminated.exitCode)}`
-          }`,
-        );
-      }
-    } else {
-      node.child.kill();
-    }
+    node.child.kill();
   }
   await node.child.exited;
   return await readProcessOutput(node);
@@ -232,13 +202,7 @@ async function startTlsProxy(node: ManagedMeshNode, upstreamPort: number): Promi
 }
 
 async function removeMeshDataDirectory(dataDir: string): Promise<void> {
-  // Windows may briefly retain file handles after the Mesh process tree exits.
-  await rm(dataDir, {
-    recursive: true,
-    force: true,
-    maxRetries: 5,
-    retryDelay: 100,
-  });
+  await rm(dataDir, { recursive: true, force: true });
 }
 
 async function waitForNodeHealth(

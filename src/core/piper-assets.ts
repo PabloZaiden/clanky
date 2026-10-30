@@ -139,12 +139,6 @@ const runtimeDefinitions: Record<string, PiperRuntimeDefinition> = {
     sha256: "6b1eb03b3735946cb35216e063e7eebcc33a6bbf5dd96ec0217959bf1cdcb0cc",
     executableName: "piper",
   },
-  "win32:x64": {
-    fileName: "piper_windows_amd64.zip",
-    size: 22_477_236,
-    sha256: "f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea",
-    executableName: "piper.exe",
-  },
 };
 
 const pendingOperations = new Map<string, PendingOperation<unknown>>();
@@ -702,9 +696,7 @@ export class PiperAssetManager implements PiperAssets {
             expectedRuntimeMarker(definition),
             { mode: 0o600 },
           );
-          if (this.platform !== "win32") {
-            await chmod(executablePath, 0o700);
-          }
+          await chmod(executablePath, 0o700);
 
           if (await isRuntimeInstalled(runtimeDirectory, definition)) {
             return this.runtimeFiles(runtimeDirectory, definition);

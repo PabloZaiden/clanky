@@ -323,9 +323,7 @@ export class LocalFileSystem {
         dirnameExecutionPath(destinationPath, this.pathStyle),
         { recursive: true },
       );
-      // Node uses replace-existing rename semantics for files on every supported
-      // platform, including MoveFileExW on Windows; pre-deleting would break the
-      // atomic replacement used by completed uploads.
+      // Pre-deleting would break the atomic replacement used by completed uploads.
       await rename(sourcePath, destinationPath);
       return { success: true };
     } catch (error) {

@@ -20,7 +20,6 @@ export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 export const EXECUTION_HOST_OPERATING_SYSTEMS = [
   "linux",
   "darwin",
-  "windows",
 ] as const;
 export type ExecutionHostOperatingSystem =
   typeof EXECUTION_HOST_OPERATING_SYSTEMS[number];
@@ -172,22 +171,11 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   serverHealth: 1,
 };
 
-export const WINDOWS_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
-  commandExecution: 1,
-  fileOperations: 2,
-  git: 2,
-  managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
-  acpRuntime: 2,
-  interactiveTerminal: 1,
-  tcpTunnel: 1,
-  serverHealth: 1,
-};
-
 export function normalizeExecutionHostPlatform(
   platform: string,
   architecture: string,
 ): ExecutionHostPlatform | null {
-  const os = platform === "win32" ? "windows" : platform;
+  const os = platform;
   if (
     !EXECUTION_HOST_OPERATING_SYSTEMS.includes(
       os as ExecutionHostOperatingSystem,
@@ -210,9 +198,7 @@ export function getExecutionHostCapabilitiesForPlatform(
   if (!platform) {
     return {};
   }
-  return platform.os === "windows"
-    ? { ...WINDOWS_EXECUTION_HOST_CAPABILITIES }
-    : { ...POSIX_EXECUTION_HOST_CAPABILITIES };
+  return { ...POSIX_EXECUTION_HOST_CAPABILITIES };
 }
 
 export function createExecutionHostRuntimeSnapshot(

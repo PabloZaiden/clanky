@@ -91,7 +91,7 @@ export const FileSystemLockSchema = z.object({
 
 export const FileSystemInfoSchema = z.object({
   directory: PathSchema,
-  pathStyle: z.enum(["posix", "windows"]),
+  pathStyle: z.literal("posix"),
   target: z.string(),
   commandExecution: z.boolean(),
 });

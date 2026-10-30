@@ -6,7 +6,7 @@
  * parallel over the shared multiplexed connection.
  */
 
-import { posix, win32 } from "node:path";
+import { posix } from "node:path";
 import type {
   CommandExecutor,
   CommandResult,
@@ -56,32 +56,8 @@ const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
 
 function inheritedExecutableSearchPath(
   environment: NodeJS.ProcessEnv = process.env,
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  const configured = platform === "win32"
-    ? Object.entries(environment).find(([key]) => key.toLowerCase() === "path")?.[1]
-    : environment["PATH"];
-  if (configured?.trim()) {
-    return configured;
-  }
-  if (platform !== "win32") {
-    return POSIX_DEFAULT_PATH;
-  }
-  const windowsDirectory = environment["SystemRoot"] ?? environment["WINDIR"];
-  if (!windowsDirectory?.trim()) {
-    return undefined;
-  }
-  return [
-    win32.join(windowsDirectory, "System32"),
-    windowsDirectory,
-    win32.join(windowsDirectory, "System32", "Wbem"),
-    win32.join(
-      windowsDirectory,
-      "System32",
-      "WindowsPowerShell",
-      "v1.0",
-    ),
-  ].join(";");
+): string {
+  return environment["PATH"]?.trim() ? environment["PATH"] : POSIX_DEFAULT_PATH;
 }
 export interface StreamedProcess {
   stdout: ReadableStream<Uint8Array> | null;

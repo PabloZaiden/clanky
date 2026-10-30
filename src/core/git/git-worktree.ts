@@ -346,8 +346,7 @@ export function worktreePathComparisonKey(
   worktreePath: string,
   pathStyle: ExecutionPathStyle,
 ): string {
-  const normalizedPath = normalizeWorktreePath(worktreePath, pathStyle);
-  return pathStyle === "windows" ? normalizedPath.toLowerCase() : normalizedPath;
+  return normalizeWorktreePath(worktreePath, pathStyle);
 }
 
 export async function getComparableWorktreePaths(

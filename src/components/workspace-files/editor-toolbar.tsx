@@ -96,7 +96,7 @@ export function WorkspaceEditorToolbar({ displayPath, statusText, dirty, saving,
 }) {
   const readOnly = useWorkspaceReadOnly();
   const [languageDialogOpen, setLanguageDialogOpen] = useState(false);
-  const displayName = displayPath?.split(/[\\/]/).pop() || "No file selected";
+  const displayName = displayPath?.split("/").pop() || "No file selected";
   const wordWrapLabel = tools.wordWrapEnabled ? "Disable word wrap" : "Enable word wrap";
   const languageLabel = tools.selectedLanguage === "auto"
     ? `Auto (${getEditorLanguageLabel(tools.detectedLanguage)})`

@@ -49,29 +49,6 @@ async function exercisePreviewConnection(url: string, timeoutMs: number): Promis
   }
 }
 
-async function closePreviewViaApi(options: {
-  baseUrl: string;
-  apiKey: string;
-  workspaceId: string;
-  localUrl: string;
-  timeoutMs: number;
-}): Promise<void> {
-  const previews = await fetch(`${options.baseUrl}/api/workspaces/${encodeURIComponent(options.workspaceId)}/previews`, {
-    headers: { authorization: `Bearer ${options.apiKey}` },
-    signal: AbortSignal.timeout(options.timeoutMs),
-  });
-  expect(previews.status).toBe(200);
-  const active = await previews.json() as Array<{ config: { id: string; localUrl: string } }>;
-  const preview = active.find((item) => item.config.localUrl === options.localUrl);
-  if (!preview) throw new Error("Workspace preview is not available to close");
-  const closed = await fetch(`${options.baseUrl}/api/previews/${encodeURIComponent(preview.config.id)}`, {
-    method: "DELETE",
-    headers: { authorization: `Bearer ${options.apiKey}` },
-    signal: AbortSignal.timeout(options.timeoutMs),
-  });
-  expect(closed.status).toBe(200);
-}
-
 interface WorkspacePreviewOptions {
   baseUrl: string;
   apiKey: string;
@@ -158,15 +135,6 @@ async function exercisePreviewCommand(options: WorkspacePreviewOptions & {
       });
       expect(previews.status).toBe(200);
       expect(await previews.json()).toEqual([]);
-    } else if (process.platform === "win32") {
-      // Bun.kill cannot deliver a console Ctrl+C event on Windows.
-      await closePreviewViaApi({
-        baseUrl: options.baseUrl,
-        apiKey: options.apiKey,
-        workspaceId: options.workspaceId ?? options.workspace,
-        localUrl: readyUrl!,
-        timeoutMs,
-      });
     } else {
       cli.child.kill("SIGINT");
     }

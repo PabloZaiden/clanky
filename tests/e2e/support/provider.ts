@@ -36,14 +36,6 @@ export function renderExternalWorkerUpdateBinary(): string {
 export async function installExternalCodexProvider(binDirectory: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, "codex.cmd"),
-      `@echo off\r\n"${executable}" "${CODEX_PATH}" %*\r\n`,
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, "codex");
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
@@ -72,14 +64,6 @@ export async function installExternalNativeOpenCodeProvider(binDirectory: string
 async function installProviderExecutable(binDirectory: string, name: string, providerPath: string): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, `${name}.cmd`),
-      `@echo off\r\n"${executable}" "${providerPath}" %*\r\n`,
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, name);
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
@@ -95,14 +79,6 @@ export async function installExternalGitHubProvider(
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
   const statePath = join(binDirectory, "github-state.json");
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, "gh.cmd"),
-      `@echo off\r\nset "CLANKY_E2E_GH_STATE_FILE=${statePath}"\r\n"${executable}" "${GITHUB_PATH}" %*\r\n`,
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, "gh");
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
@@ -117,14 +93,6 @@ export async function installExternalWorkerUpdateCommand(
 ): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, "clanky.cmd"),
-      `@echo off\r\n"${executable}" "${WORKER_UPDATE_COMMAND_PATH}" %*\r\n`,
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, "clanky");
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
@@ -140,14 +108,6 @@ export async function installExternalDevboxProvider(
 ): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
   const executable = process.execPath;
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, "devbox.cmd"),
-      `@echo off\r\nset CLANKY_E2E_SSH_PORT=${String(sshPort)}\r\n"${executable}" "${DEVBOX_PATH}" %*\r\n`,
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, "devbox");
   const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
   await Bun.write(
@@ -162,14 +122,6 @@ export async function installFailingExternalProvider(
   executableName: string,
 ): Promise<void> {
   await mkdir(binDirectory, { recursive: true, mode: 0o700 });
-  if (process.platform === "win32") {
-    await Bun.write(
-      join(binDirectory, `${executableName}.cmd`),
-      "@echo off\r\necho Deterministic provider startup failure 1>&2\r\nexit /b 42\r\n",
-    );
-    return;
-  }
-
   const wrapperPath = join(binDirectory, executableName);
   await Bun.write(
     wrapperPath,

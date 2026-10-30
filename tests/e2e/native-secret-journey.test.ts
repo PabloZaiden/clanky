@@ -36,7 +36,7 @@ const providers = {
 for (const [adapter, remote] of [
   ["copilot", false], ["codex", false], ["opencode2", false], ["codex", true],
 ] as const) {
-  test.skipIf(process.platform === "win32")(`${adapter} users supply private CLI files on ${remote ? "Mesh" : "local"} hosts`, async () => {
+  test(`${adapter} users supply private CLI files on ${remote ? "Mesh" : "local"} hosts`, async () => {
     const app = await E2EApplication.create();
     const cookies = new CookieJar();
     let worker: ManagedMeshNode | undefined;

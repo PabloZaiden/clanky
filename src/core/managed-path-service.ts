@@ -5,7 +5,6 @@
 import {
   executionPathsEqual,
   isExecutionPathWithinRoot,
-  isWindowsReservedPathComponent,
   joinExecutionPath,
   normalizeExecutionPath,
   normalizeExecutionRoot,
@@ -50,7 +49,6 @@ export class ManagedPathService {
       || normalizedIdentifier === "."
       || normalizedIdentifier === ".."
       || normalizedIdentifier.includes("/")
-      || normalizedIdentifier.includes("\\")
       || normalizedIdentifier.includes("\0")
     ) {
       throw new InvalidManagedWorktreePathError(
@@ -119,9 +117,8 @@ export class ManagedPathService {
     filename: string;
   }): string {
     let filename = options.filename.trim()
-      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_")
-      .replace(/[. ]+$/g, "");
-    if (!filename || isWindowsReservedPathComponent(filename)) {
+      .replace(/[/\u0000-\u001f\u007f]/g, "_");
+    if (!filename || filename === "." || filename === "..") {
       filename = `_${filename || "file"}`;
     }
     if (filename.length > 160 || Buffer.byteLength(filename, "utf8") > 180) {
@@ -213,10 +210,7 @@ export class ManagedPathService {
     worktreePath: string,
   ): string {
     const canonicalPath = this.getManagedWorktreePath(repoDirectory, identifier);
-    const matches = this.pathStyle === "windows"
-      ? executionPathsEqual(worktreePath, canonicalPath, this.pathStyle)
-      : worktreePath === canonicalPath;
-    if (!matches) {
+    if (worktreePath !== canonicalPath) {
       throw new InvalidManagedWorktreePathError(
         worktreePath,
         `Managed worktree path must equal the canonical path '${canonicalPath}'`,
