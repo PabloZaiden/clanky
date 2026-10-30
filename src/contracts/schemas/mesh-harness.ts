@@ -134,7 +134,7 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
     attachments: ProviderImageAttachmentsSchema.optional(),
     providerImageFile: ProviderImageFileReferenceSchema.optional(),
   }),
-  z.object({ type: z.literal("reasoning.delta"), content: z.string(), reasoningId: Id.optional(), complete: z.boolean().optional() }),
+  z.object({ type: z.literal("reasoning.delta"), content: z.string(), reasoningId: z.string().min(1).optional(), complete: z.boolean().optional() }),
   z.object({ type: z.literal("tool.start"), toolCallId: Id.optional(), toolName: Id, input: z.unknown() }),
   z.object({ type: z.literal("tool.complete"), toolCallId: Id.optional(), toolName: Id, input: z.unknown().optional(), output: z.unknown() }),
   z.object({ type: z.literal("request.error"), code: Id, message: z.string(), details: z.record(z.string(), z.unknown()).optional() }),
