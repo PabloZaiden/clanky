@@ -242,6 +242,11 @@ Older Mesh workers can still serve content already saved on the controller;
 update the worker to enable native child-history recovery. ACP and direct SSH
 do not gain native subagent support.
 
+Reasoning identifiers are opaque provider-native strings, not event UUIDs.
+Clanky preserves them unchanged in live events and recovered child history.
+Mesh does not impose a separate 500-character limit on reasoning identifiers;
+the existing transport and history size limits still apply.
+
 Chat streaming follows the principal execution, not the lifetime of background
 processes. When the principal finishes, the chat becomes idle and accepts a new
 message normally, even if a background server is still running. Those processes
