@@ -30,6 +30,12 @@ not app-owned raw WebSocket subscriptions.
 
 ## Layout and actions
 
+The framework uses the desktop shell above 800 CSS pixels and the mobile drawer
+at 800px and below. Compact wide displays can keep the sidebar and content usable
+together without changing sidebar width or safe-area clearance for system bars.
+Follow the framework mobile mode instead of adding a device-specific threshold
+or shell CSS override.
+
 Route views use `Page` as their top-level wrapper. Prefer framework panels,
 lists, form groups/actions, danger zones, loading/error states, and code values
 before custom CSS. Do not recreate main-content spacing or repeat the fixed
