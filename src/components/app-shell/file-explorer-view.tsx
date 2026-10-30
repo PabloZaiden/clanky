@@ -328,7 +328,7 @@ export function FileExplorerView({
   const pickerHasChanges = rootChanged || modeChanged;
   const tabButtonClassName = (pane: ExplorerPane, compact = false) => [
     "inline-flex h-9 min-h-[36px] min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3 py-1.5 text-sm font-medium transition whitespace-nowrap",
-    compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
+    compact ? "w-full justify-center md:w-9 md:px-0" : "w-full justify-center",
     activePane === pane
       ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
       : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
@@ -794,18 +794,18 @@ export function FileExplorerView({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
       >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden md:flex-row">
         <div
           data-testid={`${testIdPrefix}-explorer-column`}
           className={[
             "min-h-0 transition-[max-height,width] duration-200 ease-out",
             explorerCollapsed
-              ? "max-h-none overflow-visible lg:h-full lg:w-14 lg:max-h-none lg:overflow-hidden"
-              : "max-h-[35vh] overflow-hidden lg:h-full lg:w-[280px] lg:max-h-none",
+              ? "max-h-none overflow-visible md:h-full md:w-14 md:max-h-none md:overflow-hidden"
+              : "max-h-[35vh] overflow-hidden md:h-full md:w-[280px] md:max-h-none",
           ].join(" ")}
         >
           <div className="flex h-full min-h-0 flex-col gap-3">
-            <div className={`min-h-0 flex-1 overflow-hidden${explorerCollapsed ? " hidden lg:block" : ""}`}>
+            <div className={`min-h-0 flex-1 overflow-hidden${explorerCollapsed ? " hidden md:block" : ""}`}>
               <WorkspaceFileTree
                 entriesByDirectory={explorer.directoryEntries}
                 expandedDirectories={explorer.expandedDirectories}
@@ -844,11 +844,11 @@ export function FileExplorerView({
               className={[
                 "min-w-0 shrink-0",
                 explorerCollapsed
-                  ? "grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 lg:flex lg:flex-col lg:items-center"
+                  ? "grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 md:flex md:flex-col md:items-center"
                   : "grid grid-cols-2 gap-2",
               ].join(" ")}
             >
-              {explorerCollapsed ? <div className="lg:hidden"><Button
+              {explorerCollapsed ? <div className="md:hidden"><Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -868,7 +868,7 @@ export function FileExplorerView({
                 title="Files"
               >
                 <FileIcon />
-                {explorerCollapsed ? <span className="lg:sr-only">Files</span> : "Files"}
+                {explorerCollapsed ? <span className="md:sr-only">Files</span> : "Files"}
               </button>
               <button
                 type="button"
@@ -880,7 +880,7 @@ export function FileExplorerView({
                 title="Terminals"
               >
                 <TerminalIcon />
-                {explorerCollapsed ? <span className="lg:sr-only">Terminals</span> : "Terminals"}
+                {explorerCollapsed ? <span className="md:sr-only">Terminals</span> : "Terminals"}
               </button>
             </div>
           </div>
