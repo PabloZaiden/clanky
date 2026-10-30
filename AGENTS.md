@@ -27,10 +27,7 @@ for unrelated work.
   or an established policy such as Mesh protocol evolution.
 - Work directly unless another model is essential or independent parallel
   work offers a clear advantage.
-- Use isolated data for experiments and validation. When asked to inspect
-  production, use the configured `CLANKY_` variables, including `CLANKY_BASE_URL`
-  and `CLANKY_API_KEY`; do not substitute a local instance or expose credentials.
-  See [production access](docs/deployment.md#production-access) for context.
+- Use isolated data for experiments and validation. 
 - If investigation identifies a new product scenario, obtain independent
   approval before adding coverage; approval to fix a bug is not that approval.
   Follow the [coverage decision gate](docs/development/testing.md#decide-whether-a-scenario-belongs).
