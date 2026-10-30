@@ -57,7 +57,7 @@ export class OpenCodeSessionService {
         throw new HarnessError("harness_session_not_owned", "Native sessions require matching Clanky ownership.");
       }
       await this.ready.promise;
-      if (options.ownership.controlTools) await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
+      if (options.ownership.controlTools || options.ownership.questionPolicy === "interactive") await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
       const model = options.model ? await this.dependencies.catalog.requireModel(options.model) : undefined;
       const native = await this.dependencies.client.session.create({
         title: options.title, location: { directory: options.directory },
@@ -104,7 +104,7 @@ export class OpenCodeSessionService {
       const raw = native.metadata?.["clanky/binding"];
       requireMatchingHarnessBinding(typeof raw === "string" ? raw : undefined, binding);
       if (native.location.directory !== binding.directory || native.parentID) throw new HarnessError("harness_session_not_owned", "The native root does not match this binding.");
-      if (binding.controlTools) await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
+      if (binding.controlTools || binding.questionPolicy === "interactive") await this.dependencies.controlTools.requireAvailable(this.dependencies.client, this.dependencies.directory);
       await this.dependencies.client.session.update({
         sessionID: native.id, permissions: this.questionPermissions(binding, native.permissions),
         metadata: { "clanky/binding": JSON.stringify(binding) },

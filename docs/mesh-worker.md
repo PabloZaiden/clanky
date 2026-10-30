@@ -150,6 +150,27 @@ Deterministic tools and current-conversation prompts use their trusted runner
 and selected executor's existing communication, without public HTTP or injected
 CLI credentials. Explicit human CLI/terminal behavior is unchanged.
 
+### Private CLI secret files
+
+Native harness capability discovery optionally advertises `secretFiles: 1`.
+Supporting controllers opt interactive conversations into that capability in
+their binding; workers do not register the tool for older controllers that
+omit the opt-in. Unsupported workers continue ordinary chat without it.
+This is additive within Mesh v7, independent of the Control-tools capability
+and grant.
+
+Only secret-request metadata uses the normal harness question event stream.
+The private human response uses the authenticated, conversation-correlated
+`secret.reply` harness RPC, never a normal question answer or a Control frame.
+The worker's native callback waits locally, so the human wait does not occupy
+a browser submission or Mesh RPC request. Relays need no new route or broader
+forwarding.
+Files and their 24-hour cache belong to the actual worker process, not to the
+controller or native lease; reconnecting a lease does not delete them.
+Worker restart invalidates the cache and removes the previous process's files.
+See [private secrets](harnesses.md#private-secrets-for-cli-commands) for scope,
+browser authentication, permissions, retention and security limits.
+
 ### Optional aggregated directory trees
 
 Workers can advertise `directoryTree: 1` alongside the unchanged

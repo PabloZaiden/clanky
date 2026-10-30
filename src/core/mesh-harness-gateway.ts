@@ -131,6 +131,9 @@ export class MeshHarnessGateway {
     if (binding.controlTools && (!(host.config.controlTools || host.config.legacyControlCredential) || host.backend.harness.capabilities.clankyControlTools !== true)) {
       throw new DomainError("harness_unsupported_feature", "The native Mesh worker does not support Clanky control tools.");
     }
+    if (binding.secretFiles === 1 && host.backend.harness.capabilities.secretFiles !== 1) {
+      throw new DomainError("harness_unsupported_feature", "The native Mesh worker does not support private secret files.");
+    }
     return {
       ...binding,
       directory: host.config.directory,
@@ -269,6 +272,7 @@ export class MeshHarnessGateway {
           contextId: native.contextId,
           executionHost: native.executionHost,
           questionPolicy: native.questionPolicy,
+          secretFiles: native.secretFiles,
           ...(native.controlTools ? {
             controlTools: true,
             controlChatId: native.controlChatId,
@@ -383,9 +387,16 @@ export class MeshHarnessGateway {
       case "model": await backend.setSessionModel(operation.sessionId, operation.modelId); return null;
       case "permission":
       case "question":
+      case "secret.reply":
         if (!conversation.interactions.has(operation.requestId)) throw new DomainError("harness_session_not_owned", "The interaction belongs to a different conversation.");
         if (operation.operation === "permission") await backend.replyToPermission(operation.requestId, operation.response);
-        else await backend.replyToQuestion(operation.requestId, operation.answers);
+        else if (operation.operation === "question") await backend.replyToQuestion(operation.requestId, operation.answers);
+        else {
+          if (!backend.replyToSecret || backend.harness.capabilities.secretFiles !== 1) {
+            throw new DomainError("harness_unsupported_feature", "The native worker does not support private secret files.");
+          }
+          await backend.replyToSecret(operation.requestId, operation.value);
+        }
         conversation.interactions.delete(operation.requestId);
         return null;
     }

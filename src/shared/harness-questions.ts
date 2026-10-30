@@ -12,6 +12,7 @@ export interface HarnessQuestionRequest {
   questions: QuestionInfo[];
   blocking: boolean;
   responseMode?: "callback" | "message";
+  secretIdentifier?: string;
   status: "pending" | "queued" | "submitting" | "unconfirmed" | "answered" | "cancelled" | "expired";
   createdAt: string;
   resolvedAt?: string;

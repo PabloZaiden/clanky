@@ -8,6 +8,7 @@ import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./code
 import { readCopilotImageReceipts } from "./image-input";
 import { inspectAttachedFiles } from "./file-input";
 import { createPng } from "../support/png-fixtures";
+import { SECRET_TOOL, consumeSecretFile, secretRequest, secretUnavailable } from "./secret-file";
 import {
   BACKGROUND_DELEGATED, backgroundFollowUp, backgroundWork, readBackgroundFile, type BackgroundWork,
 } from "./background-work";
@@ -36,7 +37,7 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
-const pending = new Map<string, { session: Session; name: string; timer: ReturnType<typeof setTimeout> }>();
+const pending = new Map<string, { session: Session; name: string; timer?: ReturnType<typeof setTimeout> }>();
 const waiting = new Map<string, AbortController>();
 const background = new Map<string, { controller: AbortController; operation: Promise<void> }>();
 const stateDirectory = join(process.env["HOME"]!, "copilot-native-sessions");
@@ -97,7 +98,7 @@ function finish(session: Session, content: string): void {
 
 function requestTool(session: Session, name: string, args: Record<string, unknown>): void {
   const id = crypto.randomUUID();
-  const timer = setTimeout(() => {
+  const timer = name === SECRET_TOOL ? undefined : setTimeout(() => {
     pending.delete(id);
     event(session, "session.error", { errorType: "protocol", message: `Timed out waiting for ${name}.` });
     idle(session);
@@ -108,6 +109,12 @@ function requestTool(session: Session, name: string, args: Record<string, unknow
 }
 
 function execute(session: Session): void {
+  const secret = secretRequest(session.prompt);
+  if (secret) {
+    if (session.tools.some((tool) => tool.name === SECRET_TOOL)) requestTool(session, SECRET_TOOL, secret);
+    else void secretUnavailable(session.prompt, session.directory).then((text) => { finish(session, text); return save(); });
+    return;
+  }
   if (session.backgroundResult) {
     finish(session, backgroundFollowUp(session.prompt, session.backgroundResult));
     return;
@@ -138,6 +145,16 @@ async function toolResult(params: Record<string, unknown>): Promise<void> {
   const result = typeof raw === "string" ? JSON.parse(raw) : raw;
   event(session, "tool.execution_complete", { toolCallId: id, result, success: !params["error"] });
   event(session, "external_tool.completed", { requestId: id });
+  if (name === SECRET_TOOL) {
+    if (params["error"]) {
+      idle(session, { aborted: true });
+      await save();
+      return;
+    }
+    finish(session, await consumeSecretFile(result));
+    await save();
+    return;
+  }
   if (session.control) {
     const control = session.control;
     control.results.push(result);

@@ -14,6 +14,7 @@ import {
 import { authorizedRawWebSocketUpgrade } from "./api/raw-websocket-upgrade";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
+import { harnessSecretFiles } from "./core/harness-secret-files";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
 import { resetStaleTasks } from "./persistence/tasks";
 import { resetStaleChats } from "./persistence/chats";
@@ -566,6 +567,7 @@ export async function getWebAppServer(
     relayOnly,
   });
   await initializeDatabase();
+  await harnessSecretFiles.initialize();
   if (meshWorker) {
     process.env["CLANKY_WORKER_INSTANCE_ID"] = crypto.randomUUID();
     process.env["CLANKY_WORKER_RUNNING_VERSION"] = CLANKY_VERSION;
@@ -716,6 +718,7 @@ export async function getWebAppServer(
         await cleanup(closeAllMeshTerminalConnections);
         await cleanup(() => meshHarnessGateway.closeAll());
         await cleanup(() => meshAcpGateway.closeAll());
+        await cleanup(() => harnessSecretFiles.close());
         if (errors.length > 0) throw new AggregateError(errors, "Clanky shutdown cleanup failed.");
       },
     },

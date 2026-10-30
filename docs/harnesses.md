@@ -86,6 +86,60 @@ separate pending interaction.
 [Live voice](voice.md#live-voice) is a global sidebar assistant, independent of
 OpenCode, Quick Chat and any selected chat or native adapter.
 
+## Private secrets for CLI commands
+
+Interactive native Copilot, Codex and OpenCode 2 chats on POSIX execution hosts
+provide `clanky_request_secret`. It is a host-local native tool, not a Control
+operation, approval, MCP tool or tool-to-tool secret reference. It needs no
+general-access grant. ACP and native subagent calls are unsupported. Autonomous
+tasks, scheduled runs and helper conversations do not receive the tool and
+cannot access its cache.
+Windows does not advertise this capability: verified Windows ACL protection is
+not implemented, and secret-file requests fail explicitly rather than writing
+unprotected files.
+
+The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
+miss, the same native invocation waits for the user's private chat form, with
+no human-input deadline. Replies use the same user/resource authorization,
+workspace delegation and browser same-origin protection as ordinary chat
+questions, following the server's configured authentication policy. No
+passkey-specific sign-in is required. The private reply endpoint is excluded
+from agent tools. Closing the browser tab does not cancel the request.
+Stop, turn completion or native session loss does.
+Supplying a value resumes the invocation automatically, returning only
+`{ status: "saved", path, expiresAt }`, with expiry in Unix milliseconds.
+Declining returns `{ status: "declined" }`.
+
+Call the tool each time the CLI needs that secret, reusing the logical
+identifier. Within the same user, Clanky conversation and execution-host binding,
+a valid cached file returns the same path and expiry without another prompt.
+Files last **24 hours from successful storage**; cache hits do not extend that
+deadline. Missing, invalid or expired files prompt again. Files contain plaintext,
+protected by filesystem permissions rather than vault encryption. They live
+outside the repository and attachment directories, with random names, `0700`
+directories and `0600` files. The execution host checks expiry at lookup, sweeps expired
+files every minute and removes abandoned process generations on startup,
+including after an abrupt restart. Lifetime-held ownership locks preserve
+another live instance's files without trusting a possibly reused PID.
+Ordinary turn completion and backend reconnect do not remove cached files.
+Startup and deletion failures are reported, not treated as successful cleanup.
+
+In Mesh, the worker creates and owns the file; the controller never makes a
+local copy. Secret values travel only through private browser/host reply paths,
+not ordinary question answers, transcripts, attachments or model tool inputs
+and outputs. Multiline text and whitespace are preserved.
+
+Prefer a CLI's stdin or file option. For environment-only CLIs, read the file
+inside the command, for example `GH_TOKEN="$(cat -- /private/path)" gh api user`.
+Never print the value, enable shell tracing or copy it into the repository.
+This keeps secrets out of Clanky's conversation history; it is **not a sandbox
+against agent commands or other processes running as the same OS user**.
+A CLI can still print, transmit or persist the credential. Deleting the file
+neither revokes the credential nor guarantees forensic erasure.
+
+Codex registers the tool only on new native threads; resuming an old thread
+does not replace its tool catalog or start another conversation.
+
 ## Connection context and helper isolation
 
 Model catalogs, variants, task titles, PR metadata and review-feedback helpers

@@ -18,6 +18,7 @@ export interface HarnessConversationBinding {
   directory: string;
   executionHost?: ExecutionHostBinding;
   questionPolicy?: HarnessQuestionPolicy;
+  secretFiles?: 1;
   controlTools?: boolean;
   controlChatId?: string;
 }
@@ -46,6 +47,7 @@ export interface HarnessCapabilities {
   stopScopes: readonly ("child-execution" | "command")[];
   questionPolicy?: "session";
   clankyControlTools?: boolean;
+  secretFiles?: 1;
   history?: "completed";
   subagentHistory?: "completed";
   usage?: "tokens";
