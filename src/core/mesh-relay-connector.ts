@@ -425,7 +425,22 @@ export class MeshRelayConnector {
   }
 
   async waitUntilTransportClosed(): Promise<void> {
-    if (this.socket) await waitForMeshRelaySocketClosed(this.socket);
+    const socket = this.socket;
+    if (!socket) return;
+    try {
+      await waitForMeshRelaySocketClosed(socket);
+    } catch (error) {
+      if (!(error instanceof MeshRelayStreamError)
+        || error.code !== "mesh_relay_close_timeout"
+        || !socket.terminate) {
+        throw error;
+      }
+      this.log.warn("The Mesh relay socket did not close gracefully; terminating its transport", {
+        relayUrl: this.options.config.relayUrl,
+      });
+      socket.terminate();
+      await waitForMeshRelaySocketClosed(socket);
+    }
   }
 
   /**

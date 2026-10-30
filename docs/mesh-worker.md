@@ -68,6 +68,15 @@ retries with bounded backoff until discovery succeeds. The link stays
 unavailable during that retry, without changing its pairing or grants.
 Healthy connected links are not polled or interrupted to renegotiate.
 
+Temporary connection loss never exhausts the relay retry loop while the
+relationship remains configured and authorized. This includes heartbeat,
+discovery and socket-close failures: retries continue with bounded backoff
+without restarting the service or replaying commands. If graceful closure
+stalls, Bun runtimes forcibly terminate the old control socket before
+reconnecting. A transport that cannot yet finish closing remains owned and its
+cleanup is retried rather than disabling reconnection or accumulating replacement
+sockets. Explicit shutdown or removal of the relationship stops maintenance.
+
 The Mesh status and Settings views show each controller, relay, and worker
 binary version, supported generations, and the generation observed in the last
 successful exchange, plus execution-host capabilities. Local protocol status
