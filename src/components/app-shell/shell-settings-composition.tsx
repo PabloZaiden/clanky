@@ -86,13 +86,8 @@ export function buildShellSettingsSections({
       title: "Notifications",
       category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
-      rows: [{
-        id: "notification-webhook",
-        title: "Listen webhook URL",
-        description: "Agents notify only when you explicitly ask. The saved URL is never shown to agents.",
-        labelFor: "notification-webhook-url",
-        content: <NotificationSettingsContent />,
-      }],
+      // The native form owns the shared webhook draft and its field/actions row.
+      render: () => <NotificationSettingsContent />,
     },
     {
       id: "control-approvals",
@@ -102,7 +97,6 @@ export function buildShellSettingsSections({
       rows: [{
         id: "require-control-approval",
         title: "Require approval for agent operations",
-        description: "Voice always requires confirmation. Changing this does not approve pending requests.",
         labelFor: "require-control-approval",
         content: <ControlApprovalPolicyContent />,
         contentPlacement: "inline",

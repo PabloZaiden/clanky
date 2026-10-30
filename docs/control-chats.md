@@ -101,7 +101,7 @@ only its own frozen action.
 Set a Listen source's webhook URL in **Settings → Agents & integrations →
 Notifications**. The private URL is saved per user across workspaces and server
 restarts. Reads disclose only whether it is configured; paste a new URL to
-replace it or select **Clear saved webhook** and save to disable delivery.
+replace it or click **Clear** to remove it immediately and disable delivery.
 Configure it from an API-backed controller client; invitation-only browser
 clients do not expose controller credential settings.
 Use HTTPS outside trusted local development. Clanky accepts HTTP(S) URLs without

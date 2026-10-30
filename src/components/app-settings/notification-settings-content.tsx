@@ -1,43 +1,47 @@
 import { useState, type FormEvent } from "react";
 import {
-  Button, CheckboxField, FormActions, LoadingState, useLiveQuery, useUnsavedChanges,
+  Button, LoadingState, SettingsFieldRow, useLiveQuery, useToast, useUnsavedChanges,
 } from "@pablozaiden/webapp/web";
 import type { AgentNotificationSettings } from "@/contracts/schemas/agent-notifications";
 import { apiRequest } from "../../lib/api-client";
 import { SettingsError, SettingsInput } from "./settings-row-controls";
 
 export function NotificationSettingsContent() {
+  const { success } = useToast();
   const [url, setUrl] = useState("");
-  const [clear, setClear] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const query = useLiveQuery({
     load: (signal) => apiRequest<AgentNotificationSettings>("/api/preferences/notifications", { signal }),
   });
-  const dirty = Boolean(url || clear);
+  const dirty = Boolean(url);
   function reset() {
     setUrl("");
-    setClear(false);
     setError(null);
   }
   useUnsavedChanges(dirty, reset);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving || !query.data || !dirty) return;
+    if (!dirty) return;
+    await update(url.trim());
+  }
+
+  async function update(webhookUrl: string | null) {
+    if (saving || !query.data || (webhookUrl === null && !query.data.configured)) return;
     setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       await query.mutate((signal) => apiRequest<AgentNotificationSettings>("/api/preferences/notifications", {
         signal, method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ webhookUrl: clear ? null : url.trim() }),
+        body: JSON.stringify({ webhookUrl }),
       }), (_previous, result) => result);
       reset();
-      setSaved(true);
+      success(webhookUrl === null ? "Webhook cleared." : "Webhook saved.");
     } catch {
-      setError("Could not save the webhook. Check the URL and try again.");
+      setError(webhookUrl === null
+        ? "Could not clear the webhook. Try again."
+        : "Could not save the webhook. Check the URL and try again.");
     } finally { setSaving(false); }
   }
 
@@ -48,20 +52,19 @@ export function NotificationSettingsContent() {
     </div>;
     return <LoadingState title="Loading notifications" />;
   }
-  return <form className="w-full space-y-2" onSubmit={(event) => void save(event)}>
-    <SettingsInput id="notification-webhook-url" type="password" autoComplete="off"
-      aria-label="Listen webhook URL" placeholder={query.data.configured ? "Replace saved webhook URL" : "Listen webhook URL"}
-      value={url} maxLength={4096} required={!clear} disabled={saving || clear}
-      onChange={(event) => { setUrl(event.currentTarget.value); setSaved(false); }} />
-    <span className="text-sm" role="status">
-      {saving ? "Saving..." : saved ? "Saved." : query.data.configured ? "Webhook configured." : "No webhook configured."}
-    </span>
-    {query.data.configured ? <CheckboxField label="Clear saved webhook" checked={clear} disabled={saving}
-      onChange={(event) => { setClear(event.currentTarget.checked); setSaved(false); }} /> : null}
-    {error ? <SettingsError>{error}</SettingsError> : null}
-    <FormActions>
-      <Button type="button" disabled={!dirty || saving} onClick={reset}>Cancel</Button>
-      <Button type="submit" variant="primary" disabled={!dirty || saving}>Save</Button>
-    </FormActions>
+  return <form onSubmit={(event) => void save(event)}>
+    <SettingsFieldRow title="Listen webhook URL"
+      labelFor="notification-webhook-url"
+      content={<SettingsInput id="notification-webhook-url" type="password" autoComplete="off"
+        aria-label="Listen webhook URL" placeholder={query.data.configured ? "Replace saved webhook URL" : "Listen webhook URL"}
+        value={url} maxLength={4096} required disabled={saving}
+        onChange={(event) => setUrl(event.currentTarget.value)} />}
+      feedback={error ? <SettingsError>{error}</SettingsError> : null}
+      actions={<>
+        <Button type="button" disabled={!query.data.configured || saving}
+          onClick={() => void update(null)}>Clear</Button>
+        <Button type="button" disabled={!dirty || saving} onClick={reset}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={!dirty || saving}>Save</Button>
+      </>} />
   </form>;
 }

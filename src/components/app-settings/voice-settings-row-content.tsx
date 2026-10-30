@@ -164,7 +164,7 @@ export function VoiceSettingsRowContent({ voiceSettings }: { voiceSettings: UseV
         <TextAreaField label="Personal instructions" rows={6}
           value={draft.livePersonalInstructions} disabled={busy}
           maxLength={LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS}
-          hint={`Language, tone, pace and speaking preferences. Sent to your Live provider; applies to your next call. ${draft.livePersonalInstructions.length.toLocaleString()} / ${LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS.toLocaleString()} characters.`}
+          hint={`${draft.livePersonalInstructions.length.toLocaleString()} / ${LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS.toLocaleString()} characters.`}
           onChange={(event) => updateDraft({ livePersonalInstructions: event.currentTarget.value })} />
       </FormGroup>
 

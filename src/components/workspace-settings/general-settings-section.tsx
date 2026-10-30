@@ -26,7 +26,6 @@ export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconC
         content={<CheckboxField id={`${formId}-archived`} label="" aria-label="Archived workspace"
           checked={draft.archived} onChange={(event) => onChange({ archived: event.currentTarget.checked })} />} />
       <SettingsFieldRow title="General Clanky access" labelFor={`${formId}-cli-access`}
-        description="Supported native agents and deterministic programs control their own project automatically. Enable general access for cross-project control and administration within your permissions; destructive actions still require human approval. ACP model processes receive no automatic Clanky credentials, even when general access is enabled."
         content={<CheckboxField id={`${formId}-cli-access`} label="" aria-label="Allow general Clanky access"
           checked={draft.allowClankyContext} onChange={(event) => onChange({ allowClankyContext: event.currentTarget.checked })} />} />
       {workspace.workspaceType === "git" ? (
