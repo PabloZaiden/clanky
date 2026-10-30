@@ -96,6 +96,54 @@ unchanged. Agents cannot change this policy. Live Voice always confirms.
 Native confirmations have a fixed one-hour deadline; each approval authorizes
 only its own frozen action.
 
+## Agent notifications
+
+Set a Listen source's webhook URL in **Settings → Agents & integrations →
+Notifications**. The private URL is saved per user across workspaces and server
+restarts. Reads disclose only whether it is configured; paste a new URL to
+replace it or select **Clear saved webhook** and save to disable delivery.
+Configure it from an API-backed controller client; invitation-only browser
+clients do not expose controller credential settings.
+Use HTTPS outside trusted local development. Clanky accepts HTTP(S) URLs without
+URL user credentials or fragments, including private self-hosted Listen servers.
+The webhook token remains on the controller, not in agent prompts, tools,
+execution-host configuration, or logs.
+
+Native Copilot, Codex and OpenCode 2 workspace chats, tasks and managed Agent runs
+receive `clanky_send_notification` through the existing common control tools.
+It requires no general-access grant or extra confirmation. Local and Mesh
+executions share controller-owned delivery; ACP, standalone execution-host chats,
+and native subagents do not receive this integration. Existing Codex threads
+retain their previously registered tools: start a new conversation if the
+notification tool is missing.
+
+Agents are instructed to send notifications **only when explicitly requested
+by the user**. Saving a webhook is not a request, and Clanky never automatically
+sends notifications for progress, completion, failure, or required input.
+This is an agent instruction and tool-description policy, not an additional
+application-enforced per-chat/task permission.
+
+The tool accepts Listen's text fields `title` (1–100 characters),
+`shortDescription` (1–500 characters), and `markdownContent` (nonempty, at most
+800 KiB). The common control transport's 256 KiB whole-request JSON limit still
+applies. Titles and descriptions are trimmed. Icons are not supported.
+Clanky POSTs JSON directly to the configured webhook; the Listen CLI is not
+required. Notifications must not contain credentials or other secrets.
+
+An accepted result confirms only a successful HTTP response, not browser push
+delivery or that the user read the notification. Missing configuration and
+validation errors do not send a request. HTTP rejection is reported with its
+status, without reflecting remote response bodies. Requests have a five-second
+deadline, do not follow redirects, and are never automatically retried.
+Network errors, timeouts and server errors can leave delivery uncertain:
+inspect Listen before repeating a send.
+
+Deterministic programs use the same tool through
+`ctx.clanky.call("clanky_send_notification", { title, shortDescription, markdownContent })`.
+Only include that call when the user's requested program behavior explicitly
+includes notifications. Inspect its returned `ok` and `completion` before
+reporting delivery.
+
 ## Browser actions and multiple tabs
 
 Each browser tab has its own ephemeral client ID. A control action is delivered

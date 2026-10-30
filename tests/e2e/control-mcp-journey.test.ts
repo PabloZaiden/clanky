@@ -70,6 +70,7 @@ const COMMON_TOOLS = [
   "clanky_control_task", "clanky_review_task_plan", "clanky_finish_task", "clanky_list_workspaces",
   "clanky_list_servers", "clanky_create_workspace", "clanky_list_operations", "clanky_find_operations",
   "clanky_describe_operation", "clanky_execute_operation",
+  "clanky_send_notification",
 ].sort();
 const WORKSPACE_TOOLS = COMMON_TOOLS.filter((name) =>
   name !== "clanky_list_servers" && name !== "clanky_create_workspace");

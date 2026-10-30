@@ -1,5 +1,6 @@
 import type { TaskLogEntry } from "./task";
 import type { ControlToolInput, ControlToolName } from "@/core/control-tool-contracts";
+import { AGENT_NOTIFICATION_INSTRUCTIONS } from "./agent-notifications";
 
 export const DETERMINISTIC_AGENT_CODE_CONTRACT = {
   exportRule: "The source must export a default function named run (ctx) or an anonymous default function.",
@@ -60,6 +61,7 @@ export const DETERMINISTIC_AGENT_CODE_CONTRACT = {
     ].join("\n"),
   ],
   runtimeSemantics: [
+    AGENT_NOTIFICATION_INSTRUCTIONS,
     "workspace.exec() invokes one command with a separate argument array and does not parse shell syntax. Use an explicit shell command such as `sh -c` when shell features are intentional.",
     "workspace.exec() uses the current run directory as its default working directory: the prepared worktree directory when worktrees are enabled, or the workspace's configured directory otherwise. options.cwd overrides that default, and options.timeout is in milliseconds.",
     "A non-zero command exit, timeout, or command-level cancellation resolves to a result with success false and preserves stdout, stderr, and exitCode; it is not thrown as a command exception.",

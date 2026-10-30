@@ -289,6 +289,14 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
 test("Mesh users operate Clanky through OpenCode Control on their selected worker", async () => {
   const directory = await mkdtemp(join(tmpdir(), "clanky-opencode-control-e2e-"));
   const nodes: ManagedMeshNode[] = [];
+  const notifications: unknown[] = [];
+  const webhook = Bun.serve({
+    hostname: "127.0.0.1", port: 0,
+    async fetch(request) {
+      notifications.push(await request.json());
+      return Response.json({ accepted: true }, { status: 201 });
+    },
+  });
   try {
     const bin = join(directory, "bin");
     await installExternalNativeOpenCodeProvider(bin);
@@ -323,7 +331,21 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
       }),
     });
     const { workspace, createChat } = await prepare(client, workspaceDirectory, host.ref, "Mesh OpenCode Control");
+    await client.json("/api/preferences/notifications", {
+      method: "PUT", body: JSON.stringify({
+        webhookUrl: `http://127.0.0.1:${webhook.port}/api/webhooks/clanky/mesh-fixture-token`,
+      }),
+    });
     const id = await createChat("Mesh Control conversation");
+    const notification = {
+      title: "Mesh work ready", shortDescription: "Your requested Mesh notification.",
+      markdownContent: "**Ready for review.**",
+    };
+    await send(client, id, "Send me this notification.\n" + instruction([
+      { name: "clanky_send_notification", input: notification },
+    ]));
+    expect((await results(client, id))[0]).toMatchObject({ ok: true, completion: "completed", status: "accepted" });
+    expect(notifications).toEqual([notification]);
     await operateWorkspace(client, id, workspace.id, filePath, "Delegated Mesh work", createChat);
   } catch (error) {
     for (const node of nodes) console.error(await meshNodeDiagnostics(node));
@@ -332,7 +354,8 @@ test("Mesh users operate Clanky through OpenCode Control on their selected worke
     try {
       for (const node of [...nodes].reverse()) await stopMeshNode(node);
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      try { await webhook.stop(true); }
+      finally { await rm(directory, { recursive: true, force: true }); }
     }
   }
 });

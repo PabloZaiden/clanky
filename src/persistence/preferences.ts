@@ -27,6 +27,15 @@ import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update
 
 const log = createLogger("persistence:preferences");
 
+export async function getNotificationWebhookUrl(): Promise<string | null> {
+  return getPreference("notificationWebhookUrl");
+}
+
+export async function setNotificationWebhookUrl(url: string | null): Promise<void> {
+  if (url === null) deletePreference("notificationWebhookUrl");
+  else setPreference("notificationWebhookUrl", url);
+}
+
 export async function getControlApprovalRequired(): Promise<boolean> {
   const value = getPreference("controlApprovalRequired");
   if (value === null || value === "true") return true;

@@ -18,6 +18,11 @@ import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isDomainError } from "../../domain/domain-error";
 import { preferencesManager } from "../../core/preferences-manager";
+import { agentNotificationService } from "../../core/agent-notification-service";
+import {
+  AgentNotificationSettingsSchema,
+  SetAgentNotificationSettingsSchema,
+} from "@/contracts/schemas/agent-notifications";
 import { parseAndValidate, validateRequest } from "../validation";
 import { domainErrorResponse, internalErrorResponse } from "../helpers";
 import { workspaceOperation } from "../workspace-delegation";
@@ -50,6 +55,43 @@ function logPreferenceSaveFailure(preference: string, error: unknown): void {
  * Preferences API routes.
  */
 export const preferencesRoutes = defineRoutes({
+  "/api/preferences/notifications": {
+    auth: "user",
+    sameOrigin: "mutations",
+    tags: ["preferences"],
+    description: "Configure the user's private Listen webhook. Reads return only whether a webhook is configured.",
+    operations: {
+      GET: {
+        requestSchema: undefined, querySchema: undefined,
+        responseSchema: AgentNotificationSettingsSchema,
+        automation: { policy: "excluded", reason: "Private notification credential configuration is not exposed to agents." },
+      },
+      PUT: {
+        requestSchema: SetAgentNotificationSettingsSchema, querySchema: undefined,
+        responseSchema: AgentNotificationSettingsSchema,
+        automation: { policy: "excluded", reason: "Only the user configures or clears their notification webhook." },
+      },
+    },
+    async GET(): Promise<Response> {
+      try {
+        return Response.json(await agentNotificationService.settings(), { headers: { "Cache-Control": "no-store" } });
+      } catch {
+        log.error("Failed to load notification settings");
+        return Response.json({ error: "notification_settings_failed", message: "Could not load notification settings." }, { status: 500 });
+      }
+    },
+    async PUT(req: Request): Promise<Response> {
+      const body = await parseAndValidate(SetAgentNotificationSettingsSchema, req, { maxBodyBytes: 32_768 });
+      if (!body.success) return body.response;
+      try {
+        return Response.json(await agentNotificationService.configure(body.data), { headers: { "Cache-Control": "no-store" } });
+      } catch {
+        log.error("Failed to save notification settings");
+        return Response.json({ error: "notification_settings_failed", message: "Could not save notification settings." }, { status: 500 });
+      }
+    },
+  },
+
   "/api/preferences/worker-updates": {
     auth: "user",
     sameOrigin: "mutations",

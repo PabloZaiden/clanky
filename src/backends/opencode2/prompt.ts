@@ -4,6 +4,7 @@
 
 import type { SessionPromptInput } from "@opencode/client";
 import type { PromptInput } from "../types";
+import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
 
 export function toOpenCodePrompt(prompt: PromptInput): Pick<SessionPromptInput, "text" | "files"> {
   const text: string[] = [];
@@ -14,5 +15,6 @@ export function toOpenCodePrompt(prompt: PromptInput): Pick<SessionPromptInput, 
     else if ("text" in part.resource) text.push(`${part.resource.uri}\n${part.resource.text}`);
     else files.push({ uri: `data:${part.resource.mimeType ?? "application/octet-stream"};base64,${part.resource.blob}`, name: part.resource.uri });
   }
+  text.push(AGENT_NOTIFICATION_INSTRUCTIONS);
   return { text: text.join("\n"), files: files.length ? files : undefined };
 }
