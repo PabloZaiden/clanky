@@ -6,6 +6,8 @@ import { ModelConfigSchema, CheapModelSelectionSchema } from "@/contracts/schema
 import { AgentSettingsSchema } from "@/contracts/schemas/workspace";
 import { ControlConfirmationDescriptionSchema } from "@/shared/control-interactions";
 import { ExecuteOperationSchema, type ControlToolDefinition } from "@/contracts/schemas/control";
+import { AgentNotificationSchema } from "@/contracts/schemas/agent-notifications";
+import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
 
 const optionalText = z.string().trim().min(1).max(500).nullable().default(null);
 const workspace = optionalText.describe("Workspace ID or exact name; null means no workspace filter.");
@@ -126,6 +128,7 @@ export const controlDirectDescriptions: Record<DirectToolName, string> = {
 
 export const controlToolSchemas = {
   ...controlDirectSchemas,
+  clanky_send_notification: AgentNotificationSchema,
   clanky_list_operations: z.object({}).strict(),
   clanky_find_operations: z.object({
     text: z.string().max(500),
@@ -148,6 +151,10 @@ export type ControlToolInput<T extends ControlToolName> = z.input<typeof control
 
 export const controlToolDescriptions: Record<ControlToolName, string> = {
   ...controlDirectDescriptions,
+  clanky_send_notification: "Send one text notification to the user's configured Listen webhook. "
+    + AGENT_NOTIFICATION_INSTRUCTIONS
+    + " Supply title, shortDescription and markdownContent; never supply a webhook URL. "
+    + "Returns webhook acceptance, not human receipt. Direct, no discovery or extra approval.",
   clanky_list_operations: "Get the complete authorized operation index in one call, without schemas or pagination. columns names the fields in each operations row: operationId, policy, description. Descriptions are abbreviated; describe the selected operation for its exact inputs and consequences. Prefer this index over repeated keyword searches for uncovered intents. Direct tools need no discovery. In Live Voice call this tool alone.",
   clanky_find_operations: "Filtered lookup for intents not covered by a direct tool. Matches all words literally, with optional domain/method filters. Empty text lists a page; follow nextCursor. Use clanky_list_operations for the complete compact index in one call instead of repeated keyword guesses.",
   clanky_describe_operation: "Read the exact contract and risk/completion policy. Start with section/cursor null; if contractSections are returned, read query/body separately. Content parts identify JSON paths; continue with nextCursor until null to obtain the complete schema.",

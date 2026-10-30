@@ -10,6 +10,7 @@ import { executeDirectControlTool, isDirectToolName } from "./control-direct-too
 import { controlToolSchemas } from "./control-tool-contracts";
 import { isDomainError } from "../domain/domain-error";
 import { isControlUiToolName, executeControlUiTool } from "./control-ui-tools";
+import { agentNotificationService } from "./agent-notification-service";
 
 const log = createLogger("core:control-tools");
 
@@ -32,6 +33,8 @@ export async function executeControlTool(options: {
     if (isControlUiToolName(name)) return await executeControlUiTool(context, name, input);
     if (isDirectToolName(name)) return await executeDirectControlTool(context, name, input);
     switch (name) {
+      case "clanky_send_notification":
+        return await agentNotificationService.send(input, actions.signal);
       case "clanky_list_operations":
         controlToolSchemas.clanky_list_operations.parse(input);
         return service.list(actions.authority);

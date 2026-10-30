@@ -35,6 +35,7 @@ import { ControlOAuthGrantsContent } from "../app-settings/control-oauth-grants-
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { ControlApprovalPolicyContent } from "../app-settings/control-approval-policy-content";
 import { PendingControlRequests } from "../control/control-requests";
+import { NotificationSettingsContent } from "../app-settings/notification-settings-content";
 
 export interface ShellSettingsCompositionOptions {
   onNavigate: (route: WebAppRoute) => void;
@@ -80,6 +81,19 @@ export function buildShellSettingsSections({
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
   const sections: ShellSettingsSections = [
+    {
+      id: "agent-notifications",
+      title: "Notifications",
+      category: { id: "integrations", title: "Agents & integrations" },
+      scope: "user" as const,
+      rows: [{
+        id: "notification-webhook",
+        title: "Listen webhook URL",
+        description: "Agents notify only when you explicitly ask. The saved URL is never shown to agents.",
+        labelFor: "notification-webhook-url",
+        content: <NotificationSettingsContent />,
+      }],
+    },
     {
       id: "control-approvals",
       title: "Approvals",
@@ -380,7 +394,7 @@ export function buildShellSettingsSections({
     },
   ];
   const capabilities = getClankyClientCapabilities();
-  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
+  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "agent-notifications", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
   return sections.filter((section) => section.id === "voice"
     ? capabilities.voice
     : capabilities.controllerAdministration || !controllerSections.has(section.id));
