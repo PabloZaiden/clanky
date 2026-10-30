@@ -9,7 +9,7 @@
       "installedFilename": "clanky",
       "assetPrefix": "clanky",
       "buildCommand": "bun src/build.ts --target=$BUN_TARGET",
-      "outputPath": "dist/clanky-$RELEASE_TARGET",
+      "outputPath": "dist/clanky-$RELEASE_TARGET$ASSET_EXTENSION",
       "postInstallMessage": "Run 'clanky serve' to start the local server, or 'clanky --help' for CLI commands.",
       "checksum": {
         "required": true,
@@ -54,7 +54,7 @@
       "id": "windows-x64",
       "os": "windows",
       "architecture": "x64",
-      "runner": "windows-latest",
+      "runner": "ubuntu-latest",
       "bunTarget": "bun-windows-x64",
       "executableExtension": ".exe"
     },
@@ -62,7 +62,7 @@
       "id": "windows-arm64",
       "os": "windows",
       "architecture": "arm64",
-      "runner": "windows-latest",
+      "runner": "ubuntu-latest",
       "bunTarget": "bun-windows-arm64",
       "executableExtension": ".exe"
     }
