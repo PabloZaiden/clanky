@@ -1,5 +1,6 @@
 import { chmod, lstat, mkdir, mkdtemp, open, readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { Database, SQLiteError } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { SECRET_FILE_TTL_MS, type SecretFileReference } from "@/shared/harness-secrets";
@@ -18,6 +19,7 @@ class HarnessSecretFiles {
   private readonly operations = new KeyedOperationQueue();
   private opening?: Promise<void>;
   private directory?: string;
+  private ownership?: Database;
   private sweepTimer?: ReturnType<typeof setInterval>;
 
   initialize(): Promise<void> {
@@ -29,31 +31,40 @@ class HarnessSecretFiles {
     const root = join(getDataDir(), "native", "secrets");
     await mkdir(root, { recursive: true, mode: 0o700 });
     await this.secureDirectory(root);
-    for (const entry of await readdir(root, { withFileTypes: true })) {
-      const match = /^process-([1-9][0-9]*)-[A-Za-z0-9]+$/.exec(entry.name);
-      if (!entry.isDirectory() || !match) continue;
-      const pid = Number(match[1]);
-      if (!Number.isSafeInteger(pid) || pid > 2_147_483_647) continue;
-      if (pid === process.pid) {
-        await rm(join(root, entry.name), { recursive: true });
-        continue;
-      }
-      try {
-        process.kill(pid, 0);
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
-          if (error instanceof Error && "code" in error && error.code === "EPERM") continue;
+    const startup = this.lock(join(root, "startup.sqlite"), 5000);
+    try {
+      for (const entry of await readdir(root, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !/^process-[1-9][0-9]*-[A-Za-z0-9]+$/.test(entry.name)) continue;
+        const path = join(root, entry.name);
+        try {
+          this.lock(join(path, "owner.sqlite")).close();
+        } catch (error) {
+          if (error instanceof SQLiteError && error.code === "SQLITE_BUSY") continue;
           throw error;
         }
-        await rm(join(root, entry.name), { recursive: true });
+        await rm(path, { recursive: true });
       }
+      this.directory = await mkdtemp(join(root, `process-${process.pid}-`));
+      await this.secureDirectory(this.directory);
+      this.ownership = this.lock(join(this.directory, "owner.sqlite"));
+    } finally {
+      startup.close();
     }
-    this.directory = await mkdtemp(join(root, `process-${process.pid}-`));
-    await this.secureDirectory(this.directory);
     this.sweepTimer = setInterval(() => {
       void this.sweep().catch(() => log.error("Expired secret files could not be removed."));
     }, 60_000);
     this.sweepTimer.unref();
+  }
+
+  private lock(path: string, timeoutMs = 0): Database {
+    const database = new Database(path);
+    try {
+      database.exec(`PRAGMA busy_timeout = ${timeoutMs}; BEGIN EXCLUSIVE;`);
+      return database;
+    } catch (error) {
+      database.close();
+      throw error;
+    }
   }
 
   private async secureDirectory(path: string): Promise<void> {
@@ -113,13 +124,13 @@ class HarnessSecretFiles {
         published = true;
         return { ...reference };
       } finally {
-        if (!published) await rm(path, { force: true });
+        if (!published) await rm(path, { recursive: true, force: true });
       }
     });
   }
 
   private async remove(key: string, entry: SecretFileReference): Promise<void> {
-    await rm(entry.path, { force: true });
+    await rm(entry.path, { recursive: true, force: true });
     this.files.delete(key);
   }
 
@@ -137,7 +148,16 @@ class HarnessSecretFiles {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
     await this.opening;
     await this.operations.drain();
-    if (this.directory) await rm(this.directory, { recursive: true, force: true });
+    if (this.directory) {
+      const startup = this.lock(join(dirname(this.directory), "startup.sqlite"), 5000);
+      try {
+        await rm(this.directory, { recursive: true, force: true });
+      } finally {
+        this.ownership?.close();
+        this.ownership = undefined;
+        startup.close();
+      }
+    }
     this.files.clear();
   }
 }

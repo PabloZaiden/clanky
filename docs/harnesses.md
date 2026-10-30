@@ -100,10 +100,12 @@ unprotected files.
 
 The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
 miss, the same native invocation waits for the user's private chat form, with
-no human-input deadline. A real, same-origin browser passkey session must supply
-or decline the value; API keys, automation and disabled-passkey mode cannot
-submit it. For shared workspaces, enter secrets on the conversation's owning
-controller, not through a delegated server session. Closing the browser tab
+no human-input deadline. A real, same-origin browser session with verified
+WebAuthn provenance must supply or decline the value; API keys, including
+API-key browser sign-in, automation and disabled-passkey mode cannot submit it.
+Older browser sessions must sign in again using a passkey. For shared workspaces,
+enter secrets on the conversation's owning controller, not through a delegated
+server session. Closing the browser tab
 does not cancel the request. Stop, turn completion or native session loss does.
 Supplying a value resumes the invocation automatically, returning only
 `{ status: "saved", path, expiresAt }`, with expiry in Unix milliseconds.
@@ -118,7 +120,8 @@ protected by filesystem permissions rather than vault encryption. They live
 outside the repository and attachment directories, with random names, `0700`
 directories and `0600` files. The execution host checks expiry at lookup, sweeps expired
 files every minute and removes abandoned process generations on startup,
-including after an abrupt restart. Another live instance's files are preserved.
+including after an abrupt restart. Lifetime-held ownership locks preserve
+another live instance's files without trusting a possibly reused PID.
 Ordinary turn completion and backend reconnect do not remove cached files.
 Startup and deletion failures are reported, not treated as successful cleanup.
 

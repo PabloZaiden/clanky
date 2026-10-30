@@ -36,9 +36,9 @@ export const chatsMessagingRoutes = defineRoutes({
     },
     async POST(req, ctx): Promise<Response> {
       const config = readRuntimeConfig({ appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky" });
-      if (ctx.auth.kind !== "passkey" || config.passkeyDisabled
+      if (ctx.auth.kind !== "passkey" || !ctx.auth.passkeyId || config.passkeyDisabled
         || req.headers.get("origin") !== getRequestOriginInfo(req, config).origin) {
-        return privateSecretResponse(errorResponse("secret_human_required", "Sign in with a browser passkey session to supply a secret.", 403));
+        return privateSecretResponse(errorResponse("secret_human_required", "Sign in again using a passkey to supply a secret.", 403));
       }
       const validation = await parseAndValidate(ReplyToSecretSchema, req, { maxBodyBytes: SECRET_MAX_BYTES * 6 + 1024 });
       if (!validation.success) {
