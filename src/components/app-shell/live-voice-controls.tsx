@@ -4,7 +4,7 @@
 
 import type { SidebarAction } from "@pablozaiden/webapp/web";
 import type { UseLiveVoiceResult } from "../../hooks/useLiveVoice";
-import { CloseIcon, MicrophoneIcon } from "../common";
+import { CloseIcon, MicrophoneIcon, RefreshIcon } from "../common";
 
 const CONTROL_BUTTON_CLASS_NAME = "wapp-action-menu-trigger wapp-action-menu-trigger-compact h-11 w-11 shrink-0";
 
@@ -70,6 +70,11 @@ export function LiveVoiceControls({ voice, expanded, onToggleExpanded }: {
         {voice.intention}
       </p> : null}
       <div className="flex shrink-0 items-center gap-1.5">
+        {expanded ? <button type="button" className={CONTROL_BUTTON_CLASS_NAME}
+          title="New Live conversation" aria-label="New Live conversation"
+          disabled={voice.status !== "active"} onClick={() => void voice.startNewConversation()}>
+          <span aria-hidden="true"><RefreshIcon /></span>
+        </button> : null}
         {voice.status === "active" ? <button type="button" className={CONTROL_BUTTON_CLASS_NAME}
           title={muteLabel} aria-label={muteLabel} aria-pressed={voice.muted} onClick={voice.toggleMute}>
           <span aria-hidden="true" className="relative inline-flex">

@@ -36,6 +36,7 @@ export class LiveVoiceManager {
 
   async create(options: {
     sdp: string; clientId: string; context: ControlClientContext;
+    newConversation?: boolean;
     authority: OperationAuthority; signal: AbortSignal;
   }): Promise<LiveVoiceSessionResponse> {
     const { sdp, clientId, context, authority } = options;
@@ -57,6 +58,7 @@ export class LiveVoiceManager {
       if (!this.service) throw new DomainError("voice_live_unavailable", "The global operation service is unavailable.");
       const { credentials, personalInstructions } = await voiceManager.requireLiveConfiguration();
       const limiter = this.admit(credentials);
+      if (options.newConversation) this.memory.retain(owner, []);
       const history = this.memory.get(owner);
       const started = await createLiveVoiceSession(credentials, sdp, { signal, history, personalInstructions }).catch((error: unknown) => {
         if (isDomainError(error) && error.code === "voice_provider_rate_limited") {

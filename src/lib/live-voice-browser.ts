@@ -89,7 +89,7 @@ export class LiveVoiceBrowser {
     };
   }
 
-  async connect(getContext: () => ControlClientContext, signal: AbortSignal): Promise<void> {
+  async connect(getContext: () => ControlClientContext, signal: AbortSignal, newConversation = false): Promise<void> {
     await this.audioContext.resume();
     const microphone = await this.acquireMicrophone();
     if (this.stopped || signal.aborted) {
@@ -127,7 +127,7 @@ export class LiveVoiceBrowser {
     const response = await appFetch("/api/voice/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext() }),
+      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext(), newConversation }),
       signal,
     });
     if (!response.ok) {

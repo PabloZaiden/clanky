@@ -42,6 +42,7 @@ export interface UseLiveVoiceResult extends LiveVoiceUiState {
   busy: boolean;
   callId: string | null;
   start: () => Promise<void>;
+  startNewConversation: () => Promise<void>;
   end: () => Promise<void>;
   toggleMute: () => void;
   playAudio: () => Promise<void>;
@@ -55,6 +56,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
   const [state, setState] = useState<LiveVoiceUiState>(INITIAL_STATE);
   const [callId, setCallId] = useState<string | null>(null);
   const active = useRef<BrowserCall | null>(null);
+  const restarting = useRef(false);
   const mounted = useRef(true);
   const endRef = useRef<() => Promise<void>>(async () => {});
   const context = useRef<ControlClientContext>({ revision: 0, route: { view: "home" } });
@@ -112,14 +114,15 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
           active.current = null;
           if (mounted.current) { setState(INITIAL_STATE); setCallId(null); }
         }
-        if (failure && mounted.current) toast.error(failure);
+        call.failed ??= failure;
+        if (call.failed && mounted.current) toast.error(call.failed);
       }
     })();
     return await call.ending;
   }, [toast]);
   endRef.current = end;
 
-  const start = useCallback(async (): Promise<void> => {
+  const start = useCallback(async (newConversation = false): Promise<void> => {
     if (!options.enabled || active.current) return;
     let releaseAudio: (() => void) | undefined;
     try {
@@ -133,7 +136,7 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
       const call: BrowserCall = { browser, controller: new AbortController(), activityGeneration: 0, releaseAudio };
       active.current = call;
       setState({ ...INITIAL_STATE, status: "connecting" });
-      call.starting = browser.connect(getContext, call.controller.signal);
+      call.starting = browser.connect(getContext, call.controller.signal, newConversation);
       try { await call.starting; }
       catch (error) {
         if (!call.controller.signal.aborted) call.failed = String(error);
@@ -186,6 +189,18 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
     }
   }, [options.enabled, getContext, toast]);
 
+  const startNewConversation = useCallback(async (): Promise<void> => {
+    const call = active.current;
+    if (!call || call.starting || call.ending || restarting.current) return;
+    restarting.current = true;
+    try {
+      await end();
+      if (mounted.current && !call.failed) await start(true);
+    } finally {
+      restarting.current = false;
+    }
+  }, [end, start]);
+
   useEffect(() => { void active.current?.heartbeat?.(); }, [routeJson]);
   useEffect(() => {
     mounted.current = true;
@@ -219,5 +234,5 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
     });
   }, []);
   const playAudio = useCallback(async (): Promise<void> => { await active.current?.browser.playAudio(); }, []);
-  return { ...state, available: options.enabled, busy: state.status !== "idle", callId, start, end, toggleMute, playAudio, getContext };
+  return { ...state, available: options.enabled, busy: state.status !== "idle", callId, start, startNewConversation, end, toggleMute, playAudio, getContext };
 }

@@ -133,7 +133,8 @@ its padding and border, so their upper dividing lines align exactly.
 It overlays whatever screen is open, including its composer, and remains
 available across navigation, with the sidebar closed, in a fullscreen terminal,
 and on desktop or mobile. It shows
-connecting/listening/speaking/processing/muted state, mute/unmute and stop;
+connecting/listening/speaking/processing/muted state, new conversation,
+mute/unmute and stop;
 connecting can be cancelled. Buttons retain tooltips and keyboard focus feedback.
 During delegated lookups/actions, the expanded bar also shows the model's brief
 intention in the user's language, when supplied. The description has its own
@@ -182,6 +183,16 @@ it continues your recent conversation, including references to work you created
 or discussed. Each subsequent Stop starts a new ten-minute window; at ten
 minutes or later, Live starts a fresh conversation. This works across tabs for
 the same signed-in user, but controls always belong to the new originating tab.
+
+To start over during an active call, use the circular-arrow **New Live
+conversation** button in the expanded bar. It is not shown in the minimized
+sidebar controls; expand Live voice to access it. It ends the current call
+and opens a new one without the previous conversation's text or remembered
+work references, keeping the controls in
+their current location. It does not reload the page, delete chats/tasks or stop
+delegated work. The button is disabled while connecting or ending a call.
+Subsequent ordinary starts continue this new conversation instead of the old one.
+
 Restarting requires an explicit click and never automatically turns on the
 microphone. Pending approvals, SSH handoffs and watches do not carry over, and
 previous actions are never automatically repeated.
