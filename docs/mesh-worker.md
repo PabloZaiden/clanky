@@ -359,6 +359,12 @@ creating a replacement worker does not transfer ownership of old sessions.
 | The controller can reach the worker over HTTPS | Direct worker |
 | The worker cannot accept inbound connections | Relay plus relay-only worker |
 
+For `clanky worker bootstrap`, choose direct mode with `--host`, `--port`,
+and an HTTPS `--mesh-endpoint`, or use `--relay-only` instead. In both modes,
+`--worker-directory` defaults to `$HOME` and `--instance-name` defaults to the
+system hostname; pass either optional flag to override its default. Relay-only
+mode does not require `--host` or `--port` and does not accept `--mesh-endpoint`.
+
 Use HTTPS for controller, worker and relay Mesh endpoints, including during
 local development. Plain HTTP listeners are only appropriate behind trusted
 TLS-terminating proxies or for a relay-only worker's private local API.
@@ -500,14 +506,12 @@ Use relay-only mode when the worker must not listen on a public worker
 endpoint:
 
 ```bash
-clanky worker bootstrap \
-  --relay-only \
-  --worker-directory /workspaces \
-  --instance-name worker-1
+clanky worker bootstrap --relay-only
 ```
 
-Relay-only workers listen only on loopback, do not accept `--mesh-endpoint`,
-and maintain an outbound TLS connection through the paired relay.
+Relay-only workers listen only on loopback with an ephemeral port, do not
+accept `--mesh-endpoint`, and maintain an outbound TLS connection through the
+paired relay.
 
 ## Run the worker as a service
 
