@@ -325,6 +325,10 @@ export class ChatStateService implements ChatStatePort {
           entryCount: state.messages.length + state.logs.length + state.toolCalls.length,
         }
       : unchangedCollections ? createTranscriptChangeSet(state, questionUpserts) : undefined;
+    const previous = options.streaming ? null : await this.getChatSummary(chat.config.id);
+    if (!options.streaming && !previous) {
+      throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+    }
     const saved = options.streaming
       ? await updateChatStreamState(chat.config.id, state.lastActivityAt, {
         transcriptChanges,
@@ -356,16 +360,18 @@ export class ChatStateService implements ChatStatePort {
         toolCalls: state.toolCalls,
       },
     };
-    for (const request of updated.state.harness?.questions ?? []) {
-      if (request.status === "pending"
-        && !chat.state.harness?.questions?.some((previous) => previous.requestId === request.requestId)) {
-        agentNotificationService.notify(request.secretIdentifier === undefined ? "question" : "secret", "Chat");
+    if (previous) {
+      for (const request of updated.state.harness?.questions ?? []) {
+        if (request.status === "pending"
+          && !previous.state.harness?.questions?.some((existing) => existing.requestId === request.requestId)) {
+          agentNotificationService.notify(request.secretIdentifier === undefined ? "question" : "secret", "Chat");
+        }
       }
-    }
-    for (const request of updated.state.pendingPermissionRequests ?? []) {
-      if (request.status === "pending"
-        && !chat.state.pendingPermissionRequests?.some((previous) => previous.requestId === request.requestId)) {
-        agentNotificationService.notify("approval", "Chat");
+      for (const request of updated.state.pendingPermissionRequests ?? []) {
+        if (request.status === "pending"
+          && !previous.state.pendingPermissionRequests?.some((existing) => existing.requestId === request.requestId)) {
+          agentNotificationService.notify("approval", "Chat");
+        }
       }
     }
     if (chat.config.scope === "workspace" && saved.previousStatus !== updated.state.status) {

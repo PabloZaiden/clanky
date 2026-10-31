@@ -140,13 +140,16 @@ retain their unattended input policy; this setting does not enable questions
 or secret forms where those interactions are unavailable. Automatically
 approved permissions do not require an approval alert; pending native
 permissions and presented/pending agent-operation confirmations do, including Voice.
+Transcript and progress updates do not resend alerts for existing pending
+interactions.
 
 Automatic messages contain only a fixed event description and the work kind,
 not names, conversation content, question text, error details, secret labels,
 tool arguments, or webhook credentials. Delivery failures appear in this
 Settings section with their timestamp and update live for that user. The last
-failure survives restart until the webhook is replaced or cleared. Delivery
-does not depend on an agent tool, an open browser, or native provider support.
+failure survives restart until the webhook is replaced or cleared; outstanding
+failures from the previous webhook configuration cannot restore that cleared error.
+Delivery does not depend on an agent tool, an open browser, or native provider support.
 There is no replay of past events on startup or when preferences are enabled.
 
 Agents are still instructed to send notifications **only when explicitly requested

@@ -36,6 +36,10 @@ export async function getNotificationWebhookUrl(ownerUserId?: string): Promise<s
   return getPreference("notificationWebhookUrl", ownerUserId);
 }
 
+export function getNotificationWebhookGeneration(ownerUserId: string): string | null {
+  return getPreference("notificationWebhookGeneration", ownerUserId);
+}
+
 export function getNotificationPreferences(ownerUserId?: string): NotificationPreferences {
   const stored = getPreference("notificationEvents", ownerUserId);
   if (stored === null) return structuredClone(DEFAULT_NOTIFICATION_PREFERENCES);
@@ -72,6 +76,7 @@ export function updateNotificationSettings(input: SetAgentNotificationSettings):
     if (input.webhookUrl !== undefined) {
       if (input.webhookUrl === null) deletePreference("notificationWebhookUrl");
       else setPreference("notificationWebhookUrl", input.webhookUrl);
+      setPreference("notificationWebhookGeneration", crypto.randomUUID());
       deletePreference("notificationDeliveryError");
     }
   })();

@@ -7,7 +7,7 @@ import {
   type AgentNotification,
 } from "@/contracts/schemas/agent-notifications";
 import {
-  getNotificationWebhookUrl, getNotificationPreferences, getNotificationDeliveryError,
+  getNotificationWebhookUrl, getNotificationWebhookGeneration, getNotificationPreferences, getNotificationDeliveryError,
   setNotificationDeliveryError, updateNotificationSettings,
 } from "../persistence/preferences";
 import { DomainError } from "../domain/domain-error";
@@ -85,12 +85,13 @@ class AgentNotificationService {
 
   private async sendAutomatic(event: NotificationEventKind, source: string, ownerUserId: string,
     signal: AbortSignal): Promise<void> {
+    const generation = getNotificationWebhookGeneration(ownerUserId);
     let failure: string | undefined;
     try {
       const preferences = getNotificationPreferences(ownerUserId);
       if (!preferences.enabled || !preferences.events[event]) return;
       const url = await this.webhookUrl(ownerUserId);
-      if (!url || signal.aborted) return;
+      if (!url || signal.aborted || generation !== getNotificationWebhookGeneration(ownerUserId)) return;
       const current = getNotificationPreferences(ownerUserId);
       if (!current.enabled || !current.events[event]) return;
       const descriptions: Record<NotificationEventKind, string> = {
@@ -112,7 +113,13 @@ class AgentNotificationService {
     } catch {
       failure = "Automatic notification delivery could not be confirmed. Inspect Listen before sending again; no automatic retry will occur.";
     }
-    if (failure) this.recordFailure(ownerUserId, failure);
+    if (failure) {
+      if (generation !== getNotificationWebhookGeneration(ownerUserId)) {
+        log.debug("Ignoring a delivery failure for an outdated webhook configuration", { ownerUserId });
+        return;
+      }
+      this.recordFailure(ownerUserId, failure);
+    }
   }
 
   private recordFailure(ownerUserId: string, message: string): void {
