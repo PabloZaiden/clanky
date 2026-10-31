@@ -140,6 +140,7 @@ the application being built; they are not expected to exist beside this skill.
 - Prefer structured `settings.sections[].rows` for settings; keep `render` only as an escape hatch.
 - Follow the [product presentation guidance](../../../docs/development/webapp.md#product-presentation): feature explanations belong in documentation, not setting subtitles or hints.
 - Put each setting's field in `content` and its buttons in `actions`, not in a stacked field/footer inside `content`. Wrap `SettingsFieldRow` in a shared native form when needed. The framework centers label and controls when they fit and wraps controls below the label when space is constrained; do not patch row alignment with consumer CSS.
+- Settings labels use their content width. Fields, nested forms and action groups must shrink/wrap within the actual panel width, preserving action order and right alignment; fix generic sizing upstream, not through Clanky CSS or a device-specific breakpoint.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
 - Test user-visible functionality and behavior, not implementation details such as internal class names, DOM structure or component internals.
