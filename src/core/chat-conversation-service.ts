@@ -1620,6 +1620,7 @@ export class ChatConversationService implements ChatConversationPort {
       lastActivityAt: now,
     };
     streamState.chat = await this.updateState(streamState.chat, nextState, {
+      completedTurn: true,
       transcriptChanges: createTranscriptChangeSet(nextState, closedToolCalls.map((toolCall) => ({
         id: toolCall.id,
         kind: "tool",
@@ -1958,7 +1959,7 @@ export class ChatConversationService implements ChatConversationPort {
               activeTurnAttachmentBytes: 0,
             },
             lastActivityAt: createTimestamp(),
-          });
+          }, { completedTurn: true });
         }
         streamState.interpreter.acknowledgeCheckpoint();
         if (!this.activeStreams.get(chatId)?.native) {
@@ -2691,6 +2692,7 @@ export class ChatConversationService implements ChatConversationPort {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
       streaming?: boolean;
+      completedTurn?: boolean;
     },
   ): Promise<Chat> {
     return this.state.updateState(chat, state, options);

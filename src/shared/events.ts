@@ -642,6 +642,8 @@ export interface TaskStoppedEvent {
   taskId: string;
   /** Reason for stopping (e.g., "User requested stop") */
   reason: string;
+  /** Distinguishes an external blocker from an explicit user stop. */
+  blocked?: boolean;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
@@ -809,6 +811,7 @@ export interface TaskPlanReadyEvent {
   taskId: string;
   /** The generated plan content (markdown) */
   planContent: string;
+  requiresApproval: boolean;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

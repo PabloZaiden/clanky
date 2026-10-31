@@ -24,16 +24,57 @@ import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { CheapModelSelection } from "@/shared";
 import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
 import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
+import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/shared/agent-notifications";
+import {
+  NotificationPreferencesSchema, NotificationDeliveryErrorSchema,
+  type NotificationPreferences, type NotificationDeliveryError, type SetAgentNotificationSettings,
+} from "@/contracts/schemas/agent-notifications";
 
 const log = createLogger("persistence:preferences");
 
-export async function getNotificationWebhookUrl(): Promise<string | null> {
-  return getPreference("notificationWebhookUrl");
+export async function getNotificationWebhookUrl(ownerUserId?: string): Promise<string | null> {
+  return getPreference("notificationWebhookUrl", ownerUserId);
 }
 
-export async function setNotificationWebhookUrl(url: string | null): Promise<void> {
-  if (url === null) deletePreference("notificationWebhookUrl");
-  else setPreference("notificationWebhookUrl", url);
+export function getNotificationPreferences(ownerUserId?: string): NotificationPreferences {
+  const stored = getPreference("notificationEvents", ownerUserId);
+  if (stored === null) return structuredClone(DEFAULT_NOTIFICATION_PREFERENCES);
+  try {
+    return NotificationPreferencesSchema.parse(JSON.parse(stored));
+  } catch (error) {
+    throw new Error("The stored notification preferences are invalid.", { cause: error });
+  }
+}
+
+export function getNotificationDeliveryError(ownerUserId?: string): NotificationDeliveryError | null {
+  const stored = getPreference("notificationDeliveryError", ownerUserId);
+  if (stored === null) return null;
+  try {
+    return NotificationDeliveryErrorSchema.parse(JSON.parse(stored));
+  } catch (error) {
+    throw new Error("The stored notification delivery error is invalid.", { cause: error });
+  }
+}
+
+export function setNotificationDeliveryError(error: NotificationDeliveryError, ownerUserId: string): void {
+  setPreference("notificationDeliveryError", JSON.stringify(NotificationDeliveryErrorSchema.parse(error)), ownerUserId);
+}
+
+export function updateNotificationSettings(input: SetAgentNotificationSettings): void {
+  getDatabase().transaction(() => {
+    if (input.enabled !== undefined || input.events !== undefined) {
+      const previous = getNotificationPreferences();
+      setPreference("notificationEvents", JSON.stringify({
+        enabled: input.enabled ?? previous.enabled,
+        events: { ...previous.events, ...input.events },
+      }));
+    }
+    if (input.webhookUrl !== undefined) {
+      if (input.webhookUrl === null) deletePreference("notificationWebhookUrl");
+      else setPreference("notificationWebhookUrl", input.webhookUrl);
+      deletePreference("notificationDeliveryError");
+    }
+  })();
 }
 
 export async function getControlApprovalRequired(): Promise<boolean> {
@@ -135,7 +176,7 @@ function getPreference(key: string, userId = requirePersistenceUserId()): string
 /**
  * Set a preference value by key.
  */
-function setPreference(key: string, value: string): void {
+function setPreference(key: string, value: string, userId = requirePersistenceUserId()): void {
   log.debug("Setting preference", { key });
   const db = getDatabase();
   const stmt = db.prepare(`
@@ -143,7 +184,7 @@ function setPreference(key: string, value: string): void {
     VALUES (?, ?, ?)
     ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value
   `);
-  stmt.run(key, requirePersistenceUserId(), value);
+  stmt.run(key, userId, value);
   log.trace("Preference set", { key });
 }
 

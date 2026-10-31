@@ -67,6 +67,7 @@ export async function seedPlanFilesImpl(
     type: "task.plan.ready",
     taskId,
     planContent: options.planContent,
+    requiresApproval: true,
     timestamp: createTimestamp(),
   });
 

@@ -1385,6 +1385,7 @@ export class TaskEngine {
       type: "task.stopped",
       taskId: this.config.id,
       reason: "Agent reported a blocker",
+      blocked: true,
       timestamp: createTimestamp(),
     });
 
@@ -1557,6 +1558,7 @@ export class TaskEngine {
       type: "task.plan.ready",
       taskId: this.config.id,
       planContent: effectivePlanContent,
+      requiresApproval: !(this.task.config.autoAcceptPlan === true && this.onPlanReady),
       timestamp: createTimestamp(),
     });
 

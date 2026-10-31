@@ -148,6 +148,7 @@ export interface ChatStatePort {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
       streaming?: boolean;
+      completedTurn?: boolean;
     },
   ): Promise<Chat>;
   mutateState(

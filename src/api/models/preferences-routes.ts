@@ -59,7 +59,7 @@ export const preferencesRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     tags: ["preferences"],
-    description: "Configure the user's private Listen webhook. Reads return only whether a webhook is configured.",
+    description: "Configure the user's private Listen webhook and opt-in event notifications. Reads never disclose the saved webhook URL.",
     operations: {
       GET: {
         requestSchema: undefined, querySchema: undefined,

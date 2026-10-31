@@ -86,7 +86,7 @@ export function buildShellSettingsSections({
       title: "Notifications",
       category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
-      // The native form owns the shared webhook draft and its field/actions row.
+      // The credential form and autosave rows share one private settings query and delivery feedback.
       render: () => <NotificationSettingsContent />,
     },
     {

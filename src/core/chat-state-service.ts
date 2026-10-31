@@ -53,6 +53,8 @@ import { closeOpenQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { HarnessError } from "../backends/harness-errors";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
+import { agentNotificationService } from "./agent-notification-service";
+import { isQuestionOpen } from "@/shared/harness-questions";
 
 const CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE = 4;
 
@@ -225,6 +227,7 @@ export class ChatStateService implements ChatStatePort {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
       streaming?: boolean;
+      completedTurn?: boolean;
     } = {},
   ): Promise<Chat> {
     return this.mutations.run(chat.config.id, () => this.persistState(chat, state, options));
@@ -282,6 +285,7 @@ export class ChatStateService implements ChatStatePort {
       transcriptChanges?: TranscriptChangeSet;
       expectedStatus?: ChatStatus;
       streaming?: boolean;
+      completedTurn?: boolean;
     } = {},
   ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
@@ -352,6 +356,27 @@ export class ChatStateService implements ChatStatePort {
         toolCalls: state.toolCalls,
       },
     };
+    for (const request of updated.state.harness?.questions ?? []) {
+      if (request.status === "pending"
+        && !chat.state.harness?.questions?.some((previous) => previous.requestId === request.requestId)) {
+        agentNotificationService.notify(request.secretIdentifier === undefined ? "question" : "secret", "Chat");
+      }
+    }
+    for (const request of updated.state.pendingPermissionRequests ?? []) {
+      if (request.status === "pending"
+        && !chat.state.pendingPermissionRequests?.some((previous) => previous.requestId === request.requestId)) {
+        agentNotificationService.notify("approval", "Chat");
+      }
+    }
+    if (chat.config.scope === "workspace" && saved.previousStatus !== updated.state.status) {
+      if (updated.state.status === "failed") agentNotificationService.notify("error", "Chat");
+      if (options.completedTurn && updated.state.status === "idle"
+        && !updated.state.interruptRequested
+        && !updated.state.harness?.questions?.some(isQuestionOpen)
+        && !updated.state.pendingPermissionRequests?.some((request) => request.status === "pending")) {
+        agentNotificationService.notify("completed", "Chat");
+      }
+    }
     if (saved.previousStatus !== updated.state.status) {
       this.emitter.emit({
         type: "chat.status",

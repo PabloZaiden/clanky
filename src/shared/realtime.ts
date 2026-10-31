@@ -29,6 +29,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   executionHosts: "execution-hosts",
   controlRequests: "control-requests",
   controlCredentials: "control-credentials",
+  notificationSettings: "notification-settings",
   promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
 } as const;
 
