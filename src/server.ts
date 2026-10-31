@@ -15,6 +15,7 @@ import { authorizedRawWebSocketUpgrade } from "./api/raw-websocket-upgrade";
 import { websocketHandlers } from "./api/websocket";
 import { getDataDir, initializeDatabase } from "./persistence/database";
 import { harnessSecretFiles } from "./core/harness-secret-files";
+import { agentNotificationService } from "./core/agent-notification-service";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
 import { resetStaleTasks } from "./persistence/tasks";
 import { resetStaleChats } from "./persistence/chats";
@@ -706,6 +707,7 @@ export async function getWebAppServer(
         ]);
         await cleanup(() => chatManager.shutdown());
         await cleanup(() => taskManager.shutdown());
+        await cleanup(() => agentNotificationService.stop());
         await cleanup(() => backendManager.shutdown());
         // Remote clients must release their sessions before relays and gateways close.
         await cleanup(() => meshWorker
@@ -753,6 +755,8 @@ export async function getWebAppServer(
     liveVoiceManager.configure(new ClankyOperationService(app.routeCatalog));
     configureLiveVoiceApi((req, ctx) => createVoiceOperationAuthority(appServer, req, ctx));
     registerClankyRealtimeBridge(app);
+    agentNotificationService.start((userId) =>
+      appServer.realtime.publishChanged("notification-settings", { target: { userId } }));
   }
   if (meshWorker) {
     log.info("Mesh worker application server created");

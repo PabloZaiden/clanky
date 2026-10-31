@@ -103,7 +103,7 @@ request a new confirmation before restarting.
 
 Set a Listen source's webhook URL in **Settings → Agents & integrations →
 Notifications**. The private URL is saved per user across workspaces and server
-restarts. Reads disclose only whether it is configured; paste a new URL to
+restarts. Reads disclose preferences and whether it is configured, never its URL; paste a new URL to
 replace it or click **Clear** to remove it immediately and disable delivery.
 Configure it from an API-backed controller client; invitation-only browser
 clients do not expose controller credential settings.
@@ -120,9 +120,42 @@ and native subagents do not receive this integration. Existing Codex threads
 retain their previously registered tools: start a new conversation if the
 notification tool is missing.
 
-Agents are instructed to send notifications **only when explicitly requested
-by the user**. Saving a webhook is not a request, and Clanky never automatically
-sends notifications for progress, completion, failure, or required input.
+**Receive automatic notifications** is a per-user master checkbox. Separate
+checkboxes select errors, blocked work, questions, secret requests, permission
+and approval requests, plans ready for approval, and finished chats/tasks.
+The master and every event default to off. Turning the master off preserves
+all event selections; turning it back on resumes that selection. Saving a
+webhook does not enable either the master or any event. Preferences may be
+selected before configuring a webhook, but delivery requires a saved webhook.
+
+Enabling an event is explicit consent for Clanky itself to send that kind of
+automatic notification when the master is on. Finished work includes a chat's
+completed response/turn, a completed task, and a completed managed Agent run.
+Interruptions, failures, pending questions and progress updates are not
+completion. Embedded task/Agent chats do not generate duplicate completion or
+error alerts for their enclosing work. Automatically accepted plans do not
+generate a plan-approval alert. Blocked work means the task reported
+a blocker, not an ordinary user-requested stop. Tasks and managed Agent runs
+retain their unattended input policy; this setting does not enable questions
+or secret forms where those interactions are unavailable. Automatically
+approved permissions do not require an approval alert; pending native
+permissions and presented/pending agent-operation confirmations do, including Voice.
+Transcript and progress updates do not resend alerts for existing pending
+interactions.
+
+Automatic messages contain only a fixed event description and the work kind,
+not names, conversation content, question text, error details, secret labels,
+tool arguments, or webhook credentials. Delivery failures appear in this
+Settings section with their timestamp and update live for that user. The last
+failure survives restart until the webhook is replaced or cleared; outstanding
+failures from the previous webhook configuration cannot restore that cleared error.
+Delivery does not depend on an agent tool, an open browser, or native provider support.
+There is no replay of past events on startup or when preferences are enabled.
+
+Agents are still instructed to send notifications **only when explicitly requested
+by the user**. Neither saving a webhook nor enabling automatic event preferences
+authorizes discretionary tool calls. The master checkbox controls automatic
+event notifications only, not explicitly requested `clanky_send_notification` calls.
 This is an agent instruction and tool-description policy, not an additional
 application-enforced per-chat/task permission.
 

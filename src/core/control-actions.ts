@@ -13,6 +13,7 @@ import {
   type OperationResult, type PreparedOperation,
 } from "./clanky-operation-service";
 import { DomainError } from "../domain/domain-error";
+import { agentNotificationService } from "./agent-notification-service";
 
 const PENDING_TTL_MS = 60_000;
 const MAX_PENDING = 16;
@@ -163,6 +164,7 @@ export class ControlActions {
         this.confirmations.delete(id);
         return { ok: false, completion: "not_executed", outcome };
       }
+      agentNotificationService.notify("approval", "Agent operation");
       return {
         ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt,
         ...(outcome.status === "pending" ? { approvalUrl: outcome.url } : {}),
