@@ -51,7 +51,7 @@ export async function createLiveVoiceValidationOffer(signal: AbortSignal): Promi
 
 export class LiveVoiceBrowser {
   callId?: string;
-  private readonly peer = new RTCPeerConnection();
+  private peer = this.createPeer();
   private readonly audio = new Audio();
   private readonly audioContext = new AudioContext();
   private microphone?: MediaStream;
@@ -73,8 +73,12 @@ export class LiveVoiceBrowser {
   }) {
     this.audio.autoplay = true;
     this.audio.setAttribute("playsinline", "");
-    this.peer.ontrack = (event) => {
-      if (this.stopped) return;
+  }
+
+  private createPeer(): RTCPeerConnection {
+    const peer = new RTCPeerConnection();
+    peer.ontrack = (event) => {
+      if (this.stopped || this.peer !== peer) return;
       const stream = new MediaStream([event.track]);
       this.remoteStream?.getTracks().forEach((track) => track.stop());
       this.remoteStream = stream;
@@ -82,16 +86,18 @@ export class LiveVoiceBrowser {
       void this.playAudio();
       this.monitorVolume(stream);
     };
-    this.peer.onconnectionstatechange = () => {
-      if (!this.stopped && !this.releasing && ["failed", "disconnected"].includes(this.peer.connectionState)) {
+    peer.onconnectionstatechange = () => {
+      if (!this.stopped && !this.releasing && this.peer === peer && ["failed", "disconnected"].includes(peer.connectionState)) {
         this.update.failure("The voice connection was interrupted. Start a new call to reconnect.");
       }
     };
+    return peer;
   }
 
-  async connect(getContext: () => ControlClientContext, signal: AbortSignal, newConversation = false): Promise<void> {
+  async connect(getContext: () => ControlClientContext, signal: AbortSignal, previousCallId?: string): Promise<void> {
     await this.audioContext.resume();
-    const microphone = await this.acquireMicrophone();
+    if (this.stopped || signal.aborted) throw new DOMException("Voice call cancelled.", "AbortError");
+    const microphone = this.microphone ?? await this.acquireMicrophone();
     if (this.stopped || signal.aborted) {
       microphone.getTracks().forEach((track) => track.stop());
       throw new DOMException("Voice call cancelled.", "AbortError");
@@ -107,6 +113,7 @@ export class LiveVoiceBrowser {
     const ready = Promise.withResolvers<void>();
     void ready.promise.catch(() => { /* The connect path consumes this rejection after SDP exchange. */ });
     channel.onmessage = (message) => {
+      if (this.stopped || this.events !== channel) return;
       try {
         if (typeof message.data !== "string" || message.data.length > 1_000_000) throw new Error("Invalid Live event.");
         const event: unknown = JSON.parse(message.data);
@@ -120,14 +127,17 @@ export class LiveVoiceBrowser {
       }
     };
     channel.onclose = () => {
+      if (this.events !== channel) return;
       ready.reject(new Error("The Live event channel closed."));
       if (!this.stopped && !this.releasing) this.update.failure("The voice connection ended.");
     };
     const sdp = await createAndGatherOffer(this.peer, signal);
-    const response = await appFetch("/api/voice/live", {
+    const response = await appFetch(previousCallId
+      ? `/api/voice/live/${encodeURIComponent(previousCallId)}/conversation`
+      : "/api/voice/live", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext(), newConversation }),
+      body: JSON.stringify({ sdp, clientId: getClankyClientId(), context: getContext() }),
       signal,
     });
     if (!response.ok) {
@@ -148,14 +158,41 @@ export class LiveVoiceBrowser {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const abort = (): void => ready.reject(new DOMException("Voice call cancelled.", "AbortError"));
     signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
     try {
       await Promise.race([
         ready.promise,
         new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("Live did not start in time.")), 10_000); }),
       ]);
+      if (!microphone.getAudioTracks().some((track) => track.enabled)) this.mute(true);
     } finally {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort);
+    }
+  }
+
+  async startNewConversation(getContext: () => ControlClientContext, signal: AbortSignal): Promise<void> {
+    const previousCallId = this.callId;
+    if (!previousCallId || !this.microphone || this.stopped) throw new Error("The Live microphone is no longer available.");
+    const previousPeer = this.peer;
+    const previousEvents = this.events;
+    const previousStream = this.remoteStream;
+    previousPeer.ontrack = previousPeer.onconnectionstatechange = null;
+    if (previousEvents) previousEvents.onmessage = previousEvents.onclose = null;
+    this.events = undefined;
+    this.remoteStream = undefined;
+    clearInterval(this.volumeTimer);
+    this.volumeSource?.disconnect();
+    this.audio.pause();
+    this.lastSpeaking = false;
+    this.update.speaking(false);
+    try {
+      this.peer = this.createPeer();
+      await this.connect(getContext, signal, previousCallId);
+    } finally {
+      previousEvents?.close();
+      previousPeer.close();
+      previousStream?.getTracks().forEach((track) => track.stop());
     }
   }
 

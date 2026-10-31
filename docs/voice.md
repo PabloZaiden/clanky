@@ -186,11 +186,15 @@ the same signed-in user, but controls always belong to the new originating tab.
 
 To start over during an active call, use the circular-arrow **New Live
 conversation** button in the expanded bar. It is not shown in the minimized
-sidebar controls; expand Live voice to access it. It ends the current call
-and opens a new one without the previous conversation's text or remembered
-work references, keeping the controls in
-their current location. It does not reload the page, delete chats/tasks or stop
-delegated work. The button is disabled while connecting or ending a call.
+sidebar controls; expand Live voice to access it. The server closes the previous
+provider session and starts one without its conversation text or remembered work
+references. Audio briefly reconnects, but the browser keeps the same microphone
+capture, audio player and mute state without requesting microphone access again.
+GPT-Live does not support clearing history within an existing provider session.
+The controls stay in their current location; chats/tasks and delegated work are
+unaffected. The button is disabled while connecting, changing conversations or
+ending a call. Stop or leaving the page cancels the change without restarting
+the microphone.
 Subsequent ordinary starts continue this new conversation instead of the old one.
 
 Restarting requires an explicit click and never automatically turns on the
@@ -556,6 +560,14 @@ lease; start a new call explicitly after returning.
 { "revision": 0, "route": { "view": "home" } } }` and returns `201` with
 `{ "call": { "id", "status", "error", "processing" }, "sdp": "..." }`.
 The server attaches sideband before returning the SDP answer.
+
+`POST /api/voice/live/:callId/conversation` accepts the same session request
+with a new SDP offer from the existing microphone. It checks the originating
+user/client, finalizes the previous call and starts a fresh provider session
+without retained history, returning the same `201` session response. The
+browser replaces its WebRTC transport, not its microphone capture.
+Closing the previous call cancels an in-flight change or closes its successor
+if already created, even if the browser has not received the new call ID.
 
 `GET /api/voice/live/:callId` reads owned call state. POST `heartbeat` accepts
 `{ "clientId", "context" }`; POST `close` accepts `{ "clientId" }`.

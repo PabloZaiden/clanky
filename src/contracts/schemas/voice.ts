@@ -63,7 +63,6 @@ export const LiveVoiceSessionRequestSchema = z.object({
   sdp: z.string().min(1).max(65_536),
   clientId: z.string().uuid(),
   context: ControlClientContextSchema,
-  newConversation: z.boolean().optional(),
 }).strict();
 
 export const LiveVoiceHeartbeatSchema = z.object({
