@@ -48,14 +48,9 @@ export const CreateChatRequestSchema = z.object({
   }
 });
 
-export const CreateSshServerChatRequestSchema = z.object({
+export const CreateExecutionHostChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
   directory: z.string().trim().min(1, "directory is required"),
-  model: ModelConfigSchema,
-  credentialToken: z.string().trim().min(1).nullable().optional(),
-});
-
-export const CreateExecutionHostChatRequestSchema = CreateSshServerChatRequestSchema.extend({
   model: ModelConfigSchema.extend({
     providerID: AgentProviderSchema,
   }),
@@ -72,7 +67,6 @@ export const UpdateChatRequestSchema = z.object({
 export const SendChatMessageRequestSchema = z.object({
   message: z.string().nullable().optional().transform((value) => value ?? null),
   attachments: MessageAttachmentsSchema.default([]),
-  credentialToken: z.string().trim().min(1).nullable().optional(),
   clientId: z.string().uuid().optional(),
 }).superRefine((value, ctx) => {
   const hasMessage = typeof value.message === "string" && value.message.trim().length > 0;
@@ -95,26 +89,11 @@ export const ReplyToChatPermissionRequestSchema = z.object({
   decision: z.enum(["allow", "deny"]),
 });
 
-export const ReconnectChatRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1).nullable().optional(),
-}).default({});
+export const ReconnectChatRequestSchema = z.object({}).strict().default({});
 
-export const DiscoverSshServerChatProvidersRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1, "credentialToken is required"),
-});
-
-export const DiscoverSshServerChatModelsRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1, "credentialToken is required"),
-  providerID: AgentProviderSchema,
-  directory: z.string().trim().min(1, "directory is required"),
-});
-
-export const DiscoverExecutionHostProvidersRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1).nullable().optional(),
-});
+export const DiscoverExecutionHostProvidersRequestSchema = z.object({}).strict();
 
 export const DiscoverExecutionHostModelsRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1).nullable().optional(),
   providerID: AgentProviderSchema,
   directory: z.string().trim().min(1, "directory is required"),
 });

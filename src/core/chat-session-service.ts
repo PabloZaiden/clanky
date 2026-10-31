@@ -12,15 +12,12 @@ import type {
 } from "../backends/types";
 import type { Chat } from "@/shared";
 import {
-  SshCredentialsRequiredError,
   getChatWorkspaceId,
   isExecutionHostChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import type { AgentProvider } from "@/shared/settings";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { backendManager, buildConnectionConfig } from "./backend";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { createExecutionControlConnection } from "./control-tool-transport";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -50,7 +47,6 @@ export interface ChatSessionServiceDependencies {
     typeof backendManager,
     "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getConnectedExecutionHostBackend" | "getWorkspaceSettings"
   >;
-  sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   hasActiveStream?: (chatId: string) => boolean;
   onHarnessEvent?: (chatId: string, binding: HarnessConversationBinding, event: HarnessEvent) => Promise<void>;
   onNativeSession?: (chat: Chat, backend: Backend, binding: HarnessConversationBinding, recover: boolean) => Promise<void>;
@@ -64,7 +60,6 @@ export class ChatSessionService implements ChatSessionPort {
     typeof backendManager,
     "getBackendAsync" | "getChatBackend" | "getInitializedContextBackend" | "disconnectChat" | "createBackendForExecutionHost" | "getConnectedExecutionHostBackend" | "getWorkspaceSettings"
   >;
-  private readonly sshCredentialManager: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   private readonly hasActiveStream: (chatId: string) => boolean;
   private readonly directChatBackends = new Map<string, Backend>();
   private readonly connectedControlStates = new WeakMap<Backend, boolean>();
@@ -76,7 +71,6 @@ export class ChatSessionService implements ChatSessionPort {
     this.state = dependencies.state;
     this.worktree = dependencies.worktree;
     this.backendManager = dependencies.backendManager ?? backendManager;
-    this.sshCredentialManager = dependencies.sshCredentialManager ?? sshCredentialManager;
     this.hasActiveStream = dependencies.hasActiveStream ?? (() => false);
     this.onHarnessEvent = dependencies.onHarnessEvent;
     this.onNativeSession = dependencies.onNativeSession;
@@ -401,21 +395,21 @@ export class ChatSessionService implements ChatSessionPort {
     if (chat?.state.harness?.questions?.length) await this.state.updateState(chat, {
       ...chat.state, harness: { ...chat.state.harness, questions: closeOpenQuestions(chat.state.harness.questions, "expired") },
     });
-    const sshBackend = this.directChatBackends.get(chatId);
-    let sshDisconnectError: unknown;
-    if (sshBackend) {
+    const directBackend = this.directChatBackends.get(chatId);
+    let directDisconnectError: unknown;
+    if (directBackend) {
       try {
-        sshBackend.abortAllSubscriptions();
-        await sshBackend.disconnect();
+        directBackend.abortAllSubscriptions();
+        await directBackend.disconnect();
         this.directChatBackends.delete(chatId);
       } catch (error) {
-        sshDisconnectError = error;
-        log.error("Failed to disconnect SSH chat backend", { chatId, error: String(error) });
+        directDisconnectError = error;
+        log.error("Failed to disconnect execution-host chat backend", { chatId, error: String(error) });
       }
     }
     const backendDisconnected = await this.backendManager.disconnectChat(chatId);
-    if (sshDisconnectError) {
-      throw sshDisconnectError;
+    if (directDisconnectError) {
+      throw directDisconnectError;
     }
     return backendDisconnected;
   }
@@ -494,80 +488,24 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
     }
     const directory = source.directory || chat.config.directory;
-    const serverId = source.executionHost.host.kind === "ssh"
-      ? getRegisteredSshServerId(source.executionHost.host)
-      : null;
-    const credentialToken = options.credentialToken?.trim();
-    let password: string | undefined;
-    if (serverId && credentialToken) {
-      password = this.sshCredentialManager.getPasswordForToken(serverId, credentialToken);
-    }
     const existing = await this.backendManager.getConnectedExecutionHostBackend({
       connectionId: chat.config.id,
       binding: source.executionHost,
       provider: chat.config.model.providerID as AgentProvider,
       directory,
-      sshPassword: password,
     });
     if (existing) {
       this.directChatBackends.set(chat.config.id, existing);
       return existing;
     }
-    if (serverId && !credentialToken) {
-      await this.markSshCredentialsRequired(chat);
-      throw new SshCredentialsRequiredError();
-    }
-
-    try {
-      const { backend, settings } = await this.backendManager.createBackendForExecutionHost(
-        chat.config.id,
-        source.executionHost,
-        chat.config.model.providerID as AgentProvider,
-        password,
-      );
-      this.directChatBackends.set(chat.config.id, backend);
-      await backend.connect(buildConnectionConfig(settings, directory), options.signal);
-      return backend;
-    } catch (error) {
-      if (
-        source.executionHost.host.kind === "ssh"
-        && !options.signal?.aborted
-        && !isAcpErrorCode(error, "acp_connection_aborted")
-        && !isAcpErrorCode(error, "acp_request_cancelled")
-      ) {
-        await this.markSshConnectionFailed(chat, error);
-      }
-      throw error;
-    }
-  }
-
-  private async markSshCredentialsRequired(
-    chat: Chat,
-    message = "SSH credentials are required to reconnect this chat",
-  ): Promise<void> {
-    await this.state.updateState(chat, {
-      ...chat.state,
-      connectionStatus: "needs_credentials",
-      error: {
-        message,
-        timestamp: createTimestamp(),
-        code: "ssh_credentials_required",
-      },
-      lastActivityAt: createTimestamp(),
-    });
-  }
-
-  private async markSshConnectionFailed(chat: Chat, error: unknown): Promise<void> {
-    await this.state.updateState(chat, {
-      ...chat.state,
-      connectionStatus: "ssh_connection_failed",
-      error: {
-        message: String(error),
-        timestamp: createTimestamp(),
-        code: "ssh_connection_failed",
-      },
-      lastActivityAt: createTimestamp(),
-    });
+    const { backend, settings } = await this.backendManager.createBackendForExecutionHost(
+      chat.config.id,
+      source.executionHost,
+      chat.config.model.providerID as AgentProvider,
+    );
+    this.directChatBackends.set(chat.config.id, backend);
+    await backend.connect(buildConnectionConfig(settings, directory), options.signal);
+    return backend;
   }
 
   private async failLostSession(chat: Chat, error: unknown): Promise<Chat> {

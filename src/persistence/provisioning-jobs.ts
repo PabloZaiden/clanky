@@ -30,7 +30,7 @@ interface ProvisioningJobRow {
   created_at: string;
   updated_at: string;
   execution_host_revision: number | null;
-  execution_host_kind: "local" | "mesh" | "ssh" | null;
+  execution_host_kind: "local" | "mesh" | null;
   execution_host_source_id: string | null;
   execution_host_target_key: string | null;
 }
@@ -111,6 +111,10 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
     serverSettings: _serverSettings,
     ...safeState
   } = storedState;
+  const {
+    transport: _transport,
+    ...currentConfig
+  } = config;
   const executionHostBinding = executionHostBindingFromRow(
     row as unknown as Record<string, unknown>,
   );
@@ -122,7 +126,7 @@ function parseJobRow(row: ProvisioningJobRow): ProvisioningJob | null {
   }
   const job: ProvisioningJob = {
     config: {
-      ...(config as ProvisioningJob["config"]),
+      ...currentConfig,
       executionHostBinding,
     },
     state: {

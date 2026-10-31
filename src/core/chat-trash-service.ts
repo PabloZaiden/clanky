@@ -16,10 +16,8 @@ import {
 } from "../persistence/chats/trash";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
-import type { ChatCleanupCredentials, ChatConversationPort, ChatStatePort } from "./chat-service-contracts";
+import type { ChatConversationPort, ChatStatePort } from "./chat-service-contracts";
 import type { ChatLifecycleService } from "./chat-lifecycle-service";
-import { conversationAttachmentService } from "./conversation-attachment-service";
-import { getCollaborationActor } from "../context/user-context";
 
 const log = createLogger("chat-trash");
 
@@ -33,13 +31,10 @@ export class ChatTrashService {
   ) {}
 
   list(options: ChatTrashQuery) {
-    const page = listChatTrash(options);
-    return getCollaborationActor()?.kind === "guest"
-      ? { ...page, items: page.items.map((item) => ({ ...item, credentialServerIds: [] })) }
-      : page;
+    return listChatTrash(options);
   }
 
-  async move(chatId: string, credentialToken?: string | null): Promise<void> {
+  async move(chatId: string): Promise<void> {
     await this.run(chatId, async () => {
       if (loadTrashedChat(chatId)) return;
       const chat = await this.state.getChatSummary(chatId);
@@ -52,7 +47,7 @@ export class ChatTrashService {
       // cannot finish disconnecting; restore retries quiescence before admission.
       try {
         const complete = await this.lifecycle.cleanupTrashResources(trashed, {
-          preserveWorktree: true, credentialToken,
+          preserveWorktree: true,
         });
         if (!complete) log.warn("Chat is in Trash with incomplete external cleanup", { chatId });
       } catch (error) {
@@ -78,7 +73,7 @@ export class ChatTrashService {
     });
   }
 
-  async purge(chatId: string, options: ChatCleanupCredentials & {
+  async purge(chatId: string, options: {
     deletedAt?: string; bestEffort?: boolean;
   } = {}): Promise<boolean> {
     return await this.operations.run(chatId, async () => {
@@ -92,10 +87,7 @@ export class ChatTrashService {
         if (complete) {
           const latest = loadTrashedChat(chatId);
           if (!latest) return false;
-          complete = await this.lifecycle.cleanupTrashResources(latest, {
-            credentialToken: options.credentialToken,
-            credentialTokensByServerId: options.credentialTokensByServerId,
-          });
+          complete = await this.lifecycle.cleanupTrashResources(latest);
         }
       } catch (error) {
         log.warn("Trashed chat external cleanup failed", { chatId, error: String(error) });
@@ -110,7 +102,7 @@ export class ChatTrashService {
     });
   }
 
-  async empty(options: ChatCleanupCredentials & {
+  async empty(options: {
     cutoff?: string; workspaceId?: string; bestEffort?: boolean;
   } = {}): Promise<ChatTrashResult> {
     const cutoff = options.cutoff ?? createTimestamp();
@@ -137,24 +129,6 @@ export class ChatTrashService {
   async expire(): Promise<void> {
     const result = await this.empty({ cutoff: new Date(Date.now() - CHAT_TRASH_RETENTION_MS).toISOString() });
     if (result.deletedCount) log.info("Expired chats removed from Trash", { deletedCount: result.deletedCount });
-  }
-
-  credentialTargets(chatId?: string): string[] {
-    const serverIds = new Set<string>();
-    let cursor: string | undefined;
-    do {
-      const page = this.list({ limit: 100, includePrivate: "true", cursor });
-      for (const item of page.items) {
-        if (!chatId || item.id === chatId) {
-          for (const serverId of item.credentialServerIds) serverIds.add(serverId);
-          for (const serverId of conversationAttachmentService.credentialTargets({ kind: "chat", id: item.id })) serverIds.add(serverId);
-          if (chatId) return [...serverIds];
-        }
-      }
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor);
-    if (chatId) throw this.notFound();
-    return [...serverIds];
   }
 
   async runLiveOperation<T>(chatId: string, operation: () => Promise<T>): Promise<T> {

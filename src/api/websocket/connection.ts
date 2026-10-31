@@ -3,8 +3,6 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebSocketData } from "./types";
 import {
   releaseTerminalSocket,
-  sendTerminalAuthError,
-  SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
   startTerminalBridge,
 } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
@@ -143,20 +141,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   }
 
   if (terminalMode && terminalSessionId) {
-    if (ws.data.terminalCredentialRequired) {
-      ws.data.terminalCredentialTimeout = setTimeout(() => {
-        ws.data.terminalCredentialTimeout = undefined;
-        if (!ws.data.terminalBridge) {
-          sendTerminalAuthError(
-            ws,
-            SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
-            "ssh_credentials_required",
-          );
-        }
-      }, 10_000);
-      ws.data.terminalCredentialTimeout.unref?.();
-      return;
-    }
     void startTerminalBridge(ws).catch((error: Error) => {
       log.error("Unhandled terminal bridge startup failure", {
         terminalSessionId,
@@ -181,10 +165,6 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     activeConnections: activeConnections.size,
   });
 
-  if (ws.data.terminalCredentialTimeout) {
-    clearTimeout(ws.data.terminalCredentialTimeout);
-    ws.data.terminalCredentialTimeout = undefined;
-  }
   if (ws.data.terminalBridge) {
     const bridge = ws.data.terminalBridge;
     ws.data.terminalBridge = undefined;
@@ -242,10 +222,6 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   });
   // Remove from active connections
   activeConnections.delete(ws);
-  if (ws.data.terminalCredentialTimeout) {
-    clearTimeout(ws.data.terminalCredentialTimeout);
-    ws.data.terminalCredentialTimeout = undefined;
-  }
   if (ws.data.terminalBridge) {
     const bridge = ws.data.terminalBridge;
     ws.data.terminalBridge = undefined;

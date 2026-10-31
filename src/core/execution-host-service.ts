@@ -5,18 +5,15 @@
 import type {
   ExecutionHostBinding,
   ExecutionHostCapabilityId,
-  ExecutionHostCapabilities,
   ExecutionHostDescriptor,
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import {
-  POSIX_EXECUTION_HOST_CAPABILITIES,
   createExecutionHostRuntimeSnapshot,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
   executionHostReferenceMatches,
   isPrivateMeshExecutionHostRef,
-  isWorkspaceSshExecutionHostRef,
   supportsExecutionHostCapability,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
@@ -38,12 +35,8 @@ import type { MeshWorkerRegistration } from "@/shared/mesh";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { meshWorkerRouteVersion } from "./mesh-route-version";
 import {
-  listSshServerConfigs,
-} from "../persistence/ssh-servers";
-import {
   buildLocalTargetKey,
   buildMeshTargetKey,
-  buildSshTargetKey,
 } from "../persistence/workspace-target-key";
 import { ensureLocalInstallationId } from "../persistence/installation-identity";
 import {
@@ -54,10 +47,7 @@ import { isRemoteOnlyMode } from "./config";
 import { DomainError } from "../domain/domain-error";
 import { MeshCommandExecutor } from "./mesh-command-executor";
 import { CommandExecutorImpl } from "./remote-command-executor";
-import type { SshConnectionTarget } from "./ssh-connection-target";
-import { sshServerManager } from "./ssh-server-manager";
 import { requireExecutionOwnerUserId } from "../context/user-context";
-import { getWorkspaceSshTarget } from "../persistence/workspace-execution-targets";
 import {
   executionPathStyleForPlatform,
   resolveExecutionPathUnscoped,
@@ -72,8 +62,6 @@ export interface ExecutionHostCommandContext {
   provider?: AgentProvider;
   operationId: string;
   localUserId?: string;
-  sshPassword?: string;
-  sshTargetOverride?: SshConnectionTarget;
 }
 
 export interface ExecutionHostServiceDependencies {
@@ -82,10 +70,6 @@ export interface ExecutionHostServiceDependencies {
     workerNodeId: string,
   ) => Promise<void>;
 }
-
-const SSH_HOST_CAPABILITIES: ExecutionHostCapabilities = {
-  ...POSIX_EXECUTION_HOST_CAPABILITIES,
-};
 
 function assertCurrentBinding(
   binding: ExecutionHostBinding,
@@ -150,12 +134,7 @@ export class ExecutionHostService {
     let persisted = this.validateBinding(binding, userId);
     const runtime = binding.host.kind === "local"
       ? createExecutionHostRuntimeSnapshot(process.platform, process.arch)
-      : binding.host.kind === "ssh"
-        ? {
-            platform: null,
-            capabilities: SSH_HOST_CAPABILITIES,
-          }
-        : null;
+      : null;
     if (runtime) {
       persisted = updateExecutionHostRuntimeSnapshot(
         userId,
@@ -231,41 +210,6 @@ export class ExecutionHostService {
         throw new DomainError("execution_host_unavailable", "The workspace worker execution host is unavailable.");
       }
       descriptors.push(this.describeMeshWorker(worker, userId));
-    }
-
-    for (const server of await listSshServerConfigs(userId)) {
-      const host = ensureExecutionHost(
-        userId,
-        { kind: "ssh", serverId: server.id },
-        buildSshTargetKey(server.address, server.port ?? 22, server.username),
-        {
-          runtime: {
-            platform: null,
-            capabilities: SSH_HOST_CAPABILITIES,
-          },
-        },
-      );
-      descriptors.push({
-        ref: host.ref,
-        targetKey: host.targetKey,
-        name: server.name,
-        endpoint: `${server.address}:${String(server.port ?? 22)}`,
-        meshRouteKind: null,
-        repositoriesBasePath: server.repositoriesBasePath,
-        preferredModel: null,
-        configurationRevision: host.revision,
-        accessRequirement: {
-          kind: "sshCredentials",
-          serverId: server.id,
-          methods: ["agent", "password"],
-        },
-        acceptRemoteExecution: !host.revokedAt,
-        platform: host.runtime.platform,
-        capabilities: host.runtime.capabilities,
-        harnessAdapters: ["acp"],
-        revision: host.revision,
-        isPrivate: server.isPrivate,
-      });
     }
 
     return descriptors;
@@ -410,7 +354,6 @@ export class ExecutionHostService {
     ref: ExecutionHostRef,
     options: {
       userId?: string;
-      sshPassword?: string;
     } = {},
   ): Promise<{ directory: string; configured: boolean }> {
     const userId = options.userId ?? requireExecutionOwnerUserId();
@@ -437,7 +380,6 @@ export class ExecutionHostService {
       operationId: `working-directory:${descriptor.targetKey}`,
       directory: ".",
       localUserId: userId,
-      sshPassword: options.sshPassword,
     });
     const result = await (async () => {
       try {
@@ -465,7 +407,6 @@ export class ExecutionHostService {
     directory: string,
     options: {
       userId?: string;
-      sshPassword?: string;
     } = {},
   ): Promise<void> {
     const userId = options.userId ?? requireExecutionOwnerUserId();
@@ -481,7 +422,6 @@ export class ExecutionHostService {
       operationId: `validate-directory:${binding.targetKey}`,
       directory: ".",
       localUserId: userId,
-      sshPassword: options.sshPassword,
     });
     const directoryExists = await (async () => {
       try {
@@ -594,7 +534,6 @@ export class ExecutionHostService {
         );
       }
       return new CommandExecutorImpl({
-        provider: "local",
         directory: context.directory,
       });
     }
@@ -618,57 +557,7 @@ export class ExecutionHostService {
       });
     }
 
-    if (context.sshTargetOverride) {
-      return new CommandExecutorImpl({
-        provider: "ssh",
-        directory: context.directory,
-        host: context.sshTargetOverride.host,
-        port: context.sshTargetOverride.port,
-        user: context.sshTargetOverride.username,
-        password: context.sshTargetOverride.password ?? context.sshPassword,
-        identityFile: context.sshTargetOverride.identityFile,
-      });
-    }
-    if (isWorkspaceSshExecutionHostRef(host)) {
-      const target = await getWorkspaceSshTarget(host.workspaceId, userId);
-      if (!target) {
-        throw new DomainError(
-          "workspace_execution_target_missing",
-          "The workspace SSH execution target is not configured.",
-          { details: { workspaceId: host.workspaceId } },
-        );
-      }
-      return new CommandExecutorImpl({
-        provider: "ssh",
-        directory: context.directory,
-        host: target.host,
-        port: target.port,
-        user: target.username,
-        password: target.password,
-      });
-    }
-    return (await sshServerManager.getCommandExecutor(
-      host.serverId,
-      context.sshPassword,
-      userId,
-    )).executor;
-  }
-
-  async getCommandExecutorForSshTarget(
-    target: SshConnectionTarget,
-    context: Pick<ExecutionHostCommandContext, "directory" | "operationId"> & {
-      sshPassword?: string;
-    },
-  ): Promise<CommandExecutor> {
-    return new CommandExecutorImpl({
-      provider: "ssh",
-      directory: context.directory,
-      host: target.host,
-      port: target.port,
-      user: target.username,
-      password: target.password ?? context.sshPassword,
-      identityFile: target.identityFile,
-    });
+    throw new DomainError("execution_host_unavailable", "The selected execution host is unavailable.");
   }
 }
 

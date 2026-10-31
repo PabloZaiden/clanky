@@ -4,7 +4,7 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 export type ShellShortcutAction =
   | "new-task"
   | "new-chat"
-  | "new-ssh-session"
+  | "new-terminal-session"
   | "settings"
   | "code-explorer"
   | "sidebar-search";
@@ -29,8 +29,8 @@ export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinitio
     labelKey: "C",
     route: { view: "compose", kind: "chat" },
   },
-  "new-ssh-session": {
-    action: "new-ssh-session",
+  "new-terminal-session": {
+    action: "new-terminal-session",
     key: "s",
     labelKey: "S",
     route: { view: "compose", kind: "terminal-session" },

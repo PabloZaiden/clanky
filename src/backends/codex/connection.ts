@@ -31,7 +31,7 @@ export class CodexConnection {
 
   connect(config: BackendConnectionConfig, signal?: AbortSignal): Promise<void> {
     if (this.services || this.opening) throw new HarnessError("harness_request_failed", "The native runtime is already connected or starting.");
-    if (config.transport === "ssh" || config.mesh) throw new HarnessError("harness_unsupported_feature", "Native Codex must run on the local or a Mesh execution host.");
+    if (config.mesh) throw new HarnessError("harness_unsupported_feature", "Native Codex must run on the local or a Mesh execution host.");
     this.directory = config.directory;
     this.startupAbort = new AbortController();
     const abort = (): void => this.startupAbort?.abort();

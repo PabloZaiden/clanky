@@ -16,7 +16,6 @@ import type {
   Task,
   HarnessInputAdmission,
   ReviewComment,
-  SshServer,
   TerminalSession,
   WorkspaceFileEntry,
   WorkspaceFileKind,
@@ -25,11 +24,8 @@ import type {
 import {
   CreateTaskRequestSchema,
   CreateChatRequestSchema,
-  CreateSshServerChatRequestSchema,
   CreateExecutionHostChatRequestSchema,
   ExecutionHostWorkingDirectorySchema,
-  DiscoverSshServerChatModelsRequestSchema,
-  DiscoverSshServerChatProvidersRequestSchema,
   GenerateTaskTitleRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
@@ -39,10 +35,7 @@ import {
   UpdateChatRequestSchema,
   AddressCommentsRequestSchema,
   PlanAcceptRequestSchema,
-  CreateSshServerRequestSchema,
-  UpdateSshServerRequestSchema,
-  SshCredentialExchangeRequestSchema,
-  CheckSshServerPrerequisitesRequestSchema,
+  CheckExecutionHostPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
   CreateWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -219,7 +212,6 @@ export interface TaskInputAdmissionResponse {
   admission: HarnessInputAdmission;
 }
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
-export type CreateSshServerChatRequest = z.infer<typeof CreateSshServerChatRequestSchema>;
 export type CreateExecutionHostChatRequest = z.infer<typeof CreateExecutionHostChatRequestSchema>;
 export type ExecutionHostWorkingDirectory = z.infer<typeof ExecutionHostWorkingDirectorySchema>;
 
@@ -254,8 +246,6 @@ export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
 export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
 export type ReplyToChatQuestionRequest = z.infer<typeof ReplyToChatQuestionRequestSchema>;
 export type ReconnectChatRequest = z.infer<typeof ReconnectChatRequestSchema>;
-export type DiscoverSshServerChatProvidersRequest = z.infer<typeof DiscoverSshServerChatProvidersRequestSchema>;
-export type DiscoverSshServerChatModelsRequest = z.infer<typeof DiscoverSshServerChatModelsRequestSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
@@ -385,47 +375,47 @@ export interface WorkspaceFileUploadCancelResponse extends FileExplorerUploadCan
   workspaceId: string;
 }
 
-export interface SshServerFileListResponse extends FileExplorerListData {
+export interface ExecutionHostFileListResponse extends FileExplorerListData {
   serverId: string;
 }
 
-export interface SshServerFileTreeResponse extends FileExplorerTreeData {
+export interface ExecutionHostFileTreeResponse extends FileExplorerTreeData {
   serverId: string;
 }
 
-export interface SshServerFileReadResponse extends FileExplorerReadData {
+export interface ExecutionHostFileReadResponse extends FileExplorerReadData {
   serverId: string;
 }
 
-export interface SshServerFileMetadataResponse extends FileExplorerMetadataData {
+export interface ExecutionHostFileMetadataResponse extends FileExplorerMetadataData {
   serverId: string;
 }
 
-export interface SshServerFileWriteResponse extends FileExplorerWriteData {
+export interface ExecutionHostFileWriteResponse extends FileExplorerWriteData {
   serverId: string;
 }
 
-export interface SshServerFileRenameResponse extends FileExplorerRenameData {
+export interface ExecutionHostFileRenameResponse extends FileExplorerRenameData {
   serverId: string;
 }
 
-export interface SshServerFileDeleteResponse extends FileExplorerDeleteData {
+export interface ExecutionHostFileDeleteResponse extends FileExplorerDeleteData {
   serverId: string;
 }
 
-export interface SshServerFileUploadCreateResponse extends FileExplorerUploadCreateData {
+export interface ExecutionHostFileUploadCreateResponse extends FileExplorerUploadCreateData {
   serverId: string;
 }
 
-export interface SshServerFileUploadChunkResponse extends FileExplorerUploadChunkData {
+export interface ExecutionHostFileUploadChunkResponse extends FileExplorerUploadChunkData {
   serverId: string;
 }
 
-export interface SshServerFileUploadCompleteResponse extends FileExplorerUploadCompleteData {
+export interface ExecutionHostFileUploadCompleteResponse extends FileExplorerUploadCompleteData {
   serverId: string;
 }
 
-export interface SshServerFileUploadCancelResponse extends FileExplorerUploadCancelData {
+export interface ExecutionHostFileUploadCancelResponse extends FileExplorerUploadCancelData {
   success: true;
   serverId: string;
 }
@@ -454,34 +444,14 @@ export type CreateTaskTerminalSessionRequest = z.infer<typeof CreateTaskTerminal
 export type UpdateTerminalSessionRequest = z.infer<typeof UpdateTerminalSessionRequestSchema>;
 
 /**
- * Request body for POST /api/ssh-servers.
+ * Request body for POST /api/execution-hosts/:kind/:id/prerequisites.
  */
-export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema>;
+export type CheckExecutionHostPrerequisitesRequest = z.infer<typeof CheckExecutionHostPrerequisitesRequestSchema>;
 
 /**
- * Request body for PATCH /api/ssh-servers/:id.
- */
-export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema>;
-
-/**
- * Request body for POST /api/ssh-servers/:id/credentials.
- */
-export type SshCredentialExchangeRequest = z.infer<typeof SshCredentialExchangeRequestSchema>;
-
-/**
- * Request body for POST /api/ssh-servers/:id/prerequisites/check.
- */
-export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
-
-/**
- * Request body for POST /api/ssh-servers/:id/devbox/templates.
+ * Request body for POST /api/execution-hosts/:kind/:id/devbox-templates.
  */
 export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;
-
-/**
- * Response from GET /api/ssh-servers.
- */
-export type ListSshServersResponse = SshServer[];
 
 /**
  * Request body for POST /api/tasks/:id/address-comments endpoint.

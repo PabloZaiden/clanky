@@ -13,13 +13,13 @@ import {
   buildPersistentSessionReadyCommand,
   buildPersistentSessionResizeCommand,
   PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE,
-} from "../ssh-persistent-session";
-import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
-import { DEFAULT_SSH_TERM } from "../ssh-terminal-env";
+} from "./persistent-session";
+import { buildShellBootstrapCommand } from "./shell-bootstrap";
+import { DEFAULT_TERM } from "./terminal-env";
 import {
   DEFAULT_SESSION_READY_TIMEOUT_MS,
   SESSION_READY_POLL_INTERVAL_MS,
-} from "../ssh-bridge/constants";
+} from "./constants";
 import { buildManagedContextStdinPayload } from "../managed-context-environment";
 import type { TerminalConnectionMode } from "@/shared/terminal-session";
 import type {
@@ -206,9 +206,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
           );
         }
         this.activeMode = "direct";
-        notice = buildPersistentSessionBackendInstallHint()
-          .replace("remote host", "execution host")
-          .replace("Direct SSH", "Direct");
+        notice = buildPersistentSessionBackendInstallHint();
         await this.config.onRuntimeConnectionState?.({
           runtimeConnectionMode: "direct",
           notice,
@@ -247,7 +245,7 @@ export class LocalTerminalConnection implements InteractiveTerminalConnection {
     const terminal = new Bun.Terminal({
       cols: 80,
       rows: 24,
-      name: DEFAULT_SSH_TERM,
+      name: DEFAULT_TERM,
       data: (_terminal, data) => {
         if (!this.disposed) {
           this.output.write(data);

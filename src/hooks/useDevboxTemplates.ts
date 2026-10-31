@@ -4,7 +4,6 @@ import { listExecutionHostDevboxTemplatesApi } from "./executionHostActions";
 import { isAbortError } from "../lib/request-lifecycle";
 
 export interface UseDevboxTemplatesOptions {
-  password?: string;
   executionHost: ExecutionHostRef | null;
 }
 
@@ -12,24 +11,18 @@ export interface UseDevboxTemplatesResult {
   templates: DevboxTemplateSummary[];
   templatesLoading: boolean;
   templatesError: string | null;
-  refreshTemplates: (passwordOverride?: string) => Promise<DevboxTemplateSummary[]>;
+  refreshTemplates: () => Promise<DevboxTemplateSummary[]>;
 }
 
 export function useDevboxTemplates({
-  password,
   executionHost,
 }: UseDevboxTemplatesOptions): UseDevboxTemplatesResult {
   const [templates, setTemplates] = useState<DevboxTemplateSummary[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const latestPasswordRef = useRef(password);
   const activeControllerRef = useRef<AbortController | null>(null);
   const latestRequestIdRef = useRef(0);
   const mountedRef = useRef(true);
-
-  useEffect(() => {
-    latestPasswordRef.current = password;
-  }, [password]);
 
   useEffect(() => {
     return () => {
@@ -38,9 +31,7 @@ export function useDevboxTemplates({
     };
   }, []);
 
-  const refreshTemplates = useCallback(async (
-    passwordOverride?: string,
-  ): Promise<DevboxTemplateSummary[]> => {
+  const refreshTemplates = useCallback(async (): Promise<DevboxTemplateSummary[]> => {
     activeControllerRef.current?.abort();
 
     if (!executionHost) {
@@ -67,7 +58,6 @@ export function useDevboxTemplates({
     try {
       const nextTemplates = await listExecutionHostDevboxTemplatesApi({
         executionHost,
-        password: passwordOverride ?? latestPasswordRef.current,
         signal: controller.signal,
       });
       if (

@@ -1,6 +1,5 @@
 import type { WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
 import type {
-  FileExplorerCredentialErrorCode,
   FileExplorerVideoPreviewResource,
 } from "./workspaceFileActions";
 
@@ -38,7 +37,6 @@ export interface UseFileExplorerResult {
   loadingFile: boolean;
   savingFile: boolean;
   error: string | null;
-  errorCode: FileExplorerCredentialErrorCode | null;
   operationFailure: FileExplorerOperationFailure | null;
   isDirty: boolean;
   conflictState: WorkspaceFileConflictState | null;

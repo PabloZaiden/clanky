@@ -333,7 +333,7 @@ export function executionHostBindingFromRow(
   const targetKey = row[`${prefix}_target_key`];
   const revision = row[`${prefix}_revision`];
   if (
-    (kind !== "local" && kind !== "mesh" && kind !== "ssh")
+    (kind !== "local" && kind !== "mesh")
     || typeof sourceId !== "string"
     || typeof targetKey !== "string"
     || typeof revision !== "number"

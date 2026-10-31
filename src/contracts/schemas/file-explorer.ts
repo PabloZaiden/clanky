@@ -1,5 +1,5 @@
 /**
- * Shared request schemas for workspace and standalone SSH-server file APIs.
+ * Shared request schemas for workspace and execution-host file APIs.
  */
 
 import { z } from "zod";

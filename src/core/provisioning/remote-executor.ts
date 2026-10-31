@@ -4,16 +4,11 @@ import { GitService } from "../git";
 import { executionHostService } from "../execution-host-service";
 import type {
   DevboxStatusResult,
-  ExecutionHostBinding,
   ProvisioningJob,
 } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { getSshServerConfig } from "../../persistence/ssh-servers";
-import type { WorkspaceSshTargetInput } from "../../persistence/workspace-execution-targets";
 import { GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import {
-  parseDevboxCredentialContent,
   parseDevboxStatusOutput,
 } from "./devbox-utils";
 import {
@@ -28,10 +23,6 @@ import {
 } from "./command-runner";
 import { extractRepoName, normalizeRepoUrl } from "./repo-utils";
 import type { ProvisioningJobRecord } from "./types";
-
-export interface ProvisioningDevboxCredential {
-  password?: string;
-}
 
 type ProvisioningCommandRunner = (
   record: ProvisioningJobRecord,
@@ -48,7 +39,6 @@ export class ProvisioningRemoteExecutor {
 
   async acquire(
     record: ProvisioningJobRecord,
-    password: string | undefined,
     directory: string,
   ): Promise<CommandExecutor> {
     const binding = record.job.config.executionHostBinding;
@@ -66,7 +56,6 @@ export class ProvisioningRemoteExecutor {
         directory,
         provider: record.job.config.provider,
         localUserId: record.owner.id,
-        sshPassword: password,
       });
       // A separate read-only probe establishes the connection boundary before job commands.
       const probe = await executor.exec(
@@ -289,19 +278,6 @@ export class ProvisioningRemoteExecutor {
     );
   }
 
-  async readDevboxCredential(
-    executor: CommandExecutor,
-    status: DevboxStatusResult,
-  ): Promise<ProvisioningDevboxCredential> {
-    if (!status.password && status.hasCredentialFile && status.credentialPath) {
-      const credentialContent = await executor.readFile(status.credentialPath);
-      if (credentialContent) {
-        return parseDevboxCredentialContent(credentialContent);
-      }
-    }
-    return {};
-  }
-
   async verifyDevbox(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
@@ -315,55 +291,6 @@ export class ProvisioningRemoteExecutor {
       errorMessage: "Devbox is not installed or not available on PATH",
       captureStdout: false,
     });
-  }
-
-  async buildWorkspaceSshTarget(
-    binding: ExecutionHostBinding,
-    status: DevboxStatusResult,
-    credential: ProvisioningDevboxCredential,
-  ): Promise<WorkspaceSshTargetInput | null> {
-    const registeredServerId = getRegisteredSshServerId(binding.host);
-    if (!registeredServerId) {
-      return null;
-    }
-
-    const server = await getSshServerConfig(registeredServerId);
-    const host = server?.address.trim();
-    if (!host) {
-      return null;
-    }
-
-    if (!status.sshEnabled) {
-      throw new ProvisioningFailedError(
-        "invalid_devbox_status",
-        "devbox_status",
-        "devbox status reported that the bundled SSH server is disabled",
-      );
-    }
-
-    const username = status.sshUser?.trim();
-    if (!username) {
-      throw new ProvisioningFailedError(
-        "invalid_devbox_status",
-        "devbox_status",
-        "devbox status did not include an SSH username for the workspace execution target",
-      );
-    }
-    const port = status.sshPort;
-    if (port === null) {
-      throw new ProvisioningFailedError(
-        "invalid_devbox_status",
-        "devbox_status",
-        "devbox status did not include an SSH port for the workspace execution target",
-      );
-    }
-    const password = status.password?.trim() || credential.password?.trim();
-    return {
-      host,
-      port,
-      username,
-      ...(password ? { password } : {}),
-    };
   }
 
   async run(

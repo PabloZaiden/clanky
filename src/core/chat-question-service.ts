@@ -142,7 +142,7 @@ export class ChatQuestionService {
                 ? [`Attached images for this answer: ${JSON.stringify(attachments[index]!.map((image) => image.filename))}`] : []),
             ].filter(Boolean).join("\n")).join("\n\n"),
             attachments: attachments.flat(), transcriptMessage,
-            clientId: reply.clientId, credentialToken: reply.credentialToken,
+            clientId: reply.clientId,
           });
         } else await backend.replyToQuestion(requestId, nativeAnswers);
       } catch (error) {
@@ -218,7 +218,7 @@ export class ChatQuestionService {
     if (!reply.attachments?.some((images) => images.length)) return reply.answers;
     try {
       if (!transcriptMessage) throw new HarnessError("harness_question_invalid", "The answer images could not be restored.");
-      const prepared = await this.dependencies.attachments.prepare(chat, transcriptMessage, { credentialToken: reply.credentialToken });
+      const prepared = await this.dependencies.attachments.prepare(chat, transcriptMessage);
       const latest = await this.requireChat(chat.config.id);
       if (!latest.state.session?.binding) throw new HarnessError("harness_question_closed", "The question conversation is no longer active.");
       requireMatchingHarnessBinding(JSON.stringify(request.conversation), latest.state.session.binding);

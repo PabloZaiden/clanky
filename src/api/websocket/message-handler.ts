@@ -214,31 +214,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
     try {
       const data = JSON.parse(typeof msg === "string" ? msg : msg.toString());
 
-      if (
-        ws.data.terminalMode
-        && ws.data.terminalSessionId
-        && !ws.data.terminalBridge
-        && data.type === "terminal.auth"
-      ) {
-        const credentialToken = typeof data.credentialToken === "string"
-          ? data.credentialToken.trim()
-          : "";
-        if (!credentialToken) {
-          helpers.sendTerminalAuthError(
-            ws,
-            "credentialToken is required for SSH terminal authentication",
-          );
-          return;
-        }
-        void helpers.startTerminalBridge(ws, credentialToken).catch((error: Error) => {
-          log.error("Unhandled terminal bridge credential startup failure", {
-            terminalSessionId: ws.data.terminalSessionId,
-            error: String(error),
-          });
-        });
-        return;
-      }
-
       if (ws.data.terminalMode && ws.data.terminalBridge) {
         if (data.type === "terminal.input" && typeof data.data === "string") {
           if (Buffer.byteLength(data.data, "utf8") > MESH_TERMINAL_MAX_INPUT_BYTES) {

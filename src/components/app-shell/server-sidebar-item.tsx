@@ -1,7 +1,7 @@
 import type { SidebarNode } from "@pablozaiden/webapp/web";
-import { CloudIcon, MeshIcon, ServerIcon } from "../common";
+import { MeshIcon, ServerIcon } from "../common";
 
-export type ServerTransportKind = "local" | "mesh" | "ssh";
+export type ServerTransportKind = "local" | "mesh";
 
 export function getServerTransportLabel(transport: ServerTransportKind): string {
   switch (transport) {
@@ -9,8 +9,6 @@ export function getServerTransportLabel(transport: ServerTransportKind): string 
       return "Local";
     case "mesh":
       return "Mesh";
-    case "ssh":
-      return "SSH";
   }
 }
 
@@ -24,9 +22,7 @@ export function ServerTransportIcon({
   const label = `${getServerTransportLabel(transport)} transport`;
   const icon = transport === "local"
     ? <ServerIcon size={size} />
-    : transport === "mesh"
-      ? <MeshIcon size={size} />
-      : <CloudIcon size={size} />;
+    : <MeshIcon size={size} />;
 
   return (
     <span

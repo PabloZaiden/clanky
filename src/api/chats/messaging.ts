@@ -65,10 +65,7 @@ export const chatsMessagingRoutes = defineRoutes({
         requestSchema: ReplyToChatQuestionRequestSchema,
         querySchema: undefined,
         automation: {
-          policy: "write", hiddenInputs: ["clientId", "credentialToken"], completion: "admission",
-          credential: {
-            kind: "ssh", resource: { name: "chats", idParameter: "id", purpose: "connection" }, input: "credentialToken",
-          },
+          policy: "write", hiddenInputs: ["clientId"], completion: "admission",
         },
       },
     },
@@ -144,14 +141,8 @@ export const chatsMessagingRoutes = defineRoutes({
         requestSchema: SendChatMessageRequestSchema,
         querySchema: undefined,
         automation: {
-          policy: "write",
-          hiddenInputs: ["credentialToken", "clientId"],
+          policy: "write", hiddenInputs: ["clientId"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            resource: { name: "chats", idParameter: "id", purpose: "connection" },
-            input: "credentialToken",
-          },
         },
       },
     },
@@ -170,7 +161,6 @@ export const chatsMessagingRoutes = defineRoutes({
         const updated = await chatManager.sendMessage(ctx.params["id"]!, {
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
-          credentialToken: validation.data.credentialToken,
           clientId: validation.data.clientId,
         });
         return successResponse({

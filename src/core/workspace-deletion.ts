@@ -1,6 +1,5 @@
 import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceTasks } from "../persistence/workspaces";
 import type { Workspace } from "@/shared/workspace";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import { executionHostService } from "./execution-host-service";
 import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -8,7 +7,6 @@ import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/w
 import { managedCredentialService } from "./managed-credential-service";
 import { terminalSessionManager } from "./terminal-session-manager";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { meshManager } from "./mesh-manager";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -19,7 +17,6 @@ const workspaceDeletionLocks = new Set<string>();
 
 export interface DeleteWorkspaceOptions {
   deleteServerDirectory?: boolean;
-  credentialToken?: string | null;
 }
 
 export type WorkspaceDeletionErrorCode =
@@ -53,7 +50,7 @@ function deletionFailure(
   };
 }
 
-async function deleteProvisionedServerDirectory(workspace: Workspace, credentialToken?: string | null): Promise<void> {
+async function deleteProvisionedServerDirectory(workspace: Workspace): Promise<void> {
   const sourceDirectory = workspace.sourceDirectory?.trim();
   const basePath = workspace.basePath?.trim();
   const binding = workspace.provisioningHostBinding ?? workspace.executionHostBinding;
@@ -65,16 +62,10 @@ async function deleteProvisionedServerDirectory(workspace: Workspace, credential
     );
   }
 
-  const token = credentialToken?.trim();
-  const serverId = getRegisteredSshServerId(binding.host);
-  const password = serverId && token
-    ? sshCredentialManager.getPasswordForToken(serverId, token)
-    : undefined;
   const executor = await executionHostService.getCommandExecutor(binding, {
     operationId: `workspace-delete:${workspace.id}`,
     directory: sourceDirectory,
     provider: workspace.serverSettings.agent.provider,
-    sshPassword: password,
   });
   if (!(await executor.directoryExists(sourceDirectory))) {
     log.info("Provisioned workspace source directory is already absent", {
@@ -164,11 +155,10 @@ async function deleteWorkspaceWithOptionsUnlocked(
     await chatManager.emptyTrash({
       workspaceId: id,
       bestEffort: true,
-      credentialToken: options.credentialToken,
     });
 
     if (options.deleteServerDirectory) {
-      await deleteProvisionedServerDirectory(workspace, options.credentialToken);
+      await deleteProvisionedServerDirectory(workspace);
     }
 
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });

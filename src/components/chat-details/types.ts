@@ -18,7 +18,6 @@ export interface ChatLifecycleResult {
   error: string | null;
   notFound: boolean;
   isActive: boolean;
-  needsSshCredentials: boolean;
   refreshChat: () => Promise<void>;
   loadToolCallDetails: (toolCallId: string) => Promise<ToolCallData | null>;
   loadMoreTranscript: () => Promise<void>;
@@ -26,7 +25,6 @@ export interface ChatLifecycleResult {
   loadingTranscript: boolean;
   applyChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
-  handleReconnect: () => Promise<void>;
   handleContinueFromHistory: () => Promise<boolean>;
   isContinuingFromHistory: boolean;
 }
@@ -76,11 +74,9 @@ export interface ChatComposerAdapterOptions {
   isEmbedded: boolean;
   isActive: boolean;
   isExternallyBusy?: boolean;
-  needsSshCredentials: boolean;
   onChatSnapshot: (nextChat: Chat) => void;
   markChatStarting: () => void;
   refreshChat: () => Promise<void>;
-  handleReconnect: () => Promise<void>;
   onSendMessage?: ChatSendMessageHandler;
   voice: ConversationComposerVoice;
 }

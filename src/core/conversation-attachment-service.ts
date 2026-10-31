@@ -3,8 +3,6 @@
  */
 
 import type { ExecutionHostBinding } from "@/shared/execution-host";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { SshCredentialsRequiredError } from "@/shared/chat";
 import {
   getMessageAttachmentKind,
   isValidAttachmentBase64,
@@ -29,7 +27,6 @@ import { dirnameExecutionPath, executionPathsEqual, type ExecutionPathStyle } fr
 import { executionHostService } from "./execution-host-service";
 import { GitService } from "./git";
 import { ManagedPathService } from "./managed-path-service";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import type { QuestionMessageData } from "@/shared/harness-questions";
 
 const log = createLogger("conversation-attachments");
@@ -46,7 +43,6 @@ interface MaterializeOptions {
   directory: string;
   message: AttachmentMessage;
   previousMessages?: Iterable<AttachmentMessage> | AsyncIterable<AttachmentMessage>;
-  credentialToken?: string | null;
   signal?: AbortSignal;
 }
 
@@ -66,13 +62,6 @@ export class ConversationAttachmentService {
 
   hasLocations(context: AttachmentContext): boolean {
     return listAttachmentLocations(context).length > 0;
-  }
-
-  credentialTargets(context: AttachmentContext): string[] {
-    return [...new Set(listAttachmentLocations(context).flatMap((location) => {
-      const serverId = getRegisteredSshServerId(location.executionHost.host);
-      return serverId ? [serverId] : [];
-    }))];
   }
 
   private token(context: AttachmentContext): string {
@@ -104,17 +93,11 @@ export class ConversationAttachmentService {
     context: AttachmentContext;
     executionHost: ExecutionHostBinding;
     directory: string;
-    credentialToken?: string | null;
   }): Promise<CommandExecutor> {
-    const serverId = getRegisteredSshServerId(options.executionHost.host);
-    const sshPassword = serverId && options.credentialToken
-      ? sshCredentialManager.getPasswordForToken(serverId, options.credentialToken)
-      : undefined;
     return await executionHostService.getCommandExecutor(options.executionHost, {
       directory: options.directory,
       operationId: `attachments:${options.context.kind}:${options.context.id}`,
       localUserId: requireExecutionOwnerUserId(),
-      ...(sshPassword ? { sshPassword } : {}),
     });
   }
 
@@ -146,7 +129,6 @@ export class ConversationAttachmentService {
       } catch (error) {
         options.signal?.throwIfAborted();
         if (isDomainError(error)) throw error;
-        if (error instanceof SshCredentialsRequiredError) throw error;
         log.error("Execution-host file preparation failed", {
           context: options.context, cause: String(error),
         });
@@ -252,16 +234,11 @@ export class ConversationAttachmentService {
     }
   }
 
-  async cleanup(context: AttachmentContext, credentials: {
-    credentialToken?: string | null;
-    credentialTokensByServerId?: Record<string, string>;
-  } = {}): Promise<void> {
+  async cleanup(context: AttachmentContext): Promise<void> {
     await this.operations.run(this.token(context), async () => {
       for (const location of listAttachmentLocations(context)) {
-        const serverId = getRegisteredSshServerId(location.executionHost.host);
         const executor = await this.getExecutor({
           context, ...location,
-          credentialToken: (serverId && credentials.credentialTokensByServerId?.[serverId]) || credentials.credentialToken,
         });
         try {
           const paths = new ManagedPathService(executor.pathStyle);

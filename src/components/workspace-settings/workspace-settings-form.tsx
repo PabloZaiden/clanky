@@ -97,7 +97,7 @@ export function WorkspaceSettingsForm({
     try {
       if (model.settingsDirty) {
         const success = await onSave(
-          submitted.name.trim(), submitted.settings, submitted.executionHost, submitted.sshTarget,
+          submitted.name.trim(), submitted.settings, submitted.executionHost,
           submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
         );
         if (!success) return;
@@ -146,7 +146,6 @@ export function WorkspaceSettingsForm({
               <ServerSettingsForm key={model.revision}
                 workspaceId={workspace.id}
                 initialSettings={model.seed.settings} initialExecutionHost={model.seed.executionHost}
-                initialSshTarget={model.seed.sshTarget} allowWorkspaceSshTarget
                 onChange={model.updateRuntime} onTest={onTest} testing={testing} remoteOnly={workspace.access === "admin" ? false : remoteOnly} />
               <SettingsFieldRow title="Initial directory" content={<CodeValue value={workspace.directory} />} />
               {status?.error ? <ErrorState title="Connection unavailable" description={status.error} /> : null}

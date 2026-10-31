@@ -3,7 +3,6 @@ import type {
   ExecutionHostBinding,
   ProvisioningJob,
   ProvisioningJobMode,
-  ProvisioningTransport,
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
 import { isValidWorkerHostAddress } from "@/shared";
@@ -18,7 +17,6 @@ import { extractRepoName } from "./repo-utils";
 
 export interface ProvisioningTargetResolution {
   mode: ProvisioningJobMode;
-  transport: ProvisioningTransport;
   executionHostBinding: ExecutionHostBinding;
   ownership: ProvisioningTargetOwnership;
   workspaceWorkerEnrollmentId?: string;
@@ -53,7 +51,7 @@ export function inferProvisioningTargetOwnership(
       ? "claimed"
       : (mode === "rebuild" || mode === "restart") && config.workerEnrollmentId
         ? "reused"
-        : config.transport === "worker"
+        : mode === "provision"
           ? "new"
           : "none",
   };
@@ -122,15 +120,6 @@ export async function resolveProvisioningTarget(
   jobId: string,
 ): Promise<ProvisioningTargetResolution> {
   const mode = options.mode ?? "provision";
-  const transport = resolveProvisioningTransport(userId, options, mode);
-  if (transport === "worker" && options.workspaceWorkerEnrollmentId) {
-    throw new ProvisioningFailedError(
-      "invalid_execution_target",
-      "verify_devbox",
-      "Worker transport cannot use an existing dedicated worker enrollment as its provisioning target",
-    );
-  }
-
   const executionHostResolution = await resolveProvisioningExecutionHostBinding(
     userId,
     options,
@@ -144,17 +133,18 @@ export async function resolveProvisioningTarget(
     );
   }
 
-  const existingWorkerEnrollment = transport === "worker"
-    && (mode === "rebuild" || mode === "restart")
+  const existingWorkerEnrollment = (mode === "rebuild" || mode === "restart")
     && options.workspaceId
     ? workspaceWorkerEnrollmentService.getByWorkspace(userId, options.workspaceId)
     : null;
-  const workerEnrollmentRoute = transport === "worker"
+  const automaticWorker = !options.workspaceWorkerEnrollmentId
+    && (mode === "provision" || Boolean(existingWorkerEnrollment));
+  const workerEnrollmentRoute = automaticWorker
     ? existingWorkerEnrollment?.worker?.route.kind
       ?? options.workerEnrollmentRoute
       ?? controllerRelayService.getDedicatedWorkerEnrollmentRoute()
     : undefined;
-  const workerHostAddress = transport === "worker"
+  const workerHostAddress = automaticWorker
     && mode === "provision"
     && workerEnrollmentRoute !== "relay"
     ? await resolveWorkerHostAddress(
@@ -168,7 +158,6 @@ export async function resolveProvisioningTarget(
 
   return {
     mode,
-    transport,
     executionHostBinding,
     ownership: {
       executionHost: executionHostResolution.ownership,
@@ -181,7 +170,7 @@ export async function resolveProvisioningTarget(
         ? "claimed"
         : existingWorkerEnrollment
           ? "reused"
-          : transport === "worker"
+          : automaticWorker
             ? "new"
             : "none",
     },
@@ -292,44 +281,6 @@ export function releaseProvisioningTargetClaim(
   );
 }
 
-function resolveProvisioningTransport(
-  userId: string,
-  options: StartProvisioningJobOptions,
-  mode: ProvisioningJobMode,
-): ProvisioningTransport {
-  if (
-    (mode === "rebuild" || mode === "restart")
-    && options.workspaceId
-  ) {
-    const existingWorker = workspaceWorkerEnrollmentService.getByWorkspace(
-      userId,
-      options.workspaceId,
-    );
-    const existingTransport = existingWorker ? "worker" : "ssh";
-    if (options.transport && options.transport !== existingTransport) {
-      throw new ProvisioningFailedError(
-        "provisioning_transport_mismatch",
-        "verify_devbox",
-        "Workspace lifecycle jobs must keep the transport already attached to the workspace.",
-      );
-    }
-    return existingTransport;
-  }
-  if (options.transport) {
-    return options.transport;
-  }
-  if (mode === "provision" && !options.workspaceWorkerEnrollmentId) {
-    return "worker";
-  }
-  if (
-    options.workspaceId
-    && workspaceWorkerEnrollmentService.getByWorkspace(userId, options.workspaceId)
-  ) {
-    return "worker";
-  }
-  return "ssh";
-}
-
 async function resolveWorkerHostAddress(
   userId: string,
   binding: ExecutionHostBinding,
@@ -348,7 +299,6 @@ async function resolveWorkerHostAddress(
       directory: "/",
       provider: options.provider,
       localUserId: userId,
-      sshPassword: options.password,
     },
   );
   if (!addresses.includes(address)) {

@@ -55,15 +55,6 @@ import {
 } from "../context/user-context";
 import { requireWorkspaceAccess } from "./collaboration-authority";
 import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
-import {
-  captureWorkspaceSshTargetState,
-  ensureWorkspaceSshTarget,
-  prepareWorkspaceSshTarget,
-  removeWorkspaceSshTarget,
-  restoreWorkspaceSshTargetState,
-  workspaceSshTargetWouldChange,
-  type WorkspaceSshTargetInput,
-} from "../persistence/workspace-execution-targets";
 
 const log = createLogger("core:workspace-manager");
 
@@ -80,7 +71,6 @@ export interface CreateWorkspaceInput {
   workspaceType?: WorkspaceType;
   serverSettings?: ServerSettings;
   executionHost?: ExecutionHostRef;
-  sshTarget?: WorkspaceSshTargetInput;
   workspaceWorkerEnrollmentId?: string;
   workspaceWorkerEnrollmentClaimedBy?: string;
   provisioningHost?: ExecutionHostRef;
@@ -99,7 +89,6 @@ export type UpdateWorkspaceInput = Partial<
   Pick<Workspace, "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
 > & {
   executionHost?: ExecutionHostRef;
-  sshTarget?: WorkspaceSshTargetInput | null;
   allowExecutionTargetChangeWithTerminals?: boolean;
   allowWorktrees?: boolean;
 };
@@ -114,7 +103,6 @@ interface NormalizedCreateWorkspaceInput {
   workspaceType: WorkspaceType;
   serverSettings: ServerSettings;
   executionHost?: ExecutionHostRef;
-  sshTarget?: WorkspaceSshTargetInput;
   workspaceWorkerEnrollmentId?: string;
   workspaceWorkerEnrollmentClaimedBy?: string;
   provisioningHost?: ExecutionHostRef;
@@ -136,7 +124,6 @@ function normalizeCreateInput(input: CreateWorkspaceInput): NormalizedCreateWork
     workspaceType: input.workspaceType ?? DEFAULT_WORKSPACE_TYPE,
     serverSettings: input.serverSettings ?? getDefaultServerSettings(),
     executionHost: input.executionHost,
-    sshTarget: input.sshTarget,
     workspaceWorkerEnrollmentId: input.workspaceWorkerEnrollmentId,
     workspaceWorkerEnrollmentClaimedBy: input.workspaceWorkerEnrollmentClaimedBy,
     provisioningHost: input.provisioningHost,
@@ -260,7 +247,6 @@ function createWorkspaceRecordFromInput(
   workspaceId: string,
   executionHostBinding: Workspace["executionHostBinding"],
   provisioningHostBinding?: Workspace["provisioningHostBinding"],
-  sshTarget?: Workspace["sshTarget"],
 ): Workspace {
   const now = new Date().toISOString();
   return {
@@ -273,7 +259,6 @@ function createWorkspaceRecordFromInput(
     executionTargetRevision: 1,
     executionHostBinding,
     ...(provisioningHostBinding ? { provisioningHostBinding } : {}),
-    ...(sshTarget ? { sshTarget } : {}),
     serverSettings: input.serverSettings,
     createdAt: now,
     updatedAt: now,
@@ -311,14 +296,12 @@ export class WorkspaceManager {
     serverSettings: ServerSettings,
     executionHost: ExecutionHostRef | undefined,
     directory: string,
-    sshTarget?: WorkspaceSshTargetInput,
     bindingOverride?: ExecutionHostBinding,
   ): Promise<WorkspaceDirectoryValidation> {
     return await backendManager.validateRemoteDirectory(
       serverSettings,
       directory,
       executionHost,
-      sshTarget,
       bindingOverride,
     );
   }
@@ -361,33 +344,29 @@ export class WorkspaceManager {
     const userId = requireExecutionOwnerUserId();
     if (
       !normalized.executionHost
-      && !normalized.sshTarget
       && !normalized.workspaceWorkerEnrollmentId
     ) {
       throw new DomainError(
         "execution_target_required",
-        "A registered execution host or an ad hoc SSH target is required.",
+        "An execution host or dedicated worker enrollment is required.",
       );
     }
     if (
       [
         Boolean(normalized.executionHost),
-        Boolean(normalized.sshTarget),
         Boolean(normalized.workspaceWorkerEnrollmentId),
       ].filter(Boolean).length > 1
     ) {
       throw new DomainError(
         "execution_target_ambiguous",
-        "Choose either a registered execution host or an ad hoc SSH target.",
+        "Choose either an execution host or a dedicated worker enrollment.",
       );
     }
     log.debug("Creating workspace", {
       name: normalized.name,
       directory: normalized.directory,
       provider: normalized.serverSettings.agent.provider,
-      transport: normalized.sshTarget
-        ? "ssh"
-        : normalized.workspaceWorkerEnrollmentId
+      transport: normalized.workspaceWorkerEnrollmentId
           ? "mesh-dedicated"
           : normalized.executionHost?.kind,
     });
@@ -418,14 +397,13 @@ export class WorkspaceManager {
     }
     const validationExecutionHost = registeredBinding?.host
       ?? enrollmentBinding?.host;
-    assertHarnessHostPolicy(normalized.serverSettings.agent, normalized.sshTarget ? "ssh" : validationExecutionHost!.kind);
+    assertHarnessHostPolicy(normalized.serverSettings.agent, validationExecutionHost!.kind);
     const validation = normalized.skipValidation
       ? { success: true, directoryExists: true, isGitRepo: true }
       : await this.validateRemoteDirectory(
         normalized.serverSettings,
         validationExecutionHost,
         normalized.directory,
-        normalized.sshTarget,
         enrollmentBinding,
       );
     const failure = getValidationFailure(validation, normalized.workspaceType);
@@ -444,35 +422,20 @@ export class WorkspaceManager {
     }
     const workspaceId = crypto.randomUUID();
     let executionHostBinding: Workspace["executionHostBinding"];
-    let sshTarget: Workspace["sshTarget"];
     let workspaceCreated = false;
     let dedicatedWorkerClaimed = false;
     try {
-      if (normalized.sshTarget) {
-        const target = prepareWorkspaceSshTarget(workspaceId, normalized.sshTarget);
-        executionHostBinding = target.binding;
-        sshTarget = {
-          kind: target.target.kind,
-          host: target.target.host,
-          port: target.target.port,
-          username: target.target.username,
-          credentialConfigured: target.target.credentialConfigured,
-          targetKey: target.target.targetKey,
-          revision: target.target.revision,
-        };
+      if (normalized.workspaceWorkerEnrollmentId) {
+        executionHostBinding = workspaceWorkerEnrollmentService.claimForWorkspace(
+          userId,
+          normalized.workspaceWorkerEnrollmentId,
+          workspaceId,
+          workspaceId,
+          normalized.workspaceWorkerEnrollmentClaimedBy,
+        );
+        dedicatedWorkerClaimed = true;
       } else {
-        if (normalized.workspaceWorkerEnrollmentId) {
-          executionHostBinding = workspaceWorkerEnrollmentService.claimForWorkspace(
-            userId,
-            normalized.workspaceWorkerEnrollmentId,
-            workspaceId,
-            workspaceId,
-            normalized.workspaceWorkerEnrollmentClaimedBy,
-          );
-          dedicatedWorkerClaimed = true;
-        } else {
-          executionHostBinding = registeredBinding!;
-        }
+        executionHostBinding = registeredBinding!;
       }
       if (!enrollmentBinding) {
         requireWorkspaceExecutionCapabilities(
@@ -491,13 +454,9 @@ export class WorkspaceManager {
         workspaceId,
         executionHostBinding,
         provisioningHostBinding,
-        sshTarget,
       );
       await createWorkspaceRecord(workspace);
       workspaceCreated = true;
-      if (normalized.sshTarget) {
-        await ensureWorkspaceSshTarget(workspaceId, normalized.sshTarget);
-      }
       if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
         workspaceWorkerEnrollmentService.attach(
           userId,
@@ -514,9 +473,6 @@ export class WorkspaceManager {
     } catch (error) {
       if (workspaceCreated) {
         await deleteWorkspaceRecord(workspaceId);
-      }
-      if (normalized.sshTarget) {
-        await removeWorkspaceSshTarget(workspaceId);
       }
       if (normalized.workspaceWorkerEnrollmentId && dedicatedWorkerClaimed) {
         try {
@@ -572,51 +528,14 @@ export class WorkspaceManager {
     const directoryChanged = updates.directory !== undefined && updates.directory !== current.directory;
     const serverSettingsChanged = updates.serverSettings !== undefined
       && !areServerSettingsEqual(current.serverSettings, updates.serverSettings);
-    if (
-      updates.executionHost !== undefined
-      && updates.sshTarget !== undefined
-      && updates.sshTarget !== null
-    ) {
-      throw new DomainError(
-        "execution_target_ambiguous",
-        "Choose either a registered execution host or an ad hoc SSH target.",
-      );
-    }
     let nextExecutionHostBinding = current.executionHostBinding;
-    let nextSshTarget = current.sshTarget;
     let requestedExecutionTargetChange = false;
-    if (updates.sshTarget !== undefined) {
-      if (updates.sshTarget === null) {
-        if (!updates.executionHost) {
-          throw new DomainError(
-            "execution_target_required",
-            "A registered execution host is required when clearing the SSH target.",
-          );
-        }
-        nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
-          current,
-          updates.executionHost,
-          userId,
-        );
-        nextSshTarget = undefined;
-        requestedExecutionTargetChange = current.sshTarget !== undefined
-          || !executionHostBindingsEqual(
-            current.executionHostBinding,
-            nextExecutionHostBinding,
-          );
-      } else {
-        requestedExecutionTargetChange = workspaceSshTargetWouldChange(
-          current.sshTarget,
-          updates.sshTarget,
-        );
-      }
-    } else if (updates.executionHost !== undefined) {
+    if (updates.executionHost !== undefined) {
       nextExecutionHostBinding = resolveWorkspaceExecutionHostBinding(
         current,
         updates.executionHost,
         userId,
       );
-      nextSshTarget = undefined;
       requestedExecutionTargetChange = !executionHostBindingsEqual(
         current.executionHostBinding,
         nextExecutionHostBinding,
@@ -634,47 +553,11 @@ export class WorkspaceManager {
       const { previewSessionManager } = await import("./preview-session-manager");
       await previewSessionManager.closeWorkspacePreviews(id);
     }
-    const previousSshTargetState = updates.sshTarget !== undefined && updates.sshTarget !== null
-      ? captureWorkspaceSshTargetState(id)
-      : undefined;
-    let sshTargetMutationStarted = false;
     let executionTargetChanged = false;
-    let removeSshTarget = false;
     let workspace: Workspace | null;
     let runtimeAssets: Awaited<ReturnType<typeof prepareWorkerRuntimeAssets>> | undefined;
     try {
-      if (updates.sshTarget !== undefined) {
-        if (updates.sshTarget === null) {
-          nextSshTarget = undefined;
-          removeSshTarget = true;
-        } else {
-          sshTargetMutationStarted = true;
-          const target = await ensureWorkspaceSshTarget(id, updates.sshTarget);
-          nextExecutionHostBinding = target.binding;
-          nextSshTarget = {
-            kind: target.target.kind,
-            host: target.target.host,
-            port: target.target.port,
-            username: target.target.username,
-            credentialConfigured: target.target.credentialConfigured,
-            targetKey: target.target.targetKey,
-            revision: target.target.revision,
-          };
-        }
-      } else if (updates.executionHost !== undefined) {
-        nextSshTarget = undefined;
-        removeSshTarget = current.sshTarget !== undefined;
-      }
-      const sshTargetChanged = updates.sshTarget !== undefined
-        && (
-          current.sshTarget?.host !== nextSshTarget?.host
-          || current.sshTarget?.port !== nextSshTarget?.port
-          || current.sshTarget?.username !== nextSshTarget?.username
-          || current.sshTarget?.credentialConfigured !== nextSshTarget?.credentialConfigured
-          || current.sshTarget?.targetKey !== nextSshTarget?.targetKey
-          || current.sshTarget?.revision !== nextSshTarget?.revision
-        );
-      executionTargetChanged = sshTargetChanged || !executionHostBindingsEqual(
+      executionTargetChanged = !executionHostBindingsEqual(
         current.executionHostBinding,
         nextExecutionHostBinding,
       );
@@ -761,37 +644,16 @@ export class WorkspaceManager {
       }
       workspace = await updateWorkspaceRecord(id, normalizedUpdates);
       if (!workspace) {
-        if (previousSshTargetState && sshTargetMutationStarted) {
-          restoreWorkspaceSshTargetState(id, previousSshTargetState);
-        }
         await runtimeAssets?.rollback();
         return workspace;
       }
       if (privateChanged) resourcePrivacyEventEmitter.emit({ type: "resource.privacy_changed" });
-      if (removeSshTarget) {
-        await removeWorkspaceSshTarget(id);
-        workspace = await this.getWorkspace(id);
-      }
     } catch (error) {
       if (runtimeAssets) {
         try { await runtimeAssets.rollback(); }
         catch (rollbackError) {
           throw new DomainError("workspace_runtime_rollback_failed", "Workspace update failed and runtime rollback failed.", {
             cause: new AggregateError([error, rollbackError]),
-          });
-        }
-      }
-      if (previousSshTargetState && sshTargetMutationStarted) {
-        try {
-          restoreWorkspaceSshTargetState(id, previousSshTargetState);
-        } catch (rollbackError) {
-          log.error("Failed to restore workspace SSH target after update failure", {
-            workspaceId: id,
-            error: String(rollbackError),
-            originalError: String(error),
-          });
-          throw new Error("Workspace SSH target update failed and rollback failed", {
-            cause: error,
           });
         }
       }
@@ -843,7 +705,6 @@ export class WorkspaceManager {
     serverSettings: ServerSettings,
     directory: string,
     executionHost?: ExecutionHostRef,
-    sshTarget?: WorkspaceSshTargetInput,
     workspaceWorkerEnrollmentId?: string,
     bindingOverride?: ExecutionHostBinding,
   ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
@@ -859,7 +720,6 @@ export class WorkspaceManager {
         serverSettings,
         directory,
         executionHost,
-        sshTarget,
         binding,
       );
     } catch (error) {
@@ -872,7 +732,6 @@ export class WorkspaceManager {
     serverSettings: ServerSettings,
     directory: string,
     executionHost?: ExecutionHostRef,
-    sshTarget?: WorkspaceSshTargetInput,
     workspaceWorkerEnrollmentId?: string,
   ): Promise<Awaited<ReturnType<typeof backendManager.testConnection>>> {
     const workspace = await this.requireWorkspace(workspaceId);
@@ -885,7 +744,6 @@ export class WorkspaceManager {
       serverSettings,
       directory,
       executionHost,
-      sshTarget,
       workspaceWorkerEnrollmentId,
       bindingOverride,
     );

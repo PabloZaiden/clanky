@@ -31,7 +31,6 @@ export interface ServerExecCommand {
   server: string;
   cwd?: string;
   timeoutMs?: number;
-  credentialToken?: string;
   command: string;
   args: string[];
 }
@@ -49,14 +48,12 @@ export function parseServerCommandArgs(args: readonly string[]): ServerExecComma
     operationArgs,
     "server exec",
     "server",
-    ["--credential-token"],
   );
   return {
     operation,
     server: parsed.target,
     cwd: parsed.cwd,
     timeoutMs: parsed.timeoutMs,
-    credentialToken: parsed.options["--credential-token"],
     command: parsed.command,
     args: parsed.args,
   };
@@ -125,9 +122,6 @@ async function runServerExec(
     output,
     "server",
     signal,
-    command.credentialToken === undefined
-      ? undefined
-      : { "x-clanky-ssh-credential-token": command.credentialToken },
   );
 }
 
@@ -164,7 +158,7 @@ export async function runServerCommand(
 export function createServerCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Run a non-interactive command on a registered execution host.",
-    usage: "server exec SERVER_OR_ID [--cwd PATH] [--timeout MS] [--credential-token TOKEN] -- COMMAND [ARGS...]",
+    usage: "server exec SERVER_OR_ID [--cwd PATH] [--timeout MS] -- COMMAND [ARGS...]",
     handler: runServerCommand,
   };
 }

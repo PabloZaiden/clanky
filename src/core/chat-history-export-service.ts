@@ -12,9 +12,7 @@ import type {
   ToolCallRecord,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
-import { SshCredentialsRequiredError } from "@/shared/chat";
 import {
-  getRegisteredSshServerId,
   executionHostBindingsEqual,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
@@ -29,7 +27,6 @@ import { executionPathsEqual } from "./execution-path";
 import { GitService } from "./git";
 import { ManagedPathService } from "./managed-path-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import type { ChatStatePort } from "./chat-service-contracts";
 import { getCanonicalMessageAttachmentMimeType, getMessageAttachmentKind } from "@/shared/message-attachments";
 import { conversationAttachmentService } from "./conversation-attachment-service";
@@ -45,7 +42,6 @@ interface ChatHistoryExportServiceDependencies {
     | "mutateState"
   >;
   executionHostService?: Pick<typeof executionHostService, "getCommandExecutor">;
-  sshCredentialManager?: Pick<typeof sshCredentialManager, "getPasswordForToken">;
   now?: () => number;
 }
 
@@ -58,7 +54,6 @@ interface ExportedAttachment {
 }
 
 interface CreateChatHistoryExportOptions {
-  credentialToken?: string | null;
   signal?: AbortSignal;
   previousSession?: HarnessHistoryRecovery["previousSession"];
   onAllocated?: (recovery: HarnessHistoryRecovery) => Promise<void>;
@@ -73,7 +68,6 @@ interface ChatHistoryExportContext {
   transcriptMeta: { revision: string; entryCount: number };
   signal?: AbortSignal;
   executionHost: ExecutionHostBinding;
-  credentialToken?: string | null;
 }
 
 type ExportedHistoryMessage = Omit<PersistedMessage, "attachments"> & {
@@ -228,17 +222,12 @@ export class ChatHistoryExportService {
   private readonly executionHostService: NonNullable<
     ChatHistoryExportServiceDependencies["executionHostService"]
   >;
-  private readonly sshCredentialManager: NonNullable<
-    ChatHistoryExportServiceDependencies["sshCredentialManager"]
-  >;
   private readonly now: () => number;
 
   constructor(dependencies: ChatHistoryExportServiceDependencies) {
     this.state = dependencies.state;
     this.executionHostService = dependencies.executionHostService
       ?? executionHostService;
-    this.sshCredentialManager = dependencies.sshCredentialManager
-      ?? sshCredentialManager;
     this.now = dependencies.now ?? Date.now;
   }
 
@@ -268,7 +257,6 @@ export class ChatHistoryExportService {
       executionHost,
       getChatExecutionDirectory(chat),
       recoveryId,
-      options.credentialToken,
     );
     let exportDirectory: string | undefined;
     const abort = () => closeCommandExecutor(executor);
@@ -320,7 +308,6 @@ export class ChatHistoryExportService {
         transcriptMeta,
         signal: options.signal,
         executionHost,
-        credentialToken: options.credentialToken,
       };
       // Mesh holds an exclusive filesystem lock while consuming the stream.
       // Its producer must not start another upload for an attachment.
@@ -501,7 +488,7 @@ export class ChatHistoryExportService {
   async prepareForPrompt(
     chat: Chat,
     recovery: HarnessHistoryRecovery,
-    options: { credentialToken?: string | null; signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal } = {},
   ): Promise<ChatHistoryPromptContext | null> {
     if (recovery.status === "complete") {
       return null;
@@ -512,7 +499,6 @@ export class ChatHistoryExportService {
       recovery.executionHost,
       recovery.directory,
       recovery.id,
-      options.credentialToken,
     );
     let closed = false;
     const close = () => {
@@ -602,7 +588,6 @@ export class ChatHistoryExportService {
   async cleanup(
     chat: Chat,
     recovery: HarnessHistoryRecovery,
-    credentialToken?: string | null,
     options: { markComplete?: boolean; signal?: AbortSignal } = {},
   ): Promise<void> {
     const executor = await this.getExecutor(
@@ -610,7 +595,6 @@ export class ChatHistoryExportService {
       recovery.executionHost,
       recovery.directory,
       recovery.id,
-      credentialToken,
     );
     const abort = () => closeCommandExecutor(executor);
     options.signal?.addEventListener("abort", abort, { once: true });
@@ -653,7 +637,7 @@ export class ChatHistoryExportService {
     const fileReferences = writeAttachments
       ? (await conversationAttachmentService.materialize({
           ...fileOptions, executionHost: context.executionHost,
-          credentialToken: context.credentialToken, signal,
+          signal,
         })).files
       : conversationAttachmentService.references({
           ...fileOptions, pathStyle: executor.pathStyle,
@@ -724,27 +708,12 @@ export class ChatHistoryExportService {
     binding: ExecutionHostBinding,
     directory: string,
     operationId: string,
-    credentialToken?: string | null,
   ): Promise<CommandExecutor> {
-    let sshPassword: string | undefined;
-    const serverId = getRegisteredSshServerId(binding.host);
-    if (serverId) {
-      const token = credentialToken?.trim();
-      if (!token) {
-        throw new SshCredentialsRequiredError();
-      }
-      sshPassword = this.sshCredentialManager.getPasswordForToken(
-        serverId,
-        token,
-      );
-    }
-
     return await this.executionHostService.getCommandExecutor(binding, {
       directory,
       operationId: `chat-history:${chat.config.id}:${operationId}`,
       provider: chat.config.model.providerID as AgentProvider,
       localUserId: requireExecutionOwnerUserId(),
-      ...(sshPassword ? { sshPassword } : {}),
     });
   }
 

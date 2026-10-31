@@ -4,7 +4,6 @@ import type {
   ExecutionHostRef,
   ProvisioningJob,
   ProvisioningJobMode,
-  ProvisioningTransport,
   ProvisioningLogEntry,
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
@@ -21,7 +20,6 @@ export interface StartProvisioningJobOptions {
   name: string;
   executionHost?: ExecutionHostRef;
   workspaceWorkerEnrollmentId?: string;
-  transport?: ProvisioningTransport;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
   workerRelayName?: string;
   workerHostAddress?: string;
@@ -35,7 +33,6 @@ export interface StartProvisioningJobOptions {
   adapter?: HarnessAdapter;
   mode?: ProvisioningJobMode;
   createNewRepository?: boolean;
-  password?: string;
   /** For rebuild/restart mode: directory on the host where the repo lives */
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */

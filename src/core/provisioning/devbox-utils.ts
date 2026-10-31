@@ -9,14 +9,7 @@ const DevboxPublishedPortSchema = z.object({
 const DevboxStatusSchema = z.object({
   running: z.boolean(),
   ports: z.array(z.number().int().min(1).max(65535)),
-  sshEnabled: z.boolean(),
-  password: z.string().nullable(),
   workdir: z.string(),
-  sshUser: z.string().nullable(),
-  sshPort: z.number().int().min(1).max(65535).nullable(),
-  remoteUser: z.string().nullable(),
-  hasCredentialFile: z.boolean(),
-  credentialPath: z.string(),
   publishedPorts: z.record(z.string(), z.array(DevboxPublishedPortSchema)),
 });
 
@@ -34,13 +27,6 @@ export function parseDevboxStatusOutput(output: string): DevboxStatusResult {
   }
 
   return result.data;
-}
-
-export function parseDevboxCredentialContent(content: string): {
-  password?: string;
-} {
-  const trimmed = content.trim();
-  return trimmed ? { password: trimmed } : {};
 }
 
 export function getPublishedPortFallback(status: DevboxStatusResult): number | undefined {

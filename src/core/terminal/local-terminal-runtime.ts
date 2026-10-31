@@ -1,4 +1,4 @@
-import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
+import { DEFAULT_COLOR_TERM, DEFAULT_TERM } from "./terminal-env";
 
 const ENVIRONMENT_KEYS = new Set([
   "COLORTERM",
@@ -39,7 +39,7 @@ export function buildLocalTerminalEnvironment(
   }
   environment["PATH"] ??= "/usr/local/bin:/usr/bin:/bin";
   environment["SHELL"] ??= "/bin/sh";
-  environment["TERM"] ??= DEFAULT_SSH_TERM;
-  environment["COLORTERM"] ??= DEFAULT_SSH_COLOR_TERM;
+  environment["TERM"] ??= DEFAULT_TERM;
+  environment["COLORTERM"] ??= DEFAULT_COLOR_TERM;
   return { ...environment, ...extra };
 }

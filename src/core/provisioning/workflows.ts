@@ -8,10 +8,8 @@ import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import type {
   ProvisioningJob,
   DevboxStatusResult,
-  ProvisioningTransport,
   ServerSettings,
 } from "@/shared";
-import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import { DEVBOX_UP_TIMEOUT_MS } from "./constants";
 import {
   ProvisioningFailedError,
@@ -37,23 +35,21 @@ import type { ProvisioningJobRecord } from "./types";
 function buildDevboxArgs(
   command: "up" | "rebuild",
   options: {
-    transport: ProvisioningTransport;
     devcontainerSubpath?: string;
     devboxTemplate?: string;
     githubUser?: string;
     startupCommand?: string;
     clearStartupCommand?: boolean;
-    relayOnlyWorker?: boolean;
+    publishWorkerPort?: boolean;
   },
 ): string[] {
-  const args: string[] = options.transport === "worker"
-    ? [
-        command,
-        "--no-ssh",
-        "--allow-missing-ssh",
-        ...(options.relayOnlyWorker ? [] : ["--ports", "1"]),
-      ]
-    : [command, "--ssh"];
+  // Disable Devbox's bundled SSH server; execution uses local or Mesh hosts only.
+  const args: string[] = [
+    command,
+    "--no-ssh",
+    "--allow-missing-ssh",
+    ...(options.publishWorkerPort ? ["--ports", "1"] : []),
+  ];
   if (command === "up" && options.devboxTemplate) {
     args.push("--template", options.devboxTemplate);
   } else if (options.devcontainerSubpath) {
@@ -79,7 +75,6 @@ export class ProvisioningWorkflows {
 
   async runProvision(
     record: ProvisioningJobRecord,
-    password?: string,
   ): Promise<void> {
     const attempt = this.ensureAttempt(record);
     let workspaceCleanup: ProvisioningResourceHandle | undefined;
@@ -101,7 +96,7 @@ export class ProvisioningWorkflows {
           provider: record.job.config.provider,
         },
       };
-      const executor = await this.remoteExecutor.acquire(record, password, "/");
+      const executor = await this.remoteExecutor.acquire(record, "/");
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
       await this.remoteExecutor.verifyDevbox(record, executor);
@@ -115,16 +110,15 @@ export class ProvisioningWorkflows {
       );
       this.updateState(record, { targetDirectory });
 
-      const workerTransport = record.job.config.transport === "worker";
-      const relayOnlyWorker = workerTransport
+      const automaticWorker = !record.job.config.workspaceWorkerEnrollmentId;
+      const relayOnlyWorker = automaticWorker
         && record.job.config.workerEnrollmentRoute === "relay";
       let workerLauncherPaths: WorkerPaths | undefined;
       const devboxOptions = {
-        transport: workerTransport ? "worker" as const : "ssh" as const,
         devcontainerSubpath: record.job.config.devcontainerSubpath,
         devboxTemplate: record.job.config.devboxTemplate,
         githubUser: record.job.config.githubUser,
-        relayOnlyWorker,
+        publishWorkerPort: automaticWorker && !relayOnlyWorker,
       };
 
       setStep(record, this.maxLogEntries, "devbox_up", "Starting devbox");
@@ -134,7 +128,7 @@ export class ProvisioningWorkflows {
         command: "devbox",
         args: buildDevboxArgs("up", {
           ...devboxOptions,
-          ...(workerTransport ? { clearStartupCommand: true } : {}),
+          ...(automaticWorker ? { clearStartupCommand: true } : {}),
         }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
@@ -168,7 +162,7 @@ export class ProvisioningWorkflows {
       }
       this.updateState(record, { resolvedDirectory, serverSettings });
 
-      if (workerTransport) {
+      if (automaticWorker) {
         if (!status.workdir.trim()) {
           throw new ProvisioningFailedError(
             "invalid_devbox_status",
@@ -220,23 +214,7 @@ export class ProvisioningWorkflows {
         }
       }
 
-      const devboxCredential = await this.remoteExecutor.readDevboxCredential(
-        executor,
-        status,
-      );
-      const resolvedPassword = status.password?.trim() || devboxCredential.password?.trim();
-      if (resolvedPassword && !record.secretValues.includes(resolvedPassword)) {
-        record.secretValues.push(resolvedPassword);
-      }
-      const sshTarget = workerTransport
-        ? undefined
-        : await this.remoteExecutor.buildWorkspaceSshTarget(
-            binding,
-            status,
-            devboxCredential,
-          );
-
-      if (workerTransport) {
+      if (automaticWorker) {
         const workerResult = await this.workerLifecycle.provisionWorker(
           record,
           executor,
@@ -276,11 +254,6 @@ export class ProvisioningWorkflows {
           ? {
               workspaceWorkerEnrollmentId: record.job.config.workspaceWorkerEnrollmentId,
               workspaceWorkerEnrollmentClaimedBy: record.job.config.id,
-              provisioningHost: binding.host,
-            }
-          : sshTarget
-          ? {
-              sshTarget,
               provisioningHost: binding.host,
             }
           : {
@@ -325,7 +298,6 @@ export class ProvisioningWorkflows {
         serverSettings,
         resolvedDirectory,
         workspace.executionHostBinding.host,
-        undefined,
         workspace.executionHostBinding,
       );
       if (!connectionResult.success) {
@@ -357,18 +329,16 @@ export class ProvisioningWorkflows {
 
   async runExistingWorkspace(
     record: ProvisioningJobRecord,
-    password: string | undefined,
     mode: "rebuild" | "restart",
   ): Promise<void> {
     const workspaceId = record.job.config.workspaceId;
-    const run = async () => await this.runExistingWorkspaceLocked(record, password, mode);
+    const run = async () => await this.runExistingWorkspaceLocked(record, mode);
     if (workspaceId) await withWorkspaceRuntimeLock(workspaceId, run);
     else await run();
   }
 
   private async runExistingWorkspaceLocked(
     record: ProvisioningJobRecord,
-    password: string | undefined,
     mode: "rebuild" | "restart",
   ): Promise<void> {
     const action = mode === "restart"
@@ -433,20 +403,19 @@ export class ProvisioningWorkflows {
       const binding = record.job.config.executionHostBinding;
       const executor = await this.remoteExecutor.acquire(
         record,
-        password,
         targetDirectory,
       );
-      const workerTransport = record.job.config.transport === "worker";
-      const workerEnrollment = workerTransport && record.job.config.workerEnrollmentId
+      const automaticWorker = Boolean(record.job.config.workerEnrollmentId);
+      const workerEnrollment = record.job.config.workerEnrollmentId
         ? workspaceWorkerEnrollmentService.getStatus(
             record.owner.id,
             record.job.config.workerEnrollmentId,
           )
         : null;
-      const relayOnlyWorker = workerTransport
+      const relayOnlyWorker = automaticWorker
         && workerEnrollment?.worker?.route.kind === "relay";
       let workerHostAddress: string | undefined;
-      if (workerTransport && !relayOnlyWorker) {
+      if (automaticWorker && !relayOnlyWorker) {
         const workerEndpoint = workerEnrollment?.worker?.workerEndpoint;
         if (!workerEndpoint) {
           throw new ProvisioningFailedError(
@@ -488,7 +457,7 @@ export class ProvisioningWorkflows {
         );
       }
       appendSystemLog(record, this.maxLogEntries, `Target directory verified: ${targetDirectory}`, "prepare_directory");
-      const workerLauncherPaths = workerTransport
+      const workerLauncherPaths = automaticWorker
         ? await this.workerLifecycle.prepareLauncher(record, executor, targetDirectory, workspace.directory)
         : undefined;
 
@@ -498,8 +467,7 @@ export class ProvisioningWorkflows {
         label: action.commandLabel,
         command: "devbox",
         args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
-          transport: workerTransport ? "worker" : "ssh",
-          relayOnlyWorker,
+          publishWorkerPort: automaticWorker && !relayOnlyWorker,
           devcontainerSubpath,
           githubUser: record.job.config.githubUser,
           ...(workerLauncherPaths
@@ -530,11 +498,6 @@ export class ProvisioningWorkflows {
         );
       }
 
-      const devboxCredential = await this.remoteExecutor.readDevboxCredential(
-        executor,
-        status,
-      );
-
       const resolvedDirectory = status.workdir.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
@@ -545,15 +508,7 @@ export class ProvisioningWorkflows {
       }
 
       const serverSettings = workspace.serverSettings;
-      const sshTarget = workerTransport
-        ? undefined
-        : await this.remoteExecutor.buildWorkspaceSshTarget(
-            binding,
-            status,
-            devboxCredential,
-          );
-
-      if (workerTransport) {
+      if (automaticWorker) {
         await this.workerLifecycle.refreshWorker(
           record,
           executor,
@@ -580,16 +535,6 @@ export class ProvisioningWorkflows {
         ...(workspace.directory !== resolvedDirectory
           ? { directory: resolvedDirectory }
           : {}),
-        ...(sshTarget
-          ? { sshTarget }
-          : (
-            isWorkspaceSshExecutionHostRef(workspace.executionHostBinding.host)
-              ? {
-                  executionHost: binding.host,
-                  sshTarget: null,
-                }
-              : {}
-          )),
         allowExecutionTargetChangeWithTerminals: true,
         ...(devcontainerSubpath !== workspace.devcontainerSubpath
           ? { devcontainerSubpath }
@@ -608,7 +553,6 @@ export class ProvisioningWorkflows {
       const connectionResult = await backendManager.testConnection(
         serverSettings,
         resolvedDirectory,
-        undefined,
         undefined,
         updatedWorkspace.executionHostBinding,
       );
@@ -632,7 +576,6 @@ export class ProvisioningWorkflows {
 
   async runServerArise(
     record: ProvisioningJobRecord,
-    password: string | undefined,
   ): Promise<void> {
     const attempt = this.ensureAttempt(record);
     try {
@@ -646,7 +589,6 @@ export class ProvisioningWorkflows {
       }
       const executor = await this.remoteExecutor.acquire(
         record,
-        password,
         record.job.config.targetDirectory ?? "/",
       );
 

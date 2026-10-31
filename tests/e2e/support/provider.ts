@@ -10,7 +10,6 @@ const PROVIDER_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "acp.ts");
 const CODEX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "codex.ts");
 const COPILOT_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "copilot-native.ts");
 const OPENCODE_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "opencode-native.ts");
-const DEVBOX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "devbox.ts");
 const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
 const WORKER_UPDATE_COMMAND_PATH = resolve(
   ROOT_DIR,
@@ -98,21 +97,6 @@ export async function installExternalWorkerUpdateCommand(
   await Bun.write(
     wrapperPath,
     `#!/bin/sh\nexec ${quote(executable)} ${quote(WORKER_UPDATE_COMMAND_PATH)} "$@"\n`,
-  );
-  await chmod(wrapperPath, 0o700);
-}
-
-export async function installExternalDevboxProvider(
-  binDirectory: string,
-  sshPort: number,
-): Promise<void> {
-  await mkdir(binDirectory, { recursive: true, mode: 0o700 });
-  const executable = process.execPath;
-  const wrapperPath = join(binDirectory, "devbox");
-  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-  await Bun.write(
-    wrapperPath,
-    `#!/bin/sh\nCLANKY_E2E_SSH_PORT=${String(sshPort)} exec ${quote(executable)} ${quote(DEVBOX_PATH)} "$@"\n`,
   );
   await chmod(wrapperPath, 0o700);
 }

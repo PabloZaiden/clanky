@@ -4,13 +4,11 @@ import type {
   TerminalSession,
 } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { CreateSshServerRequest, CreateTerminalSessionRequest } from "@/contracts";
-import type { SshServer } from "@/shared/ssh-server";
+import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { CreateTaskFormActionState } from "../CreateTaskForm";
-import { SshServerComposer } from "./shell-composers";
 import { TerminalSessionComposer } from "./terminal-session-composer";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
@@ -21,7 +19,7 @@ import type { UseAgentsResult } from "../../hooks/useAgents";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 import { ExecutionHostTerminalComposer } from "./execution-host-terminal-composer";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "ssh-server" | "execution-host-chat" | "execution-host-terminal";
+type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "execution-host-chat" | "execution-host-terminal";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
@@ -30,7 +28,6 @@ export function isComposeKind(value: string): value is ComposeKind {
     "agent",
     "workspace",
     "terminal-session",
-    "ssh-server",
     "execution-host-chat",
     "execution-host-terminal",
   ].includes(value);
@@ -39,7 +36,6 @@ export function isComposeKind(value: string): value is ComposeKind {
 interface ComposeViewProps {
   kind: ComposeKind;
   composeWorkspace: Workspace | null;
-  composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   navigateWithinShell: (route: WebAppRoute) => void;
   composeActionState: CreateTaskFormActionState | null;
@@ -51,15 +47,8 @@ interface ComposeViewProps {
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
-  servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
   createTerminalSession: (request: CreateTerminalSessionRequest) => Promise<TerminalSession>;
-  createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
-  updateServer: (
-    id: string,
-    request?: import("@/contracts").UpdateSshServerRequest,
-    password?: string,
-  ) => Promise<SshServer | null>;
   provisioning: UseProvisioningJobResult;
   workspacesSaving: boolean;
 }
@@ -68,7 +57,6 @@ export function ComposeView(props: ComposeViewProps) {
   const {
     kind,
     composeWorkspace,
-    composeServer,
     composeExecutionHost,
     navigateWithinShell,
     setComposeActionState,
@@ -79,11 +67,8 @@ export function ComposeView(props: ComposeViewProps) {
     workspaces,
     workspacesLoading,
     workspaceError,
-    servers,
     workspaceCreate,
     createTerminalSession,
-    createServer,
-    updateServer,
     provisioning,
     workspacesSaving,
   } = props;
@@ -107,7 +92,6 @@ export function ComposeView(props: ComposeViewProps) {
     return (
       <ComposeWorkspaceView
         navigateWithinShell={navigateWithinShell}
-        servers={servers}
         workspaceCreate={workspaceCreate}
         provisioning={provisioning}
         workspacesSaving={workspacesSaving}
@@ -186,14 +170,7 @@ export function ComposeView(props: ComposeViewProps) {
     );
   }
 
-  return (
-    <SshServerComposer
-      initialServer={composeServer}
-      onNavigate={navigateWithinShell}
-      onCreateServer={createServer}
-      onUpdateServer={updateServer}
-    />
-  );
+  return null;
 }
 
 // Re-export the workspacesSaving prop type for ComposeView (workspace kind needs it)

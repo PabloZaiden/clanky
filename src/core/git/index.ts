@@ -94,7 +94,7 @@ import type {
 /**
  * GitService provides git operations for Clanky Tasks.
  * Uses a CommandExecutor for running git commands, allowing for both
- * local execution (`stdio` transport) and remote execution (`ssh` transport).
+ * local execution and remote execution through Mesh workers.
  */
 export class GitService {
   private executor: CommandExecutor;

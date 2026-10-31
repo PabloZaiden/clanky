@@ -3,20 +3,13 @@ import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   Agent,
   Chat,
-  SshServer,
   Task,
   Workspace,
   TerminalSession,
 } from "@/shared";
 import type { CreateExecutionHostChatRequest } from "@/contracts";
 import { isWorkspaceChat } from "@/shared/chat";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { isAgentProvider } from "@/shared/settings";
-import { isApiErrorCode } from "../../lib/api-error";
-import {
-  getStoredSshCredentialToken,
-  invalidateStoredSshCredentialToken,
-} from "../../lib/ssh-browser-credentials";
 import {
   stopTaskApi,
   type UseAgentsResult,
@@ -26,7 +19,6 @@ import {
   type UseMeshResult,
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
-  type UseSshServersResult,
   type UseTasksResult,
   type UseTerminalSessionsResult,
   type UseWorkspacesResult,
@@ -41,7 +33,6 @@ import { useShellDialogComposition } from "./shell-dialog-composition";
 interface UseShellActionsOptions {
   route: WebAppRoute;
   navigateWithinShell: (route: WebAppRoute) => void;
-  servers: SshServer[];
   provisioning: UseProvisioningJobResult;
   mesh: UseMeshResult;
   createWorkspace: UseWorkspacesResult["createWorkspace"];
@@ -61,7 +52,6 @@ interface UseShellActionsOptions {
   updateChat: UseChatsResult["updateChat"];
   agents: UseAgentsResult;
   updateTask: UseTasksResult["updateTask"];
-  updateServer: UseSshServersResult["updateServer"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
@@ -75,7 +65,6 @@ interface UseShellActionsOptions {
 export function useShellActions({
   route,
   navigateWithinShell,
-  servers,
   provisioning,
   mesh,
   createWorkspace,
@@ -95,7 +84,6 @@ export function useShellActions({
   updateChat,
   agents,
   updateTask,
-  updateServer,
   updateTerminalSession,
   deleteTerminalSession,
   createChat,
@@ -113,7 +101,6 @@ export function useShellActions({
 
   const workspaceCreate = useWorkspaceCreate({
     route,
-    servers,
     provisioning,
     createWorkspace,
     refreshWorkspaces,
@@ -221,14 +208,6 @@ export function useShellActions({
         throw new Error("The current model provider cannot be reused on this execution host.");
       }
 
-      const sshServerId = getRegisteredSshServerId(executionHost);
-      const credentialToken = sshServerId
-        ? await getStoredSshCredentialToken(sshServerId)
-        : null;
-      if (sshServerId && !credentialToken) {
-        throw new Error("SSH credentials are unavailable. Re-authenticate with the server before creating a chat.");
-      }
-
       const request: CreateExecutionHostChatRequest = {
         directory,
         model: {
@@ -236,16 +215,8 @@ export function useShellActions({
           modelID: sourceChat.config.model.modelID,
           variant: sourceChat.config.model.variant,
         },
-        credentialToken,
       };
-      try {
-        createdChat = await createExecutionHostChat(executionHost, request);
-      } catch (error) {
-        if (sshServerId && isApiErrorCode(error, "invalid_credential_token")) {
-          invalidateStoredSshCredentialToken(sshServerId);
-        }
-        throw error;
-      }
+      createdChat = await createExecutionHostChat(executionHost, request);
     }
 
     navigateWithinShell({ view: "chat", chatId: createdChat.config.id });
@@ -319,13 +290,6 @@ export function useShellActions({
     }
   }, [toast, updateTerminalSession]);
 
-  const toggleSshServerPrivate = useCallback(async (server: SshServer): Promise<void> => {
-    const updated = await updateServer(server.config.id, { isPrivate: !server.config.isPrivate });
-    if (!updated) {
-      toast.error(server.config.isPrivate ? "Failed to unmark SSH server as private" : "Failed to mark SSH server as private");
-    }
-  }, [toast, updateServer]);
-
   const stopSidebarTask = useCallback(async (task: Task): Promise<void> => {
     try {
       const stopped = await stopTaskApi(task.config.id);
@@ -356,7 +320,6 @@ export function useShellActions({
     toggleAgentPrivate,
     toggleWorkspacePrivate,
     toggleTerminalSessionPrivate,
-    toggleSshServerPrivate,
     stopSidebarTask,
   };
 }

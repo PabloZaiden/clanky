@@ -1,14 +1,14 @@
 /**
- * Shared helpers for persistent SSH sessions backed by dtach.
+ * Shared helpers for persistent terminal sessions backed by dtach.
  */
 
-import { buildShellBootstrapCommand } from "./ssh-shell-bootstrap";
-import { buildManagedContextShellBootstrap } from "./managed-context-environment";
-import type { CommandExecutor } from "./command-executor";
+import { buildShellBootstrapCommand } from "./shell-bootstrap";
+import { buildManagedContextShellBootstrap } from "../managed-context-environment";
+import type { CommandExecutor } from "../command-executor";
 
 const DTACH_INSTALL_HINT = [
-  "dtach is not available on the remote host.",
-  "Clanky switched this session to Direct SSH.",
+  "dtach is not available on the execution host.",
+  "Clanky switched this session to Direct.",
   "Install dtach on Linux with your package manager",
   "(for example: sudo apt install dtach, sudo dnf install dtach, or sudo pacman -S dtach)",
   "or on macOS with brew install dtach.",
@@ -16,7 +16,7 @@ const DTACH_INSTALL_HINT = [
 
 export const PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE = 42;
 
-export interface PersistentSshSessionConfigLike {
+export interface PersistentSessionConfigLike {
   id: string;
   remoteSessionName: string;
   directory?: string;
@@ -52,7 +52,7 @@ function buildPersistentSessionMasterPidFilePath(sessionId: string): string {
 }
 
 function buildPersistentSessionShellCommand(
-  session: { config: PersistentSshSessionConfigLike },
+  session: { config: PersistentSessionConfigLike },
 ): string {
   const sessionTtyFile = quoteShell(buildPersistentSessionTtyFilePath(session.config.id));
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
@@ -83,7 +83,7 @@ function buildPersistentSessionShellCommand(
 }
 
 export function buildPersistentSessionAttachCommand(
-  session: { config: PersistentSshSessionConfigLike },
+  session: { config: PersistentSessionConfigLike },
   runtimeEnvironment?: Record<string, string>,
   options?: { allowCreate?: boolean },
 ): string {
@@ -97,7 +97,7 @@ export function buildPersistentSessionAttachCommand(
   const allowCreate = options?.allowCreate ?? true;
   const command = [
     "if ! command -v dtach >/dev/null 2>&1; then",
-    "echo 'dtach is not installed on the remote host.' >&2;",
+    "echo 'dtach is not installed on the execution host.' >&2;",
     "exit 127;",
     "fi;",
     `client_tty_file=${clientTtyFile}`,
@@ -142,7 +142,7 @@ export function buildPersistentSessionAttachCommand(
     "}",
     "client_tty_path=$(tty);",
     "if [ -z \"$client_tty_path\" ] || [ \"$client_tty_path\" = \"not a tty\" ]; then",
-    "echo 'Failed to determine remote SSH tty.' >&2;",
+    "echo 'Failed to determine terminal tty.' >&2;",
     "exit 1;",
     "fi;",
     "printf '%s\\n' \"$client_tty_path\" > \"$client_tty_file\";",
@@ -159,7 +159,7 @@ export function buildPersistentSessionAttachCommand(
         "continue;",
         "fi;",
         "if [ \"$lock_attempt\" -ge 50 ]; then",
-        "echo 'Timed out waiting for persistent SSH session lock.' >&2;",
+        "echo 'Timed out waiting for persistent terminal session lock.' >&2;",
         "return 1;",
         "fi;",
         "sleep 0.1;",
@@ -195,7 +195,7 @@ export function buildPersistentSessionAttachCommand(
         "wait_attempt=$((wait_attempt + 1));",
         "done;",
         "if [ ! -S \"$session_socket\" ]; then",
-        "echo 'Persistent SSH session socket was not created.' >&2;",
+        "echo 'Persistent terminal session socket was not created.' >&2;",
         "exit 1;",
         "fi;",
         "release_session_lock;",
@@ -203,12 +203,12 @@ export function buildPersistentSessionAttachCommand(
       ]
       : [
         "if [ ! -S \"$session_socket\" ] || [ ! -r \"$session_tty_file\" ] || ! is_live_pid_file \"$session_pid_file\" || ! is_live_pid_file \"$session_master_pid_file\"; then",
-        "echo 'Persistent SSH session is no longer available for attach.' >&2;",
+        "echo 'Persistent terminal session is no longer available for attach.' >&2;",
         `exit ${String(PERSISTENT_SESSION_ATTACH_UNAVAILABLE_EXIT_CODE)};`,
         "fi;",
       ]),
     "if [ ! -S \"$session_socket\" ]; then",
-    "echo 'Persistent SSH session socket was not created.' >&2;",
+    "echo 'Persistent terminal session socket was not created.' >&2;",
     "exit 1;",
     "fi;",
     ...(allowCreate
@@ -223,7 +223,7 @@ export function buildPersistentSessionAttachCommand(
 }
 
 export function buildPersistentSessionReadyCommand(session: {
-  config: Pick<PersistentSshSessionConfigLike, "id" | "remoteSessionName">;
+  config: Pick<PersistentSessionConfigLike, "id" | "remoteSessionName">;
 }): string {
   const sessionTtyFile = quoteShell(buildPersistentSessionTtyFilePath(session.config.id));
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
@@ -261,7 +261,7 @@ export function buildPersistentSessionReadyCommand(session: {
 export async function hasPersistentSession(
   executor: CommandExecutor,
   session: {
-    config: Pick<PersistentSshSessionConfigLike, "id" | "remoteSessionName">;
+    config: Pick<PersistentSessionConfigLike, "id" | "remoteSessionName">;
   },
   cwd: string,
   timeout: number,
@@ -307,7 +307,7 @@ export function buildPersistentSessionResizeCommand(sessionId: string, cols: num
 }
 
 export function buildPersistentSessionDeleteCommand(session: {
-  config: Pick<PersistentSshSessionConfigLike, "id" | "remoteSessionName">;
+  config: Pick<PersistentSessionConfigLike, "id" | "remoteSessionName">;
 }): string {
   const clientTtyFile = quoteShell(buildPersistentSessionClientTtyFilePath(session.config.id));
   const sessionTtyFile = quoteShell(buildPersistentSessionTtyFilePath(session.config.id));
@@ -335,8 +335,7 @@ export function buildPersistentSessionDeleteCommand(session: {
     "master_pid=$(read_pid_file \"$session_master_pid_file\")",
     "shell_pid=$(read_pid_file \"$session_pid_file\")",
     // Kill dtach master to close the PTY master fd. This triggers SIGHUP to
-    // the session leader (the shell), which propagates SIGHUP to all its jobs
-    // — the same cascade that happens when an SSH connection drops.
+    // the session leader (the shell), which propagates SIGHUP to all its jobs.
     "if [ -n \"$master_pid\" ] && kill -0 \"$master_pid\" 2>/dev/null; then",
     "kill \"$master_pid\" 2>/dev/null || true",
     "fi",

@@ -7,7 +7,6 @@ export {
   LocalTerminalConnection,
   type LocalTerminalConnectionConfig,
 } from "./local-terminal-connection";
-export { SshInteractiveTerminalConnection } from "./ssh-terminal-connection";
 export {
   closeAllMeshTerminalConnections,
   MeshInteractiveTerminalConnection,

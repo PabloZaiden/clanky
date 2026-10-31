@@ -11,13 +11,11 @@ import type {
   RestartAutomaticWorkspacesResult,
 } from "@/contracts";
 import { isRestartableAutomaticWorkspace } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { isArchivedTask } from "../utils";
 import { backendManager } from "./backend-manager";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { provisioningManager } from "./provisioning-manager";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import { taskManager } from "./task-manager";
 import { workspaceManager } from "./workspace-manager";
 import { stopChatTrashMaintenance, startChatTrashMaintenance } from "./chat-trash-maintenance";
@@ -175,13 +173,10 @@ export class SettingsMaintenanceService {
   }
 
   async restartAutomaticWorkspaces(
-    request: RestartAutomaticWorkspacesRequest,
+    _request: RestartAutomaticWorkspacesRequest,
   ): Promise<RestartAutomaticWorkspacesResult> {
     const workspaces = await workspaceManager.listWorkspaces();
     const automaticWorkspaces = workspaces.filter(isRestartableAutomaticWorkspace);
-    const unavailableCredentialServerIds = new Set(
-      request.credentialUnavailableServerIds,
-    );
     const started: RestartAutomaticWorkspacesResult["started"] = [];
     const failures: RestartAutomaticWorkspacesResult["failures"] = [];
 
@@ -189,28 +184,7 @@ export class SettingsMaintenanceService {
       const executionHost = (
         workspace.provisioningHostBinding ?? workspace.executionHostBinding
       ).host;
-      const serverId = getRegisteredSshServerId(executionHost);
-
-      if (serverId && unavailableCredentialServerIds.has(serverId)) {
-        failures.push({
-          workspaceId: workspace.id,
-          workspaceName: workspace.name,
-          error: "Unable to retrieve the saved SSH credential for this server. Check that the server is reachable and update its saved SSH credential before retrying.",
-        });
-        log.warn("Skipped automatic workspace restart after SSH credential exchange failed", {
-          workspaceId: workspace.id,
-          serverId,
-        });
-        continue;
-      }
-
       try {
-        const credentialToken = serverId
-          ? request.credentialTokensByServerId[serverId]
-          : undefined;
-        const password = serverId && credentialToken
-          ? sshCredentialManager.getPasswordForToken(serverId, credentialToken)
-          : undefined;
         const snapshot = await provisioningManager.startJob({
           name: workspace.name,
           executionHost,
@@ -222,7 +196,6 @@ export class SettingsMaintenanceService {
           mode: "restart",
           targetDirectory: workspace.sourceDirectory.trim(),
           workspaceId: workspace.id,
-          ...(password ? { password } : {}),
         });
         started.push({
           workspaceId: workspace.id,

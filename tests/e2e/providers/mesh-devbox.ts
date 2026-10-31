@@ -57,9 +57,7 @@ if (args[0] === "--help") {
   const port = Number(await Bun.file(portFile).text());
   console.log(JSON.stringify({
     running: await Bun.file(marker).exists(), ports: [port],
-    sshEnabled: false, password: null, workdir: process.cwd(),
-    sshUser: null, sshPort: null, remoteUser: null,
-    hasCredentialFile: false, credentialPath: "",
+    workdir: process.cwd(),
     publishedPorts: { [`${port}/tcp`]: [{ hostIp: "127.0.0.1", hostPort: port }] },
   }));
 } else if (args[0] === "exec" && args[1] === "--") {

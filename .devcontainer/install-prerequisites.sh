@@ -45,7 +45,6 @@ sudo apt-get install -y --no-install-recommends \
   libxkbcommon0 \
   libxrandr2 \
   libxshmfence1 \
-  sshpass \
   unzip
 
 bash "$(dirname "${BASH_SOURCE[0]}")/install-sf-pro.sh"

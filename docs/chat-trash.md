@@ -58,28 +58,21 @@ Use `clanky api` and `clanky schema` to discover the same operations from the CL
 
 Trash listing returns `{ items, nextCursor }`. `limit` defaults to 30 and accepts
 1-100; pass `cursor` from the previous page to continue. `includePrivate=false`
-omits chats whose chat, workspace or registered execution server is private.
+omits chats whose chat or workspace is private.
 Each item includes `id`, `name`, `workspaceId`, `origin`, `isPrivate`,
-`deletedAt`, `expiresAt` and `credentialServerIds`. The latter identifies owned
-SSH servers whose credentials may be needed for resource cleanup; it contains
-no credential values.
+`deletedAt` and `expiresAt`.
 
 With [workspace collaboration](workspace-collaboration.md), the same paginated
 list also includes authorized shared workspace chats, with opaque remote chat
 references and the controller name in their origin. Restore and individual
-permanent deletion route to that controller. Its credentials remain there;
-shared entries do not request another controller's SSH credentials locally.
+permanent deletion route to that controller.
 `DELETE /api/trash` and **Empty local Trash** deliberately remain local, not a
 cross-controller bulk mutation. Unavailable origins produce explicit partial
 collection metadata, not an offline inventory.
 
-Permanent deletion and emptying accept an optional JSON body
-`{ "credentialTokensByServerId": { "<server-id>": "<credential-token>" } }`.
-Obtain each short-lived token through the normal SSH credential exchange.
-The browser resolves stored credentials for all selected servers, including
-hidden private chats when emptying; CLI/automation discovery declares the same
-per-server credential mapping. Missing credentials leave affected entries in
-Trash rather than deleting their records without cleanup.
+Permanent deletion and emptying accept an optional empty JSON object.
+Unavailable execution hosts leave affected entries in Trash rather than
+deleting their records without resource cleanup.
 
 Restore does not return or start a provider session. Use the normal chat endpoints
 after restoration. Trashed chats are unavailable through ordinary chat reads,

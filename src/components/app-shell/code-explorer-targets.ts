@@ -59,7 +59,7 @@ export interface ResolvedCodeExplorerTarget {
   backRoute: WebAppRoute;
   target:
     | { type: "workspace"; id: string; startDirectory?: string }
-    | { type: "executionHost"; kind: "local" | "mesh" | "ssh"; id: string; startDirectory?: string };
+    | { type: "executionHost"; kind: "local" | "mesh"; id: string; startDirectory?: string };
   buildRoute: (startDirectory?: string) => WebAppRoute;
   sessions: ExplorerSession[];
   hasTerminal: boolean;
@@ -71,7 +71,6 @@ export interface ResolvedCodeExplorerTarget {
   ) => Promise<ExplorerSession>;
   canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
-  credentialPromptName?: string;
   initialFilePath?: string;
 }
 
@@ -351,7 +350,6 @@ export function resolveCodeExplorerTarget({
         ),
         canChooseTerminalTmux: true,
         testIdPrefix: "server",
-        credentialPromptName: host.ref.kind === "ssh" ? host.name : undefined,
         initialFilePath: target.filePath,
       };
     }
@@ -411,7 +409,6 @@ export function resolveCodeExplorerTarget({
           ),
           canChooseTerminalTmux: true,
           testIdPrefix: "server",
-          credentialPromptName: host.ref.kind === "ssh" ? host.name : undefined,
           initialFilePath: target.filePath,
         };
       }

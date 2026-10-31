@@ -33,26 +33,21 @@ export type ControlGrantSelection = z.infer<typeof ControlGrantSelectionSchema>;
 
 export const ControlRequestSnapshotSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(["confirmation", "ssh_credential"]),
+  kind: z.literal("confirmation"),
   status: z.enum(["pending", "running", "completed", "expired"]),
   description: z.string().max(500),
   expiresAt: z.number().int().positive(),
   operation: ExecuteOperationSchema.optional(),
-  serverId: z.string().min(1).max(500).optional(),
-  serverName: z.string().min(1).max(500).optional(),
   result: z.unknown().optional(),
 }).strict();
 export type ControlRequestSnapshot = z.infer<typeof ControlRequestSnapshotSchema>;
 export const ControlRequestSummarySchema = ControlRequestSnapshotSchema.omit({
-  operation: true, result: true, serverId: true,
+  operation: true, result: true,
 }).extend({ isPrivate: z.boolean() });
 export type ControlRequestSummary = z.infer<typeof ControlRequestSummarySchema>;
 export const ControlRequestsResponseSchema = z.array(ControlRequestSummarySchema).max(256);
 
 export const ControlDecisionSchema = z.object({ approved: z.boolean() }).strict();
-export const ControlCredentialHandoffSchema = z.object({
-  credentialToken: z.string().min(1).max(4096).nullable(),
-}).strict();
 export const CreateControlCredentialSchema = z.object({
   name: z.string().trim().min(1).max(100),
   grant: ControlGrantSelectionSchema,

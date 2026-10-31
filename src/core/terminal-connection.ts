@@ -1,5 +1,5 @@
 /**
- * Resolves canonical workspace terminal sessions to SSH, local, or Mesh adapters.
+ * Resolves canonical workspace terminal sessions to local or Mesh adapters.
  */
 
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
@@ -19,13 +19,12 @@ import { terminalSessionManager } from "./terminal-session-manager";
 import {
   LocalTerminalConnection,
   MeshInteractiveTerminalConnection,
-  SshInteractiveTerminalConnection,
   type InteractiveTerminalCallbacks,
   type InteractiveTerminalConnection,
   type InteractiveTerminalConnectResult,
 } from "./terminal";
-import { DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS } from "./ssh-bridge/constants";
-import { hasPersistentSession } from "./ssh-persistent-session";
+import { DEFAULT_TERMINAL_COMMAND_TIMEOUT_MS } from "./terminal/constants";
+import { hasPersistentSession } from "./terminal/persistent-session";
 import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { workspaceManager } from "./workspace-manager";
 import { resolveWorkspaceExecutionTarget } from "./workspace-execution-target";
@@ -275,7 +274,6 @@ function buildStatusCallbacks(
 export async function createTerminalConnection(
   sessionId: string,
   callbacks: InteractiveTerminalCallbacks,
-  credentialToken?: string,
 ): Promise<{
   connection: InteractiveTerminalConnection;
   attachment: TerminalAttachmentHandle;
@@ -284,19 +282,6 @@ export async function createTerminalConnection(
   const user = requireExecutionOwnerUser();
   const resolved = await resolveTerminal(sessionId);
   const host = resolved.executionHostBinding.host;
-  if (host.kind === "ssh") {
-    const connection = new SshInteractiveTerminalConnection(
-      sessionId,
-      callbacks,
-      credentialToken,
-    );
-    return {
-      connection,
-      attachment: await claimTerminalAttachment(sessionId, connection),
-      resolved,
-    };
-  }
-
   const lifecycle: { exitStatus?: "disconnected" | "failed" } = {};
   let credential: ManagedRuntimeCredential | undefined;
   let environment: Record<string, string> | undefined;
@@ -327,7 +312,7 @@ export async function createTerminalConnection(
         },
       },
       resolved.session.config.directory,
-      DEFAULT_SSH_TERMINAL_COMMAND_TIMEOUT_MS,
+      DEFAULT_TERMINAL_COMMAND_TIMEOUT_MS,
     );
   allowPersistentSessionCreate = !persistentRuntimeExists;
   if (allowPersistentSessionCreate && resolved.workspace) {

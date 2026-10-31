@@ -5,7 +5,7 @@
 import { createLogger, defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import {
   LiveVoiceSessionRequestSchema, LiveVoiceHeartbeatSchema, LiveVoiceCloseSchema,
-  LiveVoiceConfirmationResponseSchema, LiveVoiceCredentialResponseSchema,
+  LiveVoiceConfirmationResponseSchema,
 } from "@/contracts/schemas/voice";
 import { liveVoiceManager } from "../core/live-voice-manager";
 import type { OperationAuthority } from "../core/clanky-operation-service";
@@ -122,25 +122,6 @@ export const liveVoiceRoutes = defineRoutes({
         const response = successResponse({ ...await liveVoiceManager.confirm(
           ctx.params["callId"]!, validation.data.clientId, ctx.params["requestId"]!, validation.data.approved,
         ) });
-        response.headers.set("Cache-Control", "no-store");
-        return response;
-      } catch (error) { return liveErrorResponse(error); }
-    },
-  },
-  "/api/voice/live/:callId/credentials/:requestId": {
-    auth: "user", sameOrigin: "mutations",
-    description: "Privately supply the requested SSH token to the originating call and exact pending operation.",
-    requestSchema: LiveVoiceCredentialResponseSchema,
-    operations: { POST: { automation: { policy: "excluded", reason: "Credential tokens never enter model tools." } } },
-    async POST(req, ctx) {
-      const validation = await parseAndValidate(LiveVoiceCredentialResponseSchema, req);
-      if (!validation.success) return validation.response;
-      try {
-        liveVoiceManager.refreshAuthority(ctx.params["callId"]!, validation.data.clientId, authority(req, ctx));
-        liveVoiceManager.supplyCredential(
-          ctx.params["callId"]!, validation.data.clientId, ctx.params["requestId"]!, validation.data.credentialToken,
-        );
-        const response = successResponse({ accepted: true });
         response.headers.set("Cache-Control", "no-store");
         return response;
       } catch (error) { return liveErrorResponse(error); }

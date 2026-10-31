@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { useExecutionHostAddresses } from "../../hooks/workspace-server-settings";
 import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
-  getRegisteredSshServerId,
   isIncompleteGitHubRepositoryUrl,
   isValidWorkerHostAddress,
   parseExecutionHostRef,
@@ -16,8 +14,7 @@ import {
   serializeExecutionHostRef,
   type ExecutionHostRef,
 } from "@/shared";
-import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
-import { Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Button } from "../common";
 import {
   ErrorState,
   FormGroup,
@@ -27,11 +24,6 @@ import {
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
-import type { SshServer } from "@/shared/ssh-server";
-import {
-  getAutomaticWorkspaceBasePath,
-  saveLastAutomaticWorkspaceSshServerId,
-} from "../../lib/automatic-workspace-preferences";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 import { useWorkerUpdatePreferences } from "../../hooks/useWorkerUpdatePreferences";
 import { WorkerChannelSelect } from "../worker-channel-select";
@@ -39,7 +31,6 @@ import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
-  servers: SshServer[];
   workspaceCreate: UseWorkspaceCreateResult;
   provisioning: UseProvisioningJobResult;
   workspacesSaving: boolean;
@@ -153,7 +144,6 @@ function DedicatedWorkerEnrollment({
 
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
-    servers,
     workspaceCreate,
     provisioning,
     workspacesSaving,
@@ -177,8 +167,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceServerSettings,
     workspaceExecutionHost,
     setWorkspaceExecutionHost,
-    workspaceSshTarget,
-    setWorkspaceSshTarget,
     workspaceWorkerEnrollment,
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
@@ -196,8 +184,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceCreateSubmitting,
     automaticExecutionHost,
     setAutomaticExecutionHost,
-    automaticTransport,
-    setAutomaticTransport,
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
     automaticWorkerRelayName,
@@ -228,15 +214,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     automaticAdapter,
     setAutomaticAdapter,
     setAutomaticProvider,
-    automaticPassword,
-    setAutomaticPassword,
     automaticChannel,
     setAutomaticChannel,
     handleCreateWorkspace,
     handleTestWorkspaceConnection,
   } = workspaceCreate;
   const automaticWorker = workspaceCreateMode === "automatic"
-    && automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected;
+    && !workspaceWorkerEnrollmentSelected;
   const channelPreferences = useWorkerUpdatePreferences({ enabled: automaticWorker });
   const { targets: executionTargets } = useWorkspaceExecutionTargets({ controllerId: workspaceControllerId || undefined });
   const localAdministration = getClankyClientCapabilities().controllerAdministration;
@@ -252,20 +236,16 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     loading: workerHostAddressesLoading,
     error: workerHostAddressesError,
   } = useExecutionHostAddresses(
-    automaticTransport === "worker"
+    !workspaceWorkerEnrollmentSelected
       && automaticWorkerEnrollmentRoute !== "relay"
       && !automaticRelayStatusLoading
       ? automaticExecutionHost
       : null,
-    automaticPassword,
   );
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (
-      automaticTransport !== "worker"
-      || !automaticExecutionHost
-    ) {
+    if (!automaticExecutionHost) {
       setAutomaticWorkerHostAddressMode("discovered");
       setAutomaticWorkerHostAddress("");
       return;
@@ -287,7 +267,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   }, [
     automaticExecutionHost,
     automaticRelayStatusLoading,
-    automaticTransport,
     automaticWorkerEnrollmentRoute,
     automaticWorkerHostAddress,
     automaticWorkerHostAddressMode,
@@ -297,19 +276,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   ]);
 
   const workspaceCreateFormId = "workspace-create-form";
-  const automaticSshServerId = automaticExecutionHost
-    ? getRegisteredSshServerId(automaticExecutionHost)
-    : null;
-  const selectedServerHasStoredCredential = automaticSshServerId
-    ? getStoredSshServerCredential(automaticSshServerId) !== null
-    : false;
   const {
     templates,
     templatesLoading,
     templatesError,
     refreshTemplates,
   } = useDevboxTemplates({
-    password: automaticPassword,
     executionHost: automaticExecutionHost,
   });
   useEffect(() => {
@@ -325,7 +297,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const automaticFormValid =
     (!automaticWorker || automaticChannel !== "default"
       || (channelPreferences.data !== undefined && !channelPreferences.error)) &&
-    (automaticAdapter === "acp" || (automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected)) &&
+    (automaticAdapter === "acp" || !workspaceWorkerEnrollmentSelected) &&
     workspaceName.trim().length > 0 &&
     (automaticExecutionHost !== null
       || (
@@ -340,7 +312,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0) &&
     (
       workspaceWorkerEnrollmentSelected
-      || automaticTransport !== "worker"
       || automaticWorkerEnrollmentRoute === "relay"
       || (automaticWorkerHostAddressMode === "manual"
         ? isValidWorkerHostAddress(automaticWorkerHostAddress)
@@ -354,7 +325,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
     (workspaceExecutionHost !== null
-      || workspaceSshTarget !== null
       || (
         workspaceWorkerEnrollmentSelected
         && workspaceWorkerEnrollment?.enrollment.status === "connected"
@@ -472,8 +442,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 controllerId={workspaceControllerId || undefined}
                 initialSettings={workspaceServerSettings}
                 initialExecutionHost={workspaceExecutionHost}
-                initialSshTarget={workspaceSshTarget}
-                allowWorkspaceSshTarget
                 dedicatedWorkerSelected={
                   workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
                 }
@@ -485,22 +453,17 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   settings: ServerSettings,
                   isValid: boolean,
                   executionHost: ExecutionHostRef | null,
-                  sshTarget?: WorkspaceSshTargetRequest | null,
                 ) => {
                   setWorkspaceServerSettings((current: ServerSettings) => {
                     return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
                   });
-                  if (executionHost || sshTarget) {
+                  if (executionHost) {
                     if (workspaceWorkerEnrollment) {
                       void cancelWorkspaceWorkerEnrollment();
                     }
                     setWorkspaceWorkerEnrollmentSelected(false);
                   }
                   setWorkspaceExecutionHost(executionHost);
-                  const nextSshTarget = sshTarget ?? null;
-                  if (!areWorkspaceSshTargetsEqual(workspaceSshTarget, nextSshTarget)) {
-                    setWorkspaceSshTarget(nextSshTarget);
-                  }
                   setWorkspaceServerSettingsValid(isValid);
                 }}
                 onTest={handleTestWorkspaceConnection}
@@ -524,7 +487,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   if (value === "workspace-worker") {
                     setWorkspaceWorkerEnrollmentSelected(true);
                     setAutomaticExecutionHost(null);
-                    setAutomaticTransport("ssh");
                     setAutomaticWorkerHostAddress("");
                     setAutomaticBasePath("/workspaces");
                     setAutomaticDevboxTemplate("");
@@ -537,15 +499,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   const host = value ? parseExecutionHostRef(value) : null;
                   setAutomaticExecutionHost(host);
                   setAutomaticDevboxTemplate("");
-                  const serverId = host ? getRegisteredSshServerId(host) : null;
-                  if (serverId) {
-                    saveLastAutomaticWorkspaceSshServerId(serverId);
-                    const selectedServer = servers.find(
-                      (server) => server.config.id === serverId,
-                    );
-                    setAutomaticBasePath(getAutomaticWorkspaceBasePath(selectedServer ?? null));
-                    return;
-                  }
                   const selectedTarget = executionTargets.find(
                     (target) => host
                       && serializeExecutionHostRef(target.ref) === serializeExecutionHostRef(host),
@@ -574,24 +527,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
 
               {automaticExecutionHost && !workspaceWorkerEnrollmentSelected && (
                   <>
-                    <SelectField
-                      id="automatic-transport"
-                      label="Devbox transport"
-                      value={automaticTransport}
-                      onChange={(event) => {
-                        const transport = event.target.value as "ssh" | "worker";
-                        setAutomaticTransport(transport);
-                        if (transport !== "worker") {
-                          setAutomaticWorkerHostAddressMode("discovered");
-                          setAutomaticWorkerHostAddress("");
-                        }
-                      }}
-                    >
-                      <option value="worker">Dedicated worker (HTTPS)</option>
-                      <option value="ssh">SSH</option>
-                    </SelectField>
-
-                    {automaticTransport === "worker" && (
                       <SelectField
                         id="automatic-worker-host-address"
                         label="Worker host address"
@@ -638,9 +573,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         ))}
                         <option value={MANUAL_WORKER_HOST_ADDRESS_OPTION}>Enter manually</option>
                       </SelectField>
-                    )}
-                    {automaticTransport === "worker"
-                      && automaticWorkerEnrollmentRoute === "relay" ? (
+                    {automaticWorkerEnrollmentRoute === "relay" ? (
                       <SelectField
                         id="automatic-worker-relay"
                         label="Relay"
@@ -663,8 +596,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         ))}
                       </SelectField>
                     ) : null}
-                    {automaticTransport === "worker"
-                      && automaticWorkerHostAddressMode === "manual" && (
+                    {automaticWorkerHostAddressMode === "manual" && (
                       <TextField
                         id="automatic-worker-host-address-manual"
                         label="Manual worker host"
@@ -677,8 +609,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         required
                       />
                     )}
-                    {automaticTransport === "worker"
-                      && automaticWorkerEnrollmentRoute !== "relay"
+                    {automaticWorkerEnrollmentRoute !== "relay"
                       && workerHostAddressesError && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         {workerHostAddressesError}
@@ -739,7 +670,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <HarnessRuntimeSelector idPrefix="automatic-" adapter={automaticAdapter} provider={automaticProvider}
-                  supportedAdapters={automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : ["acp"]}
+                  supportedAdapters={!workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : ["acp"]}
                   onAdapterChange={setAutomaticAdapter} onProviderChange={setAutomaticProvider} />
               </div>
               {automaticWorker ? (
@@ -755,20 +686,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   ) : null}
                 </>
               ) : null}
-              {automaticAdapter !== "acp" && (automaticTransport !== "worker" || workspaceWorkerEnrollmentSelected) && (
-                <ErrorState title="Native adapters require a dedicated worker" description="Select ACP for direct SSH execution." />
-              )}
-
-              {automaticExecutionHost?.kind === "ssh" && !selectedServerHasStoredCredential && (
-                <TextField
-                  id="automatic-ssh-password"
-                  label="SSH password"
-                  value={automaticPassword}
-                  onChange={(event) => setAutomaticPassword(event.target.value)}
-                  placeholder="Leave blank for key-based auth"
-                  type="password"
-                  {...PASSWORD_INPUT_PROPS}
-                />
+              {automaticAdapter !== "acp" && workspaceWorkerEnrollmentSelected && (
+                <ErrorState title="Adapter unavailable" description="Select ACP for the enrolled worker." />
               )}
 
               <FormGroup
@@ -795,7 +714,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                           type="button"
                           size="sm"
                           variant="ghost"
-                          onClick={() => { void refreshTemplates(automaticPassword); }}
+                          onClick={() => { void refreshTemplates(); }}
                         >
                           Refresh templates
                         </Button>
@@ -866,14 +785,4 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       </form>
     </div>
   );
-}
-
-function areWorkspaceSshTargetsEqual(
-  left: WorkspaceSshTargetRequest | null,
-  right: WorkspaceSshTargetRequest | null,
-): boolean {
-  return left?.host === right?.host
-    && left?.port === right?.port
-    && left?.username === right?.username
-    && left?.password === right?.password;
 }

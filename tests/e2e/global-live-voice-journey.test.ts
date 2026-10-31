@@ -8,10 +8,6 @@ import { installExternalNativeOpenCodeProvider } from "./support/provider";
 import { pollUntil } from "./support/polling";
 import { bootstrapOwner, CookieJar, requestWithCookies } from "./support/passkey";
 import { subscribeRealtime } from "./support/realtime";
-import { readProcessDiagnostics } from "./support/process";
-import {
-  startEphemeralSshServer, stopEphemeralSshServer, type ManagedSshServer,
-} from "./support/ssh-server";
 import {
   createFixtureLiveOffer, startVoiceProvider, stopVoiceProvider, type ManagedVoiceProvider,
 } from "./support/voice-provider";
@@ -118,25 +114,6 @@ class VoiceClient {
   }
 }
 
-async function sshCredential(application: E2EApplication, serverId: string): Promise<string> {
-  const publicKey = (await application.json<{
-    publicKey: string; algorithm: string; fingerprint: string; version: number;
-  }>(`/api/ssh-servers/${serverId}/public-key`)).data;
-  const key = await crypto.subtle.importKey("spki", Uint8Array.from(Buffer.from(
-    publicKey.publicKey.replace(/-----[^-]+-----|\s/g, ""), "base64",
-  )).buffer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
-  // An empty password explicitly selects this fixture's real SSH key/agent.
-  const ciphertext = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, key, new Uint8Array());
-  return (await application.json<{ credentialToken: string }>(`/api/ssh-servers/${serverId}/credentials`, {
-    method: "POST", body: JSON.stringify({
-      encryptedCredential: {
-        algorithm: publicKey.algorithm, fingerprint: publicKey.fingerprint,
-        version: publicKey.version, ciphertext: Buffer.from(ciphertext).toString("base64"),
-      },
-    }),
-  }, 201)).data.credentialToken;
-}
-
 async function visualDecision(options: {
   application: E2EApplication; client: VoiceClient; callId: string;
   approved: boolean;
@@ -158,7 +135,6 @@ test("global Live operates owned recent and waiting work, resumes its conversati
   const clients: VoiceClient[] = [];
   const repositories: GitFixture[] = [];
   let provider: ManagedVoiceProvider | undefined;
-  let ssh: ManagedSshServer | undefined;
   let callId: string | undefined;
   let streamingReleasePath: string | undefined;
   let steeringReleasePath: string | undefined;
@@ -174,13 +150,9 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     streamingReleasePath = statusReleasePath;
     const hostNote = "Use the chosen execution host's inventory when preparing workspace B.";
     await Bun.write(join(repositoryB.repositoryDirectory, GLOBAL_LIVE_INTENT.hostFile), hostNote);
-    ssh = await startEphemeralSshServer({
-      runDirectory: application.runDirectory, clientHomeDirectory: application.homeDirectory,
-      providerBinDirectory: application.providerBinDirectory,
-    });
     provider = await startVoiceProvider(application.runDirectory);
     const environment = {
-      NODE_EXTRA_CA_CERTS: provider.certificatePath, SSH_AUTH_SOCK: ssh.agentSocket, CLANKY_LOG_LEVEL: "info",
+      NODE_EXTRA_CA_CERTS: provider.certificatePath, CLANKY_LOG_LEVEL: "info",
     };
     await application.start({ disablePasskey: false, requestHostname: "localhost", env: environment });
     const human = new CookieJar();
@@ -247,13 +219,6 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     const queuedMessageId = queuedResponse.data.chat.state.queuedMessages
       ?.find((message) => message.content === GLOBAL_LIVE_INTENT.steeringMessage)?.id;
     if (!queuedMessageId) throw new Error("The OpenCode steering message was not queued.");
-    const server = (await application.json<{ config: { id: string } }>("/api/ssh-servers", {
-      method: "POST", body: JSON.stringify({
-        name: "Live SSH host", address: "127.0.0.1", port: ssh.port, username: ssh.username,
-        repositoriesBasePath: repositoryB.repositoryDirectory,
-      }),
-    }, 201)).data;
-    const credentialToken = await sshCredential(application, server.config.id);
     await application.json("/api/voice/settings", {
       method: "PUT", body: JSON.stringify({
         baseUrl: provider.baseUrl, apiKey: provider.apiKey, languageHints: ["en"],
@@ -386,12 +351,6 @@ test("global Live operates owned recent and waiting work, resumes its conversati
       { description: "failed conversation for Voice status category coverage", timeoutMs: 10_000 });
     await client.ack(initialContext, { status: "context", context: client.context });
 
-    const credential = await client.next("request_ssh_credential");
-    expect(credential.action.serverId).toBe(server.config.id);
-    await client.ack(credential, { status: "presented" });
-    await application.json(`/api/voice/live/${callId}/credentials/${credential.action.requestId}`, {
-      method: "POST", body: JSON.stringify({ clientId: client.id, credentialToken }),
-    });
     await visualDecision({
       application, client, callId, approved: false,
     });
@@ -524,7 +483,6 @@ test("global Live operates owned recent and waiting work, resumes its conversati
     try {
       console.error(await application.diagnostics());
       if (provider) console.error(`External Live peer: ${provider.diagnostics()}`);
-      if (ssh) console.error(await readProcessDiagnostics(ssh.process));
       for (const repository of repositories) console.error(`Git ${repository.repositoryDirectory}: ${await gitStatus(repository)}`);
       if (callId && application.isRunning) {
         console.error(`Last public Live state: ${await (await application.request(`/api/voice/live/${callId}`)).text()}`);
@@ -546,16 +504,12 @@ test("global Live operates owned recent and waiting work, resumes its conversati
         await application.stop();
       } finally {
         try {
-          if (ssh) await stopEphemeralSshServer(ssh);
+          if (provider) await stopVoiceProvider(provider);
         } finally {
-          try {
-            if (provider) await stopVoiceProvider(provider);
-          } finally {
-            if (streamingReleasePath && await Bun.file(streamingReleasePath).exists()) {
-              await Bun.file(streamingReleasePath).delete();
-            }
-            await application.cleanup();
+          if (streamingReleasePath && await Bun.file(streamingReleasePath).exists()) {
+            await Bun.file(streamingReleasePath).delete();
           }
+          await application.cleanup();
         }
       }
     }

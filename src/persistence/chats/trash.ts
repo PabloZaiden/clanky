@@ -14,8 +14,6 @@ import { projectQuestionMessages } from "@/shared/question-transcript";
 import { createTranscriptChangeSet } from "@/shared/chat-transcript";
 import type { TranscriptChangeSet } from "@/shared/chat-transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
-import { parseStoredHarnessState } from "../harness-binding";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { invalidateChatMetadata } from "./metadata-cache";
 
 const STANDALONE = "scope = 'workspace' AND task_id IS NULL";
@@ -42,39 +40,29 @@ export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
       values.push(cursor.deletedAt, cursor.id);
     }
   }
-  const privateExpression = "(chat.is_private OR COALESCE(workspace.is_private, 0) OR COALESCE(server.is_private, 0))";
+  const privateExpression = "(chat.is_private OR COALESCE(workspace.is_private, 0))";
   if (options.includePrivate === "false") conditions.push(`${privateExpression} = 0`);
   values.push(options.limit + 1);
   const rows = getDatabase().prepare(`
     SELECT chat.id, chat.name, chat.workspace_id AS workspaceId,
-      COALESCE(workspace.name, server.name, host.source_id, chat.directory) AS origin,
-      ${privateExpression} AS isPrivate, chat.deleted_at AS deletedAt,
-      chat.harness_state_json AS harnessState, host.kind AS hostKind, host.source_id AS hostSourceId
+      COALESCE(workspace.name, host.source_id, chat.directory) AS origin,
+      ${privateExpression} AS isPrivate, chat.deleted_at AS deletedAt
     FROM chats chat
     LEFT JOIN workspaces workspace ON workspace.id = chat.workspace_id AND workspace.user_id = chat.user_id
     LEFT JOIN execution_hosts host ON host.id = chat.execution_host_id AND host.user_id = chat.user_id
-    LEFT JOIN ssh_servers server ON host.kind = 'ssh' AND server.id = host.source_id AND server.user_id = chat.user_id
     WHERE ${conditions.join(" AND ")}
     ORDER BY chat.deleted_at DESC, chat.id DESC LIMIT ?
   `).all(...values) as Array<{
     id: string; name: string; workspaceId: string | null; origin: string;
     isPrivate: number; deletedAt: string;
-    harnessState: string | null; hostKind: string | null; hostSourceId: string | null;
   }>;
   const hasMore = rows.length > options.limit;
   const items = rows.slice(0, options.limit).map((row) => {
-    const { harnessState, hostKind, hostSourceId, ...item } = row;
-    const recovery = parseStoredHarnessState(harnessState, item.id)?.historyRecovery;
-    const recoveryServerId = recovery && recovery.status !== "complete"
-      ? getRegisteredSshServerId(recovery.executionHost.host) : null;
+    const item = row;
     return {
       ...item,
       isPrivate: Boolean(item.isPrivate),
       expiresAt: new Date(Date.parse(item.deletedAt) + CHAT_TRASH_RETENTION_MS).toISOString(),
-      credentialServerIds: [...new Set([
-        ...(hostKind === "ssh" && hostSourceId ? [hostSourceId] : []),
-        ...(recoveryServerId ? [recoveryServerId] : []),
-      ])],
     };
   });
   const last = items.at(-1);

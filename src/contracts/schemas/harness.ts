@@ -81,7 +81,6 @@ export const ReplyToChatQuestionRequestSchema = z.object({
     }
   }).optional(),
   clientId: z.string().uuid().optional(),
-  credentialToken: z.string().nullable().optional(),
 }).strict();
 
 const AcceptedInputSchema = z.object({

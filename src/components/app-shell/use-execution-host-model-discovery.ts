@@ -12,7 +12,6 @@ import {
 } from "@/shared/settings";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { apiRequest } from "../../lib/api-client";
-import { isApiErrorCode } from "../../lib/api-error";
 
 interface ProviderAvailability {
   providerID: AgentProvider;
@@ -28,8 +27,6 @@ export function useExecutionHostModelDiscovery(
   host: ExecutionHostDescriptor,
   directory: string,
   secondaryPreferredProvider?: string,
-  credentialToken: string | null = null,
-  onCredentialRejected?: () => void,
 ) {
   const enabled = supportsPortableAcpRuntime(host.capabilities);
   const preferredProvider = host.preferredModel?.providerID;
@@ -63,10 +60,6 @@ export function useExecutionHostModelDiscovery(
       setProvidersLoading(false);
       return;
     }
-    if (host.ref.kind === "ssh" && !credentialToken) {
-      setProvidersLoading(false);
-      return;
-    }
     void (async () => {
       try {
         const result = await apiRequest<{ providers: ProviderAvailability[] }>(
@@ -74,7 +67,7 @@ export function useExecutionHostModelDiscovery(
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credentialToken }),
+            body: JSON.stringify({}),
             signal: controller.signal,
             action: "Discover execution-host providers",
             fallbackMessage: "Failed to discover providers on this server",
@@ -111,9 +104,6 @@ export function useExecutionHostModelDiscovery(
         if (discoveryError instanceof DOMException && discoveryError.name === "AbortError") {
           return;
         }
-        if (isApiErrorCode(discoveryError, "invalid_credential_token")) {
-          onCredentialRejected?.();
-        }
         setError(String(discoveryError));
       } finally {
         if (!controller.signal.aborted) {
@@ -124,10 +114,8 @@ export function useExecutionHostModelDiscovery(
     return () => controller.abort();
   }, [
     apiPath,
-    credentialToken,
     enabled,
     host.ref.kind,
-    onCredentialRejected,
     preferredProvider,
     secondaryPreferredProvider,
   ]);
@@ -139,11 +127,6 @@ export function useExecutionHostModelDiscovery(
       || !resolvedDirectory
       || !availableProviders.includes(provider)
     ) {
-      setModels([]);
-      setModelsLoading(false);
-      return;
-    }
-    if (host.ref.kind === "ssh" && !credentialToken) {
       setModels([]);
       setModelsLoading(false);
       return;
@@ -161,7 +144,6 @@ export function useExecutionHostModelDiscovery(
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              credentialToken,
               providerID: provider,
               directory: resolvedDirectory,
             }),
@@ -177,9 +159,6 @@ export function useExecutionHostModelDiscovery(
         if (discoveryError instanceof DOMException && discoveryError.name === "AbortError") {
           return;
         }
-        if (isApiErrorCode(discoveryError, "invalid_credential_token")) {
-          onCredentialRejected?.();
-        }
         setError(String(discoveryError));
       } finally {
         if (!controller.signal.aborted) {
@@ -191,11 +170,9 @@ export function useExecutionHostModelDiscovery(
   }, [
     apiPath,
     availableProviders,
-    credentialToken,
     directory,
     enabled,
     host.ref.kind,
-    onCredentialRejected,
     provider,
   ]);
 

@@ -74,11 +74,6 @@ export const LiveVoiceConfirmationResponseSchema = z.object({
   clientId: z.string().uuid(),
   approved: z.boolean(),
 }).strict();
-export const LiveVoiceCredentialResponseSchema = z.object({
-  clientId: z.string().uuid(),
-  credentialToken: z.string().uuid().nullable(),
-}).strict();
-
 export const LiveVoiceAvailabilityResponseSchema = z.object({
   supported: z.boolean(),
 }).strict();

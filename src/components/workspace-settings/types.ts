@@ -6,7 +6,6 @@ import type { ServerSettings, ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ExecutionHostRef } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
-import type { WorkspaceSshTargetRequest } from "@/contracts/schemas/workspace";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 
 /** Props for the shell workspace settings form. */
@@ -20,7 +19,6 @@ export interface WorkspaceSettingsFormProps {
     name: string,
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
     allowWorktrees: boolean,
@@ -31,7 +29,6 @@ export interface WorkspaceSettingsFormProps {
   onTest: (
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget?: WorkspaceSshTargetRequest | null,
   ) => Promise<{ success: boolean; error?: string }>;
   /** Callback to purge the workspace tasks covered by the terminal-state settings action */
   onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;

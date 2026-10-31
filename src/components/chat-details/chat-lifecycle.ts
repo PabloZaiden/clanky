@@ -4,11 +4,9 @@ import type {
   Chat,
   ChatSnapshot,
 } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { useTranscriptResource } from "../../hooks";
 import { useChatResourceState } from "../../hooks/chat-state-context";
 import { apiRequest } from "../../lib/api-client";
-import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   hasSameChatPresentation,
   mergeChatSummarySnapshot,
@@ -17,15 +15,6 @@ import {
 import type { ChatLifecycleResult } from "./types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "waiting", "interrupting", "reconnecting"]);
-
-export function getChatRegisteredSshServerId(
-  chat: Chat | null | undefined,
-): string | null {
-  const binding = chat?.config.source?.kind === "execution_host"
-    ? chat.config.source.executionHost
-    : chat?.config.executionHostBinding ?? chat?.state.session?.binding?.executionHost;
-  return binding ? getRegisteredSshServerId(binding.host) : null;
-}
 
 export function getChatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -83,7 +72,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   });
   const {
     resource: chat,
-    getResource: getChat,
     setResource: setChat,
     transcript,
     loading,
@@ -125,41 +113,18 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     } : current);
   }, [setChat]);
 
-  const handleReconnect = useCallback(async (): Promise<void> => {
-    try {
-      const serverId = getChatRegisteredSshServerId(getChat());
-      const credentialToken = serverId
-        ? await getStoredSshCredentialToken(serverId)
-        : null;
-      const nextChat = await apiRequest<Chat>(`/api/chats/${chatId}/reconnect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credentialToken ? { credentialToken } : {}),
-        action: "Reconnect chat",
-        fallbackMessage: "Failed to reconnect chat",
-      });
-      applyChatSnapshot(nextChat);
-    } catch (reconnectError) {
-      toast.error(String(reconnectError));
-    }
-  }, [applyChatSnapshot, chatId, getChat, toast]);
-
   const handleContinueFromHistory = useCallback(async (): Promise<boolean> => {
     if (isContinuingFromHistory) {
       return false;
     }
     setIsContinuingFromHistory(true);
     try {
-      const serverId = getChatRegisteredSshServerId(getChat());
-      const credentialToken = serverId
-        ? await getStoredSshCredentialToken(serverId)
-        : null;
       const recoveredChat = await apiRequest<Chat>(
         `/api/chats/${chatId}/continue-from-history`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(credentialToken ? { credentialToken } : {}),
+          body: JSON.stringify({}),
           action: "Continue chat from history",
           fallbackMessage: "Failed to continue chat from history",
         },
@@ -176,7 +141,6 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
   }, [
     applyChatSnapshot,
     chatId,
-    getChat,
     isContinuingFromHistory,
     toast,
   ]);
@@ -189,16 +153,12 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     error,
     notFound,
     isActive: chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false,
-    needsSshCredentials: chat !== null
-      && getChatRegisteredSshServerId(chat) !== null
-      && chat.state.connectionStatus === "needs_credentials",
     refreshChat,
     loadMoreTranscript,
     loadFullTranscript,
     loadToolCallDetails,
     applyChatSnapshot,
     markChatStarting,
-    handleReconnect,
     handleContinueFromHistory,
     isContinuingFromHistory,
   };

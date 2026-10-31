@@ -6,25 +6,9 @@ import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
 import { appResourceUrl, appSaveResource } from "../lib/public-path";
 import type { WebAppResourceUrl } from "@pablozaiden/webapp/web";
-import {
-  getStoredSshCredentialTokenLease,
-  getStoredSshServerCredential,
-  type SshCredentialTokenLease,
-} from "../lib/ssh-browser-credentials";
 import type { WorkspaceFileEntry } from "@/shared";
 import type {
   WorkspaceFileConflictResponse,
-  SshServerFileDeleteResponse,
-  SshServerFileListResponse,
-  SshServerFileMetadataResponse,
-  SshServerFileRenameResponse,
-  SshServerFileReadResponse,
-  SshServerFileTreeResponse,
-  SshServerFileUploadCancelResponse,
-  SshServerFileUploadChunkResponse,
-  SshServerFileUploadCompleteResponse,
-  SshServerFileUploadCreateResponse,
-  SshServerFileWriteResponse,
   DeleteFileExplorerRequest,
   RenameFileExplorerRequest,
   CreateFileExplorerUploadRequest,
@@ -64,7 +48,7 @@ export type FileExplorerTarget =
   | {
       type: "executionHost";
       id: string;
-      kind: "local" | "mesh" | "ssh";
+      kind: "local" | "mesh";
       startDirectory?: string;
     };
 
@@ -78,65 +62,6 @@ export class WorkspaceFileConflictError extends Error {
   }
 }
 
-export type FileExplorerCredentialErrorCode = "missing_ssh_credential" | "invalid_ssh_credential";
-
-export class FileExplorerCredentialError extends Error {
-  readonly code: FileExplorerCredentialErrorCode;
-
-  constructor(message: string, code: FileExplorerCredentialErrorCode) {
-    super(message);
-    this.name = "FileExplorerCredentialError";
-    this.code = code;
-  }
-}
-
-function createMissingSshCredentialError(): FileExplorerCredentialError {
-  return new FileExplorerCredentialError("Enter the SSH password for this server.", "missing_ssh_credential");
-}
-
-function createInvalidSshCredentialError(message?: string): FileExplorerCredentialError {
-  return new FileExplorerCredentialError(
-    message ?? "The SSH password for this server was rejected. Enter it again.",
-    "invalid_ssh_credential",
-  );
-}
-
-export async function requireFileExplorerServerCredentialLease(
-  serverId: string,
-  options: { forceRefresh?: boolean } = {},
-): Promise<SshCredentialTokenLease> {
-  const hadStoredCredential = getStoredSshServerCredential(serverId) !== null;
-
-  try {
-    const credential = await getStoredSshCredentialTokenLease(
-      serverId,
-      options,
-    );
-    if (credential) {
-      return credential;
-    }
-  } catch (error) {
-    if (
-      isApiErrorCode(error, "invalid_credential_token")
-      || isApiErrorCode(error, "invalid_encrypted_credential")
-    ) {
-      throw createInvalidSshCredentialError();
-    }
-    throw error;
-  }
-
-  if (hadStoredCredential) {
-    throw createInvalidSshCredentialError();
-  }
-
-  throw createMissingSshCredentialError();
-}
-
-export async function requireFileExplorerServerCredentialToken(serverId: string): Promise<string> {
-  const credential = await requireFileExplorerServerCredentialLease(serverId);
-  return credential.credentialToken;
-}
-
 function mapWorkspaceFileError(error: unknown): never {
   if (isApiErrorCode(error, "file_conflict")) {
     const currentFile = error.data?.["currentFile"];
@@ -146,13 +71,6 @@ function mapWorkspaceFileError(error: unknown): never {
         currentFile as WorkspaceFileConflictResponse["currentFile"],
       );
     }
-  }
-
-  if (
-    isApiErrorCode(error, "invalid_credential_token")
-    || isApiErrorCode(error, "invalid_encrypted_credential")
-  ) {
-    throw createInvalidSshCredentialError("The SSH password for this server expired or was rejected. Enter it again.");
   }
 
   throw error;
@@ -191,17 +109,11 @@ async function requestFileExplorerBlob(
   }
 }
 
-async function buildFileExplorerRequestInit(
-  target: FileExplorerTarget,
+function buildFileExplorerRequestInit(
   options?: WorkspaceFileRequestOptions,
   init?: RequestInit,
-): Promise<RequestInit> {
+): RequestInit {
   const headers = new Headers(init?.headers);
-
-  if (target.type === "executionHost" && target.kind === "ssh") {
-    const credentialToken = await requireFileExplorerServerCredentialToken(target.id);
-    headers.set("x-clanky-ssh-credential-token", credentialToken);
-  }
 
   return {
     ...init,
@@ -281,13 +193,13 @@ export async function listFileExplorerFilesApi(
   target: FileExplorerTarget,
   path = "",
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileListResponse | SshServerFileListResponse> {
+): Promise<WorkspaceFileListResponse> {
   const searchParams = buildFileExplorerSearchParams(target, {
     path,
   }, options);
-  return await requestFileExplorer<WorkspaceFileListResponse | SshServerFileListResponse>(
+  return await requestFileExplorer<WorkspaceFileListResponse>(
     `${getFileExplorerBasePath(target)}?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
+    buildFileExplorerRequestInit(options),
     "List file explorer files",
   );
 }
@@ -296,13 +208,13 @@ export async function readFileExplorerFileApi(
   target: FileExplorerTarget,
   path: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileReadResponse | SshServerFileReadResponse> {
+): Promise<WorkspaceFileReadResponse> {
   const searchParams = buildFileExplorerSearchParams(target, {
     path,
   }, options);
-  return await requestFileExplorer<WorkspaceFileReadResponse | SshServerFileReadResponse>(
+  return await requestFileExplorer<WorkspaceFileReadResponse>(
     `${getFileExplorerBasePath(target)}/content?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
+    buildFileExplorerRequestInit(options),
     "Read file explorer file",
   );
 }
@@ -310,11 +222,11 @@ export async function readFileExplorerFileApi(
 export async function loadFileExplorerTreeApi(
   target: FileExplorerTarget,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileTreeResponse | SshServerFileTreeResponse> {
+): Promise<WorkspaceFileTreeResponse> {
   const searchParams = buildFileExplorerSearchParams(target, {}, options);
-  return await requestFileExplorer<WorkspaceFileTreeResponse | SshServerFileTreeResponse>(
+  return await requestFileExplorer<WorkspaceFileTreeResponse>(
     `${getFileExplorerBasePath(target)}/tree?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
+    buildFileExplorerRequestInit(options),
     "Load file explorer tree",
   );
 }
@@ -323,14 +235,14 @@ export async function getFileExplorerFileMetadataApi(
   target: FileExplorerTarget,
   path: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileMetadataResponse | SshServerFileMetadataResponse> {
+): Promise<WorkspaceFileMetadataResponse> {
   return await runLimitedMetadataRequest(options?.signal, async () => {
     const searchParams = buildFileExplorerSearchParams(target, {
       path,
     }, options);
-    return await requestFileExplorer<WorkspaceFileMetadataResponse | SshServerFileMetadataResponse>(
+    return await requestFileExplorer<WorkspaceFileMetadataResponse>(
       `${getFileExplorerBasePath(target)}/metadata?${searchParams.toString()}`,
-      await buildFileExplorerRequestInit(target, options),
+      buildFileExplorerRequestInit(options),
       "Load file explorer metadata",
     );
   });
@@ -341,49 +253,26 @@ export async function getFileExplorerImagePreviewResource(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WebAppResourceUrl> {
-  if (target.type === "executionHost" && target.kind === "ssh") {
-    const searchParams = buildFileExplorerSearchParams(target, { path }, options);
-    const blob = await requestFileExplorerBlob(
-      `${getFileExplorerBasePath(target)}/preview?${searchParams.toString()}`,
-      await buildFileExplorerRequestInit(target, options),
-      "Load file explorer image preview",
-    );
-    const url = URL.createObjectURL(blob);
-    return { url, expiresAt: null, dispose: () => URL.revokeObjectURL(url) };
-  }
   const resource = await resolveFileExplorerResourcePath(target, path, "preview", options);
   return await appResourceUrl(resource.path, "resource", { signal: options?.signal });
 }
 
 export interface FileExplorerVideoPreviewResource {
   url: string;
-  credentialExpiresAt: number | null;
-}
-
-interface FileExplorerResourceUrlOptions extends WorkspaceFileRequestOptions {
-  refreshSshCredential?: boolean;
+  expiresAt: number | null;
 }
 
 async function resolveFileExplorerResourcePath(
   target: FileExplorerTarget,
   path: string,
   resource: "download" | "video-preview" | "preview",
-  options?: FileExplorerResourceUrlOptions,
-): Promise<{ path: string; credentialExpiresAt: number | null }> {
+  options?: WorkspaceFileRequestOptions,
+): Promise<{ path: string }> {
   const searchParams = buildFileExplorerSearchParams(target, {
     path,
   }, options);
-  let credentialExpiresAt: number | null = null;
-  if (target.type === "executionHost" && target.kind === "ssh") {
-    const credential = await requireFileExplorerServerCredentialLease(target.id, {
-      forceRefresh: options?.refreshSshCredential,
-    });
-    searchParams.set("credentialToken", credential.credentialToken);
-    credentialExpiresAt = credential.expiresAt;
-  }
   return {
     path: `${getFileExplorerBasePath(target)}/${resource}?${searchParams.toString()}`,
-    credentialExpiresAt,
   };
 }
 
@@ -400,14 +289,13 @@ export async function saveFileExplorerFileApi(
 export async function getFileExplorerVideoPreviewUrl(
   target: FileExplorerTarget,
   path: string,
-  options?: FileExplorerResourceUrlOptions,
+  options?: WorkspaceFileRequestOptions,
 ): Promise<FileExplorerVideoPreviewResource> {
   const resource = await resolveFileExplorerResourcePath(target, path, "video-preview", options);
   const authenticated = await appResourceUrl(resource.path, "resource", { signal: options?.signal });
   return {
     url: authenticated.url,
-    credentialExpiresAt: resource.credentialExpiresAt === null ? authenticated.expiresAt
-      : authenticated.expiresAt === null ? resource.credentialExpiresAt : Math.min(resource.credentialExpiresAt, authenticated.expiresAt),
+    expiresAt: authenticated.expiresAt,
   };
 }
 
@@ -421,7 +309,7 @@ export async function downloadFileExplorerFileApi(
   }, options);
   return await requestFileExplorerBlob(
     `${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
+    buildFileExplorerRequestInit(options),
     "Download file explorer file",
   );
 }
@@ -430,9 +318,9 @@ export async function writeFileExplorerFileApi(
   target: FileExplorerTarget,
   request: WriteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileWriteResponse | SshServerFileWriteResponse> {
+): Promise<WorkspaceFileWriteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  const requestOptions = await buildFileExplorerRequestInit(target, options, {
+  const requestOptions = buildFileExplorerRequestInit(options, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -442,7 +330,7 @@ export async function writeFileExplorerFileApi(
       ...(startDirectory ? { startDirectory } : {}),
     }),
   });
-  return await requestFileExplorer<WorkspaceFileWriteResponse | SshServerFileWriteResponse>(
+  return await requestFileExplorer<WorkspaceFileWriteResponse>(
     `${getFileExplorerBasePath(target)}/write`,
     requestOptions,
     "Write file explorer file",
@@ -453,11 +341,11 @@ export async function renameFileExplorerNodeApi(
   target: FileExplorerTarget,
   request: RenameFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileRenameResponse | SshServerFileRenameResponse> {
+): Promise<WorkspaceFileRenameResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  return await requestFileExplorer<WorkspaceFileRenameResponse | SshServerFileRenameResponse>(
+  return await requestFileExplorer<WorkspaceFileRenameResponse>(
     `${getFileExplorerBasePath(target)}/rename`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -475,11 +363,11 @@ export async function deleteFileExplorerNodeApi(
   target: FileExplorerTarget,
   request: DeleteFileExplorerRequest,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileDeleteResponse | SshServerFileDeleteResponse> {
+): Promise<WorkspaceFileDeleteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  return await requestFileExplorer<WorkspaceFileDeleteResponse | SshServerFileDeleteResponse>(
+  return await requestFileExplorer<WorkspaceFileDeleteResponse>(
     `${getFileExplorerBasePath(target)}/delete`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -497,11 +385,11 @@ async function createFileExplorerUploadApi(
   target: FileExplorerTarget,
   request: CreateFileExplorerUploadRequest,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileUploadCreateResponse | SshServerFileUploadCreateResponse> {
+): Promise<WorkspaceFileUploadCreateResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  return await requestFileExplorer<WorkspaceFileUploadCreateResponse | SshServerFileUploadCreateResponse>(
+  return await requestFileExplorer<WorkspaceFileUploadCreateResponse>(
     `${getFileExplorerBasePath(target)}/upload`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -521,14 +409,14 @@ async function writeFileExplorerUploadChunkApi(
   offset: number,
   chunk: Blob,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse> {
+): Promise<WorkspaceFileUploadChunkResponse> {
   const searchParams = buildFileExplorerSearchParams(target, {
     uploadId,
     offset: String(offset),
   }, options);
-  return await requestFileExplorer<WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse>(
+  return await requestFileExplorer<WorkspaceFileUploadChunkResponse>(
     `${getFileExplorerBasePath(target)}/upload/chunk?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
@@ -543,11 +431,11 @@ async function completeFileExplorerUploadApi(
   target: FileExplorerTarget,
   uploadId: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse> {
+): Promise<WorkspaceFileUploadCompleteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  return await requestFileExplorer<WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse>(
+  return await requestFileExplorer<WorkspaceFileUploadCompleteResponse>(
     `${getFileExplorerBasePath(target)}/upload/complete`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -565,11 +453,11 @@ async function cancelFileExplorerUploadApi(
   target: FileExplorerTarget,
   uploadId: string,
   options?: WorkspaceFileRequestOptions,
-): Promise<WorkspaceFileUploadCancelResponse | SshServerFileUploadCancelResponse> {
+): Promise<WorkspaceFileUploadCancelResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
-  return await requestFileExplorer<WorkspaceFileUploadCancelResponse | SshServerFileUploadCancelResponse>(
+  return await requestFileExplorer<WorkspaceFileUploadCancelResponse>(
     `${getFileExplorerBasePath(target)}/upload/cancel`,
-    await buildFileExplorerRequestInit(target, options, {
+    buildFileExplorerRequestInit(options, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -588,7 +476,7 @@ export async function uploadFileExplorerFileApi(
   directory: string,
   file: File,
   options?: UploadFileExplorerFileOptions,
-): Promise<WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse> {
+): Promise<WorkspaceFileUploadCompleteResponse> {
   const startDirectory = options?.startDirectory ?? target.startDirectory;
   const session = await createFileExplorerUploadApi(target, {
     directory,

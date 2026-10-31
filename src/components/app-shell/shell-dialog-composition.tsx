@@ -223,7 +223,6 @@ export function useShellDialogComposition({
         onClose={() => setRenameTerminalSessionTarget(null)}
         currentName={renameTerminalSessionTarget?.name ?? ""}
         onRename={renameTerminalSession}
-        sessionKind="terminal"
       />
       <ConfirmModal
         isOpen={Boolean(deleteTerminalSessionTarget)}

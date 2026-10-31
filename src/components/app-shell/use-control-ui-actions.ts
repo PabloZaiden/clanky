@@ -41,7 +41,6 @@ type NavigationResources = Pick<ReturnType<typeof useShellResources>,
   | "workspaces" | "workspaceError" | "refreshWorkspaces"
   | "agents"
   | "terminalSessions" | "terminalSessionsError" | "refreshTerminalSessions"
-  | "servers" | "sshServersError" | "refreshSshServers"
   | "executionHosts" | "executionHostsError" | "refreshExecutionHosts"
 >;
 
@@ -72,7 +71,6 @@ function getActionRoute(action: ControlUiAction): WebAppRoute | null {
     case "open_task": return { view: "task", taskId: action.taskId };
     case "open_agent": return { view: "agent", agentId: action.agentId };
     case "open_terminal": return { view: "terminal", terminalSessionId: action.terminalSessionId };
-    case "open_ssh_server": return { view: "execution-host", hostKind: "ssh", hostId: action.serverId };
     case "open_execution_host": return { view: "execution-host", hostKind: action.kind, hostId: action.id };
     case "open_home": return { view: "home" };
     case "open_settings": return { view: "settings" };
@@ -88,13 +86,8 @@ async function refreshNavigationTarget(action: ControlUiAction, resources: Navig
     case "open_task": await resources.refreshTasks(); break;
     case "open_agent": await resources.agents.refresh(); break;
     case "open_terminal": await resources.refreshTerminalSessions(); break;
-    case "open_ssh_server":
     case "open_execution_host":
-      await Promise.all([
-        resources.refreshExecutionHosts(),
-        ...(action.type === "open_ssh_server" || action.kind === "ssh"
-          ? [resources.refreshSshServers()] : []),
-      ]);
+      await resources.refreshExecutionHosts();
       break;
   }
 }
@@ -114,9 +107,7 @@ function isNavigationTargetReady(expected: WebAppRoute, resources: NavigationRes
       return !resources.terminalSessionsError && resources.terminalSessions.some((session) => session.config.id === expected["terminalSessionId"]);
     case "execution-host":
       return !resources.executionHostsError && resources.executionHosts.some((host) =>
-        host.ref.kind === expected["hostKind"] && getExecutionHostSourceId(host.ref) === expected["hostId"])
-        && (expected["hostKind"] !== "ssh" || !resources.sshServersError
-          && resources.servers.some((server) => server.config.id === expected["hostId"]));
+        host.ref.kind === expected["hostKind"] && getExecutionHostSourceId(host.ref) === expected["hostId"]);
     default: return true;
   }
 }

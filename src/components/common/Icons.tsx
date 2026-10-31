@@ -257,7 +257,7 @@ export function MeshIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
- * Cloud icon for SSH execution servers.
+ * Cloud icon for remote execution servers.
  */
 export function CloudIcon({ className = "", size = "h-4 w-4" }: IconProps) {
   return (

@@ -19,7 +19,6 @@ import { readScope } from "../../client-sdk/collaboration/resource-read";
 import { resourcePageResponse, workMetadataResponse } from "../resource-reads";
 
 const log = createLogger("api:chats");
-const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function mapChatUpdates(
   body: Partial<ChatConfig>,
@@ -209,7 +208,7 @@ export const chatsCrudRoutes = defineRoutes({
     delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read, update, or delete a chat session; remote cleanup may continue after deletion. Chat deletion accepts x-clanky-ssh-credential-token when remote history cleanup requires SSH credentials.",
+    description: "Read, update, or delete a chat session; remote cleanup may continue after deletion.",
     requestSchema: UpdateChatRequestSchema,
     operations: {
       GET: {
@@ -231,11 +230,6 @@ export const chatsCrudRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "Deletes the chat and stops its active work. Standalone chats are recoverable for 30 days; agent conversations are deleted permanently.",
-          credential: {
-            kind: "ssh",
-            resource: { name: "chats", idParameter: "id", purpose: "history-cleanup" },
-            header: SSH_CREDENTIAL_TOKEN_HEADER,
-          },
         },
       },
     },
@@ -297,7 +291,7 @@ export const chatsCrudRoutes = defineRoutes({
       }
     },
 
-    async DELETE(req: Request, ctx): Promise<Response> {
+    async DELETE(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
@@ -307,10 +301,9 @@ export const chatsCrudRoutes = defineRoutes({
       }
 
       try {
-        const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim() || null;
         if (isStandaloneChat(chat)) {
-          await chatManager.trashChat(ctx.params["id"]!, credentialToken);
-        } else if (!await chatManager.deleteChat(ctx.params["id"]!, { credentialToken })) {
+          await chatManager.trashChat(ctx.params["id"]!);
+        } else if (!await chatManager.deleteChat(ctx.params["id"]!)) {
           return errorResponse("not_found", "Chat not found", 404);
         }
         return successResponse();

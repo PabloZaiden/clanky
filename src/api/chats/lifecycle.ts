@@ -109,13 +109,7 @@ export const chatsLifecycleRoutes = defineRoutes({
         querySchema: undefined,
         automation: {
           policy: "write",
-          hiddenInputs: ["credentialToken"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            resource: { name: "chats", idParameter: "id", purpose: "connection" },
-            input: "credentialToken",
-          },
         },
       },
     },
@@ -130,9 +124,7 @@ export const chatsLifecycleRoutes = defineRoutes({
         if (!validation.success) {
           return validation.response;
         }
-        const reconnected = await chatManager.reconnectSession(ctx.params["id"]!, {
-          credentialToken: validation.data.credentialToken,
-        });
+        const reconnected = await chatManager.reconnectSession(ctx.params["id"]!);
         if (!reconnected) {
           return errorResponse("not_found", "Chat not found", 404);
         }
@@ -164,13 +156,7 @@ export const chatsLifecycleRoutes = defineRoutes({
         querySchema: undefined,
         automation: {
           policy: "write",
-          hiddenInputs: ["credentialToken"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            resource: { name: "chats", idParameter: "id", purpose: "continue-history" },
-            input: "credentialToken",
-          },
         },
       },
     },
@@ -191,7 +177,6 @@ export const chatsLifecycleRoutes = defineRoutes({
           return validation.response;
         }
         const recovered = await chatManager.continueFromHistory(chatId, {
-          credentialToken: validation.data.credentialToken,
           signal: req.signal,
         });
         if (!recovered) {

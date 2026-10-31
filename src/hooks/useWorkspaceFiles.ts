@@ -6,10 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FileExplorerCredentialErrorCode, FileExplorerTarget } from "./workspaceFileActions";
-import {
-  getFileExplorerCredentialErrorCode,
-} from "./file-explorer-utils";
+import type { FileExplorerTarget } from "./workspaceFileActions";
 import {
   useFileExplorerRequestScope,
 } from "./file-explorer-request-scope";
@@ -53,7 +50,6 @@ export function useFileExplorer(
   const lifecycleKey = JSON.stringify([enabled, loadFullTree]);
   const scope = useFileExplorerRequestScope(target, lifecycleKey);
   const [error, setError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
   const errorTargetKeyRef = useRef(scope.targetKey);
   const savingFileRef = useRef(false);
   const hasCurrentErrorState = errorTargetKeyRef.current === scope.targetKey;
@@ -64,14 +60,12 @@ export function useFileExplorer(
       return;
     }
     setError(null);
-    setErrorCode(null);
   }, [scope]);
 
   const applyErrorState = useCallback((requestError: unknown): string => {
     const message = requestError instanceof Error ? requestError.message : String(requestError);
     if (scope.isCurrent()) {
       setError(message);
-      setErrorCode(getFileExplorerCredentialErrorCode(requestError));
     }
     return message;
   }, [scope]);
@@ -98,7 +92,6 @@ export function useFileExplorer(
   useEffect(() => {
     errorTargetKeyRef.current = scope.targetKey;
     setError(null);
-    setErrorCode(null);
   }, [scope]);
 
   return {
@@ -117,7 +110,6 @@ export function useFileExplorer(
     loadingFile: document.loadingFile,
     savingFile: mutations.savingFile,
     error: hasCurrentErrorState ? error : null,
-    errorCode: hasCurrentErrorState ? errorCode : null,
     operationFailure: mutations.operationFailure,
     isDirty: document.isDirty,
     conflictState: conflicts.conflictState,

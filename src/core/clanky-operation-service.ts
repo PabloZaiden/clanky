@@ -15,6 +15,7 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { contentReadPage, readBytes, readRevision, DEFAULT_READ_BYTES } from "../client-sdk/collaboration/resource-read";
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";
+import { isRestartableAutomaticWorkspace } from "@/shared/workspace";
 
 export const CONTROL_READ_BYTES = DEFAULT_READ_BYTES;
 // Leave room for JSON escaping inside the existing Live output envelope.
@@ -217,7 +218,6 @@ export class ClankyOperationService {
       querySchema: publicSchema(metadata.querySchema, automation.hiddenQuery),
       requestSchema: publicSchema(metadata.requestSchema, automation.hiddenInputs),
       method,
-      requirements: automation.credential ? ["Originating browser SSH credential handoff"] : [],
     };
     const source = (options.section === "query" ? description.querySchema
       : options.section === "body" ? description.requestSchema : description) ?? null;
@@ -289,11 +289,6 @@ export class ClankyOperationService {
     assertPublicInputs(bodySchema, body, automation.hiddenInputs);
     if (bodySchema) {
       if (body === undefined && bodySchema instanceof z.ZodObject) body = {};
-      const credentialInput = automation.credential?.input;
-      // Validate without a credential; only the originating browser can supply it at dispatch.
-      if (credentialInput && (body === undefined || body && typeof body === "object" && !Array.isArray(body))) {
-        body = { ...body, [credentialInput]: null };
-      }
       body = bodySchema.parse(body);
     }
     else if (input.bodyJson !== null && input.bodyJson !== "{}") {
@@ -303,6 +298,17 @@ export class ClankyOperationService {
   }
 
   async targetRevision(authority: OperationAuthority, prepared: PreparedOperation, signal: AbortSignal): Promise<string | null> {
+    if (prepared.id === "POST /api/settings/restart-automatic-workspaces") {
+      const { workspaceManager } = await import("./workspace-manager");
+      const targets = (await workspaceManager.listWorkspaces())
+        .filter(isRestartableAutomaticWorkspace)
+        .map((workspace) => ({
+          id: workspace.id,
+          binding: workspace.provisioningHostBinding ?? workspace.executionHostBinding,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id));
+      return readRevision(targets);
+    }
     const target = this.catalog.filter((entry) => prepared.entry.path.startsWith(entry.path)
       && entry.methods.includes("GET")
       && compileRoutePatterns(entry.path, entry.cliPath).api.captures.length > 0
@@ -324,28 +330,18 @@ export class ClankyOperationService {
   async execute(authority: OperationAuthority, prepared: PreparedOperation, options: {
     signal: AbortSignal;
     clientId?: string;
-    credentialToken?: string | null;
-    credentialTokens?: Readonly<Record<string, string>>;
-    unavailableServerIds?: readonly string[];
   }): Promise<OperationResult> {
     this.requireOperation(prepared.id, authority);
     const automation = prepared.metadata.automation!;
     let body = prepared.body;
-    const headers: Record<string, string> = {};
     if (automation.hiddenInputs?.includes("clientId")) {
       body = { ...(body && typeof body === "object" ? body : {}), clientId: options.clientId };
-    }
-    if (automation.credential) {
-      if (automation.credential.input) body = { ...(body && typeof body === "object" ? body : {}), [automation.credential.input]: options.credentialToken };
-      if (automation.credential.header && options.credentialToken) headers[automation.credential.header] = options.credentialToken;
-      if (automation.credential.mapInput) body = { ...(body && typeof body === "object" ? body : {}), [automation.credential.mapInput]: options.credentialTokens ?? {} };
-      if (automation.credential.unavailableInput) body = { ...(body && typeof body === "object" ? body : {}), [automation.credential.unavailableInput]: options.unavailableServerIds ?? [] };
     }
     if (prepared.metadata.requestSchema instanceof z.ZodType) {
       body = prepared.metadata.requestSchema.parse(body);
     }
     const result = await authority.request({
-      method: prepared.method, path: prepared.path, body, headers, signal: options.signal,
+      method: prepared.method, path: prepared.path, body, signal: options.signal,
     });
     return {
       ...result,

@@ -2,18 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExecutionHostRef } from "@/shared";
 import {
   getExecutionHostSourceId,
-  getRegisteredSshServerId,
 } from "@/shared/execution-host";
 import { apiRequest } from "../../lib/api-client";
-import {
-  getStoredSshCredentialToken,
-  storeSshServerPassword,
-} from "../../lib/ssh-browser-credentials";
 import { isAbortError } from "../../lib/request-lifecycle";
 
 export function useExecutionHostAddresses(
   executionHost: ExecutionHostRef | null,
-  password?: string,
 ): {
   addresses: string[];
   loading: boolean;
@@ -24,7 +18,6 @@ export function useExecutionHostAddresses(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
-  const credentialWriteRef = useRef<Promise<void>>(Promise.resolve());
   const requestIdRef = useRef(0);
   const mountedRef = useRef(false);
 
@@ -46,27 +39,6 @@ export function useExecutionHostAddresses(
     setError(null);
 
     try {
-      const serverId = getRegisteredSshServerId(host);
-      if (serverId && password?.trim()) {
-        const passwordToStore = password.trim();
-        const previousWrite = credentialWriteRef.current;
-        const nextWrite = previousWrite
-          .catch(() => undefined)
-          .then(async () => {
-            if (
-              controller.signal.aborted
-              || requestId !== requestIdRef.current
-            ) {
-              return;
-            }
-            await storeSshServerPassword(serverId, passwordToStore);
-          });
-        credentialWriteRef.current = nextWrite.catch(() => undefined);
-        await nextWrite;
-      }
-      const credentialToken = serverId
-        ? await getStoredSshCredentialToken(serverId)
-        : null;
       const response = await apiRequest<{ addresses: string[] }>(
         `/api/execution-hosts/${encodeURIComponent(host.kind)}/${encodeURIComponent(
           getExecutionHostSourceId(host),
@@ -74,7 +46,7 @@ export function useExecutionHostAddresses(
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credentialToken }),
+          body: JSON.stringify({}),
           signal: controller.signal,
           action: "Discover execution-host addresses",
           fallbackMessage: "Failed to discover execution-host addresses",
@@ -111,7 +83,7 @@ export function useExecutionHostAddresses(
         setLoading(false);
       }
     }
-  }, [executionHost, password]);
+  }, [executionHost]);
 
   useEffect(() => {
     mountedRef.current = true;

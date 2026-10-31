@@ -16,10 +16,6 @@ export interface WebSocketData {
   terminalTransport?: ExecutionHostKind;
   /** Whether this socket is a terminal transport socket */
   terminalMode?: boolean;
-  /** Whether this terminal must receive a browser-held SSH credential token before starting */
-  terminalCredentialRequired?: boolean;
-  /** Timeout used while waiting for a direct SSH terminal credential */
-  terminalCredentialTimeout?: ReturnType<typeof setTimeout>;
   /** Whether this socket is the CLI live-preview bridge */
   previewBridgeMode?: boolean;
   /** Authenticated user ID captured when the preview bridge is upgraded */

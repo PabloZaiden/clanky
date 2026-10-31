@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/25427c86-2b8b-41c0-a77f-4aad427dee93
   changes before accepting or pushing them.
 - **One control plane:** manage tasks, chats, agents, workspaces, terminals,
   files, previews, and reviews from the dashboard or API.
-- **Local or remote execution:** run locally or use a remote SSH or Mesh host
+- **Local or remote execution:** run locally or use a remote Mesh host
   when the repository and agent should live elsewhere.
 
 ![Clanky dashboard](assets/screenshots/desktop/home-promo.png)

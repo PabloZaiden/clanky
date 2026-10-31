@@ -73,7 +73,6 @@ export class ProvisioningManager {
     );
     const {
       mode,
-      transport,
       executionHostBinding,
       existingWorkerEnrollmentId,
       workerEnrollmentRoute,
@@ -81,9 +80,11 @@ export class ProvisioningManager {
       workerHostAddress,
       workspaceWorkerEnrollmentId,
     } = target;
+    const automaticWorker = target.ownership.workerEnrollment === "new"
+      || target.ownership.workerEnrollment === "reused";
     if (
       options.channel && options.channel !== "default"
-      && (transport !== "worker" || mode === "arise")
+      && !automaticWorker
     ) {
       throw new ProvisioningFailedError(
         "invalid_clanky_release_channel",
@@ -94,11 +95,11 @@ export class ProvisioningManager {
     const runtime: AgentSettings = (mode === "rebuild" || mode === "restart") && options.workspaceId
       ? (await workspaceManager.requireWorkspace(options.workspaceId)).serverSettings.agent
       : { adapter: options.adapter ?? "acp", provider: options.provider };
-    if (!isAgentSettings(runtime) || (mode !== "arise" && transport !== "worker" && runtime.adapter !== "acp")) {
+    if (!isAgentSettings(runtime) || (mode !== "arise" && !automaticWorker && runtime.adapter !== "acp")) {
       throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires a dedicated worker and matching harness preset.");
     }
     const channel = options.channel ?? "default";
-    const releaseChannel = transport !== "worker" || mode === "arise"
+    const releaseChannel = !automaticWorker
       ? undefined
       : channel !== "default"
         ? channel
@@ -113,7 +114,6 @@ export class ProvisioningManager {
           id: jobId,
           name: options.name.trim(),
           executionHostBinding,
-          transport,
           ...(options.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: options.workspaceWorkerEnrollmentId }
             : {}),
@@ -137,7 +137,7 @@ export class ProvisioningManager {
           createNewRepository: options.createNewRepository === true,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),
           workspaceId: normalizeOptionalValue(options.workspaceId),
-          ...(transport === "worker" && mode !== "arise" ? { channel, releaseChannel } : {}),
+          ...(automaticWorker ? { channel, releaseChannel } : {}),
           createdAt: now,
         },
         state: {
@@ -151,7 +151,7 @@ export class ProvisioningManager {
       abortController: new AbortController(),
       owner,
       runnerActive: true,
-      secretValues: options.password?.trim() ? [options.password.trim()] : [],
+      secretValues: [],
       targetOwnership: target.ownership,
     };
     record.attempt = new ProvisioningAttempt({
@@ -207,10 +207,10 @@ export class ProvisioningManager {
     emitJobStarted(record.job);
 
     const run = mode === "arise"
-      ? () => this.workflows.runServerArise(record, options.password)
+      ? () => this.workflows.runServerArise(record)
       : mode === "rebuild" || mode === "restart"
-        ? () => this.workflows.runExistingWorkspace(record, options.password, mode)
-        : () => this.workflows.runProvision(record, options.password);
+        ? () => this.workflows.runExistingWorkspace(record, mode)
+        : () => this.workflows.runProvision(record);
     void runWithCurrentUser(owner, run)
       .catch(async (error) => {
         try {
