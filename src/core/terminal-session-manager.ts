@@ -2,7 +2,7 @@
  * Core manager for terminal sessions.
  *
  * Workspace terminal sessions are transport-neutral — they work with local
- * local and Mesh workspaces. Each session is bound to an immutable
+ * and Mesh workspaces. Each session is bound to an immutable
  * snapshot of the workspace execution target at creation time.
  *
  * Direct host sessions use the same lifecycle as workspace sessions.
