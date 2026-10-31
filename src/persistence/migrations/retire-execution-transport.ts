@@ -17,18 +17,37 @@ export function dropRetiredExecutionTables(db: Database): void {
 }
 
 export function retireExecutionTransport(db: Database): void {
-  const unsupportedHost = db.query(
-    "SELECT 1 FROM execution_hosts WHERE kind NOT IN ('local', 'mesh') LIMIT 1",
-  ).get();
-  if (unsupportedHost) {
-    throw new Error(
-      "Unsupported legacy execution hosts still exist. Migrate or remove their resources with the previous application version before upgrading; no resource data was deleted.",
-    );
-  }
-
   db.run("PRAGMA foreign_keys = OFF");
   try {
     db.transaction(() => {
+      db.run(`DELETE FROM execution_hosts
+        WHERE kind = 'ssh'
+          AND NOT EXISTS (
+            SELECT 1 FROM workspaces
+            WHERE execution_host_id = execution_hosts.id
+              OR provisioning_host_id = execution_hosts.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM chats WHERE execution_host_id = execution_hosts.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM terminal_sessions WHERE execution_host_id = execution_hosts.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM preview_sessions WHERE execution_host_id = execution_hosts.id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM provisioning_jobs WHERE execution_host_id = execution_hosts.id
+          )`);
+      const unsupportedHost = db.query(
+        "SELECT 1 FROM execution_hosts WHERE kind NOT IN ('local', 'mesh') LIMIT 1",
+      ).get();
+      if (unsupportedHost) {
+        throw new Error(
+          "Unsupported legacy execution hosts still exist. Migrate or remove their resources with the previous application version before upgrading; no resource data was deleted.",
+        );
+      }
+
       dropRetiredExecutionTables(db);
       db.run(`CREATE TABLE execution_hosts_current (
         id TEXT PRIMARY KEY,

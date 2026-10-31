@@ -268,11 +268,17 @@ markers preserve deployed version history. Verify significant upgrade and
 recovery contracts through the compiled application and public boundaries,
 including a second restart when idempotency matters.
 
+Before retiring the SSH execution transport, upgrades remove orphaned SSH host
+records, whether revoked or not. A host is retained if referenced by a
+workspace's execution or provisioning binding, a chat, a terminal, a preview,
+or provisioning history. Local and Mesh hosts are preserved.
+
 Retired execution configuration is never remapped to local execution or
-deleted implicitly. Upgrades refuse unsupported host bindings or populated
-retired configuration tables; resolve them with the previous application
-version first. Empty retired tables are removed on startup, including those
-recreated by the immutable baseline.
+deleted implicitly. After orphan cleanup, upgrades still refuse unsupported
+host bindings or populated retired configuration tables; resolve them with the
+previous application version first. Cleanup and schema retirement share a
+transaction, so any failure rolls back both. Empty retired tables are removed
+on startup, including those recreated by the immutable baseline.
 
 Use parameterized SQL and allowlists for dynamic identifiers, including
 PRAGMA table names. Do not use `INSERT OR REPLACE`: its delete/insert behavior
