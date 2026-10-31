@@ -303,6 +303,11 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
 
 1. On the worker host, bootstrap its local configuration:
 
+   Choose direct mode with `--host`, `--port`, and an HTTPS `--mesh-endpoint`,
+   or use `--relay-only` as shown below. In both modes, `--worker-directory`
+   defaults to `$HOME` and `--instance-name` defaults to the system hostname.
+   Both flags are optional overrides.
+
    ```bash
    clanky worker bootstrap \
      --host 0.0.0.0 \
@@ -315,8 +320,7 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    The data directory defaults to `$HOME/.clanky`; use `CLANKY_DATA_DIR` only
    when an alternate location is required. The bootstrap persists the bind
    host, port, worker directory, advertised endpoint, and worker identity.
-   The instance name is required and is the name controllers display for this
-   worker.
+   The instance name is the name controllers display for this worker.
    Mesh execution resolves relative directories and paths against the
    configured worker directory; absolute paths are used directly.
    `--mesh-endpoint` must be a public DNS name or a stable IP reachable from
@@ -333,15 +337,12 @@ realtime UI, or unrelated APIs. Do not combine worker mode with
    instead of publishing a worker endpoint:
 
    ```bash
-   clanky worker bootstrap \
-     --relay-only \
-     --worker-directory /workspaces \
-     --instance-name worker-1
+   clanky worker bootstrap --relay-only
    ```
 
-   Relay-only workers use loopback and an ephemeral port; do not pass
-   `--mesh-endpoint`. Pair a relay on the controller before
-   enrolling the worker.
+   Relay-only workers use loopback and an ephemeral port; `--host` and
+   `--port` are not required, and `--mesh-endpoint` is not accepted.
+   Pair a relay on the controller before enrolling the worker.
 
 2. Install and start the native service on the worker:
 

@@ -1,3 +1,4 @@
+import { homedir, hostname } from "node:os";
 import { resolve } from "node:path";
 import {
   createLogger,
@@ -116,8 +117,8 @@ export function parseWorkerBootstrapArgs(
     }
     index += 1;
   }
-  if (!workerDirectory) throw new Error("worker bootstrap requires --worker-directory");
-  if (!instanceName) throw new Error("worker bootstrap requires --instance-name");
+  workerDirectory ??= resolve(homedir());
+  instanceName ??= normalizeMeshInstanceName(hostname());
   if (relayOnly) {
     if (meshEndpoint) {
       throw new Error("worker bootstrap --relay-only does not accept --mesh-endpoint");
@@ -139,9 +140,15 @@ export function parseWorkerBootstrapArgs(
       relayOnly: true,
     };
   }
-  if (!host) throw new Error("worker bootstrap requires --host");
-  if (port === undefined) throw new Error("worker bootstrap requires --port");
-  if (!meshEndpoint) throw new Error("worker bootstrap requires --mesh-endpoint");
+  if (!host) {
+    throw new Error("worker bootstrap requires --host for direct mode, or use --relay-only");
+  }
+  if (port === undefined) {
+    throw new Error("worker bootstrap requires --port for direct mode, or use --relay-only");
+  }
+  if (!meshEndpoint) {
+    throw new Error("worker bootstrap requires --mesh-endpoint for direct mode, or use --relay-only");
+  }
   if (getMeshTransport(meshEndpoint) !== "https") {
     throw new Error(
       "worker bootstrap requires an HTTPS --mesh-endpoint",
@@ -378,7 +385,17 @@ async function runWorkerCommand(
 export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliContext> {
   return {
     description: "Bootstrap and manage a Mesh worker.",
-    usage: "worker <bootstrap|join|channel|service|ssh-agent> [options]",
+    usage: [
+      "worker <bootstrap|join|channel|service|ssh-agent> [options]",
+      "",
+      "Bootstrap (choose direct mode or --relay-only):",
+      "  clanky worker bootstrap --host HOST --port PORT --mesh-endpoint HTTPS_URL [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
+      "  clanky worker bootstrap --relay-only [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
+      "",
+      "Direct mode requires --host, --port, and an HTTPS --mesh-endpoint.",
+      "Relay-only mode needs no --host or --port, uses loopback and an ephemeral port, and does not accept --mesh-endpoint.",
+      "Defaults: --worker-directory uses $HOME; --instance-name uses the system hostname.",
+    ].join("\n"),
     handler: runWorkerCommand,
   };
 }
