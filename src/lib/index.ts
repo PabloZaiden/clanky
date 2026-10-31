@@ -3,21 +3,6 @@
  */
 
 export {
-  clearStoredSshServerCredential,
-  encryptSshServerPassword,
-  exchangeSshServerCredential,
-  fetchSshServerPublicKey,
-  getStoredSshCredentialToken,
-  getStoredSshServerCredential,
-  invalidateStoredSshCredentialToken,
-  isStoredCredentialCompatible,
-  saveStoredSshServerCredential,
-  storeSshServerPassword,
-  type BrowserCredentialStorageLike,
-  type StoredSshServerCredential,
-  type SshBrowserCredentialDependencies,
-} from "./ssh-browser-credentials";
-export {
   getStoredChatModelPreference,
   getStoredTaskCheapModelPreference,
   getStoredTaskModelPreference,

@@ -1,7 +1,5 @@
 import { defineRoutes } from "@pablozaiden/webapp/server";
 import { provisioningManager } from "../core/provisioning-manager";
-import { sshCredentialManager } from "../core/ssh-credential-manager";
-import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
@@ -12,7 +10,6 @@ import {
   shouldIncludeSensitiveData,
 } from "../lib/sensitive-data";
 import { SensitiveQuerySchema } from "./route-schemas";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 
 const log = createLogger("api:provisioning");
 
@@ -48,14 +45,8 @@ export const provisioningRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "May create repositories, replace containers, or restart execution hosts.",
-          hiddenInputs: ["credentialToken"],
           hiddenQuery: ["sensitive"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            hostInput: "executionHost",
-            input: "credentialToken",
-          },
         },
       },
     },
@@ -78,31 +69,6 @@ export const provisioningRoutes = defineRoutes({
       }
 
       try {
-        const sshServerId = validation.data.executionHost
-          ? getRegisteredSshServerId(validation.data.executionHost)
-          : null;
-        if (
-          validation.data.executionHost?.kind === "ssh"
-          && !sshServerId
-        ) {
-          return errorResponse(
-            "invalid_execution_host",
-            "Provisioning requires a registered SSH server.",
-            400,
-          );
-        }
-        const server = sshServerId
-          ? await sshServerManager.getServer(sshServerId)
-          : null;
-        if (sshServerId && !server) {
-          return errorResponse("not_found", "SSH server not found", 404);
-        }
-
-        const credentialToken = validation.data.credentialToken?.trim();
-        const password = credentialToken && server
-          ? sshCredentialManager.getPasswordForToken(server.config.id, credentialToken)
-          : undefined;
-
         const snapshot = await provisioningManager.startJob({
           name: validation.data.name,
           ...(validation.data.executionHost
@@ -111,7 +77,6 @@ export const provisioningRoutes = defineRoutes({
           ...(validation.data.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: validation.data.workspaceWorkerEnrollmentId }
             : {}),
-          transport: validation.data.transport,
           ...(validation.data.workerEnrollmentRoute
             ? { workerEnrollmentRoute: validation.data.workerEnrollmentRoute }
             : {}),
@@ -136,7 +101,6 @@ export const provisioningRoutes = defineRoutes({
           targetDirectory: validation.data.targetDirectory ?? undefined,
           workspaceId: validation.data.workspaceId ?? undefined,
           channel: validation.data.channel,
-          password,
         });
         return Response.json(
           includeSensitive ? snapshot : sanitizeProvisioningSnapshot(snapshot),

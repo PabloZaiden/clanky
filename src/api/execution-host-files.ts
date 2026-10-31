@@ -1,10 +1,9 @@
 /**
- * File explorer routes for local, Mesh, and SSH execution hosts.
+ * File explorer routes for local and Mesh execution hosts.
  */
 
 import {
   executionHostRefFromParts,
-  getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared";
 import { executionHostService } from "../core/execution-host-service";
@@ -12,14 +11,11 @@ import {
   resolveFileExplorerRootDirectory,
   type FileExplorerTarget,
 } from "../core/file-explorer-service";
-import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { fileSystemTargetFingerprint } from "../core/file-system-service";
 import { DomainError } from "../domain/domain-error";
 import { createFileExplorerRoutes } from "./file-explorer-routes";
 import { createFileSystemRoutes } from "./file-system-routes";
 import type { FileExplorerRouteConfig } from "./file-explorer-routes";
-
-const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function parseRef(req: Request, id: string): ExecutionHostRef {
   const segments = new URL(req.url).pathname.split("/");
@@ -29,7 +25,7 @@ function parseRef(req: Request, id: string): ExecutionHostRef {
   }
   throw new DomainError(
     "execution_host_kind_invalid",
-    "Execution host kind must be local, mesh, or ssh.",
+    "Execution host kind must be local or mesh.",
   );
 }
 
@@ -37,40 +33,14 @@ async function resolveExecutionHostFileTarget(
   req: Request,
   id: string,
   startDirectory?: string,
-  options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
   const ref = parseRef(req, id);
   const host = await executionHostService.requireCapability(ref, "fileOperations");
 
-  let sshPassword: string | undefined;
-  if (ref.kind === "ssh") {
-    const serverId = getRegisteredSshServerId(ref);
-    if (!serverId) {
-      throw new DomainError(
-        "execution_host_unavailable",
-        "Workspace-owned SSH targets are only available through their workspace.",
-      );
-    }
-    const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim()
-      || (options?.allowCredentialTokenQuery
-        ? new URL(req.url).searchParams.get("credentialToken")?.trim()
-        : undefined);
-    if (!credentialToken) {
-      throw new DomainError(
-        "invalid_credential_token",
-        "SSH credential token is required for this execution host.",
-      );
-    }
-    sshPassword = sshCredentialManager.getPasswordForToken(serverId, credentialToken);
-  }
-
-  const defaultRoot = (await executionHostService.resolveWorkingDirectory(ref, {
-    sshPassword,
-  })).directory;
+  const defaultRoot = (await executionHostService.resolveWorkingDirectory(ref)).directory;
   const executor = await executionHostService.getCommandExecutorForRef(ref, {
     operationId: `file-explorer:${id}`,
     directory: defaultRoot,
-    sshPassword,
   });
   return {
     id,
@@ -92,12 +62,7 @@ const configuration: FileExplorerRouteConfig = {
   resourceLabel: "execution host",
   responseIdField: "serverId",
   invalidPathError: "invalid_server_path",
-  internalError: "ssh_server_file_error",
-  automationCredential: {
-    kind: "ssh",
-    serverParameter: "id",
-    header: SSH_CREDENTIAL_TOKEN_HEADER,
-  },
+  internalError: "execution_host_file_error",
   resolveTarget: resolveExecutionHostFileTarget,
 };
 

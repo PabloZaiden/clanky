@@ -7,21 +7,17 @@ import {
   type FileExplorerOperation,
   type FileExplorerOperationFailure,
 } from "../../hooks";
-import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { ConfirmModal, ErrorState, Modal, Panel } from "@pablozaiden/webapp/web";
 import { Button, SidebarIcon } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
-import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
 import { WorkspaceVideoPreviewPanel } from "../workspace-files/video-preview-panel";
 import { LargeFileWarningPanel } from "../workspace-files/large-file-warning-panel";
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
-import { ServerPasswordModal } from "./server-password-modal";
-import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { TerminalSessionModeModal } from "./terminal-session-mode-modal";
 import {
   saveFileExplorerFileApi,
@@ -51,10 +47,6 @@ function FileIcon() {
 
 type ExplorerPane = "editor" | "terminal";
 type ExplorerSession = TerminalSession;
-
-function isServerCredentialErrorCode(errorCode: string | null): boolean {
-  return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
-}
 
 function getFileExplorerOperationFallback(operation: FileExplorerOperation): string {
   switch (operation) {
@@ -100,9 +92,7 @@ function isFileExplorerMobileViewport(): boolean {
 }
 
 interface FileExplorerViewProps {
-  title: string;
   defaultRootDirectory: string;
-  backRoute: WebAppRoute;
   onNavigate: (route: WebAppRoute) => void;
   target: FileExplorerTarget;
   sessions: ExplorerSession[];
@@ -115,7 +105,6 @@ interface FileExplorerViewProps {
   ) => Promise<ExplorerSession>;
   canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
-  credentialPromptName?: string;
   initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => WebAppRoute;
   controlFileOpenRequest?: PendingControlFileOpen;
@@ -123,9 +112,7 @@ interface FileExplorerViewProps {
 }
 
 export function FileExplorerView({
-  title,
   defaultRootDirectory,
-  backRoute,
   onNavigate,
   target,
   sessions,
@@ -135,7 +122,6 @@ export function FileExplorerView({
   onCreateTerminal,
   canChooseTerminalTmux,
   testIdPrefix,
-  credentialPromptName,
   initialFilePath,
   buildRoute,
   controlFileOpenRequest,
@@ -143,21 +129,9 @@ export function FileExplorerView({
 }: FileExplorerViewProps) {
   const readOnly = useWorkspaceReadOnly();
   const toast = useToast();
-  const hasStoredServerCredential = target.type === "executionHost" && target.kind === "ssh"
-    ? getStoredSshServerCredential(target.id) !== null
-    : true;
-  const [startupBlockedByPassword, setStartupBlockedByPassword] = useState(
-    target.type === "executionHost" && target.kind === "ssh" && !hasStoredServerCredential,
-  );
-  const [serverPasswordModalOpen, setServerPasswordModalOpen] = useState(
-    target.type === "executionHost" && target.kind === "ssh" && !hasStoredServerCredential,
-  );
-  const [serverPassword, setServerPassword] = useState("");
-  const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
-  const [serverPasswordSubmitting, setServerPasswordSubmitting] = useState(false);
   const fullTreePreference = useFileExplorerFullTreePreference();
   const explorer = useFileExplorer(target, {
-    enabled: !startupBlockedByPassword && !fullTreePreference.loading,
+    enabled: !fullTreePreference.loading,
     loadFullTree: fullTreePreference.enabled,
   });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
@@ -223,41 +197,6 @@ export function FileExplorerView({
   useEffect(() => {
     setLoadFullTreeInput(fullTreePreference.enabled);
   }, [fullTreePreference.enabled]);
-
-  useEffect(() => {
-    const requiresPasswordBeforeStart = target.type === "executionHost"
-      && target.kind === "ssh"
-      && !hasStoredServerCredential;
-    setStartupBlockedByPassword(requiresPasswordBeforeStart);
-    setServerPasswordModalOpen(requiresPasswordBeforeStart);
-    setServerPassword("");
-    setServerPasswordError(null);
-    setServerPasswordSubmitting(false);
-  }, [
-    hasStoredServerCredential,
-    target.id,
-    target.type,
-    target.type === "executionHost" ? target.kind : undefined,
-  ]);
-
-  useEffect(() => {
-    if (target.type !== "executionHost" || target.kind !== "ssh") {
-      return;
-    }
-
-    if (
-      isServerCredentialErrorCode(explorer.errorCode)
-    ) {
-      setServerPassword("");
-      setServerPasswordError(explorer.error);
-      setServerPasswordModalOpen(true);
-    }
-  }, [
-    explorer.error,
-    explorer.errorCode,
-    target.type,
-    target.type === "executionHost" ? target.kind : undefined,
-  ]);
 
   useEffect(() => {
     const failure = explorer.operationFailure;
@@ -328,7 +267,7 @@ export function FileExplorerView({
   const pickerHasChanges = rootChanged || modeChanged;
   const tabButtonClassName = (pane: ExplorerPane, compact = false) => [
     "inline-flex h-9 min-h-[36px] min-w-0 items-center gap-2 overflow-hidden rounded-lg px-3 py-1.5 text-sm font-medium transition whitespace-nowrap",
-    compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
+    compact ? "w-full justify-center md:w-9 md:px-0" : "w-full justify-center",
     activePane === pane
       ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
       : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
@@ -468,46 +407,6 @@ export function FileExplorerView({
     }
   }, [explorer, toast]);
 
-  const handleCloseServerPasswordModal = useCallback(() => {
-    setServerPasswordModalOpen(false);
-    setServerPassword("");
-    setServerPasswordError(null);
-    if (startupBlockedByPassword) {
-      onNavigate(backRoute);
-    }
-  }, [backRoute, onNavigate, startupBlockedByPassword]);
-
-  const handleSubmitServerPassword = useCallback(async () => {
-    if (target.type !== "executionHost" || target.kind !== "ssh") {
-      return;
-    }
-
-    const trimmedPassword = serverPassword.trim();
-    if (!trimmedPassword) {
-      setServerPasswordError("Enter the SSH password for this server.");
-      return;
-    }
-
-    try {
-      setServerPasswordSubmitting(true);
-      setServerPasswordError(null);
-      await storeSshServerPassword(target.id, trimmedPassword);
-      await requireFileExplorerServerCredentialToken(target.id);
-      const shouldStartExplorer = startupBlockedByPassword;
-      setStartupBlockedByPassword(false);
-      setServerPassword("");
-      setServerPasswordModalOpen(false);
-
-      if (!shouldStartExplorer) {
-        await explorer.refreshTree(explorer.currentDirectory);
-      }
-    } catch (error) {
-      setServerPasswordError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setServerPasswordSubmitting(false);
-    }
-  }, [explorer, serverPassword, startupBlockedByPassword, target]);
-
   const handleOpenFile = useCallback(async (path: string) => {
     setActivePane("editor");
     await explorer.openFile(path);
@@ -645,7 +544,6 @@ export function FileExplorerView({
     if (
       !initialFilePath
       || fullTreePreference.loading
-      || startupBlockedByPassword
       || explorer.loadingTree
       || explorer.loadingFile
       || explorer.pendingFilePath === initialFilePath
@@ -697,7 +595,6 @@ export function FileExplorerView({
     initialFilePath,
     controlFileOpenRequest?.actionId,
     fullTreePreference.loading,
-    startupBlockedByPassword,
     target.id,
     target.startDirectory,
     target.type,
@@ -743,8 +640,7 @@ export function FileExplorerView({
       return;
     }
     if (
-      startupBlockedByPassword
-      || fullTreePreference.loading
+      fullTreePreference.loading
       || explorer.loadingTree
       || explorer.loadingFile
       || explorer.pendingFilePath === request.filePath
@@ -782,7 +678,6 @@ export function FileExplorerView({
     fullTreePreference.loading,
     initialFilePath,
     onControlFileOpenResult,
-    startupBlockedByPassword,
     target.id,
     target.type,
   ]);
@@ -794,18 +689,18 @@ export function FileExplorerView({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
       >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden md:flex-row">
         <div
           data-testid={`${testIdPrefix}-explorer-column`}
           className={[
             "min-h-0 transition-[max-height,width] duration-200 ease-out",
             explorerCollapsed
-              ? "max-h-none overflow-visible lg:h-full lg:w-14 lg:max-h-none lg:overflow-hidden"
-              : "max-h-[35vh] overflow-hidden lg:h-full lg:w-[280px] lg:max-h-none",
+              ? "max-h-none overflow-visible md:h-full md:w-14 md:max-h-none md:overflow-hidden"
+              : "max-h-[35vh] overflow-hidden md:h-full md:w-[280px] md:max-h-none",
           ].join(" ")}
         >
           <div className="flex h-full min-h-0 flex-col gap-3">
-            <div className={`min-h-0 flex-1 overflow-hidden${explorerCollapsed ? " hidden lg:block" : ""}`}>
+            <div className={`min-h-0 flex-1 overflow-hidden${explorerCollapsed ? " hidden md:block" : ""}`}>
               <WorkspaceFileTree
                 entriesByDirectory={explorer.directoryEntries}
                 expandedDirectories={explorer.expandedDirectories}
@@ -844,11 +739,11 @@ export function FileExplorerView({
               className={[
                 "min-w-0 shrink-0",
                 explorerCollapsed
-                  ? "grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 lg:flex lg:flex-col lg:items-center"
+                  ? "grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 md:flex md:flex-col md:items-center"
                   : "grid grid-cols-2 gap-2",
               ].join(" ")}
             >
-              {explorerCollapsed ? <div className="lg:hidden"><Button
+              {explorerCollapsed ? <div className="md:hidden"><Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -868,7 +763,7 @@ export function FileExplorerView({
                 title="Files"
               >
                 <FileIcon />
-                {explorerCollapsed ? <span className="lg:sr-only">Files</span> : "Files"}
+                {explorerCollapsed ? <span className="md:sr-only">Files</span> : "Files"}
               </button>
               <button
                 type="button"
@@ -880,7 +775,7 @@ export function FileExplorerView({
                 title="Terminals"
               >
                 <TerminalIcon />
-                {explorerCollapsed ? <span className="lg:sr-only">Terminals</span> : "Terminals"}
+                {explorerCollapsed ? <span className="md:sr-only">Terminals</span> : "Terminals"}
               </button>
             </div>
           </div>
@@ -914,7 +809,7 @@ export function FileExplorerView({
                 filePath={explorer.currentFile.path}
                 pendingFilePath={explorer.pendingFilePath}
                 videoPreviewUrl={explorer.videoPreviewUrl?.url ?? null}
-                videoPreviewUrlExpiresAt={explorer.videoPreviewUrl?.credentialExpiresAt ?? null}
+                videoPreviewUrlExpiresAt={explorer.videoPreviewUrl?.expiresAt ?? null}
                 loading={explorer.loadingFile}
                 autoReloadedAt={explorer.autoReloadedAt}
                 onRefresh={handleRefreshEditor}
@@ -1175,16 +1070,6 @@ export function FileExplorerView({
         </form>
       </Modal>
 
-      <ServerPasswordModal
-        isOpen={serverPasswordModalOpen}
-        serverName={credentialPromptName ?? title}
-        password={serverPassword}
-        error={serverPasswordError}
-        submitting={serverPasswordSubmitting}
-        onPasswordChange={setServerPassword}
-        onClose={handleCloseServerPasswordModal}
-        onSubmit={handleSubmitServerPassword}
-      />
     </>
   );
 }

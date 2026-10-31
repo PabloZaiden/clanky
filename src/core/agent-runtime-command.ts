@@ -1,6 +1,5 @@
-import type { AgentProvider, AgentTransport } from "@/shared/settings";
+import type { AgentProvider } from "@/shared/settings";
 import { mergeRuntimeEnvironment, withoutManagedContextEnvironment } from "./managed-context-environment";
-import { buildEnvAssignments, quoteShell } from "./remote-executor/utils";
 
 export interface AgentRuntimeCommand {
   command: string;
@@ -38,56 +37,11 @@ interface AcpResolverOptions {
   };
 }
 
-function buildAcpResolverScript(options: AcpResolverOptions): string {
-  const lines: string[] = [];
-  if (options.requiredCli) {
-    lines.push(
-      `if ! command -v ${options.requiredCli.command} >/dev/null 2>&1; then`,
-      `echo "${options.requiredCli.errorMessage}" >&2;`,
-      "exit 127;",
-      "fi",
-    );
-  }
-
-  if (options.executable) {
-    lines.push(
-      `if command -v ${options.executable} >/dev/null 2>&1; then`,
-      `exec ${options.executable} "$@";`,
-      "elif command -v npx >/dev/null 2>&1; then",
-    );
-  } else {
-    lines.push("if command -v npx >/dev/null 2>&1; then");
-  }
-
-  return [
-    ...lines,
-    `exec npx --yes ${options.packageName} "$@";`,
-    "elif command -v bunx >/dev/null 2>&1; then",
-    `exec bunx --yes ${options.packageName} "$@";`,
-    "else",
-    `echo "clanky: ${options.errorLabel} not found. ${buildResolverErrorHint(options)}" >&2;`,
-    "exit 127;",
-    "fi",
-  ].join("\n");
-}
-
 function buildResolverErrorHint(options: AcpResolverOptions): string {
   if (options.executable) {
     return `Install ${options.executable} or ensure npx or bunx can run ${options.packageName}.`;
   }
   return `Ensure npx or bunx can run ${options.packageName}.`;
-}
-
-function buildAcpResolverCommand(
-  options: AcpResolverOptions,
-  args: string[],
-  env?: Record<string, string>,
-): AgentRuntimeCommand {
-  return {
-    command: "sh",
-    args: ["-c", buildAcpResolverScript(options), options.executable ?? options.packageName, ...args],
-    ...(env ? { env } : {}),
-  };
 }
 
 export class AgentRuntimeUnavailableError extends Error {
@@ -168,30 +122,12 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   },
 };
 
-const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
-  opencode: OPENCODE_ACP_RESOLVER_OPTIONS,
-  copilot: COPILOT_ACP_RESOLVER_OPTIONS,
-  codex: CODEX_ACP_RESOLVER_OPTIONS,
-  claude: CLAUDE_ACP_RESOLVER_OPTIONS,
-  pi: PI_ACP_RESOLVER_OPTIONS,
-  grok: GROK_ACP_RESOLVER_OPTIONS,
-};
-
 /**
  * Build the default ACP CLI command for a provider.
  */
 export function getProviderAcpCommand(
   provider: AgentProvider,
-  transport: AgentTransport = "stdio",
 ): AgentRuntimeCommand {
-  const runtime = AGENT_PROVIDER_RUNTIMES[provider];
-  if (transport === "ssh") {
-    return buildAcpResolverCommand(
-      runtime.options,
-      runtime.args,
-      runtime.env,
-    );
-  }
   return resolveProviderAcpCommand(provider);
 }
 
@@ -243,21 +179,6 @@ export function isAgentProviderAvailable(
   }
 }
 
-export function buildProviderShellInvocation(
-  providerCommand: AgentRuntimeCommand,
-  runtimeEnvironment?: Record<string, string>,
-): string {
-  const environment = withoutManagedContextEnvironment(
-    mergeRuntimeEnvironment(providerCommand.env, runtimeEnvironment),
-  );
-  return [
-    "env -u CLANKY_BASE_URL -u CLANKY_API_KEY",
-    ...buildEnvAssignments(environment),
-    quoteShell(providerCommand.command),
-    ...providerCommand.args.map((value) => quoteShell(value)),
-  ].join(" ");
-}
-
 export function buildProviderSpawnEnvironment(
   providerCommand: AgentRuntimeCommand,
   baseEnv: NodeJS.ProcessEnv = process.env,
@@ -268,20 +189,4 @@ export function buildProviderSpawnEnvironment(
     ...baseEnv,
     ...runtimeEnvironment,
   }) ?? {};
-}
-
-export function buildProviderAvailabilityShellCheck(provider: AgentProvider): string {
-  const options = PROVIDER_ACP_RESOLVER_OPTIONS[provider];
-  const runtimeChecks = [
-    ...(options.executable ? [`command -v ${options.executable} >/dev/null 2>&1`] : []),
-    "command -v npx >/dev/null 2>&1",
-    "command -v bunx >/dev/null 2>&1",
-  ];
-  const runtimeCheck = `{ ${runtimeChecks.join(" || ")}; }`;
-
-  if (!options.requiredCli) {
-    return runtimeCheck;
-  }
-
-  return `command -v ${options.requiredCli.command} >/dev/null 2>&1 && ${runtimeCheck}`;
 }

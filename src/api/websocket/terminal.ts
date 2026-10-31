@@ -4,18 +4,16 @@ import { runWithCurrentUser } from "../../context/user-context";
 import type { WebSocketData } from "./types";
 import {
   createTerminalConnection,
-  resolveTerminal,
 } from "../../core/terminal-connection";
 import { resolveDomainErrorHttpMapping } from "../domain-error-policy";
 
 const log = createLogger("api:websocket");
-const SAFE_TERMINAL_ERROR_MESSAGE = "SSH terminal connection failed";
+const SAFE_TERMINAL_ERROR_MESSAGE = "Terminal connection failed";
 const SAFE_TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed";
-export const SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE = "SSH credentials are required for this terminal";
 
 export interface TerminalSocket {
   readonly data: Pick<WebSocketData,
-    "terminalCredentialTimeout" | "terminalSessionId" | "terminalBridge"
+    "terminalSessionId" | "terminalBridge"
     | "terminalAttachment" | "terminalTransport" | "user">;
   send(data: string): void;
   close(code?: number, reason?: string): void;
@@ -80,12 +78,7 @@ async function disposeTerminalBridgeAfterStartup(
 
 export async function startTerminalBridge(
   ws: TerminalSocket,
-  credentialToken?: string,
 ): Promise<void> {
-  if (ws.data.terminalCredentialTimeout) {
-    clearTimeout(ws.data.terminalCredentialTimeout);
-    ws.data.terminalCredentialTimeout = undefined;
-  }
   const terminalSessionId = ws.data.terminalSessionId;
   if (!terminalSessionId || ws.data.terminalBridge) {
     return;
@@ -96,21 +89,6 @@ export async function startTerminalBridge(
   }
 
   try {
-    if (!credentialToken) {
-      const resolved = await runWithCurrentUser(
-        ws.data.user,
-        async () => await resolveTerminal(terminalSessionId),
-      );
-      if (resolved.executionHostBinding.host.kind === "ssh" && !resolved.workspace) {
-        sendTerminalAuthError(
-          ws,
-          SSH_TERMINAL_CREDENTIALS_REQUIRED_MESSAGE,
-          "ssh_credentials_required",
-        );
-        return;
-      }
-    }
-
     claimTerminalSocket(terminalSessionId, ws);
     const { connection, attachment, resolved } = await runWithCurrentUser(
       ws.data.user,
@@ -156,7 +134,7 @@ export async function startTerminalBridge(
             });
           }
         },
-      }, credentialToken),
+      }),
     );
     if (!isTerminalSocketActive(terminalSessionId, ws)) {
       await disposeTerminalBridgeAfterStartup(

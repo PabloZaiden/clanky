@@ -260,7 +260,6 @@ Execution-host transport and harness are independent:
 | --- | --- |
 | Local | Copilot native, Codex native, OpenCode 2 native, ACP |
 | Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native, ACP |
-| Direct SSH | ACP only |
 
 Install and authenticate the selected runtime under the **worker service
 account**, not just on the controller. Native support uses the current
@@ -359,7 +358,6 @@ creating a replacement worker does not transfer ownership of old sessions.
 | --- | --- |
 | The controller can reach the worker over HTTPS | Direct worker |
 | The worker cannot accept inbound connections | Relay plus relay-only worker |
-| The repository is already reachable over SSH | Registered SSH host |
 
 Use HTTPS for controller, worker and relay Mesh endpoints, including during
 local development. Plain HTTP listeners are only appropriate behind trusted
@@ -659,7 +657,7 @@ If updating or saving the channel fails, the restart is skipped. The installed
 binary must support `worker channel stable|latest` to save a forced default;
 unsupported versions fail visibly rather than silently using another channel.
 Updating a workspace worker uses
-Mesh directly: it does not need SSH credentials, contact the provisioning host,
+Mesh directly: it does not contact the provisioning host,
 rerun provisioning, or restart the container. Restart response
 and recovery checks share a 20-second deadline. Service-status commands have a
 10-second timeout. During recovery, each health-and-status probe is capped at
@@ -689,7 +687,7 @@ Automatic workspaces created with the older one-shot launcher need a manual
 launcher upgrade before this update flow can restart them safely. There is no
 startup migration of existing Devboxes. Unmanaged or unreachable workers report
 an individual job failure rather than preventing other workers from updating.
-SSH-only automatic workspaces without a Mesh worker are not update targets.
+Automatic workspaces without an enrolled Mesh worker are not update targets.
 Use the workspace's individual **Restart** or **Rebuild** action for container
 maintenance, not for routine Clanky updates. The bulk restart API remains
 available for explicit provisioning lifecycle operations.
@@ -704,8 +702,8 @@ still be dismissed from their detail view.
 
 Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or
 **OpenCode 2**. ACP also selects a harness preset. Native adapters require a
-dedicated worker; direct SSH execution remains ACP-only. The host running
-Devbox can use local, SSH or Mesh execution independently of the container's
+dedicated worker. The host running
+Devbox can use local or Mesh execution independently of the container's
 adapter.
 
 The persistent `.devbox/clanky-worker` startup assets store the selected

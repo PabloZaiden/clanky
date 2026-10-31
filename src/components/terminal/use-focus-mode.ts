@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-const STORAGE_KEY = "clanky-ssh-focus-mode";
+const STORAGE_KEY = "clanky-terminal-focus-mode";
 
 function readStoredValue(): boolean {
   try {

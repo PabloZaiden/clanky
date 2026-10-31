@@ -79,10 +79,7 @@ function recordResult(
   if (record.abortController.signal.aborted && execution.state === "not_started") {
     throw new ProvisioningCancelledError("Provisioning job was cancelled");
   }
-  const ssh = record.job.config.executionHostBinding.host.kind === "ssh";
-  // SSH's local client termination/exit 255 cannot prove a remote command outcome.
   const unconfirmed = result.termination === "failed"
-    || (ssh && (result.exitCode === 255 || result.termination !== undefined))
     || (result.termination === "confirmed" && !executionStarted && result.exitCode !== 124);
   const interrupted = !unconfirmed && result.termination === "confirmed";
   const outcome = unconfirmed ? "unconfirmed" : interrupted ? "interrupted"
@@ -127,8 +124,7 @@ export async function runProvisioningCommand(
   };
   const output = (source: "stdout" | "stderr", text: string): void => {
     if (text && record.job.state.execution?.state !== "finished"
-      && record.job.state.execution?.state !== "started"
-      && (source === "stdout" || record.job.config.executionHostBinding.host.kind !== "ssh")) {
+      && record.job.state.execution?.state !== "started") {
       observe("started");
     }
     if (options.streamOutput) appendLog(record, maxLogEntries, source, text, options.step);

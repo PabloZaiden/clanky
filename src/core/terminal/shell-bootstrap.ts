@@ -1,8 +1,8 @@
 /**
- * Shared shell bootstrap helpers used by SSH terminal startup commands.
+ * Shared shell bootstrap helpers used by terminal startup commands.
  */
 
-import { DEFAULT_SSH_COLOR_TERM } from "./ssh-terminal-env";
+import { DEFAULT_COLOR_TERM } from "./terminal-env";
 
 function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -31,7 +31,7 @@ export function buildShellBootstrapCommand(options: { directory?: string; useTmu
 
   return [
     changeDirectoryCommand,
-    `COLORTERM=${quoteShell(DEFAULT_SSH_COLOR_TERM)};`,
+    `COLORTERM=${quoteShell(DEFAULT_COLOR_TERM)};`,
     "export COLORTERM;",
     "shell=\"${SHELL:-/bin/sh}\";",
     ...tmuxBootstrapCommands,

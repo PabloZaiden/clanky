@@ -1,29 +1,20 @@
 /**
  * Connection state tracking and readiness types for the backend manager.
  * Includes server event types, connection state interfaces, and utilities
- * for deriving execution settings and building server URLs.
+ * for comparing runtime settings.
  */
 
 import type { Backend } from "../../backends/types";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
 import type { TaskEvent } from "@/shared/events";
 import { areServerSettingsEqual, type ConnectionStatus, type RuntimeServerSettings } from "@/shared/settings";
-import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
-import { SSH_CONNECTION_TIMEOUT_MS } from "../ssh-reliability-policy";
 
 export { type ConnectionStatus };
 
 /**
- * Agent transports that require an explicit remote endpoint.
+ * Bounds backend initialization and remote connection operations.
  */
-export const REMOTE_AGENT_TRANSPORTS = new Set(["ssh"]);
-
-/**
- * Default timeout (in ms) for remote connection operations (validation, test connections,
- * workspace connections). This bounds network operations to prevent indefinite hangs
- * when the remote server is unreachable.
- */
-export const DEFAULT_CONNECTION_TIMEOUT_MS = SSH_CONNECTION_TIMEOUT_MS;
+export const DEFAULT_CONNECTION_TIMEOUT_MS = 75_000;
 
 /**
  * Connection state for a workspace.
@@ -58,48 +49,8 @@ export interface TaskConnectionState {
 }
 
 export function areRuntimeServerSettingsEqual(left: RuntimeServerSettings, right: RuntimeServerSettings): boolean {
-  if (!areServerSettingsEqual(left, right) || left.agent.transport !== right.agent.transport) {
-    return false;
-  }
-  if (left.agent.transport === "ssh" && right.agent.transport === "ssh") {
-    return left.agent.hostname === right.agent.hostname
-      && left.agent.port === right.agent.port
-      && left.agent.username === right.agent.username
-      && left.agent.password === right.agent.password
-      && left.agent.identityFile === right.agent.identityFile;
-  }
-  return true;
-}
-
-export interface DerivedExecutionSettings {
-  provider: "local" | "ssh";
-  sshTarget?: SshConnectionTarget;
-}
-
-export function deriveExecutionSettings(settings: RuntimeServerSettings): DerivedExecutionSettings {
-  const sshTarget = getSshConnectionTargetFromSettings(settings);
-  if (sshTarget) {
-    return {
-      provider: "ssh",
-      sshTarget,
-    };
-  }
-
-  return { provider: "local" };
-}
-
-/**
- * Build a displayable server URL for agent transports that expose host/port.
- */
-export function buildAgentServerUrl(settings: RuntimeServerSettings): string | undefined {
-  if (!REMOTE_AGENT_TRANSPORTS.has(settings.agent.transport) || settings.agent.transport !== "ssh") {
-    return undefined;
-  }
-  const sshTarget = getSshConnectionTargetFromSettings(settings);
-  if (!sshTarget) {
-    return undefined;
-  }
-  return `ssh://${sshTarget.host}:${sshTarget.port}`;
+  return areServerSettingsEqual(left, right)
+    && left.agent.transport === right.agent.transport;
 }
 
 /**

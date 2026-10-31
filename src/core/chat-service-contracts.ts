@@ -71,7 +71,6 @@ export interface CreateExecutionHostChatOptions {
 }
 
 export interface ReconnectChatOptions {
-  credentialToken?: string | null;
   signal?: AbortSignal;
 }
 
@@ -81,13 +80,6 @@ export interface DeleteChatOptions {
    * Internal callers keep the synchronous cleanup behavior by default.
    */
   deferCleanup?: boolean;
-  /** Transient credential handoff for cleaning remote chat-history exports. */
-  credentialToken?: string | null;
-}
-
-export interface ChatCleanupCredentials {
-  credentialToken?: string | null;
-  credentialTokensByServerId?: Readonly<Record<string, string>>;
 }
 
 export interface DeleteTaskChatResult {
@@ -102,7 +94,6 @@ export type ChatConfigUpdates = Partial<
 export interface ChatMessageOptions {
   message?: string;
   attachments?: MessageAttachment[];
-  credentialToken?: string | null;
   transcriptMessage?: MessageData;
   clientId?: string;
 }
@@ -194,7 +185,7 @@ export interface ChatWorktreePort {
   ensureWorktree(chat: Chat, options?: { signal?: AbortSignal }): Promise<Chat>;
   prepareWorktreeInBackground(chat: Chat): void;
   waitForPreparation(chatId: string): Promise<void>;
-  cleanupWorktree(chat: Chat, credentials?: ChatCleanupCredentials): Promise<void>;
+  cleanupWorktree(chat: Chat): Promise<void>;
 }
 
 export interface ChatSessionPort {
@@ -250,7 +241,6 @@ export interface ChatConversationPort {
     input: NormalizedChatMessageInput,
     options?: {
       clearQueuedMessageIds?: readonly string[];
-      credentialToken?: string | null;
     },
   ): Promise<Chat>;
   interruptChat(chatId: string, reason?: string): Promise<Chat | null>;

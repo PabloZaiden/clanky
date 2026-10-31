@@ -2,8 +2,8 @@
  * Shared terminal output handling, including OSC 52 clipboard extraction.
  */
 
-import { MAX_PENDING_OSC_SEQUENCE_BYTES } from "../ssh-bridge/constants";
-import { extractClipboardSequences } from "../ssh-bridge/osc52";
+import { MAX_PENDING_OSC_SEQUENCE_BYTES } from "./constants";
+import { extractClipboardSequences } from "./osc52";
 import type { InteractiveTerminalCallbacks } from "./interactive-terminal-connection";
 
 export class TerminalOutput {

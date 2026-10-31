@@ -33,10 +33,8 @@ export interface ChatActivityUpdate {
 export type ChatConnectionStatus =
   | "connected"
   | "disconnected"
-  | "needs_credentials"
   | "connecting"
   | "provider_unavailable"
-  | "ssh_connection_failed"
   | "resume_failed";
 
 export type ChatSource =
@@ -307,16 +305,6 @@ export class InvalidCurrentPlanError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "InvalidCurrentPlanError";
-  }
-}
-
-export class SshCredentialsRequiredError extends Error {
-  readonly code = "ssh_credentials_required";
-  readonly status = 400;
-
-  constructor(message = "SSH credentials are required to reconnect this chat", options?: ErrorOptions) {
-    super(message, options);
-    this.name = "SshCredentialsRequiredError";
   }
 }
 

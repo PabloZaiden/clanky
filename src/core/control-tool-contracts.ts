@@ -87,9 +87,7 @@ export const controlDirectSchemas = {
     ...selection, action: z.enum(["accept_local", "push"]), confirmationDescription: confirmation,
   }).strict(),
   clanky_list_workspaces: z.object({ ...page }).strict(),
-  clanky_list_servers: z.object({
-    kind: z.enum(["servers", "hosts", "all"]).default("all"), ...page,
-  }).strict(),
+  clanky_list_servers: z.object({ ...page }).strict(),
   clanky_create_workspace: z.object({
     name: z.string().trim().min(1).max(100),
     host: target, directory: z.string().trim().min(1).max(16_384),
@@ -122,7 +120,7 @@ export const controlDirectDescriptions: Record<DirectToolName, string> = {
   clanky_review_task_plan: "Give feedback, accept a plan to start execution, or discard the plan AND delete its task. Accept/discard confirmation follows the user's nonvoice approval setting; Voice always confirms. Direct, no discovery.",
   clanky_finish_task: "Accept completed task locally or push its branch. Push confirmation follows the user's nonvoice approval setting; Voice always confirms. Neither means an external PR merged. Direct, no discovery.",
   clanky_list_workspaces: "List owned workspace metadata and execution context without credentials. Direct, no discovery.",
-  clanky_list_servers: "List owned SSH registrations and available local/SSH/Mesh hosts, known capabilities and availability without probing or secrets. Direct, no discovery.",
+  clanky_list_servers: "List available local and Mesh execution hosts, known capabilities and availability without probing or secrets. Direct, no discovery.",
   clanky_create_workspace: "Create a workspace at an explicit directory on an exact host ID/name. Explicit adapter/provider and supported repository type. Uses the selected host, never server-local path guesses. Confirmation follows the user's nonvoice approval setting; Voice always confirms. Direct, no discovery.",
 };
 

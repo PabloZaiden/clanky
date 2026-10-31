@@ -816,7 +816,6 @@ export class MeshExecutionGateway {
       controlTools: request.controlTools,
       legacyControlCredential: request.controlCredential,
       executor: new CommandExecutorImpl({
-        provider: "local",
         directory: executionRoot,
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
       }),

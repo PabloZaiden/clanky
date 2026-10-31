@@ -2,7 +2,7 @@
  * API endpoints for terminal sessions.
  *
  * These routes are transport-neutral and support workspace-bound or direct
- * local, SSH, and Mesh terminals.
+ * local and Mesh terminals.
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";

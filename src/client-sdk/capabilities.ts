@@ -21,7 +21,7 @@ export function getClankyRouteUnavailableReason(route: WebAppRoute): string | un
   const capabilities = getClankyClientCapabilities();
   if (!capabilities.executionHosts && (route.view === "execution-host" || route.view === "execution-host-files"
     || route.view === "code-explorer" && route["contentType"] === "execution-host"
-    || route.view === "compose" && ["ssh-server", "execution-host-chat", "execution-host-terminal"].includes(String(route["kind"])))) {
+    || route.view === "compose" && ["execution-host-chat", "execution-host-terminal"].includes(String(route["kind"])))) {
     return "Execution-host administration is not available in this browser client.";
   }
   if (!capabilities.workspaceCreation && route.view === "compose" && route["kind"] === "workspace") {

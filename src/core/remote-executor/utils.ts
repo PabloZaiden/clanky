@@ -8,26 +8,6 @@ export function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
-export function buildEnvAssignments(env?: Record<string, string>): string[] {
-  if (!env) {
-    return [];
-  }
-
-  const entries = Object.entries(env);
-  const assignments: string[] = [];
-  for (const [key, value] of entries) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new Error(`Invalid environment variable name: ${key}`);
-    }
-    assignments.push(`${key}=${quoteShell(value)}`);
-  }
-  return assignments;
-}
-
-export function buildExportAssignments(env?: Record<string, string>): string[] {
-  return buildEnvAssignments(env).map((assignment) => `export ${assignment};`);
-}
-
 export async function readProcessStream(
   stream: ReadableStream<Uint8Array> | null | undefined,
   onChunk?: (chunk: string) => void,

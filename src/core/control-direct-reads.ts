@@ -271,36 +271,8 @@ export async function directOverview(
 }
 
 export async function directServers(context: ControlToolContext, input: DirectToolInput<"clanky_list_servers">): Promise<unknown> {
-  const operations = { servers: "GET /api/ssh-servers", hosts: "GET /api/execution-hosts" };
-  if (input.kind !== "all") return await context.read({
-    operationId: operations[input.kind],
+  return await context.read({
+    operationId: "GET /api/execution-hosts",
     query: { limit: input.limit ?? 10, ...(input.cursor ? { cursor: input.cursor } : {}) },
-  });
-  let previous: Record<string, unknown> | null = null;
-  if (input.cursor) {
-    try { previous = directRecord(JSON.parse(Buffer.from(input.cursor, "base64url").toString())); }
-    catch (cause) { throw new DomainError("read_cursor_invalid", "Invalid combined server cursor.", { cause }); }
-    if (previous["kind"] !== "all" || !["servers", "hosts"].every((key) => previous![key] === null || typeof previous![key] === "string")) {
-      throw new DomainError("read_cursor_invalid", "This cursor belongs to a different server selection.");
-    }
-  }
-  const result: Record<string, unknown> = {};
-  const next: Record<string, unknown> = { kind: "all" };
-  for (const [kind, operationId] of Object.entries(operations)) {
-    if (previous && previous[kind] === null) {
-      result[kind] = { items: [], nextCursor: null };
-      next[kind] = null;
-      continue;
-    }
-    const page = directRecord(await context.read({
-      operationId, query: { limit: input.limit ?? 8, ...(previous ? { cursor: String(previous[kind]) } : {}) },
-      maxBytes: Math.max(1024, Math.floor((context.options.maxBytes - 700) / 2)),
-    }));
-    result[kind] = page;
-    next[kind] = page["nextCursor"];
-  }
-  const complete = next["servers"] === null && next["hosts"] === null;
-  return context.bounded({
-    ...result, complete, nextCursor: complete ? null : Buffer.from(JSON.stringify(next)).toString("base64url"),
   });
 }

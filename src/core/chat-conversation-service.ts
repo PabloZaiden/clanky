@@ -5,8 +5,6 @@
 import {
   getAcpErrorMessage,
   isAcpErrorCode,
-  isAcpSshTransportFailure,
-  isAcpSshTransportFailureMetadata,
 } from "../backends/acp";
 import type {
   Backend,
@@ -274,7 +272,6 @@ export class ChatConversationService implements ChatConversationPort {
     input: NormalizedChatMessageInput,
     options: {
       clearQueuedMessageIds?: readonly string[];
-      credentialToken?: string | null;
     } = {},
   ): Promise<Chat> {
     this.assertRunning();
@@ -317,7 +314,6 @@ export class ChatConversationService implements ChatConversationPort {
           chat,
           historyRecovery,
           {
-            credentialToken: options.credentialToken,
             signal: startupOperation.controller.signal,
           },
         );
@@ -383,7 +379,6 @@ export class ChatConversationService implements ChatConversationPort {
             this.session.ensureBackendConnected(
               current,
               {
-                credentialToken: options.credentialToken,
                 signal: startupOperation.controller.signal,
               },
               workingDirectory,
@@ -434,7 +429,6 @@ export class ChatConversationService implements ChatConversationPort {
         : undefined;
       preparingAttachments = true;
       const attachmentFiles = await this.attachments.prepare(current, userMessage, {
-        credentialToken: options.credentialToken,
         signal: startupOperation.controller.signal,
       });
       preparingAttachments = false;
@@ -2031,7 +2025,6 @@ export class ChatConversationService implements ChatConversationPort {
           streamState.chat,
           event.message,
           event.code,
-          event.details,
         );
         streamState.interpreter.acknowledgeCheckpoint();
         if (!this.activeStreams.get(chatId)?.native) {
@@ -2544,7 +2537,6 @@ export class ChatConversationService implements ChatConversationPort {
     chat: Chat,
     error: unknown,
     code?: string,
-    details?: Readonly<Record<string, unknown>>,
   ): Promise<Chat> {
     const message = typeof error === "string" ? error : getAcpErrorMessage(error);
     const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
@@ -2560,16 +2552,7 @@ export class ChatConversationService implements ChatConversationPort {
       return this.persistDisconnectedChat(chat.config.id, isChatBusyStatus(chat.state.status));
     }
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    const connectionFailed =
-      isAcpSshTransportFailure(error)
-      || isAcpSshTransportFailureMetadata(code, details);
-    const errorChat = connectionFailed
-      ? await this.state.updateState(chat, {
-          ...chat.state,
-          connectionStatus: "ssh_connection_failed",
-        })
-      : chat;
-    return this.state.markChatError(errorChat, message, errorCode);
+    return this.state.markChatError(chat, message, errorCode);
   }
 
   private async completeInterruptedChat(

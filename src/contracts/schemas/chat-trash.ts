@@ -37,12 +37,9 @@ export const TrashedChatSchema = z.object({
   isPrivate: z.boolean(),
   deletedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
-  credentialServerIds: z.array(z.string()),
 });
 
-export const PurgeChatTrashRequestSchema = z.object({
-  credentialTokensByServerId: z.record(z.string().min(1), z.string().min(1)).default({}),
-}).strict();
+export const PurgeChatTrashRequestSchema = z.object({}).strict();
 
 export type PurgeChatTrashRequest = z.infer<typeof PurgeChatTrashRequestSchema>;
 

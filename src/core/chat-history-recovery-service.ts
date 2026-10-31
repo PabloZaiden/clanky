@@ -100,7 +100,6 @@ export class ChatHistoryRecoveryService {
         await this.historyExport.cleanup(
           originalChat,
           previousRecovery,
-          options.credentialToken,
           { signal: options.signal },
         );
       }
@@ -117,7 +116,6 @@ export class ChatHistoryRecoveryService {
           }
         : undefined;
       const recovery = await this.historyExport.create(exportChat, {
-        credentialToken: options.credentialToken,
         signal: options.signal,
         previousSession,
         onAllocated: async (allocated) => {
@@ -164,7 +162,6 @@ export class ChatHistoryRecoveryService {
         chatForSession,
         {
           directory: recovery.directory,
-          credentialToken: options.credentialToken,
           signal: options.signal,
         },
       );
@@ -226,7 +223,6 @@ export class ChatHistoryRecoveryService {
             await this.cleanFailedExport(
               latest ?? originalChat,
               exportAllocated,
-              options,
               error,
             );
           } catch (failedCleanup) {
@@ -353,11 +349,10 @@ export class ChatHistoryRecoveryService {
   private async cleanFailedExport(
     chat: Chat,
     recovery: HarnessHistoryRecovery,
-    options: ReconnectChatOptions,
     originalError: unknown,
   ): Promise<void> {
     try {
-      await this.historyExport.cleanup(chat, recovery, options.credentialToken);
+      await this.historyExport.cleanup(chat, recovery);
     } catch (cleanupError) {
       log.error("Failed to clean up chat history after recovery failed", {
         chatId: chat.config.id,

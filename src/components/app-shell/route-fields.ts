@@ -15,7 +15,7 @@ export function getProvisioningReturnRoute(route: WebAppRoute): WebAppRoute {
   if (
     returnView === "execution-host"
     && returnId
-    && (returnKind === "local" || returnKind === "mesh" || returnKind === "ssh")
+    && (returnKind === "local" || returnKind === "mesh")
   ) {
     return { view: "execution-host", hostKind: returnKind, hostId: returnId };
   }

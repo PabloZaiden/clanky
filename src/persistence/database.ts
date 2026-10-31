@@ -31,14 +31,6 @@ export function getDatabasePath(): string {
   return join(getDataDir(), "clanky.db");
 }
 
-function getSshServerKeyStorePath(): string {
-  return join(getDataDir(), "ssh-server-keys");
-}
-
-function getWorkspaceExecutionTargetKeyPath(): string {
-  return join(getDataDir(), "workspace-execution-target.key");
-}
-
 export function getDatabase(): Database {
   if (!db) {
     throw new DatabaseNotInitializedError();
@@ -139,9 +131,10 @@ export async function deleteAndReinitializeDatabase(): Promise<void> {
     }
   }
 
-  await rm(getSshServerKeyStorePath(), { recursive: true, force: true });
+  // Retired transport secrets are removed only during an explicit full reset.
+  await rm(join(getDataDir(), "ssh-server-keys"), { recursive: true, force: true });
   try {
-    await unlink(getWorkspaceExecutionTargetKeyPath());
+    await unlink(join(getDataDir(), "workspace-execution-target.key"));
   } catch {
     // The workspace target key may not exist on older installations.
   }

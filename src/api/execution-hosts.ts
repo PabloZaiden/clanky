@@ -9,7 +9,7 @@ import { executionHostCommandService } from "../core/execution-host-command-serv
 import { chatManager } from "../core/chat-manager";
 import { CreateExecutionHostChatRequestSchema } from "@/contracts/schemas";
 import {
-  CheckSshServerPrerequisitesRequestSchema,
+  CheckExecutionHostPrerequisitesRequestSchema,
   DiscoverExecutionHostAddressesRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
@@ -22,40 +22,25 @@ import {
 } from "@/contracts/schemas";
 import {
   executionHostRefFromParts,
-  getRegisteredSshServerId,
-  type ExecutionHostRef,
 } from "@/shared";
 import { domainErrorResponse, errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
-import { sshCredentialManager } from "../core/ssh-credential-manager";
 import { executionHostDiscoveryService } from "../core/execution-host-discovery-service";
 import { getModelsForExecutionHost } from "../core/model-discovery";
 import { executionHostConfigurationService } from "../core/execution-host-configuration-service";
 
 const log = createLogger("api:execution-hosts");
 
-function resolveSshPassword(
-  ref: ExecutionHostRef,
-  credentialToken: string | null,
-): string | undefined {
-  const serverId = getRegisteredSshServerId(ref);
-  if (!serverId || !credentialToken) {
-    return undefined;
-  }
-  return sshCredentialManager.getPasswordForToken(serverId, credentialToken);
-}
-
 async function resolveWorkingDirectoryResponse(
   kind: string,
   id: string,
   userId: string,
-  credentialToken: string | null,
 ): Promise<Response> {
   const ref = executionHostRefFromParts(kind, id);
   if (!ref) {
     return errorResponse(
       "execution_host_kind_invalid",
-      "Execution host kind must be local, mesh, or ssh.",
+      "Execution host kind must be local or mesh.",
       400,
     );
   }
@@ -63,7 +48,6 @@ async function resolveWorkingDirectoryResponse(
     return Response.json(
       await executionHostService.resolveWorkingDirectory(ref, {
         userId,
-        sshPassword: resolveSshPassword(ref, credentialToken),
       }),
     );
   } catch (error) {
@@ -111,19 +95,17 @@ export const executionHostRoutes = defineRoutes({
     requestSchema: ResolveExecutionHostWorkingDirectoryRequestSchema,
     operations: {
       GET: {
-        description: "Resolve an execution host's working directory without a credential handoff.",
+        description: "Resolve an execution host's working directory.",
         requestSchema: undefined,
         querySchema: undefined,
         automation: { policy: "read" },
       },
       POST: {
-        description: "Resolve an execution host's working directory using a private credential handoff if available.",
+        description: "Resolve an execution host's working directory.",
         requestSchema: ResolveExecutionHostWorkingDirectoryRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -132,7 +114,6 @@ export const executionHostRoutes = defineRoutes({
         ctx.params["kind"]!,
         ctx.params["id"]!,
         ctx.requireUser().id,
-        null,
       );
     },
     async POST(req, ctx): Promise<Response> {
@@ -147,7 +128,6 @@ export const executionHostRoutes = defineRoutes({
         ctx.params["kind"]!,
         ctx.params["id"]!,
         ctx.requireUser().id,
-        validation.data.credentialToken ?? null,
       );
     },
   },
@@ -165,7 +145,6 @@ export const executionHostRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "Runs an arbitrary command with the selected execution host's account permissions.",
-          credential: { kind: "ssh", serverParameter: "id", header: "x-clanky-ssh-credential-token" },
         },
       },
     },
@@ -178,7 +157,7 @@ export const executionHostRoutes = defineRoutes({
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
+          "Execution host kind must be local or mesh.",
           400,
         );
       }
@@ -194,7 +173,6 @@ export const executionHostRoutes = defineRoutes({
           validation.data,
           req.signal,
           userId,
-          resolveSshPassword(ref, req.headers.get("x-clanky-ssh-credential-token")),
         ));
       } catch (error) {
         log.error("Failed to execute command on execution host", {
@@ -223,8 +201,6 @@ export const executionHostRoutes = defineRoutes({
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -240,7 +216,7 @@ export const executionHostRoutes = defineRoutes({
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
+          "Execution host kind must be local or mesh.",
           400,
         );
       }
@@ -249,10 +225,6 @@ export const executionHostRoutes = defineRoutes({
         const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(ref, {
           operationId: `execution-host-addresses:${ctx.params["id"]!}`,
           directory: "/",
-          sshPassword: resolveSshPassword(
-            ref,
-            validation.data.credentialToken ?? null,
-          ),
         });
         return Response.json({ addresses });
       } catch (error) {
@@ -291,7 +263,7 @@ export const executionHostRoutes = defineRoutes({
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
+          "Execution host kind must be local or mesh.",
           400,
         );
       }
@@ -331,8 +303,6 @@ export const executionHostRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "Creates agent work with automatic permission approval.",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -345,7 +315,7 @@ export const executionHostRoutes = defineRoutes({
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
+          "Execution host kind must be local or mesh.",
           400,
         );
       }
@@ -357,14 +327,9 @@ export const executionHostRoutes = defineRoutes({
           1,
         );
         const binding = executionHostService.getBinding(ref);
-        const sshPassword = resolveSshPassword(
-          ref,
-          validation.data.credentialToken ?? null,
-        );
         await executionHostService.assertDirectoryExists(
           ref,
           validation.data.directory,
-          { sshPassword },
         );
         const chat = await chatManager.createExecutionHostChat({
           name: validation.data.name,
@@ -395,22 +360,18 @@ export const executionHostRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     description: "Check prerequisites on an execution host.",
-    requestSchema: CheckSshServerPrerequisitesRequestSchema,
+    requestSchema: CheckExecutionHostPrerequisitesRequestSchema,
     operations: {
       POST: {
-        requestSchema: CheckSshServerPrerequisitesRequestSchema.extend({
-          credentialToken: CheckSshServerPrerequisitesRequestSchema.shape.credentialToken.default(null),
-        }).strict(),
+        requestSchema: CheckExecutionHostPrerequisitesRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
     async POST(req, ctx): Promise<Response> {
-      const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req);
+      const validation = await parseAndValidate(CheckExecutionHostPrerequisitesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
@@ -428,7 +389,6 @@ export const executionHostRoutes = defineRoutes({
           directory: "/",
           repositoriesBasePath: descriptor.repositoriesBasePath,
           responseId: ctx.params["id"]!,
-          sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
         });
         return Response.json(report);
       } catch (error) {
@@ -454,14 +414,10 @@ export const executionHostRoutes = defineRoutes({
     requestSchema: GetDevboxTemplatesRequestSchema,
     operations: {
       POST: {
-        requestSchema: GetDevboxTemplatesRequestSchema.extend({
-          credentialToken: GetDevboxTemplatesRequestSchema.shape.credentialToken.default(null),
-        }).strict(),
+        requestSchema: GetDevboxTemplatesRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -483,7 +439,6 @@ export const executionHostRoutes = defineRoutes({
         const templates = await executionHostDiscoveryService.listDevboxTemplates(ref, {
           operationId: `devbox-templates:${ctx.params["id"]!}`,
           directory: "/",
-          sshPassword: resolveSshPassword(ref, validation.data.credentialToken),
         });
         return Response.json(templates);
       } catch (error) {
@@ -513,8 +468,6 @@ export const executionHostRoutes = defineRoutes({
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -540,10 +493,6 @@ export const executionHostRoutes = defineRoutes({
           {
             operationId: `provider-discovery:${ctx.params["id"]!}`,
             directory: ".",
-            sshPassword: resolveSshPassword(
-              ref,
-              validation.data.credentialToken ?? null,
-            ),
           },
         );
         return Response.json({ providers: results });
@@ -574,8 +523,6 @@ export const executionHostRoutes = defineRoutes({
         querySchema: undefined,
         automation: {
           policy: "read",
-          hiddenInputs: ["credentialToken"],
-          credential: { kind: "ssh", serverParameter: "id", input: "credentialToken" },
         },
       },
     },
@@ -607,10 +554,6 @@ export const executionHostRoutes = defineRoutes({
           binding,
           validation.data.directory,
           validation.data.providerID,
-          resolveSshPassword(
-            ref,
-            validation.data.credentialToken ?? null,
-          ),
         );
         return Response.json(
           models.filter((model) =>

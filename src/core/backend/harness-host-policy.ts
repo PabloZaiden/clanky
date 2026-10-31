@@ -10,8 +10,8 @@ import { HarnessError } from "../../backends/harness-errors";
 
 export function assertHarnessHostPolicy(agent: AgentSettings, host: ExecutionHostRef["kind"]): void {
   if (!isAgentSettings(agent)) throw new HarnessError("harness_runtime_unavailable", "The harness configuration is invalid.");
-  if (host === "ssh" && agent.adapter !== "acp") {
-    throw new HarnessError("harness_unsupported_feature", "Direct SSH supports ACP only.");
+  if (host !== "local" && host !== "mesh") {
+    throw new HarnessError("harness_unsupported_feature", "A local or Mesh execution host is required.");
   }
 }
 

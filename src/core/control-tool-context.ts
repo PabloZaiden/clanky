@@ -3,7 +3,7 @@
  */
 import type { ClankyOperationService } from "./clanky-operation-service";
 import type { ControlActions, ConfirmationContinuation, ConfirmedWriteExecutor } from "./control-actions";
-import { compactResource, isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
+import { isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import { DomainError } from "../domain/domain-error";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
@@ -73,7 +73,7 @@ export class ControlToolContext {
       operationId, parameters: Object.entries(parameters).map(([name, value]) => ({ name, value })),
       query: Object.entries(options.query ?? {}).map(([name, value]) => ({ name, value })),
       bodyJson: options.body === undefined ? null : JSON.stringify(options.body),
-    }, this.options.requestId);
+    });
     if (!result.ok) throw new DomainError("voice_direct_read_failed", "Required authorized preparation could not be read.", {
       details: { operationId, code: result.code, status: result.status },
     });
@@ -117,29 +117,19 @@ export class ControlToolContext {
     return this.options.origin ?? await this.uiContext();
   }
 
-  async resolve(kind: "chat" | "task" | "workspace" | "server", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
-    const paths = { chat: "chats", task: "tasks", workspace: "workspaces", server: "ssh-servers" } as const;
+  async resolve(kind: "chat" | "task" | "workspace", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
+    const paths = { chat: "chats", task: "tasks", workspace: "workspaces" } as const;
     if (target === "current") {
-      if (kind === "server") {
-        const ref = ExecutionHostRefSchema.parse((await this.host(target))["ref"]);
-        if (ref.kind !== "ssh" || !("serverId" in ref)) {
-          throw new DomainError("voice_target_not_found", "The originating client has no selected standalone SSH server.");
-        }
-        target = ref.serverId;
-      } else {
-        const id = this.options.origin
-          ? this.options.origin.current[kind]
-          : (await this.uiContext()).route[`${kind}Id`];
-        if (!id) throw new DomainError("voice_target_not_found", "The originating client has no selected target of that kind.");
-        target = id;
-      }
+      const id = this.options.origin
+        ? this.options.origin.current[kind]
+        : (await this.uiContext()).route[`${kind}Id`];
+      if (!id) throw new DomainError("voice_target_not_found", "The originating client has no selected target of that kind.");
+      target = id;
     }
     const workspaceId = workspace ? String((await this.resolve("workspace", workspace))["id"]) : undefined;
     if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(target)) {
       const operationId = `GET /api/${paths[kind]}/:id`;
-      const item = directRecord(kind === "server"
-        ? compactResource(await this.readExact(operationId, { id: target }))
-        : await this.read({ operationId, parameters: { id: target } }));
+      const item = directRecord(await this.read({ operationId, parameters: { id: target } }));
       if (workspaceId && item["workspaceId"] !== workspaceId) throw new DomainError("voice_target_not_found", "The target is not in the selected workspace.");
       return item;
     }

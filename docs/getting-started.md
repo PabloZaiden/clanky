@@ -74,7 +74,7 @@ logs.
 ## Create a workspace
 
 1. Open **Servers** and select an execution host. A local host is the simplest
-   option; SSH and Mesh hosts run repository operations on another machine.
+   option; Mesh hosts run repository operations on another machine.
 2. Create a workspace and select its repository, host and harness adapter.
    ACP additionally selects a known harness preset.
 3. Wait for the workspace to become ready.

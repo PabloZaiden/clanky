@@ -235,18 +235,18 @@ function WorkspaceFileTreeComponent({
   );
 
   return (
-    <section className={`flex h-full min-h-0 min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900 ${collapsed ? "flex-col" : "flex-row lg:flex-col"}`}>
+    <section className={`flex h-full min-h-0 min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900 ${collapsed ? "flex-col" : "flex-row md:flex-col"}`}>
       <div
         data-testid="workspace-file-tree-header"
         className={[
           "shrink-0 border-gray-200 dark:border-gray-800",
           collapsed
-            ? "flex items-center justify-between gap-2 px-3 py-2 lg:h-full lg:flex-col lg:items-center lg:gap-2 lg:px-2 lg:py-3"
-            : "flex min-h-0 flex-col items-center gap-1.5 overflow-y-auto border-r px-1 py-2 lg:flex-row lg:justify-between lg:border-r-0 lg:border-b lg:px-3",
+            ? "flex items-center justify-between gap-2 px-3 py-2 md:h-full md:flex-col md:items-center md:gap-2 md:px-2 md:py-3"
+            : "flex min-h-0 flex-col items-center gap-1.5 overflow-y-auto border-r px-1 py-2 md:flex-row md:justify-between md:border-r-0 md:border-b md:px-3",
         ].join(" ")}
       >
         {collapsed ? (
-          <div className="flex items-center gap-1.5 lg:flex-col">
+          <div className="flex items-center gap-1.5 md:flex-col">
             {collapseButton}
             {refreshButton}
             {copyPathButton}
@@ -254,7 +254,7 @@ function WorkspaceFileTreeComponent({
           </div>
         ) : (
           <>
-            <div className="flex flex-col items-center gap-1.5 lg:flex-row">
+            <div className="flex flex-col items-center gap-1.5 md:flex-row">
               {collapseButton}
               {copyPathButton}
               {refreshButton}
@@ -263,7 +263,7 @@ function WorkspaceFileTreeComponent({
           </>
         )}
         {collapsed && (
-          <div className="mt-auto hidden text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 lg:block [writing-mode:vertical-rl]">
+          <div className="mt-auto hidden text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 md:block [writing-mode:vertical-rl]">
             Files
           </div>
         )}

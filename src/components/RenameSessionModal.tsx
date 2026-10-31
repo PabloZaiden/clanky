@@ -1,5 +1,5 @@
 /**
- * Modal component for renaming a workspace terminal or standalone SSH session.
+ * Modal component for renaming a terminal session.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -15,8 +15,6 @@ export interface RenameSessionModalProps {
   currentName: string;
   /** Callback to rename the session */
   onRename: (newName: string) => Promise<void>;
-  /** Session kind controls the user-facing terminology. */
-  sessionKind?: "ssh" | "terminal";
 }
 
 export function RenameSessionModal({
@@ -24,7 +22,6 @@ export function RenameSessionModal({
   onClose,
   currentName,
   onRename,
-  sessionKind = "ssh",
 }: RenameSessionModalProps) {
   const [name, setName] = useState(currentName);
   const [loading, setLoading] = useState(false);
@@ -85,7 +82,7 @@ export function RenameSessionModal({
     }
   }
 
-  const sessionLabel = sessionKind === "terminal" ? "Terminal" : "SSH Session";
+  const sessionLabel = "Terminal";
 
   return (
     <Modal

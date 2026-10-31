@@ -5,7 +5,6 @@ import {
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import {
   executionHostRefsEqual,
-  getRegisteredSshServerId,
   type Agent,
   type Chat,
   type ExecutionHostDescriptor,
@@ -13,7 +12,6 @@ import {
   type TerminalSession,
   type Workspace,
 } from "@/shared";
-import type { SshServer } from "@/shared/ssh-server";
 import {
   getChatStatusBadgeVariant,
   getTerminalSessionStatusBadgeVariant,
@@ -82,7 +80,6 @@ export interface SidebarExecutionHostTerminalNode {
 
 export interface SidebarExecutionHostNode {
   host: ExecutionHostDescriptor;
-  sshServer?: SshServer;
   key: string;
   terminalSessions: SidebarExecutionHostTerminalNode[];
   chats: SidebarChatNode[];
@@ -158,7 +155,7 @@ export type CodeExplorerTarget =
     }
   | {
       contentType: "execution-host";
-      hostKind: "local" | "mesh" | "ssh";
+      hostKind: "local" | "mesh";
       hostId: string;
       startDirectory?: string;
       filePath?: string;
@@ -441,17 +438,14 @@ function createExecutionHostTerminalNode(session: TerminalSession): SidebarExecu
 
 export function buildExecutionHostSidebarNodes({
   executionHosts,
-  servers,
   terminalSessions,
   chats = [],
 }: {
   executionHosts: ExecutionHostDescriptor[];
-  servers: SshServer[];
   terminalSessions: TerminalSession[];
   chats?: Chat[];
 }): SidebarExecutionHostNode[] {
   return executionHosts.map((host) => {
-    const sshServerId = getRegisteredSshServerId(host.ref);
     const hostChats = chats.filter((chat) => {
       const source = chat.config.source;
       return isStandaloneChat(chat)
@@ -466,9 +460,6 @@ export function buildExecutionHostSidebarNodes({
       .map(createExecutionHostTerminalNode);
     return {
       host,
-      sshServer: sshServerId
-        ? servers.find((server) => server.config.id === sshServerId)
-        : undefined,
       key: host.targetKey,
       terminalSessions: sortByDesc(hostTerminalSessions, (session) => session.createdAt),
       chats: sortByDesc(hostChats, (chat) => chat.config.updatedAt)

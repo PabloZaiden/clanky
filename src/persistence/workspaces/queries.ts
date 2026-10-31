@@ -29,12 +29,6 @@ export async function listWorkspaces(): Promise<Workspace[]> {
   const stmt = db.prepare(`
     SELECT workspace.*, ${EXECUTION_HOST_JOIN_COLUMNS},
       ${PROVISIONING_HOST_JOIN_COLUMNS},
-      workspace_target.host AS workspace_ssh_target_host,
-      workspace_target.port AS workspace_ssh_target_port,
-      workspace_target.username AS workspace_ssh_target_username,
-      workspace_target.password_ciphertext IS NOT NULL AS workspace_ssh_target_password_configured,
-      workspace_target.target_key AS workspace_ssh_target_key,
-      workspace_target.revision AS workspace_ssh_target_revision,
       workspace_icon.mime_type AS workspace_icon_mime_type,
       workspace_icon.updated_at AS workspace_icon_updated_at
     FROM workspaces workspace
@@ -44,9 +38,6 @@ export async function listWorkspaces(): Promise<Workspace[]> {
     LEFT JOIN execution_hosts provisioning_host
       ON provisioning_host.id = workspace.provisioning_host_id
       AND provisioning_host.user_id = workspace.user_id
-    LEFT JOIN workspace_execution_targets workspace_target
-      ON workspace_target.workspace_id = workspace.id
-      AND workspace_target.user_id = workspace.user_id
     LEFT JOIN workspace_icons workspace_icon
       ON workspace_icon.workspace_id = workspace.id
       AND workspace_icon.user_id = workspace.user_id

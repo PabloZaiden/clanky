@@ -18,6 +18,11 @@ const log = createLogger("core:live-voice-manager");
 const LEASE_MS = 30_000;
 const RETENTION_MS = 10 * 60_000;
 
+interface LiveVoiceSessionOptions {
+  sdp: string; clientId: string; context: ControlClientContext;
+  authority: OperationAuthority; signal: AbortSignal;
+}
+
 export class LiveVoiceManager {
   private readonly calls = new Map<string, LiveVoiceCall>();
   private readonly memory = new LiveVoiceMemory();
@@ -34,10 +39,7 @@ export class LiveVoiceManager {
     return { supported: true };
   }
 
-  async create(options: {
-    sdp: string; clientId: string; context: ControlClientContext;
-    authority: OperationAuthority; signal: AbortSignal;
-  }): Promise<LiveVoiceSessionResponse> {
+  async create(options: LiveVoiceSessionOptions): Promise<LiveVoiceSessionResponse> {
     const { sdp, clientId, context, authority } = options;
     let { signal } = options;
     signal = AbortSignal.any([signal, this.shutdown.signal]);
@@ -73,7 +75,7 @@ export class LiveVoiceManager {
       call = new LiveVoiceCall({ id, clientId, user, credentials, authority, context, service: this.service }, () => {
         // A provider close/error is a long-lived session event. Finalization
         // reports its own failures, independent of HTTP.
-        void runWithCurrentUser(user, () => this.close(id, clientId)).catch(() => {
+        void runWithCurrentUser(user, () => this.closeCall(this.requireCall(id, clientId))).catch(() => {
           log.error("Live call finalization failed", { callId: id });
         });
       }, history);
@@ -110,6 +112,30 @@ export class LiveVoiceManager {
     }
   }
 
+  async startNewConversation(id: string, options: LiveVoiceSessionOptions): Promise<LiveVoiceSessionResponse> {
+    const call = this.requireCall(id, options.clientId);
+    if (call.state.status !== "active") throw new DomainError("voice_live_busy", "A new conversation requires an active Live call.");
+    if (options.signal.aborted) throw new DomainError("voice_provider_unreachable", "The conversation change was cancelled.");
+    const settled = Promise.withResolvers<void>();
+    const replacement: NonNullable<LiveVoiceCall["replacement"]> = {
+      controller: new AbortController(), settled: settled.promise,
+    };
+    call.replacement = replacement;
+    try {
+      const closed = await this.closeCall(call);
+      if (closed.error) throw new DomainError("voice_provider_unreachable", closed.error);
+      if (replacement.controller.signal.aborted || options.signal.aborted) {
+        throw new DomainError("voice_provider_unreachable", "The conversation change was cancelled.");
+      }
+      this.memory.retain(call.scope.user.id, []);
+      const session = await this.create({
+        ...options, signal: AbortSignal.any([options.signal, replacement.controller.signal]),
+      });
+      replacement.callId = session.call.id;
+      return session;
+    } finally { settled.resolve(); }
+  }
+
   heartbeat(id: string, clientId: string, context: ControlClientContext, authority: OperationAuthority): LiveVoiceCallState {
     let call: LiveVoiceCall;
     try { call = this.requireCall(id, clientId); } catch (error) { authority.release(); throw error; }
@@ -132,12 +158,18 @@ export class LiveVoiceManager {
     return await this.requireCall(id, clientId).confirm(requestId, approved);
   }
 
-  supplyCredential(id: string, clientId: string, requestId: string, token: string | null): void {
-    this.requireCall(id, clientId).actions.supplyCredential(requestId, token);
-  }
-
   async close(id: string, clientId: string): Promise<LiveVoiceCallState> {
     const call = this.requireCall(id, clientId);
+    // A cancelled response can hide the successor's ID from the browser.
+    if (call.replacement) {
+      call.replacement.controller.abort();
+      await call.replacement.settled;
+      if (call.replacement.callId) return await this.close(call.replacement.callId, clientId);
+    }
+    return await this.closeCall(call);
+  }
+
+  private async closeCall(call: LiveVoiceCall): Promise<LiveVoiceCallState> {
     if (call.closePromise) return await call.closePromise;
     if (["closed", "failed"].includes(call.state.status)) return { ...call.state };
     call.closePromise = this.finalize(call);

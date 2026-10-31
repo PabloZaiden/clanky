@@ -2,7 +2,6 @@ import type { ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ConnectionStatus } from "@/shared/settings";
 import type { ExecutionHostRef } from "@/shared";
-import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 
 export interface UseWorkspaceServerSettingsResult {
   /** Full workspace data (name, directory, serverSettings) - fetched fresh from API */
@@ -30,7 +29,6 @@ export interface UseWorkspaceServerSettingsResult {
     name: string,
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget: WorkspaceSshTargetRequest | null,
     archived: boolean,
     allowClankyContext: boolean,
     allowWorktrees: boolean,
@@ -39,6 +37,5 @@ export interface UseWorkspaceServerSettingsResult {
   testConnection: (
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget?: WorkspaceSshTargetRequest | null,
   ) => Promise<{ success: boolean; error?: string }>;
 }

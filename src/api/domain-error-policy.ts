@@ -32,7 +32,6 @@ export type DomainErrorPolicyName =
   | "previews"
   | "provisioning"
   | "settings"
-  | "ssh"
   | "tasks"
   | "terminal"
   | "transcript"
@@ -126,7 +125,6 @@ const API_DOMAIN_ERROR_CODES = {
   acp_connection_timed_out: true,
   acp_request_cancelled: true,
   acp_session_not_found: true,
-  acp_ssh_authentication_failed: true,
   acp_unsupported_prompt_capability: true,
   [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
   chat_attachment_budget_exceeded: true,
@@ -198,8 +196,6 @@ const API_DOMAIN_ERROR_CODES = {
   upload_size_exceeded: true,
   invalid_upload_state: true,
   invalid_preview_type: true,
-  invalid_credential_token: true,
-  invalid_encrypted_credential: true,
   invalid_execution_target: true,
   invalid_model_config: true,
   invalid_uploaded_plan: true,
@@ -305,9 +301,6 @@ const API_DOMAIN_ERROR_CODES = {
   provisioning_target_busy: true,
   provisioning_cancelled: true,
   quick_chat_model_mismatch: true,
-  ssh_server_key_generation_failed: true,
-  ssh_server_not_found: true,
-  ssh_server_reload_failed: true,
   task_already_running: true,
   task_branch_missing: true,
   task_file_operation_failed: true,
@@ -554,10 +547,6 @@ const COMMON_MAPPINGS = {
     status: 404,
     message: "Execution host not found or unavailable.",
   },
-  invalid_credential_token: {
-    status: 400,
-    message: "The credential token is invalid or expired.",
-  },
   task_not_found: {
     status: 404,
     error: "not_found",
@@ -726,11 +715,6 @@ const POLICY_PROFILES = {
         status: 409,
         error: "session_not_found",
         message: "The chat session is no longer available.",
-      },
-      acp_ssh_authentication_failed: {
-        status: 401,
-        error: "ssh_authentication_failed",
-        message: "SSH authentication failed.",
       },
       acp_unsupported_prompt_capability: {
         status: 422,
@@ -1430,11 +1414,6 @@ const POLICY_PROFILES = {
         status: 409,
         message: "The provisioning target is busy.",
       },
-      ssh_server_not_found: {
-        status: 404,
-        error: "not_found",
-        message: "SSH server not found",
-      },
       workspace_worker_already_attached: {
         status: 409,
         message: "The workspace worker is already attached.",
@@ -1458,30 +1437,6 @@ const POLICY_PROFILES = {
       workspace_worker_not_connected: {
         status: 409,
         message: "The workspace worker is not connected.",
-      },
-    },
-  },
-  ssh: {
-    boundary: "authenticated",
-    mappings: {
-      ...COMMON_MAPPINGS,
-      code_cleanup_failed: { status: 502, messageFromDetails: (error) => error.message },
-      invalid_encrypted_credential: {
-        status: 400,
-        message: "The encrypted credential is invalid.",
-      },
-      ssh_server_key_generation_failed: {
-        status: 500,
-        message: "Failed to generate SSH server key pair",
-      },
-      ssh_server_not_found: {
-        status: 404,
-        error: "not_found",
-        message: "SSH server not found",
-      },
-      ssh_server_reload_failed: {
-        status: 500,
-        message: "Failed to reload SSH server",
       },
     },
   },
@@ -1706,14 +1661,6 @@ const POLICY_PROFILES = {
     boundary: "transport",
     mappings: {
       ...COMMON_MAPPINGS,
-      invalid_credential_token: {
-        status: 400,
-        message: "SSH credential token is missing or expired",
-      },
-      ssh_server_not_found: {
-        status: 404,
-        message: "SSH server not found",
-      },
       mesh_terminal_connection_unavailable: {
         status: 503,
         message: "The Mesh terminal connection is unavailable.",
@@ -1941,10 +1888,6 @@ const POLICY_PROFILES = {
       mesh_execution_unreachable: {
         status: 502,
         message: "Workspace execution host is unavailable",
-      },
-      invalid_credential_token: {
-        status: 400,
-        message: "SSH credential token is missing or expired",
       },
       not_git_repo: {
         status: 400,

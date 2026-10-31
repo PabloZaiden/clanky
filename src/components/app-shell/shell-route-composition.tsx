@@ -13,7 +13,6 @@ import type {
   Chat,
   ExecutionHostDescriptor,
   Task,
-  SshServer,
   TerminalSession,
   Workspace,
 } from "@/shared";
@@ -72,7 +71,6 @@ export interface ShellRouteSelection {
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
-  composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   selectedAgent: Agent | null;
 }
@@ -83,7 +81,6 @@ type ShellRouteContentSelection = Pick<
   | "selectedChat"
   | "selectedWorkspace"
   | "composeWorkspace"
-  | "composeServer"
   | "composeExecutionHost"
 >;
 
@@ -101,7 +98,6 @@ interface ShellRouteSelectionData {
   tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
-  servers: SshServer[];
   executionHosts: ExecutionHostDescriptor[];
   agents: Agent[];
 }
@@ -115,7 +111,6 @@ interface ShellRouteEntityCollection<T> {
 interface ShellRouteEntityResources {
   chats: ShellRouteEntityCollection<Chat>;
   workspaces: ShellRouteEntityCollection<Workspace>;
-  servers: ShellRouteEntityCollection<SshServer>;
   executionHosts: ShellRouteEntityCollection<ExecutionHostDescriptor>;
   agents: ShellRouteEntityCollection<Agent>;
   terminalSessions: ShellRouteEntityCollection<TerminalSession>;
@@ -199,7 +194,7 @@ export function isMissingShellRouteTarget(
     if (
       hostKind
       && hostId
-      && ["local", "mesh", "ssh"].includes(hostKind)
+      && ["local", "mesh"].includes(hostKind)
       && isMissingFromCollection(
         hostId,
         resources.executionHosts,
@@ -208,13 +203,6 @@ export function isMissingShellRouteTarget(
           : "",
       )
     ) {
-      return true;
-    }
-  }
-
-  if (route.view === "compose" && getRouteString(route, "kind") === "ssh-server") {
-    const serverId = getRouteString(route, "serverId") ?? getRouteString(route, "scopeId");
-    if (isMissingFromCollection(serverId, resources.servers, (server) => server.config.id)) {
       return true;
     }
   }
@@ -228,7 +216,6 @@ export function getShellRouteSelection(
     tasks,
     chats,
     workspaces,
-    servers,
     executionHosts,
     agents,
   }: ShellRouteSelectionData,
@@ -246,7 +233,6 @@ export function getShellRouteSelection(
   const taskId = getRouteString(route, "taskId");
   const chatId = getRouteString(route, "chatId");
   const workspaceId = getRouteString(route, "workspaceId");
-  const serverId = getRouteString(route, "serverId");
   const composeKind = route.view === "compose" ? getRouteString(route, "kind") : undefined;
   const composeScopeId = route.view === "compose" ? getRouteString(route, "scopeId") : undefined;
   const isExecutionHostCompose = composeKind === "execution-host-chat"
@@ -282,14 +268,8 @@ export function getShellRouteSelection(
             : null;
   const composeWorkspace =
     route.view === "compose"
-      && composeKind !== "ssh-server"
       && !isExecutionHostCompose
       ? (workspaces.find((workspace) => workspace.id === (workspaceId ?? composeScopeId)) ?? null)
-      : null;
-  const composeServer =
-    route.view === "compose"
-      && composeKind === "ssh-server"
-      ? (servers.find((server) => server.config.id === (serverId ?? composeScopeId)) ?? null)
       : null;
   const composeExecutionHost =
     route.view === "compose" && isExecutionHostCompose
@@ -314,7 +294,6 @@ export function getShellRouteSelection(
     selectedChat,
     selectedWorkspace,
     composeWorkspace,
-    composeServer,
     composeExecutionHost,
     selectedAgent,
   };
@@ -364,7 +343,6 @@ function renderShellRouteContent(
     tasks: context.tasks,
     chats: context.chats,
     workspaces: context.workspaces,
-    servers: context.servers,
     executionHosts: context.executionHosts,
     agents: context.agents.agents,
   });
@@ -377,7 +355,6 @@ function renderShellRouteContent(
       selectedChat={selection.selectedChat}
       selectedWorkspace={selection.selectedWorkspace}
       composeWorkspace={selection.composeWorkspace}
-      composeServer={selection.composeServer}
       composeExecutionHost={selection.composeExecutionHost}
     />
   );

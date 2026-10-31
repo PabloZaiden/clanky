@@ -13,7 +13,6 @@ import {
   useProvisioningJob,
   useQuickChatSettings,
   useSchedulerTimezone,
-  useSshServers,
   useTaskGrouping,
   useTasks,
   useTerminalSessions,
@@ -62,15 +61,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     purgeTask,
     purgeArchivedWorkspaceTasks,
   } = useTasks();
-  const {
-    servers,
-    loading: sshServersLoading,
-    error: sshServersError,
-    refresh: refreshSshServers,
-    createServer,
-    updateServer,
-    deleteServer,
-  } = useSshServers({ enabled: capabilities.executionHosts });
   const {
     sessions: terminalSessions,
     loading: terminalSessionsLoading,
@@ -126,11 +116,10 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
   const executionHostNodes = useMemo(
     () => buildExecutionHostSidebarNodes({
       executionHosts: executionHosts.hosts,
-      servers,
       terminalSessions,
       chats,
     }),
-    [chats, executionHosts.hosts, servers, terminalSessions],
+    [chats, executionHosts.hosts, terminalSessions],
   );
   const quickChatWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
@@ -192,7 +181,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
 
   const shellLoading = chatsLoading
     || tasksLoading
-    || sshServersLoading
     || terminalSessionsLoading
     || executionHosts.loading
     || workspacesLoading
@@ -200,7 +188,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
   const shellErrors = [
     chatsError,
     tasksError,
-    sshServersError,
     terminalSessionsError,
     workspaceError,
     agents.error,
@@ -212,14 +199,12 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     tasks,
     chats,
     workspaces,
-    servers,
     executionHosts: executionHosts.hosts,
     agents: agents.agents,
   });
   const missingRouteTarget = missingTaskRouteTarget || isMissingShellRouteTarget(route, {
     chats: { items: chats, loading: chatsLoading, error: chatsError },
     workspaces: { items: workspaces, loading: workspacesLoading, error: workspaceError },
-    servers: { items: servers, loading: sshServersLoading, error: sshServersError },
     executionHosts: {
       items: executionHosts.hosts,
       loading: executionHosts.loading,
@@ -255,13 +240,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     updateTask,
     purgeTask,
     purgeArchivedWorkspaceTasks,
-    servers,
-    sshServersLoading,
-    sshServersError,
-    refreshSshServers,
-    createServer,
-    updateServer,
-    deleteServer,
     terminalSessions,
     executionHosts: executionHosts.hosts,
     executionHostsLoading: executionHosts.loading,

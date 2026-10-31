@@ -83,7 +83,7 @@ export const crudRoutes = defineRoutes({
         description: "Create a workspace on an explicitly selected execution host or dedicated worker enrollment.",
         requestSchema: CreateWorkspaceRequestSchema,
         querySchema: WorkspaceControllerQuerySchema,
-        automation: { policy: "confirm", reason: "May prepare repositories or grant Clanky context access.", hiddenInputs: ["sshTarget"] },
+        automation: { policy: "confirm", reason: "May prepare repositories or grant Clanky context access." },
       },
     },
     async GET(req: Request, _ctx) {
@@ -161,7 +161,7 @@ export const crudRoutes = defineRoutes({
         description: "Update workspace details, execution host, adapter, privacy, or scratchpad.",
         requestSchema: UpdateWorkspaceRequestSchema,
         querySchema: SensitiveQuerySchema,
-        automation: { policy: "confirm", reason: "May change execution authority or grant Clanky context access.", hiddenInputs: ["sshTarget"], hiddenQuery: ["sensitive"] },
+        automation: { policy: "confirm", reason: "May change execution authority or grant Clanky context access.", hiddenQuery: ["sensitive"] },
       },
       DELETE: {
         delegation: workspaceAdministrationOperation(),
@@ -171,13 +171,7 @@ export const crudRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "Permanently deletes workspace data and may delete its repository directory.",
-          hiddenInputs: ["credentialToken"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            resource: { name: "workspaces", idParameter: "id", purpose: "directory-delete" },
-            input: "credentialToken",
-          },
         },
       },
     },

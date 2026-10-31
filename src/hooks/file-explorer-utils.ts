@@ -1,5 +1,4 @@
 import type { WorkspaceFileNode } from "@/shared";
-import type { FileExplorerCredentialErrorCode } from "./workspaceFileActions";
 
 export function getParentDirectory(path: string): string {
   const lastSlash = path.lastIndexOf("/");
@@ -61,21 +60,3 @@ export function getExpandedDirectoriesForTreeResponse(
     Object.prototype.hasOwnProperty.call(entriesByDirectory, expandedPath)
   );
 }
-
-export function getFileExplorerCredentialErrorCode(
-  requestError: unknown,
-): FileExplorerCredentialErrorCode | null {
-  const errorCode = (requestError as { code?: unknown } | null)?.code;
-  if (errorCode === "missing_ssh_credential") {
-    return "missing_ssh_credential";
-  }
-  if (
-    errorCode === "invalid_ssh_credential"
-    || errorCode === "invalid_credential_token"
-    || errorCode === "invalid_encrypted_credential"
-  ) {
-    return "invalid_ssh_credential";
-  }
-  return null;
-}
-

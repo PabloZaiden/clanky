@@ -14,7 +14,7 @@ export interface ExecutionHostModelConfig extends ModelConfig {
   providerID: AgentProvider;
 }
 
-export const EXECUTION_HOST_KINDS = ["local", "mesh", "ssh"] as const;
+export const EXECUTION_HOST_KINDS = ["local", "mesh"] as const;
 export type ExecutionHostKind = typeof EXECUTION_HOST_KINDS[number];
 
 export const EXECUTION_HOST_OPERATING_SYSTEMS = [
@@ -33,7 +33,6 @@ export interface ExecutionHostPlatform {
   architecture: ExecutionHostArchitecture;
 }
 
-export const WORKSPACE_SSH_TARGET_SOURCE_PREFIX = "workspace-target:";
 const SCOPED_MESH_SOURCE_PREFIX = "mesh-scoped:";
 
 export type ExecutionHostRef =
@@ -50,9 +49,7 @@ export type ExecutionHostRef =
       scope: "workspace";
       workspaceId: string;
       nodeId: string;
-    }
-  | { kind: "ssh"; serverId: string; scope?: "server" }
-  | { kind: "ssh"; scope: "workspace"; workspaceId: string };
+    };
 
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
@@ -262,24 +259,12 @@ export function createDefaultExecutionNodeConfiguration(
   };
 }
 
-export type ExecutionHostAccessRequirement =
-  | { kind: "none" }
-  | {
-      kind: "sshCredentials";
-      serverId: string;
-      methods: Array<"agent" | "password">;
-    };
+export type ExecutionHostAccessRequirement = { kind: "none" };
 
 export interface ExecutionHostBinding {
   host: ExecutionHostRef;
   targetKey: string;
   revision: number;
-}
-
-export function isWorkspaceSshExecutionHostRef(
-  ref: ExecutionHostRef,
-): ref is Extract<ExecutionHostRef, { kind: "ssh"; scope: "workspace" }> {
-  return ref.kind === "ssh" && ref.scope === "workspace";
 }
 
 export function isEnrollmentMeshExecutionHostRef(
@@ -302,15 +287,6 @@ export function isPrivateMeshExecutionHostRef(
   ref: ExecutionHostRef,
 ): ref is Extract<ExecutionHostRef, { kind: "mesh"; scope: "enrollment" | "workspace" }> {
   return isEnrollmentMeshExecutionHostRef(ref) || isWorkspaceMeshExecutionHostRef(ref);
-}
-
-export function getRegisteredSshServerId(
-  ref: ExecutionHostRef,
-): string | null {
-  if (ref.kind !== "ssh" || isWorkspaceSshExecutionHostRef(ref)) {
-    return null;
-  }
-  return ref.serverId;
 }
 
 export interface ExecutionHostDescriptor {
@@ -362,11 +338,6 @@ export function getExecutionHostSourceId(ref: ExecutionHostRef): string {
       nodeId: ref.nodeId,
     }))}`;
   }
-  if (ref.kind === "ssh") {
-    return isWorkspaceSshExecutionHostRef(ref)
-      ? `${WORKSPACE_SSH_TARGET_SOURCE_PREFIX}${ref.workspaceId}`
-      : ref.serverId;
-  }
   return ref.nodeId;
 }
 
@@ -413,15 +384,6 @@ export function executionHostRefFromParts(
       return null;
     }
     return null;
-  }
-  if (kind === "ssh") {
-    if (sourceId.startsWith(WORKSPACE_SSH_TARGET_SOURCE_PREFIX)) {
-      const workspaceId = sourceId.slice(WORKSPACE_SSH_TARGET_SOURCE_PREFIX.length).trim();
-      return workspaceId
-        ? { kind: "ssh", scope: "workspace", workspaceId }
-        : null;
-    }
-    return { kind, serverId: sourceId };
   }
   return null;
 }

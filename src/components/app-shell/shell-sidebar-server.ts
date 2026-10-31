@@ -2,14 +2,12 @@ import type { SidebarNode } from "@pablozaiden/webapp/web";
 import type {
   Chat,
   ExecutionHostDescriptor,
-  SshServer,
   TerminalSession,
   Workspace,
 } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
 import { formatStatusLabel, getChatStatusBadgeVariant } from "../common";
 import { getServerTransportLabel } from "./server-sidebar-item";
-import type { SidebarExecutionHostNode } from "./shell-types";
 import {
   createChatSidebarNode,
   type ChatSidebarContext,
@@ -20,10 +18,8 @@ import {
 } from "./shell-sidebar-terminal-session";
 import {
   getPrivateHidden,
-  privateActions,
   privateSidebarPresentation,
   renderServerSidebarItem,
-  withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import {
   executionHostId,
@@ -39,13 +35,11 @@ export interface ServerSidebarContext {
   execution: ExecutionHostSidebarContext;
   chat: ChatSidebarContext;
   terminal: TerminalSessionSidebarContext;
-  toggleSshServerPrivate: (server: SshServer) => void | Promise<void>;
   showPrivateItems: boolean;
 }
 
 export interface BuildServerSidebarNodesOptions {
   executionHosts: ExecutionHostDescriptor[];
-  executionHostNodes: SidebarExecutionHostNode[];
   remoteOnly: boolean;
   chats: Chat[];
   terminalSessions: TerminalSession[];
@@ -55,7 +49,6 @@ export interface BuildServerSidebarNodesOptions {
 
 export function buildServerSidebarNodes({
   executionHosts,
-  executionHostNodes,
   remoteOnly,
   chats,
   terminalSessions,
@@ -83,9 +76,8 @@ export function buildServerSidebarNodes({
       const hostWorkspaces = workspaces.filter((workspace) => (
         belongsToHost(workspace.executionHostBinding.host)
       ));
-      const sshServer = executionHostNodes.find((node) => node.host.targetKey === host.targetKey)?.sshServer;
       const hostPrivateHidden = getPrivateHidden(
-        sshServer?.config ?? host,
+        host,
         [],
         context.showPrivateItems,
       );
@@ -94,17 +86,7 @@ export function buildServerSidebarNodes({
         : host.endpoint ?? (
             host.ref.kind === "local" ? "This server" : "Endpoint unavailable"
           );
-      const hostActions = getExecutionHostSidebarActions(host, context.execution);
-      const actions = sshServer
-        ? withPrivateToggleAction(
-            hostActions,
-            sshServer.config,
-            () => void context.toggleSshServerPrivate(sshServer),
-          )
-        : hostActions;
-      const contextActions = sshServer
-        ? privateActions(actions, hostPrivateHidden, sshServer.config.isPrivate === true)
-        : actions;
+      const actions = getExecutionHostSidebarActions(host, context.execution);
       return privateSidebarPresentation({
         type: "item",
         id: `execution-host:${host.ref.kind}:${hostId}`,
@@ -164,7 +146,7 @@ export function buildServerSidebarNodes({
                 },
                 id: `terminal-session:${session.config.id}`,
                 title: session.config.name,
-                ancestors: sshServer ? [sshServer.config] : [],
+                ancestors: [host],
                 pinId: `terminal-session:${session.config.id}`,
               }, context.terminal)
             ),
@@ -189,13 +171,13 @@ export function buildServerSidebarNodes({
                   badge: formatStatusLabel(chat.state.status),
                   badgeVariant: getChatStatusBadgeVariant(chat.state.status),
                 },
-                ancestors: sshServer ? [sshServer.config] : [],
+                ancestors: [host],
                 idPrefix: "chat",
               }, context.chat)
             ),
           },
         ],
-      }, hostPrivateHidden, contextActions);
+      }, hostPrivateHidden, actions);
     })
     .sort((left, right) => left.title.localeCompare(right.title));
 }

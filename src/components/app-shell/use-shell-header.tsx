@@ -23,7 +23,6 @@ import type {
   Agent,
   Chat,
   ExecutionHostDescriptor,
-  SshServer,
   Task,
   Workspace,
 } from "@/shared";
@@ -49,13 +48,11 @@ interface UseShellHeaderOptions {
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
-  composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   selectedAgent: Agent | null;
   tasksLoading: boolean;
   chatsLoading: boolean;
   agents: UseAgentsResult;
-  servers: SshServer[];
   terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
   editingAgentId: ShellDialogComposition["editingAgentId"];
@@ -144,7 +141,6 @@ interface HeaderScopeOptions {
   route: WebAppRoute;
   composeKind: string | undefined;
   composeWorkspace: Workspace | null;
-  composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   selectedTask: Task | null;
   selectedChat: Chat | null;
@@ -159,7 +155,6 @@ function getHeaderScopeSubtitle({
   route,
   composeKind,
   composeWorkspace,
-  composeServer,
   composeExecutionHost,
   selectedTask,
   selectedChat,
@@ -211,7 +206,7 @@ function getHeaderScopeSubtitle({
       }
       return composeWorkspace
         ? getWorkspaceScopeSubtitle(composeWorkspace.id, workspaces)
-        : composeServer?.config.name ?? composeExecutionHost?.name;
+        : composeExecutionHost?.name;
     default:
       return undefined;
   }
@@ -227,13 +222,11 @@ export function useShellHeader({
   selectedChat,
   selectedWorkspace,
   composeWorkspace,
-  composeServer,
   composeExecutionHost,
   selectedAgent,
   tasksLoading,
   chatsLoading,
   agents,
-  servers,
   terminalSessions,
   workspaces,
   editingAgentId,
@@ -269,7 +262,6 @@ export function useShellHeader({
       route,
       composeKind,
       composeWorkspace,
-      composeServer,
       composeExecutionHost,
       selectedTask,
       selectedChat,
@@ -413,9 +405,7 @@ export function useShellHeader({
           return {
             title: composeExecutionHost
               ? `Start a new chat on ${composeExecutionHost.name}`
-              : composeServer
-                ? `Start a new chat on ${composeServer.config.name}`
-                : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
+              : composeWorkspace ? `Start a new chat in ${composeWorkspace.name}` : "Start a new chat",
             scopeSubtitle,
           };
         }
@@ -436,13 +426,6 @@ export function useShellHeader({
         if (composeKind === "workspace") {
           return { title: "Create a workspace" };
         }
-        if (composeKind === "ssh-server") {
-          return {
-            title: composeServer ? `Edit ${composeServer.config.name}` : "Register an SSH server",
-            scopeSubtitle,
-            detailSubtitle: composeServer ? "Update the saved host metadata and optional client-only password." : undefined,
-          };
-        }
         return { title: "Compose" };
       }
       case "rebuild-workspace":
@@ -458,7 +441,6 @@ export function useShellHeader({
     chatId,
     chatsLoading,
     composeKind,
-    composeServer,
     composeExecutionHost,
     composeWorkspace,
     editingAgentId,
@@ -469,7 +451,6 @@ export function useShellHeader({
     selectedTask,
     selectedWorkspace,
     terminalSessions,
-    servers,
     taskId,
     tasksLoading,
     workspaces,

@@ -11,7 +11,7 @@ const NATIVE_HARNESS_PROVIDERS = { copilot: "copilot", codex: "codex", opencode2
 export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi", "grok"] as const;
 
 export type AgentProvider = typeof AGENT_PROVIDER_IDS[number];
-export type AgentTransport = "stdio" | "ssh";
+export type AgentTransport = "stdio";
 export const DEFAULT_SERVER_AGENT_PROVIDER: AgentProvider = "opencode";
 export const DEFAULT_EXECUTION_AGENT_PROVIDER: AgentProvider = "copilot";
 
@@ -25,18 +25,9 @@ export interface AgentSettings {
   provider: AgentProvider;
 }
 
-export type RuntimeAgentSettings = AgentSettings & (
-  | {
-      transport: "stdio";
-    }
-  | {
-      transport: "ssh";
-      hostname: string;
-      port?: number;
-      username?: string;
-      password?: string;
-      identityFile?: string;
-    });
+export type RuntimeAgentSettings = AgentSettings & {
+  transport: AgentTransport;
+};
 
 export function createAgentSettings(adapter: HarnessAdapter, acpProvider: AgentProvider = DEFAULT_SERVER_AGENT_PROVIDER): AgentSettings {
   return { adapter, provider: adapter === "acp" ? acpProvider : NATIVE_HARNESS_PROVIDERS[adapter] };

@@ -2,8 +2,13 @@
  * OSC 52 clipboard sequence parsing utilities.
  */
 
-import type { ClipboardSequenceResult } from "./types";
 import { OSC_52_SEQUENCE_START, OSC_SEQUENCE_BELL, OSC_SEQUENCE_STRING_TERMINATOR } from "./constants";
+
+export interface ClipboardSequenceResult {
+  visibleOutput: string;
+  clipboardCopies: string[];
+  remainder: string;
+}
 
 function getOsc52CarryoverLength(buffer: string): number {
   const maxCarryoverLength = Math.min(buffer.length, OSC_52_SEQUENCE_START.length - 1);

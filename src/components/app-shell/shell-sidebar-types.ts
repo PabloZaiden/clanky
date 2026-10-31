@@ -12,7 +12,6 @@ import type {
   Agent,
   Chat,
   ExecutionHostDescriptor,
-  SshServer,
   Task,
   TerminalSession,
   Workspace,
@@ -44,7 +43,6 @@ export interface ShellSidebarActionHandlers {
   markChatDone: (chat: Chat) => void | Promise<void>;
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
-  toggleSshServerPrivate: (server: SshServer) => void | Promise<void>;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;

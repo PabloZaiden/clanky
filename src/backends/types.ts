@@ -39,17 +39,7 @@ export interface BackendConnectionConfig {
   /** Selected agent provider (used by ACP backends) */
   provider?: AgentProvider;
   /** Selected agent transport (used by ACP backends) */
-  transport?: "stdio" | "ssh";
-  /** SSH hostname */
-  hostname?: string;
-  /** SSH port */
-  port?: number;
-  /** SSH username (optional) */
-  username?: string;
-  /** SSH password (optional) */
-  password?: string;
-  /** SSH identity file path (optional) */
-  identityFile?: string;
+  transport?: "stdio";
   /** Derived command for ACP transport */
   command?: string;
   /** Derived command args for ACP transport */

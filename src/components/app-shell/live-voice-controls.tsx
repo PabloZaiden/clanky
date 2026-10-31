@@ -4,13 +4,13 @@
 
 import type { SidebarAction } from "@pablozaiden/webapp/web";
 import type { UseLiveVoiceResult } from "../../hooks/useLiveVoice";
-import { CloseIcon, MicrophoneIcon } from "../common";
+import { CloseIcon, MicrophoneIcon, RefreshIcon } from "../common";
 
 const CONTROL_BUTTON_CLASS_NAME = "wapp-action-menu-trigger wapp-action-menu-trigger-compact h-11 w-11 shrink-0";
 
 function VoiceIndicator({ voice }: { voice: UseLiveVoiceResult }) {
   if (!voice.busy) return <MicrophoneIcon />;
-  if (voice.processing && !voice.speaking || voice.status === "connecting" || voice.status === "closing") {
+  if (voice.restarting || voice.processing && !voice.speaking || voice.status === "connecting" || voice.status === "closing") {
     return <span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />;
   }
   return (
@@ -26,6 +26,7 @@ function VoiceIndicator({ voice }: { voice: UseLiveVoiceResult }) {
 function voiceStatusLabel(voice: UseLiveVoiceResult): string {
   if (voice.status === "connecting") return "Connecting";
   if (voice.status === "closing") return "Ending";
+  if (voice.restarting) return "Starting new conversation";
   if (voice.muted) return "Muted";
   if (voice.speaking) return "Speaking";
   if (voice.processing) return "Processing";
@@ -70,6 +71,11 @@ export function LiveVoiceControls({ voice, expanded, onToggleExpanded }: {
         {voice.intention}
       </p> : null}
       <div className="flex shrink-0 items-center gap-1.5">
+        {expanded ? <button type="button" className={CONTROL_BUTTON_CLASS_NAME}
+          title="New Live conversation" aria-label="New Live conversation"
+          disabled={voice.status !== "active" || voice.restarting} onClick={() => void voice.startNewConversation()}>
+          <span aria-hidden="true"><RefreshIcon /></span>
+        </button> : null}
         {voice.status === "active" ? <button type="button" className={CONTROL_BUTTON_CLASS_NAME}
           title={muteLabel} aria-label={muteLabel} aria-pressed={voice.muted} onClick={voice.toggleMute}>
           <span aria-hidden="true" className="relative inline-flex">

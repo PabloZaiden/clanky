@@ -216,7 +216,7 @@ work. Code requires a compatible `code serve-web` CLI on the workspace host;
 see [Preview and Code](API.md#live-previews-from-the-cli) for prerequisites.
 
 The controller's configured host performs the work, including when that host
-is SSH or Mesh. Filesystem navigation is not restricted to the workspace's
+is a Mesh worker. Filesystem navigation is not restricted to the workspace's
 initial directory: the execution account's permissions still apply.
 
 Trash combines local and shared conversations with bounded pagination.

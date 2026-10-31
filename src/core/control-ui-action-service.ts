@@ -152,7 +152,7 @@ export class ControlUiActionService {
     }
     if (acknowledgement.outcome.status === "context" && pending.action.type !== "get_context"
       || acknowledgement.outcome.status === "presented"
-        && pending.action.type !== "confirm_operation" && pending.action.type !== "request_ssh_credential") {
+        && pending.action.type !== "confirm_operation") {
       throw new DomainError("control_action_not_found", "The pending UI action is unavailable.");
     }
     this.settle(pending, acknowledgement.outcome);

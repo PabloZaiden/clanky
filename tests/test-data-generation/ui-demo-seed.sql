@@ -27,7 +27,6 @@ DELETE FROM tasks WHERE id LIKE 'demo-%';
 DELETE FROM sessions WHERE task_id LIKE 'demo-%';
 DELETE FROM clanky_context_api_keys
 WHERE api_key_id LIKE 'demo-%' OR context_id LIKE 'demo-%';
-DELETE FROM workspace_execution_targets WHERE workspace_id LIKE 'demo-%';
 DELETE FROM workspace_worker_enrollments
 WHERE id LIKE 'demo-%' OR token_id LIKE 'demo-%' OR workspace_id LIKE 'demo-%';
 DELETE FROM workspaces WHERE id LIKE 'demo-%';
@@ -37,7 +36,6 @@ WHERE local_user_id = 'demo-user' AND worker_node_id LIKE 'demo-%';
 DELETE FROM mesh_controller_grants WHERE controller_node_id LIKE 'demo-%';
 DELETE FROM mesh_worker_kill_nonces WHERE nonce LIKE 'demo-%';
 DELETE FROM execution_hosts WHERE id LIKE 'demo-%';
-DELETE FROM ssh_servers WHERE id LIKE 'demo-%';
 DELETE FROM preferences WHERE user_id = 'demo-user';
 DELETE FROM mesh_node_identity WHERE node_id LIKE 'demo-%';
 DELETE FROM mesh_controller_relays WHERE relay_url LIKE 'http://demo-%';
@@ -70,31 +68,6 @@ INSERT INTO preferences (key, user_id, value) VALUES
   ('new-task-planning', 'demo-user', '{"autoAcceptPlan":false,"fullyAutonomous":false}')
 ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value;
 
-INSERT INTO ssh_servers (
-  id, user_id, name, address, username, created_at, updated_at,
-  repositories_base_path, is_private, port
-) VALUES
-  (
-    'demo-server-build', 'demo-user', 'Build Box', 'build.demo.internal', 'clanky',
-    '2026-04-16T18:00:00.000Z', '2026-04-17T13:40:00.000Z',
-    '/srv/workspaces', 0, 22
-  ),
-  (
-    'demo-server-ops', 'demo-user', 'Operations Box', 'ops.demo.internal', 'deploy',
-    '2026-04-16T18:05:00.000Z', '2026-04-17T12:10:00.000Z',
-    '/opt/projects', 1, 2202
-  )
-ON CONFLICT(id) DO UPDATE SET
-  user_id = excluded.user_id,
-  name = excluded.name,
-  address = excluded.address,
-  username = excluded.username,
-  created_at = excluded.created_at,
-  updated_at = excluded.updated_at,
-  repositories_base_path = excluded.repositories_base_path,
-  is_private = excluded.is_private,
-  port = excluded.port;
-
 INSERT INTO execution_hosts (
   id, user_id, kind, source_id, target_key, revision, revoked_at,
   created_at, updated_at, platform_os, platform_architecture, capabilities_json
@@ -105,7 +78,7 @@ INSERT INTO execution_hosts (
     '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
-    'demo-host-ssh', 'demo-user', 'ssh', 'demo-server-build', 'demo-target-ssh', 3, NULL,
+    'demo-host-build', 'demo-user', 'mesh', 'demo-build-node', 'demo-target-build', 3, NULL,
     '2026-04-16T18:01:00.000Z', '2026-04-17T13:45:00.000Z', 'linux', 'x86_64',
     '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
@@ -266,10 +239,10 @@ INSERT INTO workspaces (
   ),
   (
     'demo-workspace-remote', 'demo-user', 'Billing API', '/srv/workspaces/billing-api',
-    'git', 4, 'demo-host-ssh', 3, '{"agent":{"provider":"copilot"}}',
+    'git', 4, 'demo-host-build', 3, '{"agent":{"provider":"copilot"}}',
     '2026-04-16T17:55:00.000Z', '2026-04-17T13:35:00.000Z',
     0, 0, 1, '/srv/workspaces', 'https://github.com/example/billing-api',
-    '/srv/workspaces', '.devcontainer/api', 'demo-host-ssh', 3, 1
+    '/srv/workspaces', '.devcontainer/api', 'demo-host-build', 3, 1
   ),
   (
     'demo-workspace-mesh', 'demo-user', 'Analytics Lab', '/srv/mesh/analytics-lab',
@@ -298,25 +271,6 @@ ON CONFLICT(id) DO UPDATE SET
   provisioning_host_id = excluded.provisioning_host_id,
   provisioning_host_revision = excluded.provisioning_host_revision,
   allow_worktrees = excluded.allow_worktrees;
-
-INSERT INTO workspace_execution_targets (
-  workspace_id, user_id, host, port, username, password_ciphertext,
-  target_key, revision, created_at, updated_at
-) VALUES (
-  'demo-workspace-remote', 'demo-user', 'build.demo.internal', 22, 'clanky',
-  'demo-encrypted-password', 'demo-target-ssh', 3,
-  '2026-04-16T17:55:00.000Z', '2026-04-17T13:35:00.000Z'
-)
-ON CONFLICT(workspace_id) DO UPDATE SET
-  user_id = excluded.user_id,
-  host = excluded.host,
-  port = excluded.port,
-  username = excluded.username,
-  password_ciphertext = excluded.password_ciphertext,
-  target_key = excluded.target_key,
-  revision = excluded.revision,
-  created_at = excluded.created_at,
-  updated_at = excluded.updated_at;
 
 INSERT INTO tasks (
   id, user_id, name, directory, prompt, issue_number, created_at, updated_at, is_private,
@@ -526,7 +480,7 @@ INSERT INTO chats (
     '2026-04-17T11:00:00.000Z', '2026-04-17T11:18:00.000Z', '2026-04-17T11:18:00.000Z',
     NULL, NULL, 'The remote provider became unavailable.', '2026-04-17T11:18:00.000Z',
     'provider_unavailable', NULL, NULL, NULL, '[]', '[]', NULL, 0,
-    'provider_unavailable', 'connecting_provider', 'demo-host-ssh', 3
+    'provider_unavailable', 'connecting_provider', 'demo-host-build', 3
   )
 ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
@@ -697,7 +651,7 @@ INSERT INTO terminal_sessions (
   (
     'demo-terminal-remote', 'demo-user', 'Billing direct shell', 'demo-workspace-remote',
     NULL, '/srv/workspaces/billing-api', 'clanky-demo-billing-direct',
-    'direct', 0, 4, 'demo-host-ssh', 3, '2026-04-17T11:30:00.000Z',
+    'direct', 0, 4, 'demo-host-build', 3, '2026-04-17T11:30:00.000Z',
     '2026-04-17T13:20:00.000Z', 0, 'ready', '2026-04-17T13:20:00.000Z',
     NULL, 'direct', 'Persistent dtach is unavailable; using a direct shell.'
   ),
@@ -751,7 +705,7 @@ INSERT INTO preview_sessions (
     'Mesh worker stopped responding while forwarding the preview.'
   ),
   (
-    'demo-preview-server', 'demo-user', 'server', NULL, 'demo-host-ssh', 3,
+    'demo-preview-server', 'demo-user', 'server', NULL, 'demo-host-build', 3,
     '127.0.0.1', 8080, '127.0.0.1', 58080, 'http://127.0.0.1:58080',
     '/health', 'demo-preview-server-cli', 'demo-workstation',
     '2026-04-16T15:00:00.000Z', '2026-04-16T18:00:00.000Z',
@@ -784,21 +738,21 @@ INSERT INTO provisioning_jobs (
 ) VALUES
   (
     'demo-provision-running', 'demo-user',
-    '{"id":"demo-provision-running","name":"Provision Analytics Lab","executionHostBinding":{"host":{"kind":"mesh","nodeId":"demo-worker-node"},"targetKey":"demo-target-mesh","revision":2},"transport":"worker","workspaceWorkerEnrollmentId":"demo-worker-enrollment","workerEnrollmentId":"demo-worker-enrollment","workerEnrollmentRoute":"relay","repoUrl":"https://github.com/example/analytics-lab","basePath":"/srv/mesh","devcontainerSubpath":".devcontainer","provider":"codex","mode":"provision","createdAt":"2026-04-17T10:00:00.000Z"}',
+    '{"id":"demo-provision-running","name":"Provision Analytics Lab","executionHostBinding":{"host":{"kind":"mesh","nodeId":"demo-worker-node"},"targetKey":"demo-target-mesh","revision":2},"workspaceWorkerEnrollmentId":"demo-worker-enrollment","workerEnrollmentId":"demo-worker-enrollment","workerEnrollmentRoute":"relay","repoUrl":"https://github.com/example/analytics-lab","basePath":"/srv/mesh","devcontainerSubpath":".devcontainer","provider":"codex","mode":"provision","createdAt":"2026-04-17T10:00:00.000Z"}',
     '{"status":"interrupted","currentStep":"devbox_up","targetDirectory":"/srv/mesh/analytics-lab","resolvedDirectory":"/srv/mesh/analytics-lab","error":{"code":"server_restarted","message":"Provisioning was interrupted because the Clanky server restarted.","step":"devbox_up"},"updatedAt":"2026-04-17T13:45:00.000Z","startedAt":"2026-04-17T10:05:00.000Z","completedAt":"2026-04-17T13:45:00.000Z"}',
     'interrupted', 'demo-workspace-mesh', '2026-04-17T10:00:00.000Z', '2026-04-17T13:45:00.000Z',
     'demo-host-mesh', 2
   ),
   (
     'demo-provision-failed', 'demo-user',
-    '{"id":"demo-provision-failed","name":"Rebuild Billing API","executionHostBinding":{"host":{"kind":"ssh","serverId":"demo-server-build"},"targetKey":"demo-target-ssh","revision":3},"transport":"ssh","repoUrl":"https://github.com/example/billing-api","basePath":"/srv/workspaces","devcontainerSubpath":".devcontainer/api","provider":"copilot","mode":"rebuild","workspaceId":"demo-workspace-remote","targetDirectory":"/srv/workspaces/billing-api","createdAt":"2026-04-17T08:00:00.000Z"}',
+    '{"id":"demo-provision-failed","name":"Rebuild Billing API","executionHostBinding":{"host":{"kind":"mesh","nodeId":"demo-build-node"},"targetKey":"demo-target-build","revision":3},"repoUrl":"https://github.com/example/billing-api","basePath":"/srv/workspaces","devcontainerSubpath":".devcontainer/api","provider":"copilot","mode":"rebuild","workspaceId":"demo-workspace-remote","targetDirectory":"/srv/workspaces/billing-api","createdAt":"2026-04-17T08:00:00.000Z"}',
     '{"status":"failed","currentStep":"devbox_rebuild","targetDirectory":"/srv/workspaces/billing-api","resolvedDirectory":"/srv/workspaces/billing-api","error":{"code":"devbox_failed","message":"The remote devbox rebuild exited with status 1.","step":"devbox_rebuild"},"updatedAt":"2026-04-17T08:20:00.000Z","startedAt":"2026-04-17T08:05:00.000Z"}',
     'failed', 'demo-workspace-remote', '2026-04-17T08:00:00.000Z', '2026-04-17T08:20:00.000Z',
-    'demo-host-ssh', 3
+    'demo-host-build', 3
   ),
   (
     'demo-provision-completed', 'demo-user',
-    '{"id":"demo-provision-completed","name":"Provision Storefront Web","executionHostBinding":{"host":{"kind":"local","nodeId":"demo-local-node"},"targetKey":"demo-target-local","revision":1},"transport":"worker","repoUrl":"https://github.com/example/demo-storefront","basePath":"/workspaces","provider":"opencode","mode":"provision","createdAt":"2026-04-15T09:00:00.000Z"}',
+    '{"id":"demo-provision-completed","name":"Provision Storefront Web","executionHostBinding":{"host":{"kind":"local","nodeId":"demo-local-node"},"targetKey":"demo-target-local","revision":1},"repoUrl":"https://github.com/example/demo-storefront","basePath":"/workspaces","provider":"opencode","mode":"provision","createdAt":"2026-04-15T09:00:00.000Z"}',
     '{"status":"completed","currentStep":"workspace_ready","targetDirectory":"/workspaces/demo-storefront","resolvedDirectory":"/workspaces/demo-storefront","workspaceId":"demo-workspace-local","workspaceAction":"created","completedAt":"2026-04-15T09:30:00.000Z","updatedAt":"2026-04-15T09:30:00.000Z","startedAt":"2026-04-15T09:05:00.000Z"}',
     'completed', 'demo-workspace-local', '2026-04-15T09:00:00.000Z', '2026-04-15T09:30:00.000Z',
     'demo-host-local', 1

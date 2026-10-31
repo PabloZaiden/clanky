@@ -202,11 +202,11 @@ test("users can maintain and retire an automatic workspace while planning and ch
     });
     const automaticRequest = {
       name: "Automatic maintenance workspace", executionHost: host.ref,
-      transport: "worker", workerEnrollmentRoute: "direct",
+      workerEnrollmentRoute: "direct",
       workerHostAddress: "127.0.0.1", workerHostAddressManual: true,
       repoUrl: git.remoteDirectory, basePath: join(fixtureDirectory, "automatic"),
       devcontainerSubpath: null, devboxTemplate: null, githubUser: null,
-      provider: "copilot", adapter: "copilot", credentialToken: null,
+      provider: "copilot", adapter: "copilot",
       mode: "provision", targetDirectory: null, workspaceId: null,
     };
     const automatic = await runAutomaticWorkspaceJob(controller, automaticRequest);
@@ -461,7 +461,6 @@ test("controller rolls out worker channels and maintains inherited and overridde
     const automaticRequest = {
       name: "Inherited latest workspace",
       executionHost: successfulHost.ref,
-      transport: "worker",
       workerEnrollmentRoute: "direct",
       workerHostAddress: "127.0.0.1",
       workerHostAddressManual: true,
@@ -472,7 +471,6 @@ test("controller rolls out worker channels and maintains inherited and overridde
       githubUser: null,
       provider: "copilot",
       adapter: "copilot",
-      credentialToken: null,
       mode: "provision",
       targetDirectory: null,
       workspaceId: null,

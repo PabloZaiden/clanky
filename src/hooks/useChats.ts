@@ -11,14 +11,12 @@ import type {
 } from "@/contracts";
 import {
   getExecutionHostSourceId,
-  getRegisteredSshServerId,
   type ExecutionHostRef,
 } from "@/shared/execution-host";
 import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "@/shared";
 import { mergeChatSummarySnapshot } from "../utils/chat-snapshot";
 import { SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecycle";
 import { getClankyClientId } from "../lib/clanky-client-id";
-import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { useChatActivityState } from "./chat-state-context";
 
 const log = createLogger("useChats");
@@ -186,20 +184,9 @@ export function useChats(): UseChatsResult {
     try {
       setError(null);
       await mutate(async (signal) => {
-        const chat = chats.find((entry) => entry.config.id === id);
-        const recovery = chat?.state.harness?.historyRecovery;
-        const serverId = chat && !isStandaloneChat(chat) && recovery && recovery.status !== "complete"
-          ? getRegisteredSshServerId(recovery.executionHost.host)
-          : null;
-        const credentialToken = serverId
-          ? await getStoredSshCredentialToken(serverId)
-          : null;
         await apiRequest<unknown>(`/api/chats/${id}`, {
           signal,
           method: "DELETE",
-          ...(credentialToken
-            ? { headers: { "x-clanky-ssh-credential-token": credentialToken } }
-            : {}),
           action: "Delete chat",
           fallbackMessage: "Failed to delete chat",
         });

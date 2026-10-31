@@ -1,10 +1,10 @@
 /**
- * Remote prerequisite checks for standalone SSH servers.
+ * Prerequisite checks for execution hosts.
  */
 
-import type { SshServerConfig, SshServerPrerequisiteCheck, SshServerPrerequisiteReport, SshServerPrerequisiteStatus } from "@/shared";
+import type { ExecutionHostPrerequisiteCheck, ExecutionHostPrerequisiteReport, ExecutionHostPrerequisiteStatus } from "@/shared";
 import type { CommandExecutor } from "./command-executor";
-import { buildPersistentSessionBackendInstallHint } from "./ssh-persistent-session";
+import { buildPersistentSessionBackendInstallHint } from "./terminal/persistent-session";
 
 const automaticProvisioningDisabledDetail =
   "Automatic provisioning is disabled for this server because no repositories base path is configured.";
@@ -14,17 +14,17 @@ function missingCommandDetail(command: string): string {
 }
 
 function unavailableAfterConnectionFailureDetail(label: string): string {
-  return `Could not verify ${label} because the SSH connectivity probe failed.`;
+  return `Could not verify ${label} because the execution host connectivity probe failed.`;
 }
 
 function createCheck(
-  id: SshServerPrerequisiteCheck["id"],
+  id: ExecutionHostPrerequisiteCheck["id"],
   label: string,
-  status: SshServerPrerequisiteStatus,
+  status: ExecutionHostPrerequisiteStatus,
   details: string,
   requiredFor: string[],
   installHint?: string,
-): SshServerPrerequisiteCheck {
+): ExecutionHostPrerequisiteCheck {
   return {
     id,
     label,
@@ -37,7 +37,7 @@ function createCheck(
 
 const automaticProvisioningChecks: Array<{
   id: Extract<
-    SshServerPrerequisiteCheck["id"],
+    ExecutionHostPrerequisiteCheck["id"],
     "devbox" | "docker" | "devcontainer" | "git" | "gh"
   >;
   label: string;
@@ -84,12 +84,12 @@ const automaticProvisioningChecks: Array<{
 
 async function runCommandProbe(
   executor: CommandExecutor,
-  id: SshServerPrerequisiteCheck["id"],
+  id: ExecutionHostPrerequisiteCheck["id"],
   label: string,
   command: string,
   requiredFor: string[],
   installHint: string,
-): Promise<SshServerPrerequisiteCheck> {
+): Promise<ExecutionHostPrerequisiteCheck> {
   if (id === "devbox") {
     const result = await executor.exec(command, ["--help"], { cwd: "/" });
     if (!result.success) {
@@ -127,7 +127,7 @@ async function runCommandProbe(
   );
 }
 
-function createAutomaticProvisioningNotApplicableChecks(): SshServerPrerequisiteCheck[] {
+function createAutomaticProvisioningNotApplicableChecks(): ExecutionHostPrerequisiteCheck[] {
   return automaticProvisioningChecks.map((check) =>
     createCheck(
       check.id,
@@ -139,7 +139,7 @@ function createAutomaticProvisioningNotApplicableChecks(): SshServerPrerequisite
   );
 }
 
-function createAutomaticProvisioningUnknownChecks(): SshServerPrerequisiteCheck[] {
+function createAutomaticProvisioningUnknownChecks(): ExecutionHostPrerequisiteCheck[] {
   return automaticProvisioningChecks.map((check) =>
     createCheck(
       check.id,
@@ -154,7 +154,7 @@ function createAutomaticProvisioningUnknownChecks(): SshServerPrerequisiteCheck[
 async function runAutomaticProvisioningChecks(
   executor: CommandExecutor,
   repositoriesBasePath?: string,
-): Promise<SshServerPrerequisiteCheck[]> {
+): Promise<ExecutionHostPrerequisiteCheck[]> {
   if (!repositoriesBasePath?.trim()) {
     return createAutomaticProvisioningNotApplicableChecks();
   }
@@ -173,15 +173,15 @@ async function runAutomaticProvisioningChecks(
   );
 }
 
-function buildSummary(checks: SshServerPrerequisiteCheck[]): SshServerPrerequisiteReport["summary"] {
+function buildSummary(checks: ExecutionHostPrerequisiteCheck[]): ExecutionHostPrerequisiteReport["summary"] {
   const availableCount = checks.filter((check) => check.status === "available").length;
   const missingCount = checks.filter((check) => check.status === "missing").length;
   const notApplicableCount = checks.filter((check) => check.status === "not_applicable").length;
   const unknownCount = checks.filter((check) => check.status === "unknown").length;
-  const sshConnection = checks.find((check) => check.id === "ssh_connection");
+  const connection = checks.find((check) => check.id === "connection");
 
-  let status: SshServerPrerequisiteReport["summary"]["status"] = "ready";
-  if (sshConnection?.status !== "available") {
+  let status: ExecutionHostPrerequisiteReport["summary"]["status"] = "ready";
+  if (connection?.status !== "available") {
     status = "connection_failed";
   } else if (missingCount > 0 || unknownCount > 0) {
     status = "missing_requirements";
@@ -196,17 +196,6 @@ function buildSummary(checks: SshServerPrerequisiteCheck[]): SshServerPrerequisi
   };
 }
 
-export async function checkSshServerPrerequisites(
-  server: SshServerConfig,
-  executor: CommandExecutor,
-): Promise<SshServerPrerequisiteReport> {
-  return await checkExecutionHostPrerequisites({
-    targetId: server.id,
-    connectionLabel: "SSH",
-    repositoriesBasePath: server.repositoriesBasePath,
-  }, executor);
-}
-
 export interface ExecutionHostPrerequisiteTarget {
   targetId: string;
   connectionLabel: string;
@@ -216,7 +205,7 @@ export interface ExecutionHostPrerequisiteTarget {
 export async function checkExecutionHostPrerequisites(
   target: ExecutionHostPrerequisiteTarget,
   executor: CommandExecutor,
-): Promise<SshServerPrerequisiteReport> {
+): Promise<ExecutionHostPrerequisiteReport> {
   const checkedAt = new Date().toISOString();
   const connectionUses = [`Connecting to this ${target.connectionLabel} host`];
   const connectionProbe = await executor.exec("true", [], { cwd: "/" });
@@ -224,10 +213,10 @@ export async function checkExecutionHostPrerequisites(
   if (!connectionProbe.success) {
     const detail = connectionProbe.stderr.trim()
       || connectionProbe.stdout.trim()
-      || "Unable to execute commands over SSH.";
-    const checks: SshServerPrerequisiteCheck[] = [
+      || "Unable to execute commands on the execution host.";
+    const checks: ExecutionHostPrerequisiteCheck[] = [
       createCheck(
-        "ssh_connection",
+        "connection",
         `${target.connectionLabel} connectivity`,
         "missing",
         `Failed to connect to the execution host: ${detail}`,
@@ -238,20 +227,20 @@ export async function checkExecutionHostPrerequisites(
         "bash",
         "unknown",
         unavailableAfterConnectionFailureDetail("bash"),
-        ["Standalone SSH sessions", "Automatic provisioning", "devbox arise"],
+        ["Terminals", "Automatic provisioning", "devbox arise"],
       ),
       createCheck(
         "dtach",
         "dtach",
         "unknown",
         unavailableAfterConnectionFailureDetail("dtach"),
-        ["Persistent SSH sessions"],
+        ["Persistent terminals"],
       ),
     ];
     const provisioningChecks = target.repositoriesBasePath?.trim()
       ? createAutomaticProvisioningUnknownChecks()
       : createAutomaticProvisioningNotApplicableChecks();
-    const checksWithProvisioning: SshServerPrerequisiteCheck[] = [
+    const checksWithProvisioning: ExecutionHostPrerequisiteCheck[] = [
       ...checks,
       ...provisioningChecks,
     ];
@@ -269,8 +258,8 @@ export async function checkExecutionHostPrerequisites(
     "bash",
     "bash",
     "bash",
-    ["Standalone SSH sessions", "Automatic provisioning", "devbox arise"],
-    "Install bash and ensure it is available on PATH before using shell-based SSH workflows.",
+    ["Terminals", "Automatic provisioning", "devbox arise"],
+    "Install bash and ensure it is available on PATH before using shell-based workflows.",
   );
   const dtachResult = await executor.exec(
     "sh",
@@ -284,7 +273,7 @@ export async function checkExecutionHostPrerequisites(
     dtachResult.success
       ? "dtach is available on the remote host."
       : missingCommandDetail("dtach"),
-    ["Persistent SSH sessions"],
+    ["Persistent terminals"],
     dtachResult.success ? undefined : buildPersistentSessionBackendInstallHint(),
   );
   const provisioningChecks = await runAutomaticProvisioningChecks(
@@ -292,9 +281,9 @@ export async function checkExecutionHostPrerequisites(
     target.repositoriesBasePath ?? undefined,
   );
 
-  const checks: SshServerPrerequisiteCheck[] = [
+  const checks: ExecutionHostPrerequisiteCheck[] = [
     createCheck(
-      "ssh_connection",
+      "connection",
       `${target.connectionLabel} connectivity`,
       "available",
       "Clanky can connect to this host and execute commands.",

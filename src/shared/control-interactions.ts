@@ -29,11 +29,4 @@ export type ControlConfirmation = z.infer<typeof ControlConfirmationSchema>;
 export const ControlClientActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("get_context") }).strict(),
   z.object({ type: z.literal("confirm_operation"), confirmation: ControlConfirmationSchema }).strict(),
-  z.object({
-    type: z.literal("request_ssh_credential"),
-    requestId: z.string().uuid(),
-    serverId: z.string().min(1).max(500),
-    serverName: z.string().min(1).max(500),
-    expiresAt: z.number().int().positive(),
-  }).strict(),
 ]);

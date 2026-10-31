@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import { createLogger, type WebAppDuplex } from "@pablozaiden/webapp/web";
 import { z } from "zod";
-import type { TerminalSessionKind } from "./use-terminal-connection";
 import { TerminalChannel } from "./terminal-channel";
 
 const log = createLogger("terminal-lifecycle");
@@ -21,20 +20,17 @@ const TerminalMessageSchema = z.object({
 interface TerminalMessageContext {
   isCurrent: () => boolean;
   fail: (error: unknown) => void;
-  reconnect: () => Promise<void>;
 }
 
 interface UseTerminalLifecycleParams {
   terminalUrl: string | null;
   terminalRef: React.MutableRefObject<Terminal | null>;
-  sessionKind: TerminalSessionKind | null;
   terminalSocketRef: React.MutableRefObject<WebAppDuplex | null>;
   terminalReadyRef: React.MutableRefObject<boolean>;
   pendingOutputRef: React.MutableRefObject<string[]>;
   pendingOscColorQueryRef: React.MutableRefObject<string>;
   lastSentResizeRef: React.MutableRefObject<{ cols: number; rows: number } | null>;
   terminalConnectInFlightRef: React.MutableRefObject<boolean>;
-  standaloneTokenRecoveryAttemptedRef: React.MutableRefObject<boolean>;
   setSocketStatus: (status: "connecting" | "open" | "closed") => void;
   syncTerminalSize: (options?: { fit?: boolean }) => void;
   flushPendingOutput: () => void;
@@ -43,23 +39,17 @@ interface UseTerminalLifecycleParams {
   showErrorToast: (message: string) => void;
   copyTerminalClipboardText: (text: string) => Promise<void>;
   clearSelectedTerminalText: (options?: { clearTerminalSelection?: boolean }) => void;
-  loadStandaloneCredentialToken: (options?: { forceRefresh?: boolean; promptOnFailure?: boolean }) => Promise<string | null>;
-  setStandaloneCredentialToken: (token: string | null) => void;
-  setPendingStandaloneAction: (action: "terminal" | "delete" | null) => void;
-  setShowPasswordPrompt: (show: boolean) => void;
 }
 
 export function useTerminalLifecycle({
   terminalUrl,
   terminalRef,
-  sessionKind,
   terminalSocketRef,
   terminalReadyRef,
   pendingOutputRef,
   pendingOscColorQueryRef,
   lastSentResizeRef,
   terminalConnectInFlightRef,
-  standaloneTokenRecoveryAttemptedRef,
   setSocketStatus,
   syncTerminalSize,
   flushPendingOutput,
@@ -68,10 +58,6 @@ export function useTerminalLifecycle({
   showErrorToast,
   copyTerminalClipboardText,
   clearSelectedTerminalText,
-  loadStandaloneCredentialToken,
-  setStandaloneCredentialToken,
-  setPendingStandaloneAction,
-  setShowPasswordPrompt,
 }: UseTerminalLifecycleParams) {
   const currentRef = useRef<TerminalChannel | null>(null);
   const closingRef = useRef<Promise<void>>(Promise.resolve());
@@ -101,7 +87,6 @@ export function useTerminalLifecycle({
       return;
     }
     terminalReadyRef.current = true;
-    standaloneTokenRecoveryAttemptedRef.current = false;
     lastSentResizeRef.current = null;
     setSocketStatus("open");
     syncTerminalSize({ fit: true });
@@ -112,7 +97,6 @@ export function useTerminalLifecycle({
     lastSentResizeRef,
     refresh,
     setSocketStatus,
-    standaloneTokenRecoveryAttemptedRef,
     syncTerminalSize,
     terminalReadyRef,
   ]);
@@ -138,36 +122,17 @@ export function useTerminalLifecycle({
       }
       if (data.type === "terminal.error" && data.message) {
         terminalRef.current?.writeln(`\r\n${data.message}`);
-        if (sessionKind === "standalone"
-          && (data.code === "invalid_credential_token" || data.code === "ssh_credentials_required")) {
-          setStandaloneCredentialToken(null);
-          const retry = !standaloneTokenRecoveryAttemptedRef.current;
-          standaloneTokenRecoveryAttemptedRef.current = true;
-          const closing = closeTerminal();
-          if (retry) {
-            void closing.then(context.reconnect).catch(reportCleanupFailure);
-          } else {
-            void closing.catch(reportCleanupFailure);
-            setPendingStandaloneAction("terminal");
-            setShowPasswordPrompt(true);
-            showErrorToast("Failed to refresh the SSH session automatically. Re-enter the SSH password to continue.");
-          }
-        } else {
-          context.fail(new Error(data.message));
-        }
+        context.fail(new Error(data.message));
       }
     } catch (error) {
       context.fail(error);
     }
   }, [
     closeTerminal, copyTerminalClipboardText, markTerminalReady, reportCleanupFailure,
-    sessionKind, setPendingStandaloneAction, setShowPasswordPrompt, setStandaloneCredentialToken,
-    showErrorToast, standaloneTokenRecoveryAttemptedRef, terminalRef, writeTerminalOutput,
+    showErrorToast, terminalRef, writeTerminalOutput,
   ]);
 
-  const connectTerminal = useCallback(async (
-    options?: { refreshStandaloneCredential?: boolean; standaloneCredentialToken?: string },
-  ) => {
+  const connectTerminal = useCallback(async () => {
     if (!terminalUrl || terminalConnectInFlightRef.current) return;
     const previous = closeTerminal();
     terminalConnectInFlightRef.current = true;
@@ -182,17 +147,10 @@ export function useTerminalLifecycle({
     const messages: TerminalMessageContext = {
       isCurrent: () => currentRef.current === owner,
       fail,
-      reconnect: () => connectTerminal({ refreshStandaloneCredential: true }),
     };
-    let standaloneAuthToken: string | null = null;
     const owner = new TerminalChannel({
       path: terminalUrl,
       onChannel: (channel) => { if (currentRef.current === owner) terminalSocketRef.current = channel; },
-      onReady: async (channel) => {
-        if (standaloneAuthToken) await channel.send(JSON.stringify({
-          type: "terminal.auth", credentialToken: standaloneAuthToken,
-        }));
-      },
       onMessage: (raw) => handleMessage(raw, messages),
       onClose: () => {
         if (currentRef.current === owner) void closeTerminal().catch(reportCleanupFailure);
@@ -203,20 +161,6 @@ export function useTerminalLifecycle({
     try {
       await previous;
       if (currentRef.current !== owner) return;
-      standaloneAuthToken = options?.standaloneCredentialToken ?? null;
-      if (sessionKind === "standalone") {
-        if (!standaloneAuthToken) {
-          standaloneAuthToken = await loadStandaloneCredentialToken({
-            forceRefresh: options?.refreshStandaloneCredential ?? false,
-            promptOnFailure: true,
-          });
-        }
-        if (currentRef.current !== owner) return;
-        if (!standaloneAuthToken) {
-          await closeTerminal();
-          return;
-        }
-      }
       terminalReadyRef.current = false;
       pendingOutputRef.current = [];
       pendingOscColorQueryRef.current = "";
@@ -235,12 +179,10 @@ export function useTerminalLifecycle({
     closeTerminal,
     handleMessage,
     lastSentResizeRef,
-    loadStandaloneCredentialToken,
     pendingOscColorQueryRef,
     pendingOutputRef,
     reportCleanupFailure,
     resetTerminal,
-    sessionKind,
     setSocketStatus,
     showErrorToast,
     terminalConnectInFlightRef,
@@ -259,8 +201,8 @@ export function useTerminalLifecycle({
     if (terminalSocketRef.current || terminalConnectInFlightRef.current) {
       return;
     }
-    void connectTerminal({ refreshStandaloneCredential: sessionKind === "standalone" });
-  }, [connectTerminal, sessionKind, terminalConnectInFlightRef, terminalSocketRef, terminalUrl]);
+    void connectTerminal();
+  }, [connectTerminal, terminalConnectInFlightRef, terminalSocketRef, terminalUrl]);
 
   useEffect(() => {
     if (!terminalUrl) {

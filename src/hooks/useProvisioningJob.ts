@@ -1,8 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  getStoredSshCredentialToken,
-  storeSshServerPassword,
-} from "../lib/ssh-browser-credentials";
 import { apiRequest } from "../lib/api-client";
 import { isApiErrorCode } from "../lib/api-error";
 import { isProvisioningJobTerminal } from "@/shared";
@@ -13,10 +9,8 @@ import type {
   PublicProvisioningJob,
   PublicProvisioningJobSnapshot,
   ExecutionHostRef,
-  ProvisioningTransport,
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
 import { useLiveQuery, type RealtimeStatus } from "@pablozaiden/webapp/web";
 import { useProvisioningSnapshot } from "./useProvisioningSnapshot";
 import type { WorkerUpdateMode } from "@/shared/worker-update";
@@ -25,7 +19,6 @@ export interface StartProvisioningJobRequest {
   name: string;
   executionHost?: ExecutionHostRef;
   workspaceWorkerEnrollmentId?: string;
-  transport?: ProvisioningTransport;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
   workerRelayName?: string;
   workerHostAddress?: string;
@@ -38,7 +31,6 @@ export interface StartProvisioningJobRequest {
   provider: AgentProvider;
   adapter?: HarnessAdapter;
   createNewRepository?: boolean;
-  password?: string;
   mode: "provision" | "rebuild" | "restart" | "arise";
   targetDirectory: string | null;
   workspaceId: string | null;
@@ -71,19 +63,6 @@ export interface UseProvisioningJobResult {
   dismissAllJobs: () => Promise<DismissAllProvisioningJobsResult>;
   dismissingAllJobs: boolean;
   clearActiveJob: () => void;
-}
-
-async function resolveProvisioningCredentialToken(
-  serverId: string,
-  password?: string,
-): Promise<string | undefined> {
-  const trimmedPassword = password?.trim();
-  if (trimmedPassword) {
-    await storeSshServerPassword(serverId, trimmedPassword);
-  }
-
-  const token = await getStoredSshCredentialToken(serverId);
-  return token ?? undefined;
 }
 
 const DISMISS_RETRY_DELAY_MS = 100;
@@ -205,13 +184,6 @@ export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {
     try {
       setStarting(true);
       setError(null);
-      const serverId = request.executionHost
-        ? getRegisteredSshServerId(request.executionHost)
-        : null;
-      const credentialToken = serverId
-        ? await resolveProvisioningCredentialToken(serverId, request.password)
-        : undefined;
-
       const nextSnapshot = await mutate((signal) => apiRequest<PublicProvisioningJobSnapshot>("/api/provisioning-jobs", {
         signal,
         method: "POST",
@@ -222,7 +194,6 @@ export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {
           ...(request.workspaceWorkerEnrollmentId
             ? { workspaceWorkerEnrollmentId: request.workspaceWorkerEnrollmentId }
             : {}),
-          ...(request.transport ? { transport: request.transport } : {}),
           ...(request.workerEnrollmentRoute
             ? { workerEnrollmentRoute: request.workerEnrollmentRoute }
             : {}),
@@ -242,7 +213,6 @@ export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {
           githubUser: request.githubUser?.trim() ? request.githubUser.trim() : null,
           provider: request.provider,
           adapter: request.adapter,
-          credentialToken: credentialToken ?? null,
           mode: request.mode,
           createNewRepository: request.createNewRepository ?? false,
           targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,

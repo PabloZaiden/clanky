@@ -98,7 +98,6 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
       execution: executionContext,
       chat: chatContext,
       terminal: terminalContext,
-      toggleSshServerPrivate: handlers.toggleSshServerPrivate,
       showPrivateItems: handlers.showPrivateItems,
     },
   };
@@ -114,7 +113,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
     agents: options.agents,
     contexts,
   });
-  const trashIndex = nodes.findIndex((node) => node.id === "ssh-servers");
+  const trashIndex = nodes.findIndex((node) => node.id === "execution-hosts");
   nodes.splice(trashIndex < 0 ? nodes.length : trashIndex, 0, {
     type: "section", id: "trash", title: "Trash",
     action: { id: "open-trash", title: "Open Trash", label: "Open", route: { view: "trash" } },
@@ -156,7 +155,7 @@ function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefin
     case "workspaces":
       return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "trash");
     case "servers":
-      return nodes.filter((node) => node.id === "ssh-servers");
+      return nodes.filter((node) => node.id === "execution-hosts");
     case "active":
     default:
       return nodes.filter((node) => node.id === "active-work");

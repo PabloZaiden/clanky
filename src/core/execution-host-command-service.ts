@@ -21,18 +21,15 @@ export class ExecutionHostCommandService {
     request: ExecutionHostExecRequest,
     signal: AbortSignal | undefined,
     userId: string = requireExecutionOwnerUserId(),
-    sshPassword?: string,
   ): Promise<ExecutionHostExecResponse> {
     const binding = executionHostService.getBinding(ref, userId);
     const workingDirectory = await executionHostService.resolveWorkingDirectory(ref, {
       userId,
-      sshPassword,
     });
     const executor = await executionHostService.getCommandExecutor(binding, {
       operationId: `execution-host-exec:${crypto.randomUUID()}`,
       directory: workingDirectory.directory,
       localUserId: userId,
-      sshPassword,
     });
 
     try {

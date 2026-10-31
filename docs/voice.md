@@ -74,7 +74,7 @@ The application-control contracts and execution are shared with native agents,
 external MCP clients and deterministic programs. Live keeps its existing
 28-tool surface: 24 application tools plus UI context, UI actions, selective
 watching and goodbye. Direct common requests add no mandatory discovery/model
-rounds and do not go through MCP. Visual approval, private SSH handoff and
+rounds and do not go through MCP. Visual approval and
 voice-specific result/presentation budgets retain their existing behavior.
 See [agent control and MCP](deployment.md#agent-control-and-mcp) for external
 authorization and nonvoice human requests.
@@ -133,7 +133,8 @@ its padding and border, so their upper dividing lines align exactly.
 It overlays whatever screen is open, including its composer, and remains
 available across navigation, with the sidebar closed, in a fullscreen terminal,
 and on desktop or mobile. It shows
-connecting/listening/speaking/processing/muted state, mute/unmute and stop;
+connecting/listening/speaking/processing/muted state, new conversation,
+mute/unmute and stop;
 connecting can be cancelled. Buttons retain tooltips and keyboard focus feedback.
 During delegated lookups/actions, the expanded bar also shows the model's brief
 intention in the user's language, when supplied. The description has its own
@@ -182,8 +183,22 @@ it continues your recent conversation, including references to work you created
 or discussed. Each subsequent Stop starts a new ten-minute window; at ten
 minutes or later, Live starts a fresh conversation. This works across tabs for
 the same signed-in user, but controls always belong to the new originating tab.
+
+To start over during an active call, use the circular-arrow **New Live
+conversation** button in the expanded bar. It is not shown in the minimized
+sidebar controls; expand Live voice to access it. The server closes the previous
+provider session and starts one without its conversation text or remembered work
+references. Audio briefly reconnects, but the browser keeps the same microphone
+capture, audio player and mute state without requesting microphone access again.
+GPT-Live does not support clearing history within an existing provider session.
+The controls stay in their current location; chats/tasks and delegated work are
+unaffected. The button is disabled while connecting, changing conversations or
+ending a call. Stop or leaving the page cancels the change without restarting
+the microphone.
+Subsequent ordinary starts continue this new conversation instead of the old one.
+
 Restarting requires an explicit click and never automatically turns on the
-microphone. Pending approvals, SSH handoffs and watches do not carry over, and
+microphone. Pending approvals and watches do not carry over, and
 previous actions are never automatically repeated.
 
 Destructive actions, arbitrary commands, permission changes and autonomous
@@ -200,13 +215,6 @@ arguments. The server rechecks the target before dispatch. The model cannot
 approve the operation or override its arguments after approval. Task creation first
 reads the workspace's effective defaults, connected models and real host
 branches, then applies explicit intent and the browser's saved preferences.
-
-Registered SSH operations use the existing encrypted browser password store
-and a private, call-bound credential exchange. A missing credential opens an SSH
-password dialog; cancellation never silently selects another host. Credential
-tokens are not function arguments, results or realtime acknowledgements.
-Operations requiring different SSH servers through a single-token API are
-rejected rather than guessing which credential to use.
 
 ### Direct common operations
 
@@ -233,7 +241,7 @@ Their names below have the `clanky_` prefix:
 | `review_task_plan` | Give feedback, accept, or discard the plan **and delete its task**. |
 | `finish_task` | Accept completed work locally or push it, preserving distinct approval policies. |
 | `list_workspaces` | Owned workspace metadata and execution context. |
-| `list_servers` | SSH registrations and local/SSH/Mesh hosts, without probing or credentials. |
+| `list_servers` | Local and Mesh hosts, without probing or credentials. |
 | `create_workspace` | Create at an explicit directory on a selected host with an explicit adapter/provider. |
 | `get_ui_state` | Fresh acknowledged route/selection and relevant browser preferences. |
 | `ui_action` | Open a named chat/task/workspace/server/host, or use canonical client actions. |
@@ -255,8 +263,8 @@ simple spoken categories. Chats map `streaming` and `waiting` to `active`,
 `max_iterations` to `error`. For broad category questions such as “active
 chats”, leave the exact raw `status` filter null and use `voiceStatus`; do not
 filter on a made-up raw state such as `working`.
-For hosts, `current` requires an execution-host selection; a current server
-requires that selection to be SSH. The fresh route's host kind and ID are
+For hosts, `current` requires an execution-host selection.
+The fresh route's host kind and ID are
 matched against authorized resources, never guessed from a name.
 
 Creation resolves real connected models, branches and effective defaults.
@@ -546,12 +554,19 @@ lease; start a new call explicitly after returning.
 `{ "call": { "id", "status", "error", "processing" }, "sdp": "..." }`.
 The server attaches sideband before returning the SDP answer.
 
+`POST /api/voice/live/:callId/conversation` accepts the same session request
+with a new SDP offer from the existing microphone. It checks the originating
+user/client, finalizes the previous call and starts a fresh provider session
+without retained history, returning the same `201` session response. The
+browser replaces its WebRTC transport, not its microphone capture.
+Closing the previous call cancels an in-flight change or closes its successor
+if already created, even if the browser has not received the new call ID.
+
 `GET /api/voice/live/:callId` reads owned call state. POST `heartbeat` accepts
 `{ "clientId", "context" }`; POST `close` accepts `{ "clientId" }`.
 POST `confirmations/:requestId` accepts `{ "clientId", "approved": true |
-false }`, and POST `credentials/:requestId` accepts `{ "clientId",
-"credentialToken": "UUID" | null }`. These suffixes are relative to
-`/api/voice/live/:callId`. Approval and credential IDs are one-shot, expiring,
+false }`. These suffixes are relative to
+`/api/voice/live/:callId`. Approval IDs are one-shot, expiring,
 call-bound capabilities; they are not model tools.
 
 All call routes require authentication and normal same-origin mutation policy.
@@ -563,8 +578,8 @@ endpoints are removed rather than aliased.
 ### Validation scope
 
 The compiled-app global journey uses deterministic external Live and ACP
-providers, real persistence/Git/SSH boundaries, originating-tab UI
-acknowledgements and visual-approval/private-credential protocols. Native
+providers, real persistence/Git boundaries, originating-tab UI
+acknowledgements and visual-approval protocols. Native
 Control journeys remain independent of Live. The protocol fixture is not proof
 of WebRTC audio quality. Layout and media behavior are manually checked with
 Bun.WebView; physical microphone/speaker quality, mobile OS suspension and

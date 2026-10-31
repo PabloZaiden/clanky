@@ -16,7 +16,6 @@ export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks
 export { useTask, type UseTaskResult } from "./useTask";
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
-export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useExecutionHosts } from "./useExecutionHosts";
 export {
   usePreviewSessions,
@@ -124,13 +123,6 @@ export {
   type PurgeArchivedTasksResult,
   type PurgeTerminalTasksResult,
 } from "./taskActions";
-export {
-  getSshServerApi,
-  createSshServerApi,
-  updateSshServerApi,
-  deleteSshServerApi,
-  saveStandaloneSshServerPassword,
-} from "./sshServerActions";
 export {
   type FileExplorerTarget,
   WorkspaceFileConflictError,

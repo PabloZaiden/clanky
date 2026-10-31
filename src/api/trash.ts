@@ -45,11 +45,6 @@ export const trashRoutes = defineRoutes({
         responseSchema: EmptyChatTrashResponseSchema,
         automation: {
           policy: "confirm", reason: "Permanently deletes all chats currently in your Trash. Cannot be undone.",
-          hiddenInputs: ["credentialTokensByServerId"],
-          credential: {
-            kind: "ssh", resource: { name: "chats", purpose: "trash-cleanup" },
-            mapInput: "credentialTokensByServerId",
-          },
         },
       },
     },
@@ -105,11 +100,6 @@ export const trashRoutes = defineRoutes({
         requestSchema: PurgeChatTrashRequestSchema,
         automation: {
           policy: "confirm", reason: "Permanently deletes this chat and its managed worktree. Cannot be undone.",
-          hiddenInputs: ["credentialTokensByServerId"],
-          credential: {
-            kind: "ssh", resource: { name: "chats", idParameter: "id", purpose: "trash-cleanup" },
-            mapInput: "credentialTokensByServerId",
-          },
         },
       },
     },

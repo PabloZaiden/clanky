@@ -127,7 +127,6 @@ export async function getModelsForExecutionHost(
   binding: ExecutionHostBinding,
   directory: string,
   provider: ServerSettings["agent"]["provider"],
-  sshPassword?: string,
 ): Promise<ModelInfo[]> {
   executionHostService.requireBindingCapability(binding, getAgentExecutionHostCapability("acp"), undefined, 1);
   const cacheKey = createCacheKey(["models", "execution-host", binding, createAgentSettings("acp", provider), directory]);
@@ -136,7 +135,7 @@ export async function getModelsForExecutionHost(
     return cached;
   }
   const models = await backendManager.withExecutionHostBackend(
-    { binding, provider, directory, sshPassword },
+    { binding, provider, directory },
     async (backend, settings) => normalizeDiscoveredModels(settings, await backend.getModels(directory)),
   );
   if (models.length > 0) {

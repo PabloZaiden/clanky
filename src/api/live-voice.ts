@@ -5,7 +5,7 @@
 import { createLogger, defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import {
   LiveVoiceSessionRequestSchema, LiveVoiceHeartbeatSchema, LiveVoiceCloseSchema,
-  LiveVoiceConfirmationResponseSchema, LiveVoiceCredentialResponseSchema,
+  LiveVoiceConfirmationResponseSchema,
 } from "@/contracts/schemas/voice";
 import { liveVoiceManager } from "../core/live-voice-manager";
 import type { OperationAuthority } from "../core/clanky-operation-service";
@@ -64,6 +64,23 @@ export const liveVoiceRoutes = defineRoutes({
       catch (error) { return liveErrorResponse(error); }
     },
   },
+  "/api/voice/live/:callId/conversation": {
+    auth: "user", sameOrigin: "mutations",
+    description: "Start a fresh originating-client conversation and renegotiate audio without replacing its microphone.",
+    requestSchema: LiveVoiceSessionRequestSchema,
+    operations: { POST: { automation: { policy: "excluded", reason: "Private SDP and originating-client conversation change." } } },
+    async POST(req, ctx) {
+      const validation = await parseAndValidate(LiveVoiceSessionRequestSchema, req);
+      if (!validation.success) return validation.response;
+      let auth: OperationAuthority | undefined;
+      try {
+        auth = authority(req, ctx);
+        return Response.json(await liveVoiceManager.startNewConversation(ctx.params["callId"]!, {
+          ...validation.data, authority: auth, signal: req.signal,
+        }), { status: 201, headers: NO_STORE });
+      } catch (error) { auth?.release(); return liveErrorResponse(error); }
+    },
+  },
   "/api/voice/live/:callId/heartbeat": {
     auth: "user", sameOrigin: "mutations",
     description: "Renew the originating client's Live lease, authorization and revisioned UI context.",
@@ -105,25 +122,6 @@ export const liveVoiceRoutes = defineRoutes({
         const response = successResponse({ ...await liveVoiceManager.confirm(
           ctx.params["callId"]!, validation.data.clientId, ctx.params["requestId"]!, validation.data.approved,
         ) });
-        response.headers.set("Cache-Control", "no-store");
-        return response;
-      } catch (error) { return liveErrorResponse(error); }
-    },
-  },
-  "/api/voice/live/:callId/credentials/:requestId": {
-    auth: "user", sameOrigin: "mutations",
-    description: "Privately supply the requested SSH token to the originating call and exact pending operation.",
-    requestSchema: LiveVoiceCredentialResponseSchema,
-    operations: { POST: { automation: { policy: "excluded", reason: "Credential tokens never enter model tools." } } },
-    async POST(req, ctx) {
-      const validation = await parseAndValidate(LiveVoiceCredentialResponseSchema, req);
-      if (!validation.success) return validation.response;
-      try {
-        liveVoiceManager.refreshAuthority(ctx.params["callId"]!, validation.data.clientId, authority(req, ctx));
-        liveVoiceManager.supplyCredential(
-          ctx.params["callId"]!, validation.data.clientId, ctx.params["requestId"]!, validation.data.credentialToken,
-        );
-        const response = successResponse({ accepted: true });
         response.headers.set("Cache-Control", "no-store");
         return response;
       } catch (error) { return liveErrorResponse(error); }

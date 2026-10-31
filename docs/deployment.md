@@ -113,7 +113,7 @@ agents, terminals, previews, maintenance, Mesh administration and framework
 diagnostics. There is no separate list of enabled control modules. Operations
 declare their read/write/confirmation policy or an explicit exclusion at their
 canonical route definition. General access does not make the user an admin or
-owner and does not bypass confirmations or private SSH handoffs.
+owner and does not bypass confirmations.
 
 Exclusions cover account/key/session and control-grant administration, private
 credentials and invitation/enrollment/trust material, approving one's own
@@ -222,23 +222,21 @@ performing the requested mutation. The human reviews the exact arguments;
 scope and target state are checked again before execution. When disabled,
 new nonvoice operations execute directly within their existing permissions.
 This does not expand grants, approve existing pending requests, configure
-providers' own terminal/file permissions or bypass private SSH handoffs.
+providers' own terminal/file permissions.
 Changes apply to new operations immediately, without restarting chats.
 **Live Voice always requires visual confirmation**, regardless of this setting.
 
 The pending list is in the same **Approvals** Settings section, with individual
 links also available in Home's **Needs attention**. Each action is reviewed
-separately; the list also labels private SSH handoffs.
+separately.
 Native, MCP and deterministic confirmations expire one hour after creation.
 Reading a request does not extend its deadline, and reviewing one does not
-consume another. Live Voice confirmations and private SSH handoffs keep their
+consume another. Live Voice confirmations keep their
 existing one-minute deadlines.
 Approval is single-use. Pending requests do not survive restart or restore
 revoked/ended execution authority. A pending result is not completed work,
 and an uncertain outcome must be inspected before repeating a mutation.
 
-Missing SSH credentials use a separate private browser handoff. Passwords and
-credential tokens do not enter model arguments/results or deterministic code.
 Real browser passkey authentication is required for approval, approval-policy
 changes, credential handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
 not grant those human capabilities, even on loopback.
@@ -256,7 +254,7 @@ is `$HOME/.clanky`; never assume the default when a deployment overrides it.
 
 ## Remote execution
 
-For workspaces on another machine, pair a trusted Mesh worker or register an
-SSH host. Mesh workers provide HTTPS enrollment and controller-to-worker
+For workspaces on another machine, pair a trusted Mesh worker.
+Mesh workers provide HTTPS enrollment and controller-to-worker
 transport; a relay is useful when workers cannot accept inbound connections.
 See the [Mesh worker guide](mesh-worker.md) for setup and trust boundaries.

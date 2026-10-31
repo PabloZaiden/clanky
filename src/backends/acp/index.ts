@@ -11,16 +11,11 @@ export {
   createAcpSessionNotFoundError,
   createAcpUnsupportedPromptCapabilityError,
   getAcpErrorMessage,
-  isAcpSshTransportFailure,
-  isAcpSshTransportFailureMetadata,
   isAcpError,
   isAcpErrorCode,
 } from "./errors";
 export type { AcpErrorCode, RpcErrorLike } from "./errors";
-export {
-  isSshAuthenticationFailureExit,
-  sanitizeSpawnArgsForLogging,
-} from "./process-utils";
+export { sanitizeSpawnArgsForLogging } from "./process-utils";
 export { AcpBackend } from "./acp-backend";
 export type { AcpBackendOptions } from "./acp-backend";
 export type {
@@ -34,6 +29,6 @@ export type {
   RpcRequester,
   RpcTransport,
 } from "./contracts";
-export type { AcpAuthenticationMode, AcpProcessExit, AcpTransportStage } from "./types";
+export type { AcpProcessExit, AcpTransportStage } from "./types";
 export { LocalAcpTransportLifecycle } from "./transport-lifecycle";
 export { MeshAcpTransport, WorkspaceAcpTransportLifecycle } from "./mesh-transport";

@@ -87,7 +87,6 @@ export class ChatInteractionService implements ChatInteractionPort {
 
   beginShutdown(): void {
     this.shuttingDown = true;
-    this.queuedCredentialTokens.clear();
   }
 
   async shutdown(): Promise<void> {
@@ -98,7 +97,6 @@ export class ChatInteractionService implements ChatInteractionPort {
     ]), 5_000, "Chat input shutdown timed out");
   }
   private readonly queuedMessageDrains = new Set<string>();
-  private readonly queuedCredentialTokens = new Map<string, string>();
   private readonly inputOperations = new KeyedOperationQueue();
   private readonly pendingReplies = new Set<Promise<unknown>>();
   private readonly state: ChatStatePort;
@@ -149,17 +147,12 @@ export class ChatInteractionService implements ChatInteractionPort {
     const input = this.normalizeMessageInput(options);
     assertChatAttachmentBudget(getMessageAttachmentByteLength(input.attachments));
     const activeChat = await this.reactivateDoneChat(chat);
-    if (activeChat.state.queuedMessages?.length) {
-      this.rememberQueueCredentials(chatId, options.credentialToken);
-    }
     if (this.shouldQueueMessage(activeChat)) {
-      return this.enqueueMessage(activeChat, input, options.credentialToken);
+      return this.enqueueMessage(activeChat, input);
     }
 
     try {
-      return await this.conversation.dispatchMessage(activeChat, input, {
-        credentialToken: options.credentialToken,
-      });
+      return await this.conversation.dispatchMessage(activeChat, input);
     } catch (error) {
       if (!(error instanceof ChatBusyError)) {
         throw error;
@@ -167,7 +160,7 @@ export class ChatInteractionService implements ChatInteractionPort {
 
       const latest = await this.state.getChat(chatId);
       if (latest && this.shouldQueueMessage(latest)) {
-        return this.enqueueMessage(latest, input, options.credentialToken);
+        return this.enqueueMessage(latest, input);
       }
       throw error;
     }
@@ -191,9 +184,6 @@ export class ChatInteractionService implements ChatInteractionPort {
     const nextQueuedMessages = queuedMessages.filter((queuedMessage) => queuedMessage.id !== queuedMessageId);
     if (nextQueuedMessages.length === queuedMessages.length) {
       return chat;
-    }
-    if (nextQueuedMessages.length === 0) {
-      this.queuedCredentialTokens.delete(chatId);
     }
 
     const updated = await this.state.updateState(chat, {
@@ -348,9 +338,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       return { chat, admission: { status: "rejected", inputId: queuedMessageId, code: "unsupported" } };
     }
     const attachmentBytes = getMessageAttachmentByteLength(message.attachments ?? []);
-    const attachmentFiles = await this.attachments.prepare(chat, message, {
-      credentialToken: this.queuedCredentialTokens.get(chatId),
-    });
+    const attachmentFiles = await this.attachments.prepare(chat, message);
     this.assertAcceptingInput();
     const unknown: HarnessInputAdmission = { status: "unknown", inputId: queuedMessageId };
     let reserved = false;
@@ -572,7 +560,6 @@ export class ChatInteractionService implements ChatInteractionPort {
   private async enqueueMessage(
     chat: Chat,
     input: NormalizedChatMessageInput,
-    credentialToken?: string | null,
   ): Promise<Chat> {
     const now = createTimestamp();
     const queuedMessage = {
@@ -600,7 +587,6 @@ export class ChatInteractionService implements ChatInteractionPort {
       harness: updateQuestionAnswerStatus(chat.state.harness, queuedMessage.id, "queued"),
       lastActivityAt: now,
     });
-    this.rememberQueueCredentials(chat.config.id, credentialToken);
     this.state.emitChatUpdated(updated);
     // Async answers must reach the active turn instead of waiting for it to finish.
     if (input.transcriptMessage?.question) {
@@ -640,7 +626,6 @@ export class ChatInteractionService implements ChatInteractionPort {
       .join("\n");
     const attachments = queuedMessages.flatMap((queuedMessage) => queuedMessage.attachments ?? []);
     if (!message && attachments.length === 0) {
-      this.queuedCredentialTokens.delete(chatId);
       const updated = await this.state.updateState(chat, {
         ...chat.state,
         queuedMessages: chat.state.queuedMessages?.filter((entry) => blocked.has(entry.id)),
@@ -661,7 +646,6 @@ export class ChatInteractionService implements ChatInteractionPort {
       return;
     }
 
-    const credentialToken = this.queuedCredentialTokens.get(chatId);
     try {
       await this.conversation.dispatchMessage(
         chat,
@@ -670,7 +654,7 @@ export class ChatInteractionService implements ChatInteractionPort {
           transcriptMessage: queuedMessages[0]?.transcriptMessage,
           clientId: queuedMessages[0]?.clientId,
         },
-        { clearQueuedMessageIds: queuedMessages.map((entry) => entry.id), credentialToken },
+        { clearQueuedMessageIds: queuedMessages.map((entry) => entry.id) },
       );
     } catch (error) {
       if (error instanceof ChatBusyError) return;
@@ -686,15 +670,7 @@ export class ChatInteractionService implements ChatInteractionPort {
         log.error(message, { chatId });
         await this.state.markChatError(latestChat, message, isDomainError(error) ? error.code : undefined);
       }
-    } finally {
-      const latest = await this.state.getChat(chatId);
-      if (!latest?.state.queuedMessages?.length) this.queuedCredentialTokens.delete(chatId);
     }
-  }
-
-  private rememberQueueCredentials(chatId: string, credentialToken?: string | null): void {
-    const token = credentialToken?.trim();
-    if (token) this.queuedCredentialTokens.set(chatId, token);
   }
 
   private async upsertPermissionRequest(chat: Chat, request: ChatPermissionRequest): Promise<Chat> {
