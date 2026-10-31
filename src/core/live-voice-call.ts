@@ -65,6 +65,7 @@ export class LiveVoiceCall {
   started = false;
   lastHeartbeat = Date.now();
   closePromise?: Promise<LiveVoiceCallState>;
+  replacement?: { controller: AbortController; settled: Promise<void>; callId?: string };
   readonly operations = new Set<Promise<unknown>>();
   private readonly delegations = new Map<string, Delegation>();
   private pendingCommentary?: string;

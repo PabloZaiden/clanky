@@ -133,7 +133,8 @@ its padding and border, so their upper dividing lines align exactly.
 It overlays whatever screen is open, including its composer, and remains
 available across navigation, with the sidebar closed, in a fullscreen terminal,
 and on desktop or mobile. It shows
-connecting/listening/speaking/processing/muted state, mute/unmute and stop;
+connecting/listening/speaking/processing/muted state, new conversation,
+mute/unmute and stop;
 connecting can be cancelled. Buttons retain tooltips and keyboard focus feedback.
 During delegated lookups/actions, the expanded bar also shows the model's brief
 intention in the user's language, when supplied. The description has its own
@@ -182,6 +183,20 @@ it continues your recent conversation, including references to work you created
 or discussed. Each subsequent Stop starts a new ten-minute window; at ten
 minutes or later, Live starts a fresh conversation. This works across tabs for
 the same signed-in user, but controls always belong to the new originating tab.
+
+To start over during an active call, use the circular-arrow **New Live
+conversation** button in the expanded bar. It is not shown in the minimized
+sidebar controls; expand Live voice to access it. The server closes the previous
+provider session and starts one without its conversation text or remembered work
+references. Audio briefly reconnects, but the browser keeps the same microphone
+capture, audio player and mute state without requesting microphone access again.
+GPT-Live does not support clearing history within an existing provider session.
+The controls stay in their current location; chats/tasks and delegated work are
+unaffected. The button is disabled while connecting, changing conversations or
+ending a call. Stop or leaving the page cancels the change without restarting
+the microphone.
+Subsequent ordinary starts continue this new conversation instead of the old one.
+
 Restarting requires an explicit click and never automatically turns on the
 microphone. Pending approvals, SSH handoffs and watches do not carry over, and
 previous actions are never automatically repeated.
@@ -545,6 +560,14 @@ lease; start a new call explicitly after returning.
 { "revision": 0, "route": { "view": "home" } } }` and returns `201` with
 `{ "call": { "id", "status", "error", "processing" }, "sdp": "..." }`.
 The server attaches sideband before returning the SDP answer.
+
+`POST /api/voice/live/:callId/conversation` accepts the same session request
+with a new SDP offer from the existing microphone. It checks the originating
+user/client, finalizes the previous call and starts a fresh provider session
+without retained history, returning the same `201` session response. The
+browser replaces its WebRTC transport, not its microphone capture.
+Closing the previous call cancels an in-flight change or closes its successor
+if already created, even if the browser has not received the new call ID.
 
 `GET /api/voice/live/:callId` reads owned call state. POST `heartbeat` accepts
 `{ "clientId", "context" }`; POST `close` accepts `{ "clientId" }`.
