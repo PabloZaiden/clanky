@@ -81,6 +81,12 @@ When they share a native form, wrap `SettingsFieldRow` in that form so the
 framework aligns the input with the setting label rather than a stacked block.
 Let the framework wrap controls below the label when the row has insufficient
 space; do not force inline controls at the expense of readable labels.
+Use the actual available row width, including the space consumed by the sidebar,
+category navigation and safe areas. Short labels must not reserve a wide fixed
+column. When even the control group cannot fit, fields and actions wrap within
+the panel, retaining action order and right alignment; nested forms must shrink
+with the panel rather than overflow it. This behavior belongs in webapp defaults,
+not Clanky overrides or a device-specific breakpoint.
 
 ## Product presentation
 
