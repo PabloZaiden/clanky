@@ -6,7 +6,6 @@
  */
 
 import type { ChangeEvent } from "react";
-import type { SshServer } from "@/shared";
 import type { Workspace } from "@/shared/workspace";
 import { useWorkspaceExecutionTargets } from "../hooks/workspace-server-settings";
 import { getWorkspaceDisplayName, getWorkspaceServerLabel } from "../lib/workspace-label";
@@ -22,8 +21,6 @@ export interface WorkspaceSelectorProps {
   onSelect: (workspaceId: string | null, directory: string) => void;
   /** Error message from workspace operations */
   error?: string | null;
-  /** Registered SSH servers for friendly label resolution */
-  registeredSshServers?: readonly SshServer[];
   /** Whether to append server details to each workspace label */
   showServerDetails?: boolean;
 }
@@ -34,7 +31,6 @@ export function WorkspaceSelector({
   selectedWorkspaceId,
   onSelect,
   error,
-  registeredSshServers = [],
   showServerDetails = true,
 }: WorkspaceSelectorProps) {
   const { targets: executionTargets } = useWorkspaceExecutionTargets();
@@ -82,7 +78,7 @@ export function WorkspaceSelector({
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id} disabled={workspace.access === "read"}>
             {showServerDetails && !workspace.collaboration
-              ? `${getWorkspaceDisplayName(workspace)} — ${getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}`
+              ? `${getWorkspaceDisplayName(workspace)} — ${getWorkspaceServerLabel(workspace, executionTargets)}`
               : getWorkspaceDisplayName(workspace)}{workspace.access === "read" ? " (Read only)" : ""}
           </option>
         ))}

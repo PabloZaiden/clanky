@@ -46,15 +46,6 @@ export const ExecutionHostRefSchema = z.union([
     workspaceId: RequiredIdSchema,
     nodeId: RequiredIdSchema,
   }).strict(),
-  z.object({
-    kind: z.literal("ssh"),
-    serverId: RequiredIdSchema,
-  }).strict(),
-  z.object({
-    kind: z.literal("ssh"),
-    scope: z.literal("workspace"),
-    workspaceId: RequiredIdSchema,
-  }).strict(),
 ]);
 
 export const ExecutionHostCapabilityIdSchema = z.enum(
@@ -82,17 +73,8 @@ export const ExecutionNodeConfigurationSchema = z.object({
   revision: z.number().int().min(1),
 }).strict();
 
-export const ExecutionHostAccessRequirementSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({ kind: z.literal("none") }).strict(),
-    z.object({
-      kind: z.literal("sshCredentials"),
-      serverId: RequiredIdSchema,
-      methods: z.array(z.enum(["agent", "password"])).min(1),
-    }).strict(),
-  ],
-);
+export const ExecutionHostAccessRequirementSchema =
+  z.object({ kind: z.literal("none") }).strict();
 
 export const ExecutionHostBindingSchema = z.object({
   host: ExecutionHostRefSchema,
@@ -136,13 +118,9 @@ export const ExecutionHostWorkingDirectorySchema = z.object({
   configured: z.boolean(),
 }).strict();
 
-export const ResolveExecutionHostWorkingDirectoryRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1).nullable().optional(),
-}).strict();
+export const ResolveExecutionHostWorkingDirectoryRequestSchema = z.object({}).strict();
 
-export const DiscoverExecutionHostAddressesRequestSchema = z.object({
-  credentialToken: z.string().trim().min(1).nullable().optional(),
-}).strict();
+export const DiscoverExecutionHostAddressesRequestSchema = z.object({}).strict();
 
 export type ExecutionHostRefInput = z.infer<typeof ExecutionHostRefSchema>;
 export type ExecutionNodeConfigurationInput = z.infer<

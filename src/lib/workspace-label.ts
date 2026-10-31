@@ -1,4 +1,3 @@
-import type { SshServer } from "@/shared/ssh-server";
 import type { ExecutionHostDescriptor, Workspace } from "@/shared";
 import { getServerLabel } from "@/shared/settings";
 
@@ -14,7 +13,6 @@ export function getWorkspaceDisplayName(workspace: Pick<Workspace, "name" | "col
  */
 export function getWorkspaceServerLabel(
   workspace: Pick<Workspace, "serverSettings" | "executionHostBinding">,
-  _registeredSshServers: readonly SshServer[],
   executionTargets: readonly ExecutionHostDescriptor[],
 ): string {
   const target = executionTargets.find(

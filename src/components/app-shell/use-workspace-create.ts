@@ -3,7 +3,6 @@ import { createLogger, useLiveQuery, type ToastService, type WebAppRoute } from 
 import type { CollaborationControllerAccess } from "@/shared/collaboration";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import {
-  getRegisteredSshServerId,
   canRetryProvisioningJob,
   type ExecutionHostRef,
   type Workspace,
@@ -17,17 +16,12 @@ import {
 import type { AgentProvider, HarnessAdapter, ServerSettings } from "@/shared/settings";
 import type {
   CreateWorkspaceRequest,
-  WorkspaceSshTargetRequest,
 } from "@/contracts/schemas/workspace";
-import type { SshServer } from "@/shared/ssh-server";
 import type {
-  ProvisioningTransport,
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared/provisioning";
 import { apiRequest } from "../../lib/api-client";
 import {
-  getAutomaticWorkspaceBasePath,
-  getDefaultAutomaticWorkspaceServer,
   getAutomaticWorkspaceRepositoryPrefix,
 } from "../../lib/automatic-workspace-preferences";
 import type { UseGithubUsernameResult } from "../../hooks/useGithubUsername";
@@ -58,8 +52,6 @@ export interface UseWorkspaceCreateResult {
   workspaceServerSettings: ServerSettings;
   workspaceExecutionHost: ExecutionHostRef | null;
   setWorkspaceExecutionHost: (host: ExecutionHostRef | null) => void;
-  workspaceSshTarget: WorkspaceSshTargetRequest | null;
-  setWorkspaceSshTarget: (target: WorkspaceSshTargetRequest | null) => void;
   workspaceWorkerEnrollment: WorkspaceWorkerEnrollmentState | null;
   workspaceWorkerEnrollmentSelected: boolean;
   setWorkspaceWorkerEnrollmentSelected: (selected: boolean) => void;
@@ -77,8 +69,6 @@ export interface UseWorkspaceCreateResult {
   workspaceCreateSubmitting: boolean;
   automaticExecutionHost: ExecutionHostRef | null;
   setAutomaticExecutionHost: (host: ExecutionHostRef | null) => void;
-  automaticTransport: ProvisioningTransport;
-  setAutomaticTransport: (transport: ProvisioningTransport) => void;
   automaticWorkerEnrollmentRoute: ProvisioningWorkerEnrollmentRoute;
   setAutomaticWorkerEnrollmentRoute: (route: ProvisioningWorkerEnrollmentRoute) => void;
   automaticWorkerRelayName: string;
@@ -109,15 +99,12 @@ export interface UseWorkspaceCreateResult {
   setAutomaticAdapter: (adapter: HarnessAdapter) => void;
   automaticProvider: AgentProvider;
   setAutomaticProvider: (provider: AgentProvider) => void;
-  automaticPassword: string;
-  setAutomaticPassword: (password: string) => void;
   automaticChannel: WorkerUpdateMode;
   setAutomaticChannel: (channel: WorkerUpdateMode) => void;
   handleCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void;
   handleTestWorkspaceConnection: (
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget?: WorkspaceSshTargetRequest | null,
   ) => Promise<{ success: boolean; error?: string }>;
   handleBackToAutomaticWorkspaceForm: () => void;
 }
@@ -153,7 +140,6 @@ function hasPairedRelay(
 
 interface UseWorkspaceCreateOptions {
   route: WebAppRoute;
-  servers: SshServer[];
   provisioning: UseProvisioningJobResult;
   createWorkspace: (req: CreateWorkspaceRequest, controllerId?: string) => Promise<Workspace | null>;
   refreshWorkspaces: () => Promise<void>;
@@ -167,7 +153,6 @@ interface UseWorkspaceCreateOptions {
 
 export function useWorkspaceCreate({
   route,
-  servers,
   provisioning,
   createWorkspace,
   refreshWorkspaces,
@@ -204,7 +189,6 @@ export function useWorkspaceCreate({
     getCreateWorkspaceDefaultServerSettings(),
   );
   const [workspaceExecutionHost, setWorkspaceExecutionHost] = useState<ExecutionHostRef | null>(null);
-  const [workspaceSshTarget, setWorkspaceSshTarget] = useState<WorkspaceSshTargetRequest | null>(null);
   const [workspaceWorkerEnrollment, setWorkspaceWorkerEnrollment] =
     useState<WorkspaceWorkerEnrollmentState | null>(null);
   const [workspaceWorkerEnrollmentSelected, setWorkspaceWorkerEnrollmentSelected] = useState(false);
@@ -217,12 +201,10 @@ export function useWorkspaceCreate({
   function setWorkspaceControllerId(id: string): void {
     setWorkspaceControllerIdState(id);
     setWorkspaceExecutionHost(null);
-    setWorkspaceSshTarget(null);
     setWorkspaceServerSettingsValid(false);
     setWorkspaceCreateMode("manual");
   }
   const [automaticExecutionHost, setAutomaticExecutionHostState] = useState<ExecutionHostRef | null>(null);
-  const [automaticTransport, setAutomaticTransport] = useState<ProvisioningTransport>("worker");
   const [automaticWorkerEnrollmentRoute, setAutomaticWorkerEnrollmentRouteState] =
     useState<ProvisioningWorkerEnrollmentRoute>("direct");
   const [automaticWorkerRelayName, setAutomaticWorkerRelayName] = useState("");
@@ -240,7 +222,6 @@ export function useWorkspaceCreate({
     DEFAULT_EXECUTION_AGENT_PROVIDER,
   );
   const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("acp");
-  const [automaticPassword, setAutomaticPassword] = useState("");
   const [automaticChannel, setAutomaticChannel] = useState<WorkerUpdateMode>("default");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
@@ -308,7 +289,6 @@ export function useWorkspaceCreate({
             ? null
             : config.executionHostBinding.host,
         );
-        setAutomaticTransport(config.transport ?? "ssh");
         automaticWorkerEnrollmentRouteTouchedRef.current = true;
         setAutomaticWorkerEnrollmentRouteState(
           config.workerEnrollmentRoute
@@ -329,7 +309,6 @@ export function useWorkspaceCreate({
         setAutomaticProvider(config.provider);
         setAutomaticAdapter(config.adapter ?? "acp");
         setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
-        setAutomaticPassword("");
         prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
         if (config.workspaceWorkerEnrollmentId) {
@@ -370,7 +349,6 @@ export function useWorkspaceCreate({
     setWorkspaceType("git");
     setWorkspaceServerSettings(getCreateWorkspaceDefaultServerSettings());
     setWorkspaceExecutionHost(null);
-    setWorkspaceSshTarget(null);
     setWorkspaceWorkerEnrollment(null);
     setWorkspaceWorkerEnrollmentSelected(false);
     setDedicatedWorkerRoute("direct");
@@ -381,33 +359,21 @@ export function useWorkspaceCreate({
     automaticWorkerEnrollmentRouteTouchedRef.current = false;
     setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
     setAutomaticWorkerRelayName("");
-    const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
     const requestedExecutionHostKind = getRouteString(route, "executionHostKind");
     const requestedExecutionHostId = getRouteString(route, "executionHostId");
     const requestedExecutionHost: ExecutionHostRef | null = requestedExecutionHostId
-      ? requestedExecutionHostKind === "ssh"
-        ? { kind: "ssh", serverId: requestedExecutionHostId }
-        : requestedExecutionHostKind === "local" || requestedExecutionHostKind === "mesh"
-          ? requestedExecutionHostKind === "local"
-            ? { kind: "local", nodeId: requestedExecutionHostId }
-            : { kind: "mesh", nodeId: requestedExecutionHostId }
+      ? requestedExecutionHostKind === "local"
+        ? { kind: "local", nodeId: requestedExecutionHostId }
+        : requestedExecutionHostKind === "mesh"
+          ? { kind: "mesh", nodeId: requestedExecutionHostId }
           : null
       : null;
-    const defaultExecutionHost: ExecutionHostRef | null = defaultAutomaticServer
-      ? { kind: "ssh", serverId: defaultAutomaticServer.config.id }
-      : null;
-    setAutomaticExecutionHost(requestedExecutionHost ?? defaultExecutionHost);
-    setAutomaticTransport("worker");
+    setAutomaticExecutionHost(requestedExecutionHost);
     setAutomaticWorkerHostAddress("");
     setAutomaticRepoUrl(getAutomaticWorkspaceRepositoryPrefix(githubUsername.githubUsername));
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(
-      getRouteString(route, "basePath")
-        ?? getAutomaticWorkspaceBasePath(
-          requestedExecutionHost
-            ? servers.find((server) => server.config.id === getRegisteredSshServerId(requestedExecutionHost)) ?? null
-            : defaultAutomaticServer,
-        ),
+      getRouteString(route, "basePath") ?? "/workspaces",
     );
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
@@ -415,13 +381,11 @@ export function useWorkspaceCreate({
     setAutomaticAdvancedOpen(false);
     setAutomaticProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
     setAutomaticChannel("default");
-    setAutomaticPassword("");
   }, [
     provisioning.clearActiveJob,
     provisioning.openJob,
     provisioning.snapshot,
     route,
-    servers,
     githubUsername.githubUsername,
     githubUsername.loading,
     relayPaired,
@@ -502,25 +466,6 @@ export function useWorkspaceCreate({
   }, [workspaceWorkerEnrollment?.enrollment.id]);
 
   useEffect(() => {
-    if (
-      route.view !== "compose"
-      || getRouteString(route, "kind") !== "workspace"
-      || workspaceWorkerEnrollmentSelected
-      || automaticExecutionHost
-      || servers.length === 0
-    ) {
-      return;
-    }
-    const defaultAutomaticServer = getDefaultAutomaticWorkspaceServer(servers);
-    setAutomaticExecutionHost(defaultAutomaticServer
-      ? { kind: "ssh", serverId: defaultAutomaticServer.config.id }
-      : null);
-    setAutomaticTransport("worker");
-    setAutomaticWorkerHostAddress("");
-    setAutomaticBasePath(getAutomaticWorkspaceBasePath(defaultAutomaticServer));
-  }, [automaticExecutionHost, route, servers, workspaceWorkerEnrollmentSelected]);
-
-  useEffect(() => {
     const jobId = provisioning.snapshot?.job.config.id ?? null;
     if (
       provisioning.snapshot?.job.state.status === "completed"
@@ -535,7 +480,6 @@ export function useWorkspaceCreate({
   async function handleTestWorkspaceConnection(
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
-    sshTarget?: WorkspaceSshTargetRequest | null,
   ) {
     const trimmedDirectory = workspaceDirectory.trim();
     if (!trimmedDirectory) {
@@ -552,7 +496,6 @@ export function useWorkspaceCreate({
           settings,
           directory: trimmedDirectory,
           ...(executionHost ? { executionHost } : {}),
-          ...(sshTarget ? { sshTarget } : {}),
           ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
             ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
             : {}),
@@ -595,9 +538,7 @@ export function useWorkspaceCreate({
         fallbackMessage: "Failed to create dedicated worker enrollment",
       });
       setWorkspaceExecutionHost(null);
-      setWorkspaceSshTarget(null);
       setAutomaticExecutionHost(null);
-      setAutomaticTransport("ssh");
       setAutomaticWorkerHostAddress("");
       setWorkspaceWorkerEnrollmentSelected(true);
       setWorkspaceWorkerEnrollment({ ...created, worker: null });
@@ -643,7 +584,6 @@ export function useWorkspaceCreate({
         ? null
         : config.executionHostBinding.host,
     );
-    setAutomaticTransport(config.transport ?? "ssh");
     automaticWorkerEnrollmentRouteTouchedRef.current = true;
     setAutomaticWorkerEnrollmentRouteState(
       config.workerEnrollmentRoute
@@ -664,7 +604,6 @@ export function useWorkspaceCreate({
     setAutomaticProvider(config.provider);
     setAutomaticAdapter(config.adapter ?? "acp");
     setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
-    setAutomaticPassword("");
     provisioning.clearActiveJob();
   }
 
@@ -695,8 +634,7 @@ export function useWorkspaceCreate({
           return;
         }
         if (
-          automaticTransport === "worker"
-          && !workspaceWorkerEnrollmentSelected
+          !workspaceWorkerEnrollmentSelected
           && automaticWorkerEnrollmentRoute === "relay"
           && !hasPairedRelay(automaticWorkerRelayName, primaryRelayName, relayOptions)
         ) {
@@ -709,20 +647,18 @@ export function useWorkspaceCreate({
           ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
             ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
             : {}),
-          transport: workspaceWorkerEnrollmentSelected ? "ssh" : automaticTransport,
-          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+          ...(!workspaceWorkerEnrollmentSelected
             ? { workerEnrollmentRoute: automaticWorkerEnrollmentRoute }
             : {}),
-          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+          ...(!workspaceWorkerEnrollmentSelected
             && automaticWorkerEnrollmentRoute === "relay" && automaticWorkerRelayName
             ? { workerRelayName: automaticWorkerRelayName }
             : {}),
-          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+          ...(!workspaceWorkerEnrollmentSelected
             && automaticWorkerEnrollmentRoute !== "relay"
             ? { workerHostAddress: automaticWorkerHostAddress }
             : {}),
-          ...(automaticTransport === "worker"
-            && !workspaceWorkerEnrollmentSelected
+          ...(!workspaceWorkerEnrollmentSelected
             && automaticWorkerEnrollmentRoute !== "relay"
             && automaticWorkerHostAddressMode === "manual"
             ? { workerHostAddressManual: true }
@@ -736,9 +672,8 @@ export function useWorkspaceCreate({
           githubUser: automaticGithubUser.trim() || null,
           ...createAgentSettings(automaticAdapter, automaticProvider),
           createNewRepository: automaticCreateNewRepository,
-          password: automaticPassword,
           mode: "provision",
-          ...(automaticTransport === "worker" && !workspaceWorkerEnrollmentSelected
+          ...(!workspaceWorkerEnrollmentSelected
             ? { channel: automaticChannel }
             : {}),
           targetDirectory: null,
@@ -746,7 +681,6 @@ export function useWorkspaceCreate({
         });
         if (snapshot) {
           setWorkspaceCreateMode("automatic");
-          setAutomaticPassword("");
           navigateWithinShell({
             view: "provisioning-job",
             provisioningJobId: snapshot.job.config.id,
@@ -765,7 +699,6 @@ export function useWorkspaceCreate({
         !directory
         || !workspaceServerSettingsValid
         || (!workspaceExecutionHost
-          && !workspaceSshTarget
           && !(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment))
       ) {
         toast.error("Directory and valid connection settings are required.");
@@ -780,7 +713,6 @@ export function useWorkspaceCreate({
           workspaceType,
           serverSettings: workspaceServerSettings,
           ...(workspaceExecutionHost ? { executionHost: workspaceExecutionHost } : {}),
-          ...(workspaceSshTarget ? { sshTarget: workspaceSshTarget } : {}),
           ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
             ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
             : {}),
@@ -814,8 +746,6 @@ export function useWorkspaceCreate({
     workspaceServerSettings,
     workspaceExecutionHost,
     setWorkspaceExecutionHost,
-    workspaceSshTarget,
-    setWorkspaceSshTarget,
     workspaceWorkerEnrollment,
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
@@ -833,8 +763,6 @@ export function useWorkspaceCreate({
     workspaceCreateSubmitting,
     automaticExecutionHost,
     setAutomaticExecutionHost,
-    automaticTransport,
-    setAutomaticTransport,
     automaticWorkerEnrollmentRoute,
     setAutomaticWorkerEnrollmentRoute,
     automaticWorkerRelayName,
@@ -865,8 +793,6 @@ export function useWorkspaceCreate({
     setAutomaticAdapter,
     automaticProvider,
     setAutomaticProvider,
-    automaticPassword,
-    setAutomaticPassword,
     automaticChannel,
     setAutomaticChannel,
     handleCreateWorkspace,

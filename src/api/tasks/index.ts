@@ -11,7 +11,7 @@
  *
  * Uses the CommandExecutor abstraction over the configured execution channel:
  * - local provider: commands run on the Clanky host
- * - ssh provider: commands run on the remote workspace host
+ * - Mesh execution: commands run on the selected workspace worker
  *
  * @module api/tasks
  */

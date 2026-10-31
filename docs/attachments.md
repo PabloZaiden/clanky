@@ -56,7 +56,7 @@ Files live below the conversation's actual execution directory:
 ```
 
 A task or chat using a worktree uses that worktree. A conversation without Git
-uses its selected directory. SSH and Mesh transfers write on the selected
+uses its selected directory. Mesh transfers write on the selected
 execution host, not implicitly on the Clanky controller. Authentication and
 execution-host binding checks still apply.
 
@@ -97,11 +97,6 @@ No inline-document fallback is attempted, and queued originals remain available
 for correction/retry. Ordinary queued messages enter transcript history only
 after their files are prepared successfully; a failed unsent group can be
 removed from the queue instead of sent.
-
-Password-protected registered SSH hosts require their normal transient
-credential tokens; credentials are never stored with attachments. Tokens are
-retained across pending queue groups. If one expires, sending with a renewed
-credential also renews access for the remaining groups.
 
 Markdown/HTML transcript exports do not embed original attachment bytes.
 Plan-file import remains a separate operation.

@@ -262,7 +262,7 @@ All catalogued collection reads share these parameters, including read-policy
 Collections return `{ "items": [...], "nextCursor": "..." | null }`, optionally
 with small `context` such as the resolved directory, activity coverage or
 source truncation. This applies to chats, tasks, workspaces, execution hosts,
-SSH servers, agents/runs, terminals, provisioning/logs, models, previews,
+agents/runs, terminals, provisioning/logs, models, previews,
 review comments, interactions, and exposed file/Git collections. File trees return flat entry
 pages; `loadOnExpand` still identifies deferred directories. Objects containing
 multiple collections label rows with `collection` and the matching detail
@@ -450,7 +450,7 @@ local/shared workspace list. Shared workspaces use the invited instance's normal
 CLI authentication and relay connection; no controller credentials or connection
 flag are needed. Ambiguous names or incomplete workspace lists require an exact
 reference returned by `clanky api workspaces --method GET`.
-Workspace previews support local, SSH, and Mesh execution hosts; direct server
+Workspace previews support local and Mesh execution hosts; direct server
 previews support local and Mesh hosts. HTTP is the default. `--remote-host`
 defaults to `localhost`; `--host` selects the CLI listener address and defaults
 to `localhost`. `--path` selects the initial page and `--open` opens the preview
@@ -532,9 +532,9 @@ Chat/task selectors open their existing effective working
 directory, including managed worktrees and task-linked chats; a missing worktree fails without
 creating it or starting an agent.
 
-The selected workspace host (local, SSH or Mesh) must already have a `code`
+The selected workspace host (local or Mesh) must already have a `code`
 CLI supporting `serve-web`, `--port 0`, `--connection-token-file`, and
-`--default-folder`. Some Remote SSH/Codespaces `code` commands only launch an
+`--default-folder`. Some editor-launcher `code` commands only launch an
 existing editor and cannot serve one. Clanky does not install or replace VS
 Code and does not use Microsoft's tunnel service. Hosts also need
 `bash`, `ps`, `awk`, and `sort` for the session's process ownership supervision,
@@ -584,9 +584,7 @@ host is available; the next controller restart also retries. Workspace deletion
 waits for in-progress preview launches and requires its previews to close first
 so their cleanup records are not discarded.
 Execution-target edits also close existing previews before changing the original
-host metadata; unavailable cleanup prevents that edit. Registered SSH server
-address, port, username changes and deletion follow the same rule, retaining
-the original metadata and credentials if cleanup fails. Preview launches are
+host metadata; unavailable cleanup prevents that edit. Preview launches are
 serialized with those mutations. Relay-backed cleanup is
 retried after the controller connection is authenticated and worker authorization
 has synchronized.
@@ -635,13 +633,13 @@ use their documented content type instead of this JSON format.
 
 Agent sessions use the adapter selected for the workspace; ACP additionally
 selects a harness preset. A workspace can
-run locally, over SSH, or through a Mesh worker. Git, file, and command
+run locally or through a Mesh worker. Git, file, and command
 operations run on that workspace's execution host, while the API and
 application data remain on the controller.
 
 See [harness adapters](harnesses.md) for native runtime requirements, scoped
 activity/Stop and queued-input steering. Native execution requires a local host
-or an end-to-end Mesh v7 path over TLS; direct SSH remains ACP-only.
+or an end-to-end Mesh v7 path over TLS.
 
 `workspace.directory` is the initial navigation directory, not a filesystem
 sandbox. File operations may access parent paths, absolute paths and alternate
@@ -720,9 +718,8 @@ session may still exist; history continuation does not delete or interrupt it.
 Recovery is rejected while the chat has an active run, queued message,
 unresolved input delivery, open question or pending permission.
 
-The request accepts an empty body or the `ReconnectChatRequest` object used by
-`/reconnect` (including an optional short-lived `credentialToken` when the
-execution host requires it). Success returns the updated chat directly.
+The request accepts an empty body or an empty JSON object, like
+`/reconnect`. Success returns the updated chat directly.
 
 ```bash
 curl -X POST http://localhost:3000/api/chats/<chat-id>/continue-from-history \
@@ -745,11 +742,9 @@ from starting.
 The export is removed after the first continuation completes successfully or
 when the chat is deleted, and becomes unusable after 24 hours. Expiry does not
 run a background physical-deletion job: deletion is attempted when the export
-is next used/replaced or during chat deletion. On a registered SSH host, cleanup
-requires a fresh credential; because Clanky does not persist SSH credentials,
-an unreachable or unauthenticated host may retain the expired file until the
-next authorized recovery attempt or chat deletion. The chat's original
-persisted transcript is unaffected.
+is next used/replaced or during chat deletion. An unreachable host may retain
+the expired file until the next authorized recovery attempt or chat deletion.
+The chat's original persisted transcript is unaffected.
 
 ### Native chat questions
 
@@ -773,7 +768,6 @@ apply to the whole response, not separately to each question. Images are
 retained in the answer transcript. Message-based questions deliver them inline;
 text-only native callbacks receive references to copies on the selected
 execution host. See [Images in question answers](attachments.md#images-in-question-answers).
-Registered SSH hosts may supply the usual transient `credentialToken`.
 
 The response contains the current `chat`. Invalid answers return 400, a missing
 owned request returns 404, and a closed or conflicting reply returns 409.
@@ -791,7 +785,7 @@ clanky workspace webdav <ID_OR_NAME> [--read-only] [--local-port PORT] [--tls-ce
 
 This foreground CLI command runs a DAV listener on `127.0.0.1`, with a random
 per-run Basic password. The OS mounts the printed URL; the CLI forwards file
-operations through authenticated controller APIs and the selected local, SSH
+operations through authenticated controller APIs and the selected local
 or Mesh executor. It does not forward the native client's Authorization header
 upstream or send controller/profile credentials as DAV login credentials.
 Controller HTTPS is required outside loopback; redirects are rejected, even
@@ -849,8 +843,7 @@ standalone execution-host adapters:
 | GET, HEAD, PUT | `/api/execution-hosts/:kind/:id/files/filesystem/content?path=...` | Same exact-path binary operations on a standalone host. |
 
 API keys/device tokens require `clanky:files` or `*`. Browser mutations retain
-framework same-origin protection. Standalone SSH adapters require the existing
-`x-clanky-ssh-credential-token`; no password is accepted by these contracts.
+framework same-origin protection.
 Paths are nonempty, NUL-free strings of at most 16,384 characters and are not
 trimmed. Relative API paths resolve from the adapter's initial directory;
 valid absolute/parent paths are deliberately unrestricted by that directory.
@@ -900,7 +893,7 @@ multiple byte ranges are rejected. Filenames must be representable in UTF-8
 and DAV XML; names containing XML-forbidden controls fail explicitly.
 
 Single-range GET seeks on the selected host rather than transferring its prefix.
-Local hosts use native file slices; SSH and Mesh use bounded existing `exec`
+Local hosts use native file slices; Mesh hosts use bounded existing `exec`
 windows using `sh`, `dd` and `base64`. Hosts lacking
 `commandExecution` cannot provide remote ranged reads. Ordinary ranges and
 date-based If-Range use metadata only; a strong ETag condition still requires
@@ -938,7 +931,7 @@ components.
 ### Direct execution-host commands
 
 `POST /api/execution-hosts/:kind/:id/exec` runs one bounded, non-interactive
-command on a registered local, Mesh, or SSH execution host. The `:id` value is
+command on a registered local or Mesh execution host. The `:id` value is
 the host source ID returned by `GET /api/execution-hosts`; for Mesh hosts this
 is the worker node ID. The endpoint uses the same command, argument, cwd,
 timeout, output-limit, and exit-code semantics as
@@ -950,8 +943,7 @@ clanky server exec mesh:worker-1 -- journalctl -u clanky-worker --no-pager
 ```
 
 The operation does not start a persistent shell. Use the terminal endpoints
-for interactive sessions. SSH hosts can receive the temporary credential token
-issued by Clanky through `--credential-token TOKEN`.
+for interactive sessions.
 
 Terminal `connected`/`connecting` describes a live controller attachment, not the
 shell's lifetime. Startup resets those saved states to `disconnected`, including
@@ -1080,10 +1072,6 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/settings/restart-automatic-workspaces` | Start restart jobs for the current user's automatically provisioned workspaces. |
 | POST | `/api/settings/purge-terminal-tasks` | Purge terminal-state tasks across all workspaces. |
 | POST | `/api/settings/reset-all` | Reset all persisted settings and recreate the database. |
-| GET, POST | `/api/ssh-servers` | List or create standalone SSH servers. |
-| GET, PATCH, DELETE | `/api/ssh-servers/:id` | Update or delete a standalone SSH server. |
-| POST | `/api/ssh-servers/:id/credentials` | Exchange an encrypted SSH credential for a temporary token. |
-| GET | `/api/ssh-servers/:id/public-key` | Read the public key for a standalone SSH server. |
 | GET, POST | `/api/terminal-sessions` | List or create a workspace or direct execution-host terminal session. |
 | GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a terminal session. |
 | GET | `/api/terminal` | Open the raw websocket bridge for a terminal session. |
@@ -1132,7 +1120,6 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/voice/live/:callId/heartbeat` | Renew the originating-tab lease and UI context. |
 | POST | `/api/voice/live/:callId/close` | End voice without stopping delegated work. |
 | POST | `/api/voice/live/:callId/confirmations/:requestId` | Approve or reject a frozen, expiring operation from the originating client. |
-| POST | `/api/voice/live/:callId/credentials/:requestId` | Privately supply a request-bound SSH credential token. |
 | GET, POST | `/api/worker-update-jobs` | List jobs or start Clanky updates for active server and automatic workspace Mesh workers. |
 | GET | `/api/worker-update-jobs/:id` | Read a worker update job and its logs. |
 | POST | `/api/worker-update-jobs/:id/dismiss` | Dismiss a terminal worker update job and its logs. |
@@ -2755,9 +2742,8 @@ any existing directory.
 | `name` | string | Yes | Workspace display name |
 | `directory` | string | Yes | Path to the directory on the selected execution host |
 | `serverSettings` | object | Yes | Adapter and harness preset, for example `{ "agent": { "adapter": "acp", "provider": "copilot" } }` |
-| `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered local, Mesh, or SSH execution-host reference |
-| `sshTarget` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Ad hoc SSH target with `host`, `port`, `username`, and optional `password` |
-| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
+| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered local or Mesh execution-host reference |
+| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 | `workspaceType` | string | No | `git` (default) or `directory` |
 | `allowWorktrees` | boolean | No | Whether task, chat, and agent worktrees may be created for this workspace (defaults to `true`) |
 | `allowClankyContext` | boolean | No | Whether new execution contexts may receive authenticated Clanky CLI access (defaults to `false`) |
@@ -2801,7 +2787,6 @@ Update a workspace.
 | `name` | string | Update display name |
 | `serverSettings` | object | Update the harness adapter and preset |
 | `executionHost` | object | Replace the registered execution host |
-| `sshTarget` | object \| null | Replace or clear the ad hoc SSH target |
 | `isPrivate` | boolean | Hide the workspace when private items are hidden |
 | `archived` | boolean | Hide the workspace from active work surfaces |
 | `allowClankyContext` | boolean | Allow authenticated Clanky CLI access in new execution contexts |
@@ -2980,7 +2965,7 @@ conflict checks and destructive-operation safeguards still apply.
 
 Create a streamed upload session for a regular file on the host selected by the
 workspace. The upload is finalized atomically only after all declared bytes
-have been received. The selected host may be local, SSH, or a Mesh execution
+have been received. The selected host may be local or a Mesh execution
 peer.
 
 **Request Body**
@@ -3075,7 +3060,7 @@ Only tasks matching the archived-task predicate for the target workspace are pro
 ### Server Settings
 
 Server settings select the harness adapter and preset for a workspace. The execution host
-is configured separately on the workspace through `executionHost`, `sshTarget`,
+is configured separately on the workspace through `executionHost`
 or `workspaceWorkerEnrollmentId`.
 
 ```json
@@ -3162,8 +3147,8 @@ Get connection status for a workspace.
 }
 ```
 
-`transport` identifies the selected execution-host kind: `local`, `mesh`, or
-`ssh`. `serverUrl` is included only when the active agent runtime exposes one.
+`transport` identifies the selected execution-host kind: `local` or `mesh`.
+`serverUrl` is included only when the active agent runtime exposes one.
 `executionAvailability` describes whether a remote Mesh host is reachable.
 
 **Errors**
@@ -3219,9 +3204,8 @@ Test a server connection before creating a workspace.
 | `settings.agent.adapter` | string | Yes | `acp`, `copilot`, `codex` or `opencode2`, supported by the selected host/path |
 | `settings.agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
 | `directory` | string | Yes | Directory path to test against |
-| `executionHost` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Registered execution-host reference |
-| `sshTarget` | object | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Ad hoc SSH target |
-| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost`, `sshTarget`, or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
+| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered execution-host reference |
+| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 
 **Response**
 
@@ -3254,12 +3238,7 @@ attempts for other eligible workspaces.
 
 **Request Body**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `credentialTokensByServerId` | object | No | Short-lived SSH credential tokens keyed by registered SSH server ID. Omit when no saved browser credential is available. |
-| `credentialUnavailableServerIds` | string[] | No | Registered SSH server IDs for which the browser could not exchange a saved credential. Eligible workspaces using those servers are reported as start failures. |
-
-Both fields default to empty values.
+The request accepts an empty JSON object.
 
 **Response**
 
@@ -3278,7 +3257,7 @@ Both fields default to empty values.
     {
       "workspaceId": "workspace-2",
       "workspaceName": "Second workspace",
-      "error": "Unable to retrieve the saved SSH credential for this server."
+      "error": "The execution host is unavailable."
     }
   ]
 }
@@ -3344,7 +3323,7 @@ The endpoint uses the same archived-task predicate as the workspace purge endpoi
 ### Terminal Sessions
 
 Terminal sessions are persistent sessions backed by a workspace or a direct
-execution host. They can use local, Mesh, or SSH transports.
+execution host. They can use local or Mesh transports.
 
 #### GET /api/terminal-sessions
 
@@ -3433,123 +3412,12 @@ Delete a terminal session.
 
 ---
 
-### Standalone SSH Servers
-
-Standalone SSH servers let the browser register reusable SSH targets and
-exchange encrypted credentials. Registered SSH servers are execution-host
-sources; use the `/api/execution-hosts/ssh/:id/...` routes for commands,
-working-directory resolution, file operations, provider/model discovery,
-prerequisite checks, Devbox templates, and direct chats.
-
-#### GET /api/ssh-servers
-
-List registered standalone SSH servers.
-
-#### POST /api/ssh-servers
-
-Create a standalone SSH server entry.
-
-**Request Body**
-
-```json
-{
-  "name": "Build Box",
-  "address": "build.example.com",
-  "username": "vscode",
-  "repositoriesBasePath": null
-}
-```
-
-**Response**
-
-Returns the created SSH server object with status `201 Created`.
-
-Registration waits for its RSA-4096 credential-encryption key to be persisted
-before returning. Key generation runs asynchronously without blocking the
-server's event loop; unrelated requests and realtime delivery remain available.
-The encryption algorithm and public-key contract remain `RSA-OAEP-256`.
-
-#### GET /api/ssh-servers/:id
-
-Get one standalone SSH server.
-
-#### PATCH /api/ssh-servers/:id
-
-Update a standalone SSH server.
-
-**Request Body**
-
-Provide one or more of `name`, `address`, `username`, `repositoriesBasePath`,
-or `isPrivate`.
-
-#### DELETE /api/ssh-servers/:id
-
-Delete a standalone SSH server.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-#### GET /api/ssh-servers/:id/public-key
-
-Fetch the server public key metadata used by the browser to encrypt credentials locally before upload.
-
-**Response**
-
-```json
-{
-  "algorithm": "RSA-OAEP-256",
-  "publicKey": "-----BEGIN PUBLIC KEY-----...",
-  "fingerprint": "sha256:...",
-  "version": 1,
-  "createdAt": "2026-01-20T10:00:00.000Z"
-}
-```
-
-#### POST /api/ssh-servers/:id/credentials
-
-Exchange an encrypted credential payload for a short-lived credential token.
-
-**Request Body**
-
-```json
-{
-  "encryptedCredential": {
-    "algorithm": "RSA-OAEP-256",
-    "fingerprint": "sha256:...",
-    "version": 1,
-    "ciphertext": "base64-encoded-ciphertext"
-  }
-}
-```
-
-**Response**
-
-```json
-{
-  "credentialToken": "token-uuid",
-  "expiresAt": "2026-01-20T10:05:00.000Z"
-}
-```
-
-Pass the short-lived credential token in the
-`x-clanky-ssh-credential-token` header when an SSH execution-host operation
-requires it. Use `/api/terminal-sessions` to create an interactive session
-backed by the SSH execution host.
-
----
-
 ### Provisioning
 
 Provisioning jobs create or reuse a remote workspace by cloning a repository
 onto a selected execution host, preparing the environment, and creating the
 resulting workspace in Clanky. New automatic workspaces use a dedicated HTTPS
-Mesh worker by default; SSH remains available by setting `transport` to
-`"ssh"`.
+Mesh worker.
 
 #### POST /api/provisioning-jobs
 
@@ -3560,11 +3428,10 @@ Create a provisioning job.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Provisioning job name |
-| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "ssh", "serverId": "..." }` |
+| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "mesh", "nodeId": "..." }` |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
-| `transport` | string | No | `worker` (default for new automatic workspaces) or `ssh` |
-| `channel` | string | No | `default`, `stable`, or `latest` for worker transport. New workspaces inherit the saved global channel in Default; Restart/Rebuild preserve the workspace's channel. Explicit choices persist only for that workspace. |
-| `workerEnrollmentRoute` | string | No | `direct` or `relay` for a new worker transport; when omitted, the controller selects its configured default |
+| `channel` | string | No | `default`, `stable`, or `latest` for the dedicated worker. New workspaces inherit the saved global channel in Default; Restart/Rebuild preserve the workspace's channel. Explicit choices persist only for that workspace. |
+| `workerEnrollmentRoute` | string | No | `direct` or `relay` for a new worker; when omitted, the controller selects its configured default |
 | `workerHostAddress` | string \| null | Required for direct worker `provision`; omit for relay workers | Reachable IPv4 address or hostname without spaces |
 | `workerHostAddressManual` | boolean | No | Set to `true` when using a manually entered host instead of a discovered IPv4 address |
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
@@ -3572,9 +3439,8 @@ Create a provisioning job.
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
 | `devboxTemplate` | string \| null | No | Devbox template when creating a new repository |
 | `githubUser` | string \| null | No | Optional GitHub user passed to devbox |
-| `adapter` | string | No | `acp` (default), `copilot`, `codex`, or `opencode2`; native adapters require worker transport |
+| `adapter` | string | No | `acp` (default), `copilot`, `codex`, or `opencode2`; all adapters run on the dedicated worker |
 | `provider` | string | Yes | ACP harness preset, or the native adapter's matching provider (`opencode` for `opencode2`) |
-| `credentialToken` | string \| null | Yes | Exchanged SSH credential token; use `null` when the server needs no credential |
 | `mode` | string | Yes | `provision`, `rebuild`, `restart`, or `arise` |
 | `createNewRepository` | boolean | No | Create a new repository with a devbox template; defaults to `false` |
 | `targetDirectory` | string \| null | Yes | Existing repository path for `rebuild` or `restart`; use `null` otherwise |
@@ -3590,7 +3456,6 @@ is replaced by `channel`.
     "kind": "local",
     "nodeId": "execution-host-node-uuid"
   },
-  "transport": "worker",
   "workerEnrollmentRoute": "direct",
   "workerHostAddress": "worker.example.com",
   "workerHostAddressManual": true,
@@ -3599,7 +3464,6 @@ is replaced by `channel`.
   "devcontainerSubpath": null,
   "adapter": "copilot",
   "provider": "copilot",
-  "credentialToken": "token-uuid",
   "mode": "provision",
   "createNewRepository": false,
   "targetDirectory": null,
@@ -3619,10 +3483,10 @@ manually entered host value. The controller must have
 `targetDirectory` and `workspaceId`; `arise` only needs the server context and
 mode-specific fields may be `null`.
 
-New worker workspaces persist the requested adapter. Direct SSH execution
-requires `adapter: "acp"`; the Devbox provisioning host may itself use SSH while
-creating a native worker. Rebuild/restart uses the workspace's current saved
-adapter/preset, not a stale selection in the submitted request. Existing jobs
+New worker workspaces persist the requested adapter. The Devbox provisioning
+host uses local or Mesh execution to create the dedicated worker.
+Rebuild/restart uses the workspace's current saved adapter/preset, not a stale
+selection in the submitted request. Existing jobs
 without an adapter retain ACP semantics. See
 [automatic runtime installation](mesh-worker.md#automatic-workspace-runtimes)
 for durable CLI installation and external Devbox rebuilds.
@@ -3645,7 +3509,6 @@ Returns the created provisioning job snapshot with status `201 Created`.
         "targetKey": "local:execution-host-node-uuid",
         "revision": 1
       },
-      "transport": "worker",
       "workerEnrollmentRoute": "direct",
       "workerHostAddress": "192.0.2.10",
       "repoUrl": "https://github.com/example/repo.git",
@@ -3667,8 +3530,6 @@ Returns the created provisioning job snapshot with status `201 Created`.
 | Status | Error | Description |
 |--------|-------|-------------|
 | 400 | `validation_error` | Missing or invalid request fields |
-| 400 | `invalid_credential_token` | Credential token is missing, expired, or invalid for the target SSH server |
-| 404 | `not_found` | SSH server not found |
 | 500 | `provisioning_error` | Failed to start provisioning |
 
 #### GET /api/provisioning-jobs/:id
@@ -3718,8 +3579,8 @@ these execution semantics:
 Cancel a provisioning job.
 
 User cancellation retains status `cancelled` and error code `cancelled`.
-Inspect `execution.outcome` separately: terminating the controller's SSH
-client cannot prove that its remote command stopped. An unconfirmed
+Inspect `execution.outcome` separately: losing the controller's connection
+cannot prove that its remote command stopped. An unconfirmed
 cancellation is not offered the Retry shortcut; inspect the host before starting
 another operation.
 
@@ -3781,7 +3642,7 @@ Get the collected log entries for a provisioning job.
 Worker update routes require owner authorization and same-origin protection for
 mutations. `POST /api/worker-update-jobs` accepts an optional channel selection and starts a
 separate background job for every active Mesh worker registration, including
-`registrationScope: "workspace"` workers. SSH-only workspaces without an enrolled
+`registrationScope: "workspace"` workers. Workspaces without an enrolled
 Mesh worker are not targets. Different workers run concurrently; each job checks
 for a running service or workspace loop and runs its commands in order:
 
@@ -4350,16 +4211,6 @@ WebSocket endpoint for an interactive terminal session.
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `terminalSessionId` | Required | Connect to a terminal session created through `/api/terminal-sessions` |
-
-An SSH-backed terminal session that is not attached to a workspace requires an
-initial credential message after the socket opens:
-
-```json
-{
-  "type": "terminal.auth",
-  "credentialToken": "token-uuid"
-}
-```
 
 The terminal socket emits events such as `terminal.connected`,
 `terminal.output`, `terminal.clipboard`, `terminal.error`, and

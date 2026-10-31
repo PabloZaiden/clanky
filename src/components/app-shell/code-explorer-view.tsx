@@ -119,9 +119,7 @@ export function CodeExplorerView({
   return (
     <FileExplorerView
       key={`${resolvedTarget.target.type}:${resolvedTarget.target.id}:${resolvedTarget.target.startDirectory ?? ""}`}
-      title={resolvedTarget.title}
       defaultRootDirectory={resolvedTarget.defaultRootDirectory}
-      backRoute={resolvedTarget.backRoute}
       onNavigate={onNavigate}
       target={resolvedTarget.target}
       buildRoute={resolvedTarget.buildRoute}
@@ -132,7 +130,6 @@ export function CodeExplorerView({
       onCreateTerminal={resolvedTarget.onCreateTerminal}
       canChooseTerminalTmux={resolvedTarget.canChooseTerminalTmux}
       testIdPrefix={resolvedTarget.testIdPrefix}
-      credentialPromptName={resolvedTarget.credentialPromptName}
       initialFilePath={resolvedTarget.initialFilePath}
       controlFileOpenRequest={controlFileOpenRequest}
       onControlFileOpenResult={onControlFileOpenResult}

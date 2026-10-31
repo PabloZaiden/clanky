@@ -21,11 +21,13 @@ import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
 import { migrateCollaboration } from "../collaboration-schema";
 import { migrateCollaborationAdministration } from "./collaboration-administration";
 import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes";
+import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
 
 const log = createLogger("persistence:migrations");
 
 export const BASELINE_SCHEMA_VERSION = 56;
 const MULTI_RELAY_PAIRING_MIGRATION_VERSION = BASELINE_SCHEMA_VERSION + 7;
+const RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION = 91;
 
 export interface Migration {
   version: number;
@@ -940,6 +942,12 @@ export const migrations: Migration[] = [
       db.run("CREATE INDEX IF NOT EXISTS idx_subagent_responses ON subagent_transcript_entries(subagent_id, user_id, message_role, timestamp, sequence, entry_id)");
     },
   },
+  {
+    version: RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION,
+    name: "retire_legacy_execution_transport",
+    transactional: false,
+    up: retireExecutionTransport,
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {
@@ -1128,6 +1136,10 @@ export function runMigrations(
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
+  if (appliedVersions.has(RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION)) {
+    // The immutable baseline recreates retired empty tables on startup.
+    db.transaction(() => dropRetiredExecutionTables(db))();
+  }
   if (
     appliedVersions.has(MULTI_RELAY_PAIRING_MIGRATION_VERSION)
     && tableExists(db, "mesh_controller_relay_pairing")

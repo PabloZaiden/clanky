@@ -173,7 +173,7 @@ export const serverSettingsRoutes = defineRoutes({
       POST: {
         requestSchema: TestConnectionRequestSchema,
         querySchema: undefined,
-        automation: { policy: "read", hiddenInputs: ["sshTarget"] },
+        automation: { policy: "read" },
       },
     },
     async POST(req: Request, ctx) {
@@ -187,7 +187,6 @@ export const serverSettingsRoutes = defineRoutes({
         let settings = workspace.serverSettings;
         let executionHost: typeof workspace.executionHostBinding.host | undefined =
           workspace.executionHostBinding.host;
-        let sshTarget = undefined;
         let workspaceWorkerEnrollmentId: string | undefined;
 
         const bodyText = await req.text();
@@ -215,7 +214,6 @@ export const serverSettingsRoutes = defineRoutes({
             if (proposed.success && "settings" in (bodyJson as object)) {
               settings = proposed.data.settings;
               executionHost = proposed.data.executionHost;
-              sshTarget = proposed.data.sshTarget;
               workspaceWorkerEnrollmentId = proposed.data.workspaceWorkerEnrollmentId;
             } else {
               const parsedSettings = ServerSettingsSchema.safeParse(bodyJson);
@@ -235,7 +233,6 @@ export const serverSettingsRoutes = defineRoutes({
           settings,
           workspace.directory,
           executionHost,
-          sshTarget,
           workspaceWorkerEnrollmentId,
         );
         return Response.json(result);
@@ -265,7 +262,7 @@ export const serverSettingsRoutes = defineRoutes({
       POST: {
         requestSchema: TestConnectionRequestSchema,
         querySchema: WorkspaceControllerQuerySchema,
-        automation: { policy: "read", hiddenInputs: ["sshTarget"] },
+        automation: { policy: "read" },
       },
     },
     async POST(req: Request, _ctx) {
@@ -278,7 +275,6 @@ export const serverSettingsRoutes = defineRoutes({
         settings,
         directory,
         executionHost,
-        sshTarget,
         workspaceWorkerEnrollmentId,
       } = result.data;
 
@@ -287,7 +283,6 @@ export const serverSettingsRoutes = defineRoutes({
           settings,
           directory,
           executionHost,
-          sshTarget,
           workspaceWorkerEnrollmentId,
         );
         return Response.json(testResult);

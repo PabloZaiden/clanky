@@ -1,4 +1,4 @@
-import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
+import type { ExecutionHostDescriptor, Workspace } from "@/shared";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { GearIcon } from "../common";
 import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
@@ -7,14 +7,12 @@ import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 export function WorkspaceHeader({
   workspace,
   taskCount,
-  registeredSshServers,
   executionTargets,
   onOpenSettings,
   privateHidden = false,
 }: {
   workspace: Workspace;
   taskCount: number;
-  registeredSshServers: readonly SshServer[];
   executionTargets: readonly ExecutionHostDescriptor[];
   onOpenSettings: () => void;
   privateHidden?: boolean;
@@ -49,9 +47,9 @@ export function WorkspaceHeader({
         </span>
         <span
           className="min-w-0 break-words text-xs text-gray-400 dark:text-gray-500 [overflow-wrap:anywhere]"
-          title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+          title={getWorkspaceServerLabel(workspace, executionTargets)}
         >
-          {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+          {getWorkspaceServerLabel(workspace, executionTargets)}
         </span>
         {workspace.workspaceType === "git" ? (
           <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 whitespace-nowrap">

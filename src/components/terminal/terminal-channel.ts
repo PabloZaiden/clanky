@@ -18,7 +18,6 @@ export class TerminalChannel {
   constructor(private readonly options: WebAppDuplexHandlers & {
     path: string;
     onChannel: (channel: WebAppDuplex) => void;
-    onReady: (channel: WebAppDuplex) => Promise<void>;
   }) {}
 
   start(): Promise<void> {
@@ -37,7 +36,6 @@ export class TerminalChannel {
       this.options.onChannel(this.channel);
       await this.channel.ready;
       this.controller.signal.throwIfAborted();
-      await this.options.onReady(this.channel);
     } catch (error) {
       this.unsubscribe?.();
       this.unsubscribe = undefined;

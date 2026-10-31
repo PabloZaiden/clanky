@@ -8,10 +8,7 @@ import { E2EApplication } from "./support/application";
 import { createGitFixture } from "./support/git";
 import { bootstrapOwner, completeUserSetup, CookieJar, requestWithCookies } from "./support/passkey";
 import { pollUntil } from "./support/polling";
-import { findFreeLoopbackPort, readProcessDiagnostics } from "./support/process";
-import {
-  startEphemeralSshServer, stopEphemeralSshServer, type ManagedSshServer,
-} from "./support/ssh-server";
+import { findFreeLoopbackPort } from "./support/process";
 import { OPERATION_TIMEOUT_MS, operationSignal } from "./support/timeouts";
 
 type Grant = { level: "workspace"; workspaceId: string } | { level: "general" };
@@ -36,7 +33,7 @@ interface ToolDefinition {
 interface PendingInteraction {
   ok: true;
   completion: "not_executed";
-  code: "confirmation_required" | "credential_required";
+  code: "confirmation_required";
   requestId: string;
   approvalUrl: string;
   expiresAt: number;
@@ -134,18 +131,12 @@ test("external MCP integrations receive explicit human grants, isolated control 
   const clients: Client[] = [];
   const human = new CookieJar();
   const previousDiagnostics: string[] = [];
-  let ssh: ManagedSshServer | undefined;
   try {
     const port = await findFreeLoopbackPort();
     const baseUrl = `http://localhost:${String(port)}`;
     const clientId = "clanky-control-e2e";
     const redirectUri = `${baseUrl}/external-client-callback`;
-    ssh = await startEphemeralSshServer({
-      runDirectory: application.runDirectory, clientHomeDirectory: application.homeDirectory,
-      providerBinDirectory: application.providerBinDirectory,
-    });
     const environment = {
-      SSH_AUTH_SOCK: ssh.agentSocket,
       CLANKY_PUBLIC_BASE_URL: baseUrl,
       CLANKY_MCP_OAUTH_CLIENTS: JSON.stringify([{
         clientId, clientName: "Clanky external-control E2E", redirectUris: [redirectUri],
@@ -452,86 +443,20 @@ test("external MCP integrations receive explicit human grants, isolated control 
     await humanJson("/api/control/approval-policy", {
       method: "PUT", body: JSON.stringify({ requireApproval: true }),
     });
-    const hostNote = "The external integration reads this private SSH handoff only after human credential entry.";
+    const hostNote = "The external integration reads the selected execution host.";
     const hostFile = "external-handoff.txt";
     await Bun.write(`${firstGit.repositoryDirectory}/${hostFile}`, hostNote);
-    const server = await humanJson<{ config: { id: string } }>("/api/ssh-servers", {
-      method: "POST", body: JSON.stringify({
-        name: "External SSH host", address: "127.0.0.1", port: ssh.port, username: ssh.username,
-        repositoriesBasePath: firstGit.repositoryDirectory,
-      }),
-    }, 201);
-    const publicKey = await humanJson<{
-      publicKey: string; algorithm: string; fingerprint: string; version: number;
-    }>(`/api/ssh-servers/${server.config.id}/public-key`);
-    const encryptionKey = await crypto.subtle.importKey("spki", Uint8Array.from(Buffer.from(
-      publicKey.publicKey.replace(/-----[^-]+-----|\s/g, ""), "base64",
-    )).buffer, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
-    // The existing SSH fixture uses an empty password to select its real key/agent.
-    const ciphertext = Buffer.from(await crypto.subtle.encrypt(
-      { name: "RSA-OAEP" }, encryptionKey, new Uint8Array(),
-    )).toString("base64");
-    const privateCredential = await humanJson<{ credentialToken: string }>(
-      `/api/ssh-servers/${server.config.id}/credentials`, {
-        method: "POST", body: JSON.stringify({
-          encryptedCredential: {
-            algorithm: publicKey.algorithm, fingerprint: publicKey.fingerprint,
-            version: publicKey.version, ciphertext,
-          },
-        }),
-      }, 201,
-    );
-    const handoff = await call<PendingInteraction>(generalClient, "clanky_execute_operation", {
+    const handoff = await call<{
+      ok: boolean; data: { content: string };
+    }>(generalClient, "clanky_execute_operation", {
       operationId: "GET /api/execution-hosts/:kind/:id/files/content",
-      parameters: [{ name: "kind", value: "ssh" }, { name: "id", value: server.config.id }],
+      parameters: [{ name: "kind", value: local.ref["kind"] }, { name: "id", value: local.ref["nodeId"] }],
       query: [{ name: "path", value: hostFile }, { name: "startDirectory", value: firstGit.repositoryDirectory }],
       bodyJson: null, confirmationDescription: null,
     });
-    expect(handoff).toMatchObject({ ok: true, completion: "not_executed", code: "credential_required" });
-    expect(new URL(handoff.approvalUrl).origin).toBe(baseUrl);
-    expect(handoff.expiresAt).toBeGreaterThan(Date.now());
-    await denied(`/api/control/requests/${handoff.requestId}/credential`, {
-      apiKey: general.token, method: "POST",
-      body: JSON.stringify({ credentialToken: privateCredential.credentialToken }),
-    });
-    const pendingHandoff = await snapshot(handoff.requestId);
-    expect(pendingHandoff).toMatchObject({
-      kind: "ssh_credential", status: "pending", serverId: server.config.id,
-    });
-    const waiting = await inbox();
-    expect(waiting.map(({ id }) => id)).toEqual(expect.arrayContaining([reviewLater.requestId, handoff.requestId]));
-    expect(waiting.find(({ id }) => id === handoff.requestId)).toMatchObject({ kind: "ssh_credential" });
-    expect(waiting.every((entry) => !("operation" in entry) && !("result" in entry) && !("credentialToken" in entry))).toBe(true);
-    const humanHandoffResult = await humanJson(`/api/control/requests/${handoff.requestId}/credential`, {
-      method: "POST", body: JSON.stringify({ credentialToken: privateCredential.credentialToken }),
-    });
-    expect(humanHandoffResult).toMatchObject({ ok: true, completion: "completed", data: { content: hostNote } });
-    expect((await inbox()).map(({ id }) => id)).not.toContain(handoff.requestId);
-    const handoffStatus = await execute(generalClient, "GET /api/control/requests/:id", handoff.requestId);
-    expect(handoffStatus).toMatchObject({
-      ok: true, completion: "completed",
-      data: { id: handoff.requestId, kind: "ssh_credential", status: "completed" },
-    });
-    const handoffDetails = (handoffStatus["data"] as { details: { section: string; item: string } }).details;
-    expect(handoffDetails.section).toBe("details");
-    const handoffResult = await call<{
-      ok: boolean; completion: string;
-      data: { items: Array<{ path: string[]; value: unknown; complete: boolean }>; nextCursor: string | null };
-    }>(generalClient, "clanky_execute_operation", {
-      operationId: "GET /api/control/requests/:id", parameters: [{ name: "id", value: handoff.requestId }],
-      query: Object.entries(handoffDetails).map(([name, value]) => ({ name, value })),
-      bodyJson: null, confirmationDescription: null,
-    });
-    expect(handoffResult).toMatchObject({ ok: true, completion: "completed", data: { nextCursor: null } });
-    expect(handoffResult.data.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({ path: ["result", "ok"], value: true, complete: true }),
-      expect.objectContaining({ path: ["result", "completion"], value: "completed", complete: true }),
-      expect.objectContaining({ path: ["result", "data", "content"], value: hostNote, complete: true }),
-    ]));
-    const handoffOutput = JSON.stringify([handoff, pendingHandoff, humanHandoffResult, handoffStatus, handoffResult]);
-    expect([privateCredential.credentialToken, ciphertext].some((secret) => handoffOutput.includes(secret))).toBe(false);
-    expect(handoffOutput.includes("credentialToken")).toBe(false);
-    expect(handoffOutput.includes("PRIVATE KEY")).toBe(false);
+    expect(handoff.ok).toBe(true);
+    expect(handoff.data.content).toBe(hostNote);
+    expect((await inbox()).map(({ id }) => id)).toEqual([reviewLater.requestId]);
 
     const message = "External integration: preserve this literal project handoff.";
     expect(await call(projectClient, "clanky_send_chat_message", { target: shared, message }))
@@ -550,7 +475,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
       .toMatchObject({ ok: false, completion: "not_executed" });
     expect(await call(projectClient, "clanky_list_chats", { workspace: second.id }))
       .toMatchObject({ ok: false, completion: "not_executed" });
-    expect(await execute(projectClient, "GET /api/ssh-servers"))
+    expect(await execute(projectClient, "GET /api/execution-hosts"))
       .toMatchObject({ ok: false, completion: "not_executed" });
     expect(await execute(projectClient, "GET /api/chats/:id", foreign))
       .toMatchObject({ ok: false, completion: "not_executed" });
@@ -724,7 +649,6 @@ test("external MCP integrations receive explicit human grants, isolated control 
     });
   } catch (error) {
     console.error([...previousDiagnostics, await application.diagnostics()].join("\n"));
-    if (ssh) console.error(await readProcessDiagnostics(ssh.process));
     throw error;
   } finally {
     try {
@@ -733,11 +657,7 @@ test("external MCP integrations receive explicit human grants, isolated control 
       try {
         await application.stop();
       } finally {
-        try {
-          if (ssh) await stopEphemeralSshServer(ssh);
-        } finally {
-          await application.cleanup();
-        }
+        await application.cleanup();
       }
     }
   }

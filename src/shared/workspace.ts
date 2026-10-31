@@ -19,16 +19,6 @@ export const WORKSPACE_SCRATCHPAD_MAX_LENGTH = 100_000;
 export const WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE =
   "Scratchpad must be 100,000 characters or fewer.";
 
-export interface WorkspaceSshTarget {
-  kind: "ssh";
-  host: string;
-  port: number;
-  username: string;
-  credentialConfigured: boolean;
-  targetKey: string;
-  revision: number;
-}
-
 export type WorkspaceIconMimeType = "image/svg+xml" | "image/x-icon";
 
 export interface WorkspaceIconMetadata {
@@ -64,8 +54,6 @@ export interface Workspace {
   executionHostBinding: ExecutionHostBinding;
   /** Registered host used to provision an isolated workspace, when applicable. */
   provisioningHostBinding?: ExecutionHostBinding;
-  /** Workspace-owned SSH target used by the execution runtime, when applicable. */
-  sshTarget?: WorkspaceSshTarget;
   /** Server connection settings for this workspace */
   serverSettings: ServerSettings;
   /** ISO 8601 timestamp of when the workspace was created */

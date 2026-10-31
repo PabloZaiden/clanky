@@ -40,7 +40,6 @@ export function canRetryProvisioningJob(job: ProvisioningJob | PublicProvisionin
 }
 
 export type ProvisioningJobMode = "provision" | "rebuild" | "restart" | "arise";
-export type ProvisioningTransport = "ssh" | "worker";
 export const PROVISIONING_WORKER_ENROLLMENT_ROUTES = ["direct", "relay"] as const;
 export type ProvisioningWorkerEnrollmentRoute =
   typeof PROVISIONING_WORKER_ENROLLMENT_ROUTES[number];
@@ -90,7 +89,6 @@ export interface ProvisioningJobConfig {
   id: string;
   name: string;
   executionHostBinding: ExecutionHostBinding;
-  transport?: ProvisioningTransport;
   workspaceWorkerEnrollmentId?: string;
   workerEnrollmentId?: string;
   workerEnrollmentRoute?: ProvisioningWorkerEnrollmentRoute;
@@ -172,14 +170,7 @@ export interface DevboxPublishedPort {
 export interface DevboxStatusResult {
   running: boolean;
   ports: number[];
-  sshEnabled: boolean;
-  password: string | null;
   workdir: string;
-  sshUser: string | null;
-  sshPort: number | null;
-  remoteUser: string | null;
-  hasCredentialFile: boolean;
-  credentialPath: string;
   publishedPorts: Record<string, DevboxPublishedPort[]>;
 }
 

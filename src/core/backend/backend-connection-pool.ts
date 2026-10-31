@@ -1,57 +1,11 @@
 /**
  * Backend connection pool utilities.
- * Handles building connection configs and agent runtime commands.
+ * Builds connection configs for local or Mesh-owned runtimes.
  */
 
 import type { BackendConnectionConfig } from "../../backends/types";
 import type { RuntimeServerSettings } from "@/shared/settings";
-import { HarnessError } from "../../backends/harness-errors";
-import { buildSshRemoteShellCommand } from "../remote-command-executor";
-import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
-import {
-  buildProviderShellInvocation,
-  getProviderAcpCommand,
-} from "../agent-runtime-command";
 import { withoutManagedContextEnvironment } from "../managed-context-environment";
-
-function buildAgentRuntimeCommand(
-  settings: RuntimeServerSettings,
-  directory: string,
-  runtimeEnvironment?: Record<string, string>,
-): { command?: string; args?: string[]; env?: NodeJS.ProcessEnv; startupStdin?: string } {
-  const provider = settings.agent.provider;
-
-  if (settings.agent.adapter !== "acp") {
-    if (settings.agent.transport !== "stdio") throw new HarnessError("harness_unsupported_feature", "Native harnesses require a local or Mesh execution host.");
-    return runtimeEnvironment ? { env: runtimeEnvironment } : {};
-  }
-
-  if (settings.agent.transport === "stdio") {
-    return runtimeEnvironment ? { env: runtimeEnvironment } : {};
-  }
-
-  const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
-  const sshTarget = getSshConnectionTargetFromSettings(settings);
-  if (!sshTarget) {
-    return providerCommand;
-  }
-  const providerInvocation = buildProviderShellInvocation(
-    providerCommand,
-    runtimeEnvironment,
-  );
-  const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
-  const sshProcess = buildSshProcessConfig({
-    target: sshTarget,
-    remoteCommand,
-    connectionScope: directory,
-    passwordHandling: "environment",
-  });
-  return {
-    command: sshProcess.command,
-    args: sshProcess.args,
-    env: sshProcess.env,
-  };
-}
 
 /**
  * Build a BackendConnectionConfig from ServerSettings and a directory.
@@ -69,17 +23,10 @@ export function buildConnectionConfig(
 ): BackendConnectionConfig {
   const isAcp = settings.agent.adapter === "acp";
   const environment = isAcp ? withoutManagedContextEnvironment(runtimeEnvironment) : runtimeEnvironment;
-  const derivedCommand = buildAgentRuntimeCommand(settings, directory, environment);
-  const sshTarget = getSshConnectionTargetFromSettings(settings);
   return {
     provider: settings.agent.provider,
     transport: settings.agent.transport,
-    hostname: sshTarget?.host,
-    port: sshTarget?.port,
-    username: sshTarget?.username,
-    password: sshTarget?.password,
-    identityFile: sshTarget?.identityFile,
-    ...derivedCommand,
+    ...(environment ? { env: environment } : {}),
     managedEnvironment: isAcp ? undefined : runtimeEnvironment,
     directory,
   };

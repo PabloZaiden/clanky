@@ -12,7 +12,6 @@ import {
   executionHostBindingFromRow,
   resolveExecutionHostBindingId,
 } from "../execution-hosts";
-import type { WorkspaceSshTarget } from "@/shared/workspace";
 
 export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
   const userId = requireResourcePersistenceUserId("workspace", workspace.id, workspace.id);
@@ -66,9 +65,6 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     ...(executionHostBindingFromRow(row, "provisioning_host")
       ? { provisioningHostBinding: executionHostBindingFromRow(row, "provisioning_host")! }
       : {}),
-    ...(rowToWorkspaceSshTarget(row)
-      ? { sshTarget: rowToWorkspaceSshTarget(row)! }
-      : {}),
     serverSettings: parseServerSettings(row["server_settings"] as string | null),
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
@@ -95,36 +91,6 @@ function rowToWorkspaceIcon(
     return undefined;
   }
   return { mimeType, updatedAt };
-}
-
-function rowToWorkspaceSshTarget(
-  row: Record<string, unknown>,
-): WorkspaceSshTarget | null {
-  const host = row["workspace_ssh_target_host"];
-  const port = row["workspace_ssh_target_port"];
-  const username = row["workspace_ssh_target_username"];
-  const targetKey = row["workspace_ssh_target_key"];
-  const revision = row["workspace_ssh_target_revision"];
-  if (
-    typeof host !== "string"
-    || typeof port !== "number"
-    || typeof username !== "string"
-    || typeof targetKey !== "string"
-    || typeof revision !== "number"
-    || !host.trim()
-    || !username.trim()
-  ) {
-    return null;
-  }
-  return {
-    kind: "ssh",
-    host,
-    port,
-    username,
-    credentialConfigured: row["workspace_ssh_target_password_configured"] === 1,
-    targetKey,
-    revision: Math.max(1, Math.floor(revision)),
-  };
 }
 
 function requireExecutionHostBinding(

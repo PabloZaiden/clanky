@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type ActionMenuItem,
   CodeValue,
@@ -14,7 +14,6 @@ import {
 import type {
   Chat,
   ExecutionHostDescriptor,
-  SshServer,
   TerminalSession,
   Workspace,
 } from "@/shared";
@@ -22,7 +21,6 @@ import {
   getExecutionHostAgentProvider,
   getExecutionHostDefaultDirectory,
   getExecutionHostSourceId,
-  getRegisteredSshServerId,
   supportsExecutionHostCapability,
 } from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
@@ -36,18 +34,11 @@ import {
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisites-section";
-import { SshServerSettingsForm } from "./ssh-server-settings-form";
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { ClankyListRow } from "./clanky-list-row";
 import { WorkItemRow } from "./work-item-row";
 import { PreviewSessionsView } from "./preview-sessions-view";
 import { buildPreviewCliCommand } from "../../utils";
-import {
-  getStoredSshCredentialToken,
-  invalidateStoredSshCredentialToken,
-  storeSshServerPassword,
-} from "../../lib/ssh-browser-credentials";
-import { ServerPasswordModal } from "./server-password-modal";
 import {
   formatStatusLabel,
   getChatStatusBadgeVariant,
@@ -63,16 +54,9 @@ interface ExecutionHostViewProps {
   workspaces: Workspace[];
   sessions: TerminalSession[];
   chats: Chat[];
-  sshServer?: SshServer;
   provisioning: UseProvisioningJobResult;
   onNavigate: (route: WebAppRoute) => void;
   onRefresh: () => Promise<void>;
-  onUpdateSshServer: (
-    id: string,
-    request?: import("@/contracts").UpdateSshServerRequest,
-    password?: string,
-  ) => Promise<SshServer | null>;
-  onDeleteSshServer: (id: string) => Promise<boolean>;
 }
 
 function hostApiPath(host: ExecutionHostDescriptor): string {
@@ -86,12 +70,9 @@ export function ExecutionHostView({
   workspaces,
   sessions,
   chats,
-  sshServer,
   provisioning,
   onNavigate,
   onRefresh,
-  onUpdateSshServer,
-  onDeleteSshServer,
 }: ExecutionHostViewProps) {
   const toast = useToast();
   const [directory, setDirectory] = useState(host.repositoriesBasePath ?? "");
@@ -115,40 +96,14 @@ export function ExecutionHostView({
   );
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const sshServerId = getRegisteredSshServerId(host.ref);
-  const [sshCredential, setSshCredential] = useState<{
-    serverId: string;
-    token: string | null;
-  } | null>(null);
-  const credentialToken = sshServerId && sshCredential?.serverId === sshServerId
-    ? sshCredential.token
-    : null;
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
-  const [sshFormValid, setSshFormValid] = useState(false);
-  const [sshFormSubmitting, setSshFormSubmitting] = useState(false);
   const hostUsable = host.acceptRemoteExecution;
   const supportsFileOperations = supportsExecutionHostCapability(
     host.capabilities,
     "fileOperations",
   );
-  const requestSshCredentials = useCallback(() => {
-    if (!sshServerId) {
-      return;
-    }
-    invalidateStoredSshCredentialToken(sshServerId);
-    setSshCredential({ serverId: sshServerId, token: null });
-    setPasswordError(null);
-    setPasswordModalOpen(true);
-  }, [sshServerId]);
   const discovery = useExecutionHostModelDiscovery(
     host,
     discoveryDirectory,
-    undefined,
-    credentialToken,
-    requestSshCredentials,
   );
   const prerequisites = useExecutionHostPrerequisites({
     executionHost: host.ref,
@@ -172,47 +127,8 @@ export function ExecutionHostView({
     provisioning.starting,
   ]);
   useHeaderActions({
-    primary: sshServer ? [{
-      id: "save-execution-host",
-      label: "Save",
-      form: "execution-host-ssh-settings",
-      loading: sshFormSubmitting,
-      disabled: !sshFormValid || sshFormSubmitting,
-    }] : undefined,
     overflow: headerMenuActions,
   });
-
-  useEffect(() => {
-    let cancelled = false;
-    setSshCredential(null);
-    setPassword("");
-    setPasswordError(null);
-    setPasswordModalOpen(false);
-    if (!sshServerId) {
-      return;
-    }
-    void (async () => {
-      try {
-        const token = await getStoredSshCredentialToken(sshServerId);
-        if (cancelled) {
-          return;
-        }
-        setSshCredential({ serverId: sshServerId, token });
-        if (!token) {
-          setPasswordModalOpen(true);
-        }
-      } catch (credentialError) {
-        if (!cancelled) {
-          setPasswordError(String(credentialError));
-          setSshCredential({ serverId: sshServerId, token: null });
-          setPasswordModalOpen(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sshServerId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,10 +141,6 @@ export function ExecutionHostView({
       setDirectoryLoading(false);
       return () => controller.abort();
     }
-    if (sshServerId && !credentialToken) {
-      setDirectoryLoading(false);
-      return () => controller.abort();
-    }
     void (async () => {
       try {
         const resolved = await apiRequest<ExecutionHostWorkingDirectory>(
@@ -236,7 +148,7 @@ export function ExecutionHostView({
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credentialToken }),
+            body: JSON.stringify({}),
             signal: controller.signal,
             action: "Resolve execution-host working directory",
             fallbackMessage: "Failed to resolve the server working directory",
@@ -261,10 +173,8 @@ export function ExecutionHostView({
     return () => controller.abort();
   }, [
     apiPath,
-    credentialToken,
     host.configurationRevision,
     host.repositoriesBasePath,
-    sshServerId,
     supportsFileOperations,
   ]);
 
@@ -297,37 +207,6 @@ export function ExecutionHostView({
       setPendingAction(null);
     }
   }
-
-  const handlePasswordSubmit = useCallback(async () => {
-    if (!sshServerId) {
-      return;
-    }
-    if (!password.trim()) {
-      setPasswordError("Enter the SSH password for this server.");
-      return;
-    }
-    setPasswordSaving(true);
-    setPasswordError(null);
-    try {
-      await storeSshServerPassword(sshServerId, password);
-      const token = await getStoredSshCredentialToken(sshServerId);
-      if (!token) {
-        throw new Error("Failed to exchange SSH credential.");
-      }
-      setSshCredential({ serverId: sshServerId, token });
-      setPassword("");
-      setPasswordError(null);
-      setPasswordModalOpen(false);
-    } catch (passwordError) {
-      setPasswordError(String(passwordError));
-    } finally {
-      setPasswordSaving(false);
-    }
-  }, [password, sshServerId]);
-
-  const handlePasswordModalClose = useCallback(() => {
-    setPasswordModalOpen(false);
-  }, []);
 
   async function saveDefaults(repositoriesBasePath: string | null) {
     const parsedModel = parseModelKey(preferredModel);
@@ -398,13 +277,7 @@ export function ExecutionHostView({
         </Panel>
       ) : null}
 
-      {host.ref.kind === "ssh" ? (
-        <Panel title="Previews">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Direct previews are unavailable for SSH servers. Start a preview from a workspace assigned to this server.
-          </p>
-        </Panel>
-      ) : supportsExecutionHostCapability(host.capabilities, "tcpTunnel") ? (
+      {supportsExecutionHostCapability(host.capabilities, "tcpTunnel") ? (
         <PreviewSessionsView
           scope={{ kind: "server", executionHost: host.ref }}
           buildCommand={(port) => buildPreviewCliCommand({
@@ -464,23 +337,7 @@ export function ExecutionHostView({
         </Panel>
       ) : null}
 
-      {sshServer ? (
-        <SshServerSettingsForm
-          server={sshServer}
-          relatedSessionCount={sessions.length}
-          formId="execution-host-ssh-settings"
-          onSave={onUpdateSshServer}
-          onDeleteServer={async () => await onDeleteSshServer(sshServer.config.id)}
-          onSaved={async () => {
-            await onRefresh();
-            toast.success("Server settings saved");
-          }}
-          onDeleted={() => onNavigate({ view: "home" })}
-          onValidityChange={setSshFormValid}
-          onSubmittingChange={setSshFormSubmitting}
-          prerequisitesDisabled={!hostUsable || !host.capabilities.provisioning}
-        />
-      ) : host.ref.kind === "local" && supportsFileOperations ? <Panel>
+      {host.ref.kind === "local" && supportsFileOperations ? <Panel>
         <div className="space-y-4">
           <TextField
             id="execution-host-directory"
@@ -582,7 +439,7 @@ export function ExecutionHostView({
         </Panel>
       ) : null}
 
-      {!sshServer && host.capabilities.provisioning ? (
+      {host.capabilities.provisioning ? (
         <ExecutionHostPrerequisitesSection
           error={prerequisites.error}
           report={prerequisites.report}
@@ -592,18 +449,6 @@ export function ExecutionHostView({
         />
       ) : null}
 
-      {sshServerId && (
-        <ServerPasswordModal
-          isOpen={passwordModalOpen}
-          serverName={sshServer?.config.name ?? `SSH server ${sshServerId}`}
-          password={password}
-          error={passwordError}
-          submitting={passwordSaving}
-          onPasswordChange={setPassword}
-          onClose={handlePasswordModalClose}
-          onSubmit={handlePasswordSubmit}
-        />
-      )}
     </div>
   );
 }

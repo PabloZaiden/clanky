@@ -29,7 +29,7 @@ export class CopilotConnection {
     if (this.opening || this.services) {
       throw new HarnessError("harness_request_failed", "This native runtime is already connected or starting.");
     }
-    if (config.transport === "ssh" || config.mesh) {
+    if (config.mesh) {
       throw new HarnessError("harness_unsupported_feature", "Native Copilot must run on the selected local or Mesh execution host.");
     }
     this.directory = config.directory;

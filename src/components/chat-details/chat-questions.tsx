@@ -9,8 +9,6 @@ import { getClankyClientId } from "../../lib/clanky-client-id";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import { toMessageAttachments } from "../../lib/image-attachments";
 import { ImageAttachmentControl, type ImageAttachmentControlHandle } from "../ImageAttachmentControl";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
@@ -176,10 +174,6 @@ function QuestionForm({
     setSubmitting(true);
     setError(undefined);
     try {
-      const serverId = request.conversation.executionHost
-        ? getRegisteredSshServerId(request.conversation.executionHost.host)
-        : null;
-      const credentialToken = serverId ? await getStoredSshCredentialToken(serverId) : null;
       const { chat } = await apiRequest<{ chat: Chat }>(
         `/api/chats/${encodeURIComponent(chatId)}/questions/${encodeURIComponent(request.requestId)}`,
         {
@@ -188,7 +182,6 @@ function QuestionForm({
             answers,
             attachments: attachments.map(toMessageAttachments),
             clientId: getClankyClientId(),
-            credentialToken,
           }),
           headers: { "content-type": "application/json" },
           signal: controller.signal, action: "Answer chat question",

@@ -333,7 +333,6 @@ export class MeshTerminalGateway {
       );
     }
     const executor = new CommandExecutorImpl({
-      provider: "local",
       directory: lease.request.executionRoot,
     });
     const connection = new LocalTerminalConnection({

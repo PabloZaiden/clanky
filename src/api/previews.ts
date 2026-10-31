@@ -63,7 +63,7 @@ export const previewRoutes = defineRoutes({
       if (!ref) {
         return errorResponse(
           "execution_host_kind_invalid",
-          "Execution host kind must be local, mesh, or ssh.",
+          "Execution host kind must be local or mesh.",
           400,
         );
       }

@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ExecutionHostRef, SshServerPrerequisiteReport } from "@/shared";
+import type { ExecutionHostRef, ExecutionHostPrerequisiteReport } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
 import { checkExecutionHostPrerequisitesApi } from "../../hooks/executionHostActions";
 
 interface UseExecutionHostPrerequisitesOptions {
   executionHost: ExecutionHostRef;
-  password?: string;
 }
 
 export function useExecutionHostPrerequisites({
   executionHost,
-  password,
 }: UseExecutionHostPrerequisitesOptions) {
   const [checking, setChecking] = useState(false);
-  const [report, setReport] = useState<SshServerPrerequisiteReport | null>(null);
+  const [report, setReport] = useState<ExecutionHostPrerequisiteReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reset = useCallback(() => {
@@ -27,7 +25,6 @@ export function useExecutionHostPrerequisites({
     try {
       setReport(await checkExecutionHostPrerequisitesApi({
         executionHost,
-        password,
       }));
     } catch (checkError) {
       setReport(null);
@@ -35,7 +32,7 @@ export function useExecutionHostPrerequisites({
     } finally {
       setChecking(false);
     }
-  }, [executionHost, password]);
+  }, [executionHost]);
 
   useEffect(() => {
     reset();

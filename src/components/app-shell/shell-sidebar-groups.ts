@@ -171,7 +171,6 @@ export function buildSidebarDomainNodes({
     .map((workspaceNode) => createWorkspaceSidebarNode(workspaceNode, workspaceContext)));
   const unifiedServerNodes = buildServerSidebarNodes({
     executionHosts,
-    executionHostNodes,
     remoteOnly,
     chats,
     terminalSessions,
@@ -203,14 +202,8 @@ export function buildSidebarDomainNodes({
     }] : []),
     ...(capabilities.executionHosts ? [{
       type: "section" as const,
-      id: "ssh-servers",
+      id: "execution-hosts",
       title: "Servers",
-      action: {
-        id: "new-ssh-server",
-        title: "New SSH server",
-        label: "New",
-        route: { view: "compose", kind: "ssh-server" },
-      },
       children: unifiedServerNodes,
     }] : []),
   ];

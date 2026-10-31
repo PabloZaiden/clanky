@@ -14,7 +14,6 @@ export interface TerminalSocketState {
   pendingOscColorQueryRef: React.MutableRefObject<string>;
   lastSentResizeRef: React.MutableRefObject<{ cols: number; rows: number } | null>;
   terminalConnectInFlightRef: React.MutableRefObject<boolean>;
-  standaloneTokenRecoveryAttemptedRef: React.MutableRefObject<boolean>;
 }
 
 export function useTerminalSocketState(): TerminalSocketState {
@@ -25,7 +24,6 @@ export function useTerminalSocketState(): TerminalSocketState {
   const pendingOscColorQueryRef = useRef("");
   const lastSentResizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const terminalConnectInFlightRef = useRef(false);
-  const standaloneTokenRecoveryAttemptedRef = useRef(false);
 
   return {
     socketStatus,
@@ -36,6 +34,5 @@ export function useTerminalSocketState(): TerminalSocketState {
     pendingOscColorQueryRef,
     lastSentResizeRef,
     terminalConnectInFlightRef,
-    standaloneTokenRecoveryAttemptedRef,
   };
 }

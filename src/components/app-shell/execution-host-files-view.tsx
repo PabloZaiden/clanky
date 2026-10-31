@@ -39,13 +39,7 @@ export function ExecutionHostFilesView({
 
   return (
     <FileExplorerView
-      title={`${host.name} files`}
       defaultRootDirectory={getExecutionHostDefaultDirectory(host)}
-      backRoute={{
-        view: "execution-host",
-        hostKind: host.ref.kind,
-        hostId,
-      }}
       onNavigate={onNavigate}
       target={{
         type: "executionHost",

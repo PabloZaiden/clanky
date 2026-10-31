@@ -8,10 +8,8 @@ import type {
 } from "../conversation-composer";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
-import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import {
   getChatErrorMessage,
-  getChatRegisteredSshServerId,
 } from "./chat-lifecycle";
 import type { ChatComposerAdapterOptions } from "./types";
 
@@ -21,11 +19,9 @@ export function useChatComposerAdapter({
   isEmbedded,
   isActive,
   isExternallyBusy = false,
-  needsSshCredentials,
   onChatSnapshot,
   markChatStarting,
   refreshChat,
-  handleReconnect,
   onSendMessage,
   voice,
 }: ChatComposerAdapterOptions): ConversationComposerProps | null {
@@ -61,17 +57,12 @@ export function useChatComposerAdapter({
       return;
     }
 
-    const serverId = getChatRegisteredSshServerId(chat);
-    const credentialToken = serverId
-      ? await getStoredSshCredentialToken(serverId)
-      : null;
     const data = await apiRequest<{ chat?: Chat }>(`/api/chats/${chatId}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message,
         attachments,
-        credentialToken,
         clientId: getClankyClientId(),
       }),
       action: "Send chat message",
@@ -123,14 +114,6 @@ export function useChatComposerAdapter({
     modelEnabled: !isEmbedded,
     active: isActive,
     externallyBusy: isExternallyBusy,
-    disabled: needsSshCredentials,
-    notice: needsSshCredentials
-      ? {
-          message: "This remote chat needs SSH credentials before messages can be sent.",
-          actionLabel: "Reconnect",
-          onAction: handleReconnect,
-        }
-      : undefined,
     status: chat.state.startupStage
       ? { label: `${CHAT_STARTUP_STAGE_LABELS[chat.state.startupStage]}...` }
       : undefined,

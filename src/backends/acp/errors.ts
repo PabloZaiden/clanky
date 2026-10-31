@@ -1,8 +1,6 @@
 import { DomainError, type DomainErrorOptions } from "../../domain/domain-error";
 import type { AgentProvider } from "@/shared/settings";
 import {
-  SSHPASS_INVALID_PASSWORD_EXIT_CODE,
-  type AcpAuthenticationMode,
   type AcpProcessExit,
   type AcpTransportStage,
   type JsonRpcError,
@@ -19,7 +17,6 @@ export type AcpErrorCode =
   | "acp_transport_closed"
   | "acp_transport_unavailable"
   | "acp_transport_write_failed"
-  | "acp_ssh_authentication_failed"
   | "acp_connection_timed_out"
   | "acp_connection_aborted"
   | "acp_unsupported_prompt_capability";
@@ -107,16 +104,9 @@ export function createAcpProcessError(
     command?: string;
     exitCode?: number;
     signalCode?: AcpProcessExit["signalCode"];
-    transport?: "stdio" | "ssh" | "mesh";
-    authenticationMode?: AcpAuthenticationMode;
-    authenticationFailure?: boolean;
+    transport?: "stdio" | "mesh";
     stage?: AcpTransportStage;
     attempt?: number;
-    target?: {
-      hostname?: string;
-      port?: number;
-      username?: string;
-    };
     initializationCompleted?: boolean;
     cause?: unknown;
   } = {},
@@ -126,28 +116,13 @@ export function createAcpProcessError(
     ...(options.exitCode === undefined ? {} : { exitCode: options.exitCode }),
     ...(options.signalCode ? { signalCode: options.signalCode } : {}),
     ...(options.transport ? { transport: options.transport } : {}),
-    ...(options.authenticationMode ? { authenticationMode: options.authenticationMode } : {}),
-    ...(options.authenticationFailure === undefined
-      ? {}
-      : { authenticationFailure: options.authenticationFailure }),
     ...(options.stage ? { stage: options.stage } : {}),
     ...(options.attempt === undefined ? {} : { attempt: options.attempt }),
-    ...(options.target ? { target: options.target } : {}),
     ...(options.initializationCompleted === undefined
       ? {}
       : { initializationCompleted: options.initializationCompleted }),
   };
-  const isSshAuthenticationFailure =
-    options.authenticationFailure === true
-    || (
-      options.command === "sshpass"
-      && options.exitCode === SSHPASS_INVALID_PASSWORD_EXIT_CODE
-    );
-  const code = isSshAuthenticationFailure
-    ? "acp_ssh_authentication_failed"
-    : "acp_process_failed";
-
-  return new AcpError(code, reason, {
+  return new AcpError("acp_process_failed", reason, {
     ...(Object.keys(details).length > 0 ? { details } : {}),
     ...(options.cause === undefined ? {} : { cause: options.cause }),
   });
@@ -156,13 +131,8 @@ export function createAcpProcessError(
 export function createAcpConnectionTimeoutError(
   timeoutMs: number,
   options: {
-    transport?: "stdio" | "ssh" | "mesh";
+    transport?: "stdio" | "mesh";
     stage?: AcpTransportStage;
-    target?: {
-      hostname?: string;
-      port?: number;
-      username?: string;
-    };
   } = {},
 ): AcpError<"acp_connection_timed_out"> {
   return new AcpError(
@@ -173,7 +143,6 @@ export function createAcpConnectionTimeoutError(
         timeoutMs,
         ...(options.transport ? { transport: options.transport } : {}),
         ...(options.stage ? { stage: options.stage } : {}),
-        ...(options.target ? { target: options.target } : {}),
       },
     },
   );
@@ -181,13 +150,8 @@ export function createAcpConnectionTimeoutError(
 
 export function createAcpConnectionAbortedError(
   options: {
-    transport?: "stdio" | "ssh" | "mesh";
+    transport?: "stdio" | "mesh";
     stage?: AcpTransportStage;
-    target?: {
-      hostname?: string;
-      port?: number;
-      username?: string;
-    };
     cause?: unknown;
   } = {},
 ): AcpError<"acp_connection_aborted"> {
@@ -198,31 +162,8 @@ export function createAcpConnectionAbortedError(
       details: {
         ...(options.transport ? { transport: options.transport } : {}),
         ...(options.stage ? { stage: options.stage } : {}),
-        ...(options.target ? { target: options.target } : {}),
       },
       ...(options.cause === undefined ? {} : { cause: options.cause }),
     },
-  );
-}
-
-export function isAcpSshTransportFailure(error: unknown): boolean {
-  if (!isAcpError(error)) {
-    return false;
-  }
-  return isAcpSshTransportFailureMetadata(error.code, error.details);
-}
-
-export function isAcpSshTransportFailureMetadata(
-  code: string | undefined,
-  details: Readonly<Record<string, unknown>> | undefined,
-): boolean {
-  if (details?.["transport"] !== "ssh") {
-    return false;
-  }
-  return (
-    code === "acp_connection_timed_out"
-    || code === "acp_connection_aborted"
-    || code === "acp_process_failed"
-    || code === "acp_transport_closed"
   );
 }

@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { AgentProviderSchema, AgentSettingsSchema } from "./workspace";
-import { SshCredentialTokenSchema } from "./ssh-server";
 import { ExecutionHostRefSchema } from "./execution-host";
 import {
   isIncompleteGitHubRepositoryUrl,
@@ -14,7 +13,6 @@ import { WorkerUpdateModeSchema } from "./worker-update";
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
 export const ProvisioningJobModeSchema = z.enum(["provision", "rebuild", "restart", "arise"]);
-export const ProvisioningTransportSchema = z.enum(["ssh", "worker"]);
 export const ProvisioningWorkerEnrollmentRouteSchema = z.enum(
   PROVISIONING_WORKER_ENROLLMENT_ROUTES,
 );
@@ -23,7 +21,6 @@ export const CreateProvisioningJobRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
   executionHost: ExecutionHostRefSchema.optional(),
   workspaceWorkerEnrollmentId: RequiredTrimmedStringSchema.optional(),
-  transport: ProvisioningTransportSchema.optional(),
   workerEnrollmentRoute: ProvisioningWorkerEnrollmentRouteSchema.optional(),
   workerRelayName: ControllerRelayNameSchema.optional(),
   workerHostAddress: z.string()
@@ -41,7 +38,6 @@ export const CreateProvisioningJobRequestSchema = z.object({
   githubUser: z.string().trim().nullish(),
   provider: AgentProviderSchema,
   adapter: z.enum(HARNESS_ADAPTER_IDS).default("acp"),
-  credentialToken: SshCredentialTokenSchema.nullable(),
   mode: ProvisioningJobModeSchema,
   createNewRepository: z.boolean().default(false),
   /** For rebuild/restart: directory on the host where the repo lives */
@@ -53,20 +49,20 @@ export const CreateProvisioningJobRequestSchema = z.object({
   message: "The harness preset does not match the native adapter",
   path: ["provider"],
 }).refine((data) => data.mode !== "provision" || data.adapter === "acp"
-  || (data.transport !== "ssh" && !data.workspaceWorkerEnrollmentId), {
-  message: "Native adapters require a dedicated worker; direct SSH supports ACP only",
+  || !data.workspaceWorkerEnrollmentId, {
+  message: "Native adapters require an automatic worker workspace",
   path: ["adapter"],
 }).refine((data) => !data.channel
   || data.channel === "default"
   || data.mode === "rebuild"
   || data.mode === "restart"
-  || (data.mode === "provision" && data.transport !== "ssh" && !data.workspaceWorkerEnrollmentId), {
+  || (data.mode === "provision" && !data.workspaceWorkerEnrollmentId), {
   message: "A release channel can only be selected for an automatic worker workspace",
   path: ["channel"],
 }).refine((data) => {
   if (
     data.workerRelayName
-    && (data.transport !== "worker" || data.workerEnrollmentRoute !== "relay")
+    && (data.workspaceWorkerEnrollmentId || data.mode === "arise" || data.workerEnrollmentRoute !== "relay")
   ) {
     return false;
   }
@@ -78,9 +74,6 @@ export const CreateProvisioningJobRequestSchema = z.object({
     return false;
   }
   if (data.workspaceWorkerEnrollmentId && data.mode !== "provision") {
-    return false;
-  }
-  if (data.transport === "worker" && data.workspaceWorkerEnrollmentId) {
     return false;
   }
   if (data.mode === "provision") {
@@ -97,7 +90,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   return (data.targetDirectory ?? "").length > 0
     && (data.workspaceId ?? "").length > 0;
 }, {
-  message: "Provisioning requires one execution host or dedicated worker enrollment, a relay name only with worker relay transport, and a valid target for the selected mode.",
+  message: "Provisioning requires one execution host or dedicated worker enrollment, a relay name only with automatic worker relay enrollment, and a valid target for the selected mode.",
 });
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;

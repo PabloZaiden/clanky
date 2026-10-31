@@ -34,9 +34,8 @@ import { GitService } from "../git";
 import { log } from "@pablozaiden/webapp/server";
 import { buildConnectionConfig } from "./backend-connection-pool";
 import {
-  deriveExecutionSettings,
   areRuntimeServerSettingsEqual,
-  buildAgentServerUrl,
+  DEFAULT_CONNECTION_TIMEOUT_MS,
   type WorkspaceConnectionState,
   type TaskConnectionState,
   type ServerEvent,
@@ -44,21 +43,13 @@ import {
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
 import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireExecutionOwnerUserId } from "../../context/user-context";
-import { getSshReliabilityPolicy } from "../ssh-reliability-policy";
 import { executionHostService } from "../execution-host-service";
 import { executionHostBindingsEqual, getAgentExecutionHostCapability } from "@/shared/execution-host";
-import { isWorkspaceSshExecutionHostRef } from "@/shared/execution-host";
 import type {
   ExecutionHostBinding,
   ExecutionHostRef,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
-import { getSshServerConfig } from "../../persistence/ssh-servers";
-import {
-  getWorkspaceSshTarget,
-  type WorkspaceSshTargetInput,
-} from "../../persistence/workspace-execution-targets";
-import type { SshConnectionTarget } from "../ssh-connection-target";
 import { assertHarnessHostPolicy } from "./harness-host-policy";
 import { isRemoteOnlyMode } from "../config";
 import { MeshHarnessBackend } from "../../backends/mesh-harness-backend";
@@ -117,7 +108,7 @@ class BackendManager {
   private initialized = false;
   private shuttingDown = false;
   private unsubscribeMeshState: (() => void) | undefined;
-  private readonly connectionTimeoutMs = getSshReliabilityPolicy().connectionTimeoutMs;
+  private readonly connectionTimeoutMs = DEFAULT_CONNECTION_TIMEOUT_MS;
   private localMeshNodeId: string | null = null;
   private localMeshNodeIdPromise: Promise<string> | null = null;
   private localMeshNodeIdGeneration = 0;
@@ -168,8 +159,6 @@ class BackendManager {
   private async buildRuntimeSettings(
     binding: ExecutionHostBinding,
     agent: AgentSettings,
-    sshPassword?: string,
-    sshTargetOverride?: SshConnectionTarget,
   ): Promise<RuntimeServerSettings> {
     executionHostService.validateBinding(binding);
     assertHarnessHostPolicy(agent, binding.host.kind);
@@ -179,45 +168,10 @@ class BackendManager {
       undefined,
       1,
     );
-    if (binding.host.kind !== "ssh") {
-      return {
-        agent: {
-          ...agent,
-          transport: "stdio",
-        },
-      };
-    }
-    if (isWorkspaceSshExecutionHostRef(binding.host)) {
-      const target = sshTargetOverride
-        ?? await getWorkspaceSshTarget(binding.host.workspaceId);
-      if (!target) {
-        throw new Error(
-          `Workspace SSH execution target not found: ${binding.host.workspaceId}`,
-        );
-      }
-      return {
-        agent: {
-          ...agent,
-          transport: "ssh",
-          hostname: target.host,
-          port: target.port,
-          username: target.username,
-          password: target.password,
-        },
-      };
-    }
-    const server = await getSshServerConfig(binding.host.serverId, requireExecutionOwnerUserId());
-    if (!server) {
-      throw new Error(`SSH server not found: ${binding.host.serverId}`);
-    }
     return {
       agent: {
         ...agent,
-        transport: "ssh",
-        hostname: server.address,
-        port: server.port ?? 22,
-        username: server.username,
-        password: sshPassword,
+        transport: "stdio",
       },
     };
   }
@@ -234,17 +188,12 @@ class BackendManager {
       ? () => new WorkspaceAcpTransportLifecycle({
           workspaceId: workspaceOptions.workspaceId,
           localNodeId: workspaceOptions.localNodeId ?? "",
-          executionNodeId: workspaceOptions.executionHostBinding.host.kind === "ssh"
-            ? null
-            : workspaceOptions.executionHostBinding.host.nodeId,
+          executionNodeId: workspaceOptions.executionHostBinding.host.nodeId,
         })
       : undefined;
     if (settings.agent.adapter !== "acp") {
-      if (settings.agent.transport === "ssh") throw new HarnessError("harness_unsupported_feature", "Direct SSH supports ACP only.");
-      if (workspaceOptions && (
-        workspaceOptions.executionHostBinding.host.kind === "ssh"
-        || workspaceOptions.executionHostBinding.host.nodeId !== workspaceOptions.localNodeId
-      )) {
+      if (workspaceOptions
+        && workspaceOptions.executionHostBinding.host.nodeId !== workspaceOptions.localNodeId) {
         const host = workspaceOptions.executionHostBinding.host;
         if (host.kind !== "mesh") throw new HarnessError("harness_unsupported_feature", "The selected execution host does not support native Mesh routing.");
         return new MeshHarnessBackend({
@@ -346,13 +295,10 @@ class BackendManager {
     }
   }
 
-  private buildCommandExecutorCacheKey(workspaceId: string, directory: string, settings: RuntimeServerSettings): string {
-    const execution = deriveExecutionSettings(settings);
+  private buildCommandExecutorCacheKey(workspaceId: string, directory: string): string {
     return JSON.stringify({
       workspaceId,
       directory,
-      provider: execution.provider,
-      sshTarget: execution.sshTarget ?? null,
       executionHostBinding: this.connections.get(workspaceId)?.executionHostBinding ?? null,
     });
   }
@@ -507,7 +453,6 @@ class BackendManager {
         this.emitEvent({
           type: "server.connected",
           workspaceId,
-          serverUrl: buildAgentServerUrl(state.settings),
           timestamp: new Date().toISOString(),
         });
       }
@@ -538,13 +483,6 @@ class BackendManager {
   ): Promise<void> {
     const timeoutError = createAcpConnectionTimeoutError(this.connectionTimeoutMs, {
       transport: config.transport,
-      target: config.transport === "ssh"
-        ? {
-            ...(config.hostname ? { hostname: config.hostname } : {}),
-            ...(config.port === undefined ? {} : { port: config.port }),
-            ...(config.username ? { username: config.username } : {}),
-          }
-        : undefined,
     });
 
     const timeoutId = setTimeout(() => controller.abort(timeoutError), this.connectionTimeoutMs);
@@ -760,51 +698,24 @@ class BackendManager {
     settings: ServerSettings,
     directory: string,
     executionHost?: ExecutionHostRef,
-    sshTarget?: WorkspaceSshTargetInput,
     bindingOverride?: ExecutionHostBinding,
   ): Promise<{ success: boolean; error?: string }> {
-    const directSshTarget: SshConnectionTarget | undefined = sshTarget
-      ? {
-          host: sshTarget.host.trim(),
-          port: sshTarget.port,
-          username: sshTarget.username.trim(),
-          ...(sshTarget.password ? { password: sshTarget.password } : {}),
-        }
-      : undefined;
     const binding = bindingOverride
       ?? (executionHost
         ? executionHostService.getBinding(executionHost)
         : undefined);
-    if (!binding && !directSshTarget) {
-      return { success: false, error: "An execution host or SSH target is required" };
+    if (!binding) {
+      return { success: false, error: "An execution host is required" };
     }
-    const runtimeSettings = binding
-      ? await this.buildRuntimeSettings(
-          binding,
-          settings.agent,
-          undefined,
-          directSshTarget,
-        )
-      : {
-          agent: {
-            ...settings.agent,
-            transport: "ssh" as const,
-            hostname: directSshTarget!.host,
-            port: directSshTarget!.port,
-            username: directSshTarget!.username,
-            password: directSshTarget!.password,
-          },
-        };
+    const runtimeSettings = await this.buildRuntimeSettings(binding, settings.agent);
     const localNodeId = await this.getLocalMeshNodeId();
     const backend = this.createBackendForSettings(
       runtimeSettings,
-      binding && executionHost?.kind !== "ssh"
-        ? {
-            workspaceId: crypto.randomUUID(),
-            localNodeId,
-            executionHostBinding: binding,
-          }
-        : undefined,
+      {
+        workspaceId: crypto.randomUUID(),
+        localNodeId,
+        executionHostBinding: binding,
+      },
     );
     const config = buildConnectionConfig(runtimeSettings, directory);
     const abortController = new AbortController();
@@ -850,13 +761,12 @@ class BackendManager {
     settings: ServerSettings,
     directory: string,
     executionHost?: ExecutionHostRef,
-    sshTarget?: WorkspaceSshTargetInput,
     bindingOverride?: ExecutionHostBinding,
   ): Promise<{ success: boolean; isGitRepo?: boolean; directoryExists?: boolean; error?: string }> {
     log.debug("Validating remote directory", {
       directory,
       provider: settings.agent.provider,
-      transport: sshTarget ? "ssh" : executionHost?.kind,
+      transport: executionHost?.kind,
     });
 
     try {
@@ -864,43 +774,18 @@ class BackendManager {
         ?? (executionHost
           ? executionHostService.getBinding(executionHost)
           : undefined);
-      const executor = sshTarget
-        ? await executionHostService.getCommandExecutorForSshTarget(
+      const executor = binding
+        ? await executionHostService.getCommandExecutor(
+            binding,
             {
-              host: sshTarget.host.trim(),
-              port: sshTarget.port,
-              username: sshTarget.username.trim(),
-              ...(sshTarget.password ? { password: sshTarget.password } : {}),
-            },
-            {
-              operationId: `validate-directory:${sshTarget.host}:${String(sshTarget.port)}`,
+              operationId: `validate-directory:${binding.targetKey}`,
               directory,
+              provider: settings.agent.provider,
             },
           )
-        : binding
-          ? await executionHostService.getCommandExecutor(
-              binding,
-              {
-                operationId: `validate-directory:${binding.targetKey}`,
-                directory,
-                provider: settings.agent.provider,
-              },
-            )
-          : null;
+        : null;
       if (!executor) {
-        return { success: false, error: "An execution host or SSH target is required" };
-      }
-
-      if (executionHost?.kind === "ssh" || sshTarget) {
-        const connectivityProbe = await executor.exec("true", [], { cwd: "/" });
-        if (!connectivityProbe.success) {
-          const detail = connectivityProbe.stderr || connectivityProbe.stdout || `exit code ${connectivityProbe.exitCode}`;
-          return {
-            success: false,
-            error: `Failed to connect to remote server: ${detail}`,
-          };
-        }
-
+        return { success: false, error: "An execution host is required" };
       }
 
       const executionDirectory = await resolveCommandExecutorDirectory(
@@ -952,7 +837,6 @@ class BackendManager {
       adapter: workspace?.serverSettings.agent.adapter ?? "acp",
       transport: workspace?.executionHostBinding.host.kind ?? "local",
       capabilities: state ? this.getAgentCapabilities(state.settings) : [],
-      serverUrl: state ? buildAgentServerUrl(state.settings) : undefined,
       error: state?.connectionError ?? undefined,
     };
 
@@ -975,8 +859,6 @@ class BackendManager {
       )
         ? "remote-connected"
         : "remote-unavailable";
-    } else {
-      status.executionAvailability = "local";
     }
 
     try {
@@ -1202,7 +1084,7 @@ class BackendManager {
     }
 
     const dir = directory ?? state.backend.getDirectory();
-    const cacheKey = this.buildCommandExecutorCacheKey(workspaceId, dir, state.settings);
+    const cacheKey = this.buildCommandExecutorCacheKey(workspaceId, dir);
     const capabilitySnapshot = state.executionHostBinding?.host.kind === "mesh"
       ? JSON.stringify(executionHostService.validateBinding(state.executionHostBinding, state.userId).runtime.capabilities)
       : null;
@@ -1214,13 +1096,9 @@ class BackendManager {
       this.evictCommandExecutor(cacheKey);
     }
 
-    const execution = deriveExecutionSettings(state.settings);
     const commandExecutorLogContext: Record<string, string | number> = {
       directory: dir,
-      executionProvider: execution.provider,
-      ...(execution.sshTarget?.host ? { host: execution.sshTarget.host } : {}),
-      ...(typeof execution.sshTarget?.port === "number" ? { port: execution.sshTarget.port } : {}),
-      ...(execution.sshTarget?.username ? { user: execution.sshTarget.username } : {}),
+      executionProvider: state.executionHostBinding?.host.kind ?? "unavailable",
     };
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
     const commandContext = {
@@ -1228,7 +1106,6 @@ class BackendManager {
       directory: dir,
       provider: state.settings.agent.provider,
       localUserId: requireExecutionOwnerUserId(),
-      sshTargetOverride: execution.sshTarget,
     };
     if (!state.executionHostBinding) {
       throw new Error(`Workspace ${workspaceId} has no execution-host binding`);
@@ -1271,7 +1148,6 @@ class BackendManager {
       binding: ExecutionHostBinding;
       provider: AgentProvider;
       directory: string;
-      sshPassword?: string;
     },
     operation: (backend: Backend, settings: RuntimeServerSettings) => Promise<T>,
   ): Promise<T> {
@@ -1281,7 +1157,6 @@ class BackendManager {
       const settings = await this.buildRuntimeSettings(
         context.binding,
         createAgentSettings("acp", context.provider),
-        context.sshPassword,
       );
       const localNodeId = await this.getLocalMeshNodeId();
       this.assertPendingExecutionHost(pending);
@@ -1303,7 +1178,6 @@ class BackendManager {
     binding: ExecutionHostBinding;
     provider: AgentProvider;
     directory: string;
-    sshPassword?: string;
   }): Promise<Backend | null> {
     this.assertAcceptingConnections();
     const state = this.taskConnections.get(context.connectionId);
@@ -1322,7 +1196,6 @@ class BackendManager {
     const settings = await this.buildRuntimeSettings(
       context.binding,
       createAgentSettings("acp", context.provider),
-      context.sshPassword ?? (state.settings.agent.transport === "ssh" ? state.settings.agent.password : undefined),
     );
     return this.taskConnections.get(context.connectionId) === state
       && state.backend.isConnected()
@@ -1335,12 +1208,11 @@ class BackendManager {
     connectionId: string,
     binding: ExecutionHostBinding,
     provider: AgentProvider,
-    sshPassword?: string,
   ): Promise<{ backend: Backend; settings: RuntimeServerSettings }> {
     const userId = requireExecutionOwnerUserId();
     const pending = this.trackPendingExecutionHost(userId, binding);
     try {
-      const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider), sshPassword);
+      const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider));
       const localNodeId = await this.getLocalMeshNodeId();
       this.assertPendingExecutionHost(pending);
       const options: WorkspaceBackendOptions = {

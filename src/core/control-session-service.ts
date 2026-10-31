@@ -36,7 +36,6 @@ export interface ControlAccess {
 
 interface ControlRun {
   controller: AbortController;
-  pending: ReturnType<typeof Promise.withResolvers<unknown>>;
   browser?: ClankyControlContext;
   requests: Set<string>;
   work?: Promise<unknown>;
@@ -57,7 +56,6 @@ interface HumanRequest {
   snapshot: ControlRequestSnapshot;
   operation?: PreparedOperation;
   browser?: ClankyControlContext;
-  run?: ControlRun;
   removeAt: number;
   timer: ReturnType<typeof setTimeout>;
   privateState: boolean | undefined;
@@ -136,9 +134,9 @@ export class ControlSessionService {
     const requests = await Promise.all([...this.requests.values()]
       .filter(({ session, snapshot }) => session.access.grant.user.id === userId && snapshot.status === "pending")
       .map(async ({ snapshot, operation }) => {
-        const isPrivate = await controlRequestPrivate(operation, snapshot.serverId);
-        const { id, kind, status, description, expiresAt, serverName } = snapshot;
-        return { id, kind, status, description, expiresAt, isPrivate, ...(serverName ? { serverName } : {}) };
+        const isPrivate = await controlRequestPrivate(operation);
+        const { id, kind, status, description, expiresAt } = snapshot;
+        return { id, kind, status, description, expiresAt, isPrivate };
       }));
     return requests.filter(({ status, expiresAt }) => status === "pending" && expiresAt > Date.now())
       .sort((left, right) => left.expiresAt - right.expiresAt || left.id.localeCompare(right.id));
@@ -150,23 +148,6 @@ export class ControlSessionService {
     await request.session.access.revalidate();
     return await this.start(request.session, signal, request.browser,
       async () => await request.session.actions.confirm(id, approved), request);
-  }
-
-  async supplyCredential(id: string, token: string | null): Promise<unknown> {
-    const request = this.requireRequest(id);
-    this.requirePending(request, "ssh_credential");
-    await request.session.access.revalidate();
-    this.requirePending(request, "ssh_credential");
-    const run = request.run;
-    if (!run?.work || run.controller.signal.aborted) {
-      throw new DomainError("control_request_unavailable", "The operation that requested the credential has ended.");
-    }
-    run.pending = Promise.withResolvers<unknown>();
-    request.session.actions.supplyCredential(id, token);
-    request.snapshot.status = "running";
-    clearTimeout(request.timer);
-    this.changed(request);
-    return await Promise.race([run.work, run.pending.promise]);
   }
 
   private async session(access: ControlAccess): Promise<ControlSession> {
@@ -221,7 +202,7 @@ export class ControlSessionService {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     const run: ControlRun = {
-      controller, browser, pending: Promise.withResolvers<unknown>(), requests: new Set(parent ? [parent.snapshot.id] : []),
+      controller, browser, requests: new Set(parent ? [parent.snapshot.id] : []),
       detach: () => callerSignal.removeEventListener("abort", onAbort),
       timer: setTimeout(() => controller.abort(), EXECUTION_TIMEOUT_MS),
     };
@@ -246,7 +227,7 @@ export class ControlSessionService {
           completion: "outcome_unknown",
         });
     });
-    return await Promise.race([run.work, run.pending.promise]);
+    return await run.work;
   }
 
   private finish(session: ControlSession, run: ControlRun, result: unknown): unknown {
@@ -263,7 +244,6 @@ export class ControlSessionService {
       if (request.snapshot.status !== "expired") request.snapshot.status = "completed";
       request.snapshot.result = result;
       request.removeAt = Date.now() + RESULT_TTL_MS;
-      request.run = undefined;
       this.changed(request);
     }
     return result;
@@ -274,24 +254,18 @@ export class ControlSessionService {
     const invocation = this.invocation.getStore();
     if (!invocation) throw new DomainError("control_context_unavailable", "No active control invocation owns this interaction.");
     const { session, run } = invocation;
-    if (action.type === "confirm_operation" || action.type === "request_ssh_credential") {
+    if (action.type === "confirm_operation") {
       this.prune();
       if (this.requests.size >= MAX_REQUESTS) throw new DomainError("control_busy", "Too many human requests are awaiting review.");
-      const id = action.type === "confirm_operation" ? action.confirmation.requestId : action.requestId;
-      let operation: PreparedOperation | undefined;
-      let snapshot: ControlRequestSnapshot;
-      if (action.type === "confirm_operation") {
-        const confirmation = session.actions.getConfirmation(id);
-        operation = confirmation.operation;
-        snapshot = { id, kind: "confirmation", status: "pending", description: confirmation.description,
-          expiresAt: confirmation.expiresAt, operation: structuredClone(operation.input) };
-      } else {
-        snapshot = { id, kind: "ssh_credential", status: "pending",
-          description: `Supply the private SSH credential for ${action.serverName}.`,
-          serverId: action.serverId, serverName: action.serverName, expiresAt: action.expiresAt };
-      }
+      const id = action.confirmation.requestId;
+      const confirmation = session.actions.getConfirmation(id);
+      const operation = confirmation.operation;
+      const snapshot: ControlRequestSnapshot = {
+        id, kind: "confirmation", status: "pending", description: confirmation.description,
+        expiresAt: confirmation.expiresAt, operation: structuredClone(operation.input),
+      };
       await this.privacyUpdates.run(session.access.grant.user.id, async () => {
-        const privateState = await controlRequestPrivate(operation, snapshot.serverId);
+        const privateState = await controlRequestPrivate(operation);
         if (this.closed || signal.aborted) {
           throw new DomainError("control_cancelled", "The originating control operation has ended.");
         }
@@ -302,7 +276,6 @@ export class ControlSessionService {
         if (this.requests.size >= MAX_REQUESTS) throw new DomainError("control_busy", "Too many human requests are awaiting review.");
         const request: HumanRequest = {
           session, snapshot, operation, browser: run.browser, privateState, pendingPublished: false,
-          ...(action.type === "request_ssh_credential" ? { run } : {}),
           removeAt: snapshot.expiresAt + RESULT_TTL_MS,
           timer: setTimeout(() => this.expire(request), Math.max(0, snapshot.expiresAt - Date.now())),
         };
@@ -314,14 +287,6 @@ export class ControlSessionService {
         throw error;
       });
       const url = this.options.approvalUrl(id);
-      if (action.type === "request_ssh_credential") {
-        // The session owns this bounded wait after returning the private handoff link.
-        run.detach();
-        run.pending.resolve({
-          ok: true, code: "credential_required", completion: "not_executed", requestId: id,
-          approvalUrl: url, expiresAt: snapshot.expiresAt,
-        });
-      }
       return { status: "pending", url };
     }
     const browser = run.browser;
@@ -379,7 +344,7 @@ export class ControlSessionService {
       for (const request of this.requests.values()) {
         if (this.closed) return;
         if (request.session.access.grant.user.id !== userId || request.snapshot.status !== "pending") continue;
-        const isPrivate = await controlRequestPrivate(request.operation, request.snapshot.serverId);
+        const isPrivate = await controlRequestPrivate(request.operation);
         if (this.closed) return;
         if (request.snapshot.status !== "pending" || isPrivate === request.privateState) continue;
         request.privateState = isPrivate;

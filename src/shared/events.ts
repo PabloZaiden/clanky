@@ -103,7 +103,7 @@ export type TaskEvent = (
   | TaskLogDeltaEvent
   | TaskGitCommitEvent
   | TaskCompletedEvent
-  | TaskSshHandoffEvent
+  | TaskTerminalHandoffEvent
   | TaskStoppedEvent
   | TaskSessionAbortedEvent
   | TaskErrorEvent
@@ -620,10 +620,10 @@ export interface TaskCompletedEvent {
 }
 
 /**
- * Emitted when a plan is accepted and control is handed off directly via SSH.
+ * Emitted when a plan is accepted and control is handed off to a terminal.
  * This path skips autonomous execution while moving the task to a completed state.
  */
-export interface TaskSshHandoffEvent {
+export interface TaskTerminalHandoffEvent {
   type: "task.terminal_handoff";
   /** ID of the task that was handed off */
   taskId: string;
@@ -830,7 +830,7 @@ export interface TaskPlanFeedbackSentEvent {
 /**
  * Emitted when a plan is accepted.
  * The task transitions from "planning" to either "running" or "completed",
- * depending on whether execution starts immediately or control is handed off via SSH.
+ * depending on whether execution starts immediately or control is handed off to a terminal.
  */
 export interface TaskPlanAcceptedEvent {
   type: "task.plan.accepted";

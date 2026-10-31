@@ -41,13 +41,6 @@ export const ServerSettingsSchema = z.object({
   agent: AgentSettingsSchema,
 }).strict();
 
-export const WorkspaceSshTargetSchema = z.object({
-  host: z.string().min(1, "host is required"),
-  port: z.number().int().min(1).max(65535),
-  username: z.string().min(1, "username is required"),
-  password: z.string().nullable().optional(),
-}).strict();
-
 export const WorkspaceIconCandidateRequestSchema = z.object({
   path: z.string().trim().min(1).max(2048),
 }).strict();
@@ -91,7 +84,6 @@ export const CreateWorkspaceRequestSchema = z.object({
   directory: z.string().min(1, "directory is required"),
   serverSettings: ServerSettingsSchema,
   executionHost: ExecutionHostRefSchema.optional(),
-  sshTarget: WorkspaceSshTargetSchema.optional(),
   workspaceWorkerEnrollmentId: z.string().trim().min(1).optional(),
   allowClankyContext: z.boolean().optional(),
   allowWorktrees: z.boolean().optional(),
@@ -99,11 +91,10 @@ export const CreateWorkspaceRequestSchema = z.object({
 }).refine(
   (value) => [
     Boolean(value.executionHost),
-    Boolean(value.sshTarget),
     Boolean(value.workspaceWorkerEnrollmentId),
   ].filter(Boolean).length === 1,
   {
-    message: "Exactly one execution host, SSH target, or dedicated worker enrollment is required",
+    message: "Exactly one execution host or dedicated worker enrollment is required",
     path: ["executionHost"],
   },
 );
@@ -122,7 +113,6 @@ export const UpdateWorkspaceRequestSchema = z.object({
   name: z.string().optional(),
   serverSettings: ServerSettingsSchema.optional(),
   executionHost: ExecutionHostRefSchema.optional(),
-  sshTarget: WorkspaceSshTargetSchema.nullable().optional(),
   isPrivate: z.boolean().optional(),
   archived: z.boolean().optional(),
   allowClankyContext: z.boolean().optional(),
@@ -137,7 +127,6 @@ export const UpdateWorkspaceRequestSchema = z.object({
  */
 export const DeleteWorkspaceRequestSchema = z.object({
   deleteServerDirectory: z.boolean().optional(),
-  credentialToken: z.string().optional().nullable(),
 });
 
 /**
@@ -147,16 +136,14 @@ export const TestConnectionRequestSchema = z.object({
   settings: ServerSettingsSchema,
   directory: z.string().min(1, "directory is required"),
   executionHost: ExecutionHostRefSchema.optional(),
-  sshTarget: WorkspaceSshTargetSchema.optional(),
   workspaceWorkerEnrollmentId: z.string().trim().min(1).optional(),
 }).refine(
   (value) => [
     Boolean(value.executionHost),
-    Boolean(value.sshTarget),
     Boolean(value.workspaceWorkerEnrollmentId),
   ].filter(Boolean).length === 1,
   {
-    message: "Exactly one execution host, SSH target, or dedicated worker enrollment is required",
+    message: "Exactly one execution host or dedicated worker enrollment is required",
     path: ["executionHost"],
   },
 );
@@ -173,7 +160,6 @@ export type ServerSettings = z.infer<typeof ServerSettingsSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
-export type WorkspaceSshTargetRequest = z.infer<typeof WorkspaceSshTargetSchema>;
 export type WorkspaceIconCandidateRequest = z.infer<typeof WorkspaceIconCandidateRequestSchema>;
 export type WorkspaceIconCandidateQuery = z.infer<typeof WorkspaceIconCandidateQuerySchema>;
 export type WorkspaceIconUrlRequest = z.infer<typeof WorkspaceIconUrlRequestSchema>;

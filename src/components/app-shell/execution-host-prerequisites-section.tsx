@@ -1,17 +1,17 @@
 import type { BadgeVariant } from "../common";
 import { Button, StatusBadge } from "../common";
-import type { SshServerPrerequisiteReport } from "@/shared";
+import type { ExecutionHostPrerequisiteReport } from "@/shared";
 import { ErrorState, Panel } from "@pablozaiden/webapp/web";
 
 interface ExecutionHostPrerequisitesSectionProps {
   error: string | null;
-  report: SshServerPrerequisiteReport | null;
+  report: ExecutionHostPrerequisiteReport | null;
   checking: boolean;
   disabled?: boolean;
   onCheck: () => Promise<void>;
 }
 
-function getSummaryVariant(status: SshServerPrerequisiteReport["summary"]["status"]): BadgeVariant {
+function getSummaryVariant(status: ExecutionHostPrerequisiteReport["summary"]["status"]): BadgeVariant {
   switch (status) {
     case "ready":
       return "success";
@@ -22,7 +22,7 @@ function getSummaryVariant(status: SshServerPrerequisiteReport["summary"]["statu
   }
 }
 
-function getSummaryLabel(status: SshServerPrerequisiteReport["summary"]["status"]): string {
+function getSummaryLabel(status: ExecutionHostPrerequisiteReport["summary"]["status"]): string {
   switch (status) {
     case "ready":
       return "Ready";
@@ -33,7 +33,7 @@ function getSummaryLabel(status: SshServerPrerequisiteReport["summary"]["status"
   }
 }
 
-function getCheckVariant(status: SshServerPrerequisiteReport["checks"][number]["status"]): BadgeVariant {
+function getCheckVariant(status: ExecutionHostPrerequisiteReport["checks"][number]["status"]): BadgeVariant {
   switch (status) {
     case "available":
       return "success";
@@ -47,7 +47,7 @@ function getCheckVariant(status: SshServerPrerequisiteReport["checks"][number]["
   }
 }
 
-function getCheckLabel(status: SshServerPrerequisiteReport["checks"][number]["status"]): string {
+function getCheckLabel(status: ExecutionHostPrerequisiteReport["checks"][number]["status"]): string {
   switch (status) {
     case "available":
       return "Available";

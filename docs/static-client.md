@@ -161,7 +161,7 @@ credentials. Directory namespaces are not a security boundary between scripts
 on the same origin. Current browsers with secure-context Web Locks support
 coordinate refresh-token rotation across
 tabs. API changes reload the client, closing connections and discarding
-application caches; private drafts, preferences and SSH credentials are scoped
+application caches; private drafts and preferences are scoped
 to the API/client session rather than shared with another server.
 
 HTTP requests use bearer authorization without third-party cookies. Realtime

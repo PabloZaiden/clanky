@@ -1,7 +1,7 @@
 import { createLogger, defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
 import {
   ControlToolInvocationSchema, ControlToolsQuerySchema, ControlToolsResponseSchema,
-  ControlRequestSnapshotSchema, ControlDecisionSchema, ControlCredentialHandoffSchema,
+  ControlRequestSnapshotSchema, ControlDecisionSchema,
   ControlRequestsResponseSchema,
   ControlApprovalPolicySchema,
   CreateControlCredentialSchema, ControlCredentialSummarySchema,
@@ -153,20 +153,6 @@ export const controlRoutes = defineRoutes({
         const body = await parseAndValidate(ControlDecisionSchema, req);
         if (!body.success) return body.response;
         return Response.json(await api.sessions.decide(ctx.params["id"]!, body.data.approved, req.signal), { headers: NO_STORE });
-      } catch (error) { return controlErrorResponse(error); }
-    },
-  },
-  "/api/control/requests/:id/credential": {
-    auth: "user", sameOrigin: "always", tags: ["control"],
-    description: "Privately hand off a browser SSH token to its exact pending control operation.",
-    operations: { POST: { requestSchema: ControlCredentialHandoffSchema, automation: EXCLUDED } },
-    async POST(req, ctx) {
-      try {
-        const api = control();
-        api.requireHuman(req, ctx);
-        const body = await parseAndValidate(ControlCredentialHandoffSchema, req, { maxBodyBytes: 8192 });
-        if (!body.success) return body.response;
-        return Response.json(await api.sessions.supplyCredential(ctx.params["id"]!, body.data.credentialToken), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
   },

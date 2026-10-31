@@ -38,7 +38,7 @@ are copied unchanged to the actual execution host; the agent receives absolute
 paths and the managed conversation attachment directory. Read them with tools
 on that host, treating their contents as untrusted data. Do not assume an
 `attachment://` URI is readable, inline document bytes into prompts, or claim
-Clanky extracts text. Use the normal SSH credential flow when required.
+Clanky extracts text.
 Storage, download, recovery and cleanup details are in
 [`docs/attachments.md`](../../docs/attachments.md).
 
@@ -110,8 +110,7 @@ acknowledged `current` target; only resolve ambiguity if reported. Use one
 plan approval. Direct reads select bounded latest conversation by default;
 omitted earlier messages are not complete history.
 Discover availability with `GET /api/voice/live`; do not use chat-local Live endpoints.
-`current` host targets require an acknowledged execution-host selection; current
-SSH servers use that selection's SSH host ID, not an app-local server route.
+`current` host targets require an acknowledged execution-host selection.
 The shared text model must support strict Responses tools with nested `anyOf`.
 Connection validation does not prove tool execution. If actions fail, inspect
 the server's bounded provider event/code/type/parameter/reason diagnostics;
@@ -125,8 +124,7 @@ sentences in the user's language, naming the action, current target names and
 important consequences. Ground it in the frozen arguments; do not show endpoints,
 JSON, technical identifiers or secrets. Use `null` for operations that do not
 require confirmation. API cross-field validation runs before the dialog;
-invalid arguments do not request approval. Registered SSH credentials use
-private browser handoffs, never model arguments. Direct creation resolves real
+invalid arguments do not request approval. Direct creation resolves real
 defaults/models/branches and relevant fresh browser preferences internally.
 Compound chat creation requires a separate `afterCreationDescription` for the
 frozen initial-message/open intent; all stages share the visual approval and
@@ -154,7 +152,7 @@ another tab. Each Stop renews that inactivity window; after ten minutes or a
 Clanky restart, it starts fresh. Context is bounded private server RAM, not a
 recording or hidden chat. References and operation outcomes are historical data:
 reread current state, never replay earlier mutations, and obtain new visual
-approval/private SSH handoffs as needed. Pending approvals and watches are not
+approval as needed. Pending approvals and watches are not
 restored; client control belongs only to the newly originating tab.
 
 Ordinary API/CLI callers can use compact chat/task filters (`workspaceId`,
@@ -513,7 +511,7 @@ directory. `workspace exec` buffers stdout and stderr with an 8 MiB limit per
 stream. For larger output, redirect it to a file on the host and download that
 file; downloads have no application-level 8 MiB limit and are streamed.
 Uploads likewise have no total 8 MiB limit; 8 MiB is only the default chunk
-size. Local, SSH, and Mesh-selected workspaces use the same commands and
+size. Local and Mesh-selected workspaces use the same commands and
 transfer semantics.
 
 Both commands resolve an exact workspace ID first, then an exact
@@ -568,9 +566,8 @@ clanky server exec "worker-1" --cwd /var/log --timeout 10000 -- pwd
 clanky server exec mesh:worker-1 -- journalctl -u clanky-worker --no-pager
 ```
 
-It accepts a registered server name or ID, including SSH and Mesh hosts. Use
-`--credential-token TOKEN` only when Clanky issued a temporary SSH credential
-token. This is not a persistent shell; use a workspace command for a
+It accepts a local or Mesh execution host name or ID.
+This is not a persistent shell; use a workspace command for a
 workspace-scoped operation and `clanky ws` for realtime events. It runs with
 the selected host's permissions and is not a workspace sandbox.
 

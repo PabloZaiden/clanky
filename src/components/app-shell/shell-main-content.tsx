@@ -23,7 +23,6 @@ import {
   type Task,
   type Workspace,
 } from "@/shared";
-import type { SshServer } from "@/shared/ssh-server";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAgentsResult } from "../../hooks/useAgents";
@@ -82,7 +81,6 @@ export interface ShellMainContentProps {
   terminalSessions: import("@/shared").TerminalSession[];
   executionHosts: ExecutionHostDescriptor[];
   executionHostsLoading: boolean;
-  servers: SshServer[];
   executionHostNodes: SidebarExecutionHostNode[];
   workspaceGroups: WorkspaceGroup[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
@@ -95,7 +93,6 @@ export interface ShellMainContentProps {
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
-  composeServer: SshServer | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
 
   // Task actions
@@ -107,16 +104,6 @@ export interface ShellMainContentProps {
   refreshExecutionHosts: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
   createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").TerminalSession>;
-  createServer: (
-    request: import("@/contracts").CreateSshServerRequest,
-    password?: string,
-  ) => Promise<SshServer | null>;
-  updateServer: (
-    id: string,
-    request?: import("@/contracts").UpdateSshServerRequest,
-    password?: string,
-  ) => Promise<SshServer | null>;
-  deleteServer: (id: string) => Promise<boolean>;
   deleteWorkspace: (id: string, options?: import("@/contracts").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
 
   // Dashboard data
@@ -172,7 +159,7 @@ function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefin
     case "execution-host": {
       const hostKind = getRouteString(route, "hostKind");
       const hostId = getRouteString(route, "hostId");
-      return (hostKind === "local" || hostKind === "mesh" || hostKind === "ssh") && hostId
+      return (hostKind === "local" || hostKind === "mesh") && hostId
         ? { contentType, hostKind, hostId, startDirectory, filePath }
         : undefined;
     }
@@ -262,13 +249,12 @@ function ProvisioningJobRouteView({
         }),
       }] : []),
       ...(status === "completed"
-        && snapshot.job.config.executionHostBinding.host.kind === "ssh"
         && snapshot.job.config.mode === "arise" ? [{
           id: "open-server",
           label: "Open server",
           onAction: () => navigateWithinShell({
             view: "execution-host",
-            hostKind: "ssh",
+            hostKind: snapshot.job.config.executionHostBinding.host.kind,
             hostId: getExecutionHostSourceId(snapshot.job.config.executionHostBinding.host),
           }),
         }] : []),
@@ -458,7 +444,6 @@ function renderMainContent(props: ShellMainContentProps) {
     workspaces,
     terminalSessions,
     executionHosts,
-    servers,
     executionHostNodes,
     workspaceGroups,
     sidebarWorkspaceGroups,
@@ -789,9 +774,6 @@ function renderMainContent(props: ShellMainContentProps) {
     const hostWorkspaces = workspaces.filter((workspace) => (
       workspace.executionHostBinding.targetKey === host.targetKey
     ));
-    const sshServer = host.ref.kind === "ssh"
-      ? servers.find((server) => server.config.id === hostId)
-      : undefined;
     return (
       <ExecutionHostView
         host={host}
@@ -799,12 +781,9 @@ function renderMainContent(props: ShellMainContentProps) {
         workspaces={hostWorkspaces}
         sessions={hostSessions}
         chats={hostChats}
-        sshServer={sshServer}
         provisioning={props.provisioning}
         onNavigate={navigateWithinShell}
         onRefresh={props.refreshExecutionHosts}
-        onUpdateSshServer={props.updateServer}
-        onDeleteSshServer={props.deleteServer}
       />
     );
   }
@@ -889,7 +868,6 @@ function renderMainContent(props: ShellMainContentProps) {
         key={`${route.view}:${selectedWorkspace.id}`}
         mode={route.view === "restart-workspace" ? "restart" : "rebuild"}
         workspace={selectedWorkspace}
-        servers={servers}
         provisioning={props.provisioning}
         navigateWithinShell={navigateWithinShell}
       />
@@ -905,7 +883,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <ComposeView
         kind={kind}
         composeWorkspace={props.composeWorkspace}
-        composeServer={props.composeServer}
         composeExecutionHost={props.composeExecutionHost}
         navigateWithinShell={navigateWithinShell}
         composeActionState={props.composeActionState}
@@ -917,11 +894,8 @@ function renderMainContent(props: ShellMainContentProps) {
         workspaces={workspaces.filter((workspace) => workspace.access !== "read")}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
-        servers={servers}
         workspaceCreate={props.workspaceCreate}
         createTerminalSession={createTerminalSession}
-        createServer={props.createServer}
-        updateServer={props.updateServer}
         provisioning={props.provisioning}
         workspacesSaving={workspacesSaving}
       />

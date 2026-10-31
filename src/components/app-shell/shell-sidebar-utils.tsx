@@ -271,7 +271,7 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
       if (contentType === "execution-host") {
         const hostKind = getRouteString(route, "hostKind");
         const hostId = getRouteString(route, "hostId");
-        if ((hostKind === "local" || hostKind === "mesh" || hostKind === "ssh") && hostId) {
+        if ((hostKind === "local" || hostKind === "mesh") && hostId) {
           return { view: "execution-host", hostKind, hostId };
         }
       }

@@ -133,11 +133,11 @@ and its persistence belong to the framework; Clanky validates workspace/general
 selection and owns operation policy. See
 [deployment and MCP authorization](../deployment.md#agent-control-and-mcp).
 
-Nonvoice control sessions own bounded, expiring requests and private SSH
-continuations. Return pending human interaction without blocking an unattended
+Nonvoice control sessions own bounded, expiring confirmation requests.
+Return pending human interaction without blocking an unattended
 agent indefinitely; the session owns detached work, cancellation and cleanup.
 Only a separate real passkey-backed human interaction can approve frozen work
-or supply a private credential. A per-user persisted preference, enabled by
+for execution. A per-user persisted preference, enabled by
 default and writable only through human-only excluded control administration,
 decides whether new nonvoice confirm-class operations need that interaction.
 The shared action owner reads it at admission, executes directly when disabled
@@ -146,11 +146,10 @@ auto-decide requests. Existing pending work is untouched. Invalid preference
 data fails explicitly rather than disabling approval. Voice never receives this
 bypass, and grants, live authority and private credentials remain enforced.
 Pending requests are single-use and do not
-survive restart. Credential tokens never enter tool results or deterministic
-user code. Voice retains its existing call-bound presentation and direct paths.
+survive restart. Voice retains its existing call-bound presentation and direct paths.
 Nonvoice confirmations have a fixed one-hour review deadline; idle session
 cleanup retains sessions that own pending requests or running work. Live Voice
-confirmations and private SSH handoffs retain their one-minute limits.
+confirmations retain their one-minute limits.
 The human-only pending collection drives both Settings' Approvals section and Home's
 Needs attention through the same user-scoped realtime resource. It excludes
 frozen arguments and operation results; individual request reads retain them.
@@ -164,6 +163,9 @@ approvals for generic activity.
 ## Execution hosts and workspace paths
 
 Workspace paths refer to the selected execution host, not the Clanky server.
+Supported hosts are local and Mesh. Automatic provisioning creates or reuses
+a dedicated Mesh worker; its provisioning host can independently be local or
+Mesh. Interactive terminal sessions use the same host bindings.
 All repository/filesystem operations must use that host's `CommandExecutor`;
 local `Bun.file`, filesystem calls, or shell commands are not substitutes.
 Prefer the Git service for Git operations and specify the directory explicitly
@@ -183,9 +185,9 @@ Git/worktree domain service, never caller-side concatenation. Construction,
 ownership checks, lookup, and cleanup must use the repository directory on
 the selected host.
 
-When workspace and standalone SSH routes offer the same file operation, share
+When workspace and execution-host routes offer the same file operation, share
 one transport-neutral implementation. Each route resolves its authorization,
-credentials, executor, root, and response identifiers before delegating; do
+executor, root, and response identifiers before delegating; do
 not duplicate file logic or substitute local filesystem access.
 
 ## Service and backend lifecycles
@@ -265,6 +267,12 @@ edit the consolidated base schema for ordinary evolution. Historical no-op
 markers preserve deployed version history. Verify significant upgrade and
 recovery contracts through the compiled application and public boundaries,
 including a second restart when idempotency matters.
+
+Retired execution configuration is never remapped to local execution or
+deleted implicitly. Upgrades refuse unsupported host bindings or populated
+retired configuration tables; resolve them with the previous application
+version first. Empty retired tables are removed on startup, including those
+recreated by the immutable baseline.
 
 Use parameterized SQL and allowlists for dynamic identifiers, including
 PRAGMA table names. Do not use `INSERT OR REPLACE`: its delete/insert behavior

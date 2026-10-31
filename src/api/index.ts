@@ -10,7 +10,6 @@
  * - settings: Server configuration and connection management
  * - git: Git repository and GitHub information
  * - workspaces: Workspace CRUD, server settings, previews, and file operations
- * - ssh-servers: SSH execution-host registration and credential exchange
  * - terminal-sessions: Transport-neutral terminal sessions
  * - provisioning: Remote workspace provisioning jobs
  * - chats: Standalone and task-linked chat sessions
@@ -29,7 +28,6 @@ import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
 import { gitRoutes } from "./git";
 import { workspacesRoutes } from "./workspaces";
-import { sshServersRoutes } from "./ssh-servers";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { workerUpdateRoutes } from "./worker-update-jobs";
@@ -63,7 +61,6 @@ export const nativeApiRoutes = {
   ...settingsRoutes,
   ...gitRoutes,
   ...workspacesRoutes,
-  ...sshServersRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
   ...workerUpdateRoutes,
@@ -117,7 +114,6 @@ export * from "./models";
 export * from "./settings";
 export * from "./git";
 export * from "./workspaces";
-export * from "./ssh-servers";
 export * from "./terminal-sessions";
 export * from "./websocket";
 export * from "./provisioning";

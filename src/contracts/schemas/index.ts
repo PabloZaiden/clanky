@@ -70,10 +70,7 @@ export {
 // Chat schemas
 export {
   CreateChatRequestSchema,
-  CreateSshServerChatRequestSchema,
   CreateExecutionHostChatRequestSchema,
-  DiscoverSshServerChatProvidersRequestSchema,
-  DiscoverSshServerChatModelsRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
   DiscoverExecutionHostProvidersRequestSchema,
   UpdateChatRequestSchema,
@@ -119,7 +116,6 @@ export {
   WorkspaceTypeSchema,
   AgentSettingsSchema,
   ServerSettingsSchema,
-  WorkspaceSshTargetSchema,
   WorkspaceIconCandidateRequestSchema,
   WorkspaceIconCandidateQuerySchema,
   WorkspaceIconUrlRequestSchema,
@@ -138,7 +134,6 @@ export {
   type CreateWorkspaceRequest,
   type UpdateWorkspaceRequest,
   type DeleteWorkspaceRequest,
-  type WorkspaceSshTargetRequest,
   type WorkspaceIconCandidateRequest,
   type WorkspaceIconCandidateQuery,
   type WorkspaceIconUrlRequest,
@@ -206,25 +201,13 @@ export {
   CancelFileExplorerUploadRequestSchema,
 } from "./file-explorer";
 
-// Standalone SSH server schemas
+// Execution-host discovery schemas
 export {
-  SshKeyAlgorithmSchema,
-  CreateSshServerRequestSchema,
-  UpdateSshServerRequestSchema,
-  SshServerEncryptedCredentialSchema,
-  SshCredentialExchangeRequestSchema,
-  SshCredentialTokenSchema,
-  CheckSshServerPrerequisitesRequestSchema,
+  CheckExecutionHostPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
-  type SshKeyAlgorithm,
-  type CreateSshServerRequest,
-  type UpdateSshServerRequest,
-  type SshServerEncryptedCredential,
-  type SshCredentialExchangeRequest,
-  type SshCredentialToken,
-  type CheckSshServerPrerequisitesRequest,
+  type CheckExecutionHostPrerequisitesRequest,
   type GetDevboxTemplatesRequest,
-} from "./ssh-server";
+} from "./execution-host-discovery";
 
 // Provisioning schemas
 export {

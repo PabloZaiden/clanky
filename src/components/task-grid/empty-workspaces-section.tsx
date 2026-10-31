@@ -1,18 +1,15 @@
 import { useState } from "react";
-import type { ExecutionHostDescriptor, Workspace, SshServer } from "@/shared";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
+import type { ExecutionHostDescriptor, Workspace } from "@/shared";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { getWorkspaceServerLabel } from "../../lib/workspace-label";
 import { ActionMenu, ConfirmModal, useToast } from "@pablozaiden/webapp/web";
-import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { usePrivateItemReveal } from "../../hooks/usePrivateItemReveal";
 
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
-  registeredSshServers: readonly SshServer[];
   executionTargets: readonly ExecutionHostDescriptor[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
@@ -21,14 +18,12 @@ export interface EmptyWorkspacesSectionProps {
 
 function EmptyWorkspaceEntry({
   workspace,
-  registeredSshServers,
   executionTargets,
   privateHidden,
   onOpenSettings,
   onRequestDelete,
 }: {
   workspace: Workspace;
-  registeredSshServers: readonly SshServer[];
   executionTargets: readonly ExecutionHostDescriptor[];
   privateHidden: boolean;
   onOpenSettings: () => void;
@@ -48,9 +43,9 @@ function EmptyWorkspaceEntry({
         </div>
         <div
           className="break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]"
-          title={getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+          title={getWorkspaceServerLabel(workspace, executionTargets)}
         >
-          {getWorkspaceServerLabel(workspace, registeredSshServers, executionTargets)}
+          {getWorkspaceServerLabel(workspace, executionTargets)}
         </div>
       </div>
       <ActionMenu
@@ -78,7 +73,6 @@ function EmptyWorkspaceEntry({
 /** Renders the "Empty Workspaces" section with delete confirmation */
 export function EmptyWorkspacesSection({
   workspaceGroups,
-  registeredSshServers,
   executionTargets,
   onOpenWorkspaceSettings,
   onDeleteWorkspace,
@@ -106,7 +100,6 @@ export function EmptyWorkspacesSection({
             <EmptyWorkspaceEntry
               key={workspace.id}
               workspace={workspace}
-              registeredSshServers={registeredSshServers}
               executionTargets={executionTargets}
               privateHidden={privateHidden}
               onOpenSettings={() => onOpenWorkspaceSettings(workspace.id)}
@@ -129,14 +122,6 @@ export function EmptyWorkspacesSection({
             const options: DeleteWorkspaceRequest = {};
             if (deleteServerDirectory && isAutoProvisionedWorkspace(deleteWorkspace)) {
               options.deleteServerDirectory = true;
-              const host = (
-                deleteWorkspace.provisioningHostBinding
-                ?? deleteWorkspace.executionHostBinding
-              ).host;
-              const serverId = getRegisteredSshServerId(host);
-              if (serverId) {
-                options.credentialToken = await getStoredSshCredentialToken(serverId);
-              }
             }
             const result = await onDeleteWorkspace(deleteWorkspace.id, options);
             if (!result.success) {

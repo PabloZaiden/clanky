@@ -3,17 +3,10 @@
  */
 
 import { z } from "zod";
-import { SshCredentialTokenSchema } from "./ssh-server";
 
 const RequiredTrimmedStringSchema = z.string().trim().min(1, "value is required");
 
-export const RestartAutomaticWorkspacesRequestSchema = z.object({
-  credentialTokensByServerId: z.record(
-    RequiredTrimmedStringSchema,
-    SshCredentialTokenSchema,
-  ).default({}),
-  credentialUnavailableServerIds: z.array(RequiredTrimmedStringSchema).default([]),
-});
+export const RestartAutomaticWorkspacesRequestSchema = z.object({}).strict();
 
 export const RestartAutomaticWorkspacesResultSchema = z.object({
   totalWorkspaces: z.number().int().nonnegative(),

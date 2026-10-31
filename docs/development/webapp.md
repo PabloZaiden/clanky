@@ -141,8 +141,7 @@ win and unavailable categories fall back to General.
 
 Control authorization uses framework `control-request` and `control-consent`
 routes. Request pages show the frozen action, expiry and canonical result;
-approval uses a separate confirmation and SSH handoffs remain private browser
-operations.
+approval uses a separate confirmation.
 **Settings → Agents & integrations → Approvals** places the per-user approval
 checkbox beside the pending collection. Use a structured settings checkbox row
 and render the collection below it. The control-request route without a request

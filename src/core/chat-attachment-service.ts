@@ -15,7 +15,6 @@ export class ChatAttachmentService {
   constructor(private readonly state: Pick<ChatStatePort, "getWorkspace" | "iterateChatTranscriptEntries">) {}
 
   async prepare(chat: Chat, message: { id: string; attachments?: readonly MessageAttachment[]; question?: QuestionMessageData }, options: {
-    credentialToken?: string | null;
     signal?: AbortSignal;
   } = {}) {
     const directory = chat.state.session?.binding?.directory

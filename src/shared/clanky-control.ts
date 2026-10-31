@@ -47,10 +47,9 @@ export const ControlNavigationActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("open_task"), taskId: z.string().min(1).max(500) }).strict(),
   z.object({ type: z.literal("open_agent"), agentId: z.string().min(1).max(500) }).strict(),
   z.object({ type: z.literal("open_terminal"), terminalSessionId: z.string().min(1).max(500) }).strict(),
-  z.object({ type: z.literal("open_ssh_server"), serverId: z.string().min(1).max(500) }).strict(),
   z.object({
     type: z.literal("open_execution_host"),
-    kind: z.enum(["local", "ssh", "mesh"]),
+    kind: z.enum(["local", "mesh"]),
     id: z.string().min(1).max(500),
   }).strict(),
   z.object({ type: z.literal("open_home") }).strict(),

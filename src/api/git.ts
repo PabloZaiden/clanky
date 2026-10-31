@@ -6,7 +6,7 @@ import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schema
  * 
  * This module provides git-related endpoints for querying repository information.
  * All git operations use the deterministic CommandExecutor abstraction
- * (local or SSH execution providers).
+ * (local or Mesh execution hosts).
  * 
  * Endpoints:
  * - GET /api/git/branches - List local and cached remote-tracking branches

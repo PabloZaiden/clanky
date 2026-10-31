@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ErrorState,
-  Modal,
   SelectField,
   TextField,
   useHeaderActions,
@@ -11,29 +10,22 @@ import type {
   Chat,
   ExecutionHostDescriptor,
 } from "@/shared";
-import { getExecutionHostSourceId, getRegisteredSshServerId } from "@/shared";
+import { getExecutionHostSourceId } from "@/shared";
 import type {
   CreateExecutionHostChatRequest,
   ExecutionHostWorkingDirectory,
 } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
-import { isApiErrorCode } from "../../lib/api-error";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
 } from "../../lib/model-selection-preferences";
-import {
-  getStoredSshCredentialToken,
-  invalidateStoredSshCredentialToken,
-  storeSshServerPassword,
-} from "../../lib/ssh-browser-credentials";
 import {
   makeModelKey,
   ModelSelector,
   modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
-import { Button, PASSWORD_INPUT_PROPS } from "../common";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
@@ -60,66 +52,12 @@ export function ExecutionHostChatComposer({
   );
   const [selectedModel, setSelectedModel] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const sshServerId = getRegisteredSshServerId(host.ref);
-  const [sshCredential, setSshCredential] = useState<{
-    serverId: string;
-    token: string | null;
-  } | null>(null);
-  const credentialToken = sshServerId && sshCredential?.serverId === sshServerId
-    ? sshCredential?.token ?? null
-    : null;
-  const credentialsReady = sshServerId === null
-    || sshCredential?.serverId === sshServerId;
-  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestSshCredentials = useCallback(() => {
-    if (!sshServerId) {
-      return;
-    }
-    invalidateStoredSshCredentialToken(sshServerId);
-    setSshCredential({ serverId: sshServerId, token: null });
-    setPasswordModalOpen(true);
-  }, [sshServerId]);
   const discovery = useExecutionHostModelDiscovery(
     host,
     discoveryDirectory,
     storedModel?.providerID,
-    credentialToken,
-    requestSshCredentials,
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setSshCredential(null);
-    setPassword("");
-    setPasswordModalOpen(false);
-    if (!sshServerId) {
-      return;
-    }
-    void (async () => {
-      try {
-        const token = await getStoredSshCredentialToken(sshServerId);
-        if (cancelled) {
-          return;
-        }
-        setSshCredential({ serverId: sshServerId, token });
-        if (!token) {
-          setPasswordModalOpen(true);
-        }
-      } catch (credentialError) {
-        if (!cancelled) {
-          setError(String(credentialError));
-          setSshCredential({ serverId: sshServerId, token: null });
-          setPasswordModalOpen(true);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sshServerId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -128,10 +66,6 @@ export function ExecutionHostChatComposer({
     setDirectoryLoading(host.repositoriesBasePath === null);
     setSelectedModel("");
     setError(null);
-    if (!credentialsReady || (host.ref.kind === "ssh" && !credentialToken)) {
-      setDirectoryLoading(false);
-      return () => controller.abort();
-    }
     void (async () => {
       try {
         const resolved = await apiRequest<ExecutionHostWorkingDirectory>(
@@ -139,7 +73,7 @@ export function ExecutionHostChatComposer({
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credentialToken }),
+            body: JSON.stringify({}),
             signal: controller.signal,
             action: "Resolve execution-host working directory",
             fallbackMessage: "Failed to resolve the server working directory",
@@ -153,9 +87,6 @@ export function ExecutionHostChatComposer({
         if (directoryError instanceof DOMException && directoryError.name === "AbortError") {
           return;
         }
-        if (isApiErrorCode(directoryError, "invalid_credential_token")) {
-          requestSshCredentials();
-        }
         setError(String(directoryError));
       } finally {
         if (!controller.signal.aborted) {
@@ -166,11 +97,7 @@ export function ExecutionHostChatComposer({
     return () => controller.abort();
   }, [
     apiPath,
-    credentialToken,
-    credentialsReady,
-    host.ref.kind,
     host.repositoriesBasePath,
-    requestSshCredentials,
   ]);
 
   useEffect(() => {
@@ -229,7 +156,6 @@ export function ExecutionHostChatComposer({
           modelID: model.modelID,
           variant: model.variant,
         },
-        credentialToken,
       };
       const chat = await apiRequest<Chat>(`${apiPath}/chats`, {
         method: "POST",
@@ -241,9 +167,6 @@ export function ExecutionHostChatComposer({
       saveStoredChatModelPreference(model);
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (submitError) {
-      if (isApiErrorCode(submitError, "invalid_credential_token")) {
-        requestSshCredentials();
-      }
       setError(String(submitError));
     } finally {
       setSubmitting(false);
@@ -252,47 +175,16 @@ export function ExecutionHostChatComposer({
     apiPath,
     directory,
     discovery.provider,
-    credentialToken,
     host.name,
     name,
     navigateWithinShell,
-    requestSshCredentials,
     selectedModel,
   ]);
-
-  const handlePasswordSubmit = useCallback(async () => {
-    if (!sshServerId) {
-      return;
-    }
-    const trimmedPassword = password.trim();
-    if (!trimmedPassword) {
-      setError("Enter the SSH password for this server.");
-      return;
-    }
-    setPasswordSaving(true);
-    setError(null);
-    try {
-      await storeSshServerPassword(sshServerId, trimmedPassword);
-      const token = await getStoredSshCredentialToken(sshServerId);
-      if (!token) {
-        throw new Error("Failed to exchange SSH credential.");
-      }
-      setSshCredential({ serverId: sshServerId, token });
-      setPassword("");
-      setPasswordModalOpen(false);
-    } catch (passwordError) {
-      setError(String(passwordError));
-    } finally {
-      setPasswordSaving(false);
-    }
-  }, [password, sshServerId]);
 
   const canSubmit = !submitting
     && !directoryLoading
     && !discovery.providersLoading
     && !discovery.modelsLoading
-    && credentialsReady
-    && (host.ref.kind !== "ssh" || Boolean(credentialToken))
     && Boolean(directory.trim())
     && Boolean(selectedModel);
   const headerActions = useMemo(() => [{
@@ -371,42 +263,6 @@ export function ExecutionHostChatComposer({
           />
         </div>
       </div>
-      <Modal
-        isOpen={passwordModalOpen}
-        onClose={() => setPasswordModalOpen(false)}
-        title="SSH password required"
-        description={`Enter the SSH password for ${host.name} to discover models and start chats.`}
-        footer={(
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setPasswordModalOpen(false)}
-              disabled={passwordSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handlePasswordSubmit()}
-              loading={passwordSaving}
-            >
-              Save password
-            </Button>
-          </>
-        )}
-      >
-        <TextField
-          id="execution-host-chat-ssh-password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          {...PASSWORD_INPUT_PROPS}
-        />
-      </Modal>
     </>
   );
 }

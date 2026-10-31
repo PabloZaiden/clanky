@@ -26,9 +26,7 @@ export class ExecutionHostConfigurationService {
     if (ref.kind !== "local") {
       throw new DomainError(
         "execution_host_configuration_unsupported",
-        ref.kind === "mesh"
-          ? "Mesh worker defaults are owned by the worker and cannot be changed remotely."
-          : "SSH server defaults must be changed through SSH server settings.",
+        "Mesh worker defaults are owned by the worker and cannot be changed remotely.",
       );
     }
 

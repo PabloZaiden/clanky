@@ -2,7 +2,6 @@
  * Core manager for CLI-owned workspace and direct server preview sessions.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import {
   type ExecutionHostBinding,
@@ -16,7 +15,6 @@ import {
   type PreviewTarget,
   type RegisterCliPreviewOptions,
   type Workspace,
-  isWorkspaceSshExecutionHostRef,
   parsePreviewBridgePath,
   previewWebSocketCloseCode,
 } from "@/shared";
@@ -32,17 +30,13 @@ import {
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
 import { previewEventEmitter } from "./event-emitter";
-import { ensureLocalPortAvailable } from "./local-port-allocator";
-import { buildSshProcessConfig } from "./ssh-connection-target";
 import { openPreviewTcpForward, openPreviewTlsForward, type PreviewTcpForward } from "./preview-tcp-forward";
 import {
   resolveWorkspaceExecutionTarget,
   type ResolvedWorkspaceExecutionTarget,
 } from "./workspace-execution-target";
 import { executionHostService } from "./execution-host-service";
-import { waitForProcessExit, waitForProcessTcpListener } from "./process-lifecycle";
 import { PREVIEW_RESPONSE_CHUNK_BYTES, PREVIEW_RESPONSE_WINDOW_BYTES } from "@/shared/preview";
-import { SSH_CONNECTION_TIMEOUT_MS } from "./ssh-reliability-policy";
 import { requireCurrentUser, requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { CodePreviewHelloSchema, PreviewUpstreamOptionsSchema } from "../contracts/schemas/preview";
 import { resolveCodePreviewTarget } from "./code-preview-target";
@@ -50,12 +44,10 @@ import { startCodeServer, waitForCodeEditor, type CodeServer } from "./code-serv
 import { cleanupCodeSession } from "./code-session-resources";
 import { closeCommandExecutor } from "./command-executor";
 import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
-import { withSshServerOperation } from "./ssh-server-operations";
 import { getInteractiveResourceInternal } from "./collaboration-interactive";
 
 const log = createLogger("core:preview-session-manager");
 const LOCAL_TUNNEL_HOST = "127.0.0.1";
-const STOP_TIMEOUT_MS = 2000;
 const WS_READY_STATE_CLOSING = 2;
 const PREVIEW_DESTINATION_REJECTED_MESSAGE = "Preview destination rejected";
 const UPSTREAM_EXCLUDED_HEADERS = new Set([
@@ -93,10 +85,8 @@ interface PreviewRuntime {
   targetOrigin: string;
   applicationOrigin: string;
   upstreamTls?: Bun.TLSOptions;
-  tunnel?: ChildProcess;
   meshForward?: PreviewTcpForward;
   webSocketForward?: PreviewTcpForward;
-  tunnelLocalPort?: number;
 }
 
 interface PreviewBridgeSocket {
@@ -402,12 +392,6 @@ export class PreviewSessionManager {
     }
 
     const descriptor = await executionHostService.resolveReference(target.reference);
-    if (descriptor.ref.kind === "ssh") {
-      throw new DomainError(
-        "preview_server_unsupported",
-        "Direct previews are not supported for SSH servers. Use a workspace preview instead.",
-      );
-    }
     const binding = executionHostService.getBinding(descriptor.ref);
     executionHostService.requireBindingCapability(binding, "tcpTunnel");
     return {
@@ -417,7 +401,7 @@ export class PreviewSessionManager {
     };
   }
 
-  async registerCliPreview(options: RegisterCliPreviewOptions, signal?: AbortSignal): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess; codeServer?: CodeServer }> {
+  async registerCliPreview(options: RegisterCliPreviewOptions, signal?: AbortSignal): Promise<{ preview: PreviewSession; targetBaseUrl: string; codeServer?: CodeServer }> {
     const upstream = PreviewUpstreamOptionsSchema.safeParse(options);
     if (!upstream.success) {
       throw new DomainError("preview_target_invalid", "Invalid preview HTTPS options.");
@@ -448,10 +432,7 @@ export class PreviewSessionManager {
           completion.resolve();
         }
       };
-      const host = currentTarget.binding.host;
-      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host)
-        ? await withSshServerOperation(host.serverId, registerOnHost)
-        : await registerOnHost();
+      return await registerOnHost();
     };
     return target.kind === "workspace"
       ? await withWorkspaceExecutionLock(target.workspace.id, register)
@@ -463,10 +444,9 @@ export class PreviewSessionManager {
     options: RegisterCliPreviewOptions;
     target: ResolvedPreviewTarget;
     signal: AbortSignal;
-  }): Promise<{ preview: PreviewSession; targetBaseUrl: string; tunnel?: ChildProcess; codeServer?: CodeServer }> {
+  }): Promise<{ preview: PreviewSession; targetBaseUrl: string; codeServer?: CodeServer }> {
     const { id, options, target, signal } = context;
     const workspace = target.kind === "workspace" ? target.workspace : undefined;
-    let sshTunnel: { child: ChildProcess; localPort: number } | undefined;
     let meshForward: PreviewTcpForward | undefined;
     let webSocketForward: PreviewTcpForward | undefined;
     const createdAt = new Date().toISOString();
@@ -512,15 +492,6 @@ export class PreviewSessionManager {
       }
       signal?.throwIfAborted();
       const remotePort = codeServer?.port ?? options.remotePort;
-      sshTunnel = target.kind === "workspace" && target.executionTarget.kind === "ssh"
-        ? await this.startSshTunnel({
-            workspace: target.workspace,
-            executionTarget: target.executionTarget,
-            remoteHost: options.remoteHost,
-            remotePort,
-            signal,
-          })
-        : undefined;
       const transportKind = target.kind === "workspace"
         ? target.executionTarget.kind
         : target.transportKind;
@@ -530,8 +501,8 @@ export class PreviewSessionManager {
           remotePort,
         )
         : undefined;
-      const targetPort = sshTunnel?.localPort ?? meshForward?.localPort ?? remotePort;
-      const targetHost = sshTunnel || meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
+      const targetPort = meshForward?.localPort ?? remotePort;
+      const targetHost = meshForward ? LOCAL_TUNNEL_HOST : options.remoteHost;
       const protocol = options.protocol ?? "http";
       const targetUrl = new URL(`${protocol}://localhost`);
       targetUrl.hostname = targetHost.includes(":") && !targetHost.startsWith("[") ? `[${targetHost}]` : targetHost;
@@ -582,10 +553,8 @@ export class PreviewSessionManager {
           rejectUnauthorized: false,
           serverName: options.remoteHost.replace(/^\[|\]$/g, ""),
         } : undefined,
-        tunnel: sshTunnel?.child,
         meshForward,
         webSocketForward,
-        tunnelLocalPort: sshTunnel?.localPort ?? meshForward?.localPort,
       });
       runtimeRegistered = true;
       previewEventEmitter.emit({
@@ -604,7 +573,7 @@ export class PreviewSessionManager {
         preview,
         timestamp: now,
       });
-      return { preview, targetBaseUrl, tunnel: sshTunnel?.child, codeServer };
+      return { preview, targetBaseUrl, codeServer };
     } catch (error) {
       const cleanupErrors: unknown[] = [];
       if (runtimeRegistered) {
@@ -618,7 +587,7 @@ export class PreviewSessionManager {
         cleanupErrors.push(cleanupError);
       }
       try {
-        await this.closePreviewTransports(sshTunnel?.child, meshForward, webSocketForward);
+        await this.closePreviewTransports(meshForward, webSocketForward);
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }
@@ -650,15 +619,6 @@ export class PreviewSessionManager {
     await this.closePreviews(previews, "Workspace deleted", "Close this workspace's pending previews before deleting it.");
   }
 
-  async closeSshServerPreviews(serverId: string): Promise<void> {
-    await this.initialize();
-    const previews = (await listPreviewSessionsByStatuses(["active", "closing", "failed"])).filter((preview) => {
-      const host = preview.config.executionHostBinding.host;
-      return host.kind === "ssh" && !isWorkspaceSshExecutionHostRef(host) && host.serverId === serverId;
-    });
-    await this.closePreviews(previews, "SSH server changed", "Close pending previews before changing or deleting this SSH server.");
-  }
-
   private async closePreviews(previews: PreviewSession[], reason: string, failureMessage: string): Promise<void> {
     const results = await Promise.allSettled(previews.map((preview) =>
       this.closePreview(preview.config.id, reason),
@@ -671,12 +631,6 @@ export class PreviewSessionManager {
 
   async listServerPreviews(executionHostRef: ExecutionHostRef): Promise<PreviewSession[]> {
     await this.initialize();
-    if (executionHostRef.kind === "ssh") {
-      throw new DomainError(
-        "preview_server_unsupported",
-        "Direct previews are not supported for SSH servers.",
-      );
-    }
     const binding = executionHostService.getBinding(executionHostRef);
     executionHostService.requireBindingCapability(binding, "tcpTunnel");
     return await listPreviewSessionsByExecutionHostAndStatuses(
@@ -735,7 +689,7 @@ export class PreviewSessionManager {
     await savePreviewSession({ ...preview, state: { ...preview.state, status: "closing" } });
     const cleanup = await Promise.allSettled([
       runtime?.codeServer ? runtime.codeServer.close() : this.cleanupSavedCodeSession(preview),
-      this.closePreviewTransports(runtime?.tunnel, runtime?.meshForward, runtime?.webSocketForward),
+      this.closePreviewTransports(runtime?.meshForward, runtime?.webSocketForward),
     ]);
     this.closeUpstreamSockets(id);
     const bridgeSocket = this.bridgeSockets.get(id);
@@ -794,20 +748,10 @@ export class PreviewSessionManager {
   }
 
   private async closePreviewTransports(
-    tunnel: ChildProcess | undefined,
     meshForward: PreviewTcpForward | undefined,
     webSocketForward?: PreviewTcpForward,
   ): Promise<void> {
     const cleanup = await Promise.allSettled([
-      (async () => {
-        if (tunnel) {
-          tunnel.kill("SIGTERM");
-          await waitForProcessExit(tunnel, STOP_TIMEOUT_MS);
-          if (tunnel.exitCode === null) {
-            tunnel.kill("SIGKILL");
-          }
-        }
-      })(),
       meshForward?.close(),
       webSocketForward?.close(),
     ]);
@@ -1325,63 +1269,6 @@ export class PreviewSessionManager {
     });
   }
 
-  private async startSshTunnel(options: {
-    workspace: Workspace;
-    executionTarget: Extract<ResolvedWorkspaceExecutionTarget, { kind: "ssh" }>;
-    remoteHost: string;
-    remotePort: number;
-    signal?: AbortSignal;
-  }): Promise<{ child: ChildProcess; localPort: number }> {
-    const { workspace, executionTarget, remoteHost, remotePort, signal } = options;
-    const localPort = await ensureLocalPortAvailable(this.getReservedTunnelPorts());
-    const config = buildSshProcessConfig({
-      target: executionTarget.target,
-      connectionScope: workspace.directory,
-      multiplex: false,
-      extraArgs: [
-        "-N",
-        "-T",
-        "-o",
-        "ExitOnForwardFailure=yes",
-        "-L",
-        `${LOCAL_TUNNEL_HOST}:${String(localPort)}:${remoteHost}:${String(remotePort)}`,
-      ],
-      passwordHandling: "environment",
-    });
-    log.debug("Starting preview SSH tunnel", {
-      workspaceId: workspace.id,
-      localPort,
-      remoteHost,
-      remotePort,
-    });
-    const child = spawn(config.command, config.args, {
-      env: config.env,
-      stdio: ["ignore", "ignore", "pipe"],
-    });
-    try {
-      await waitForProcessTcpListener(child, {
-        host: LOCAL_TUNNEL_HOST,
-        port: localPort,
-        timeoutMs: SSH_CONNECTION_TIMEOUT_MS,
-        signal,
-      });
-    } catch (error) {
-      await this.closePreviewTransports(child, undefined);
-      signal?.throwIfAborted();
-      throw new DomainError("preview_tunnel_start_failed", "SSH preview forwarding could not start. Check the host's forwarding permissions and connectivity.", { cause: error });
-    }
-    return { child, localPort };
-  }
-
-  private getReservedTunnelPorts(): Set<number> {
-    const reserved = new Set<number>();
-    for (const runtime of this.runtimes.values()) {
-      if (runtime.tunnelLocalPort) {
-        reserved.add(runtime.tunnelLocalPort);
-      }
-    }
-    return reserved;
-  }
 }
 
 export const previewSessionManager = new PreviewSessionManager();

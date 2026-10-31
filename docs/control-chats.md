@@ -18,7 +18,7 @@ enabled.
 
 1. Install and authenticate Codex, Copilot or OpenCode 2 on the workspace's
    execution host. Native runtimes run on the selected host; local and Mesh v7 paths are
-   supported. Direct SSH supports ACP only. See
+   supported. See
    [Harness adapters](harnesses.md#workspace-configuration) for runtime setup.
 2. Create a native chat, task or Agent run in that workspace.
 
@@ -94,7 +94,10 @@ checkbox, enabled by default. Disabling it executes new nonvoice confirm-class
 operations directly within their existing grant; it leaves pending requests
 unchanged. Agents cannot change this policy. Live Voice always confirms.
 Native confirmations have a fixed one-hour deadline; each approval authorizes
-only its own frozen action.
+only its own frozen action. For bulk automatic-workspace restarts, adding or
+removing an eligible workspace, or changing its restart host binding while
+approval is pending, invalidates the request. Read the current targets and
+request a new confirmation before restarting.
 
 ## Agent notifications
 
@@ -186,7 +189,7 @@ Use the versions and execution hosts supported by the
 ACP executions receive no automatic Clanky control or CLI credentials, even
 when general access is enabled. Clanky removes `CLANKY_BASE_URL` and
 `CLANKY_API_KEY` from their provider environment, including values inherited
-from the server, worker or SSH login shell. Ordinary ACP model execution and
+from the server or worker. Ordinary ACP model execution and
 provider credentials remain available. This does not disable personal API
 keys, interactive terminals or deterministic programs' controller-owned
 control. An ACP prompt subprocess does not inherit that authority.

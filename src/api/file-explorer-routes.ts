@@ -2,12 +2,12 @@ import { workspaceOperation } from "./workspace-delegation";
 /**
  * Shared HTTP routes for executor-backed file explorers.
  *
- * Workspace and standalone SSH-server modules provide only target resolution;
+ * Workspace and execution-host modules provide only target resolution;
  * this module owns the common request parsing, operation dispatch, response
  * envelopes, streaming responses, and file-domain error mapping.
  */
 
-import { defineRoutes, type RouteAutomationCredential, type RouteContext, type RouteTable } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext, type RouteTable } from "@pablozaiden/webapp/server";
 import {
   CancelFileExplorerUploadRequestSchema,
   CompleteFileExplorerUploadRequestSchema,
@@ -49,17 +49,13 @@ export interface FileExplorerRouteConfig {
   resourceLabel: string;
   responseIdField: "workspaceId" | "serverId";
   invalidPathError: "invalid_workspace_path" | "invalid_server_path";
-  internalError: "workspace_file_error" | "ssh_server_file_error";
+  internalError: "workspace_file_error" | "execution_host_file_error";
   downloadDescription?: string;
   workspaceCollaboration?: boolean;
-  automationCredential?: RouteAutomationCredential;
   resolveTarget: (
     req: Request,
     resourceId: string,
     startDirectory?: string,
-    options?: {
-      allowCredentialTokenQuery?: boolean;
-    },
   ) => Promise<FileExplorerTarget>;
 }
 
@@ -128,10 +124,6 @@ function mapFileExplorerError(
           status: 400,
           error: config.invalidPathError,
         },
-        ssh_server_not_found: {
-          status: 404,
-          error: "not_found",
-        },
         upload_session_target_mismatch: {
           status: 400,
           error: "invalid_upload_state",
@@ -170,7 +162,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: ListFileExplorerRequestSchema,
-          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+          automation: { policy: "read" },
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -213,7 +205,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+          automation: { policy: "read" },
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -291,7 +283,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "excluded", reason: "Raw ranged video stream and private browser credential transport." },
+          automation: { policy: "excluded", reason: "Raw ranged video stream; use file metadata or JSON explorer operations." },
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -306,9 +298,6 @@ export function createFileExplorerRoutes(
             req,
             resourceId,
             getStartDirectory(validation.data.startDirectory),
-            {
-              allowCredentialTokenQuery: true,
-            },
           );
           const metadata = await fileExplorerService.getVideoPreviewMetadata(
             target,
@@ -393,9 +382,6 @@ export function createFileExplorerRoutes(
             req,
             resourceId,
             getStartDirectory(validation.data.startDirectory),
-            {
-              allowCredentialTokenQuery: true,
-            },
           );
           if (req.method === "HEAD") {
             const metadata = await fileExplorerService.getDownloadMetadata(target, validation.data.path);
@@ -431,7 +417,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerTreeRequestSchema,
-          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+          automation: { policy: "read" },
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -469,7 +455,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "read", hiddenQuery: ["credentialToken"], credential: config.automationCredential },
+          automation: { policy: "read" },
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -511,7 +497,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: WriteFileExplorerRequestSchema,
           querySchema: undefined,
-          automation: { policy: "confirm", reason: "Writes or overwrites a file on the selected execution host.", credential: config.automationCredential },
+          automation: { policy: "confirm", reason: "Writes or overwrites a file on the selected execution host." },
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
@@ -558,7 +544,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: RenameFileExplorerRequestSchema,
           querySchema: undefined,
-          automation: { policy: "confirm", reason: "Renames a file or directory and may overwrite an existing target.", credential: config.automationCredential },
+          automation: { policy: "confirm", reason: "Renames a file or directory and may overwrite an existing target." },
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
@@ -605,7 +591,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: DeleteFileExplorerRequestSchema,
           querySchema: undefined,
-          automation: { policy: "confirm", reason: "Permanently deletes a file or directory on the selected execution host.", credential: config.automationCredential },
+          automation: { policy: "confirm", reason: "Permanently deletes a file or directory on the selected execution host." },
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {

@@ -81,8 +81,8 @@ export function TouchControlsSection({
       summary={summary}
     >
       <div className="flex flex-col gap-2">
-        <div className="px-1 pb-1" data-testid="ssh-touch-controls-layout">
-          <div className="flex flex-wrap items-center gap-1" data-testid="ssh-touch-controls-buttons">
+        <div className="px-1 pb-1" data-testid="terminal-touch-controls-layout">
+          <div className="flex flex-wrap items-center gap-1" data-testid="terminal-touch-controls-buttons">
             <TouchControlButton
               variant={terminalModifiers.ctrl ? "primary" : "secondary"}
               size="xs"

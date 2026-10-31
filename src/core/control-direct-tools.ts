@@ -15,7 +15,7 @@ import { directCreateChat, directCreateTask, directCreateWorkspace } from "./con
 export const ControlNavigationIntentSchema = z.discriminatedUnion("type", [
   ...ControlNavigationActionSchema.options,
   z.object({
-    type: z.literal("open_named"), kind: z.enum(["chat", "task", "workspace", "server", "host"]),
+    type: z.literal("open_named"), kind: z.enum(["chat", "task", "workspace", "host"]),
     target: z.string().trim().min(1).max(500),
     workspace: z.string().trim().min(1).max(500).nullable().default(null),
   }).strict(),
@@ -39,8 +39,7 @@ export async function directUiAction(context: ControlToolContext, value: unknown
   const id = String(target["id"]);
   const canonical = action.kind === "chat" ? { type: "open_chat" as const, chatId: id }
     : action.kind === "task" ? { type: "open_task" as const, taskId: id }
-      : action.kind === "workspace" ? { type: "open_workspace" as const, workspaceId: id }
-        : { type: "open_ssh_server" as const, serverId: id };
+      : { type: "open_workspace" as const, workspaceId: id };
   return await context.options.actions.uiAction(canonical, context.options.requestId);
 }
 

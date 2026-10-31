@@ -1,5 +1,5 @@
 import { log } from "@pablozaiden/webapp/server";
-import type { AcpAuthenticationMode, AcpProcessExit } from "./types";
+import type { AcpProcessExit } from "./types";
 import { terminateSubprocessTree } from "../../core/subprocess-termination";
 
 export type AcpProcessStream = "stdout" | "stderr";
@@ -8,7 +8,6 @@ export interface AcpProcessOptions {
   command: string;
   args: string[];
   cwd: string;
-  authenticationMode?: AcpAuthenticationMode;
   env?: NodeJS.ProcessEnv;
   onLine: (source: AcpProcessStream, line: string) => void;
   onExit: (exit: AcpProcessExit) => void;

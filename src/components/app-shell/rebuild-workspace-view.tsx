@@ -1,10 +1,7 @@
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import { PASSWORD_INPUT_PROPS } from "../common";
-import { ErrorState, FormGroup, SelectField, TextField, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ErrorState, FormGroup, TextField, useHeaderActions, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared/workspace";
-import { getRegisteredSshServerId, isWorkspaceMeshExecutionHostRef } from "@/shared/execution-host";
-import type { SshServer } from "@/shared/ssh-server";
+import { isWorkspaceMeshExecutionHostRef } from "@/shared/execution-host";
 import type { ProvisioningJobMode } from "@/shared/provisioning";
 import { useState } from "react";
 import type { WorkerUpdateMode } from "@/shared/worker-update";
@@ -13,7 +10,6 @@ import { WorkerChannelSelect } from "../worker-channel-select";
 interface RebuildWorkspaceViewProps {
   mode: Extract<ProvisioningJobMode, "rebuild" | "restart">;
   workspace: Workspace;
-  servers: SshServer[];
   provisioning: UseProvisioningJobResult;
   navigateWithinShell: (route: WebAppRoute) => void;
 }
@@ -21,11 +17,9 @@ interface RebuildWorkspaceViewProps {
 export function RebuildWorkspaceView({
   mode,
   workspace,
-  servers,
   provisioning,
   navigateWithinShell,
 }: RebuildWorkspaceViewProps) {
-  const [password, setPassword] = useState("");
   const [channel, setChannel] = useState<WorkerUpdateMode>("default");
   const actionLabel = mode === "restart" ? "Restart" : "Rebuild";
   const actionLabelLower = actionLabel.toLowerCase();
@@ -34,11 +28,6 @@ export function RebuildWorkspaceView({
   const executionHost = (
     workspace.provisioningHostBinding ?? workspace.executionHostBinding
   ).host;
-  const sshServerId = getRegisteredSshServerId(executionHost) ?? "";
-  const selectedServer = servers.find((s) => s.config.id === sshServerId);
-  const selectedServerHasStoredCredential = sshServerId
-    ? getStoredSshServerCredential(sshServerId) !== null
-    : false;
   const isDedicatedWorkerWorkspace = isWorkspaceMeshExecutionHostRef(workspace.executionHostBinding.host);
 
   async function handleStartWorkspaceAction(event: React.FormEvent<HTMLFormElement>) {
@@ -53,7 +42,6 @@ export function RebuildWorkspaceView({
       devboxTemplate: null,
       provider: workspace.serverSettings.agent.provider,
       adapter: workspace.serverSettings.agent.adapter,
-      password,
       mode,
       targetDirectory: workspace.sourceDirectory ?? null,
       workspaceId: workspace.id,
@@ -61,7 +49,6 @@ export function RebuildWorkspaceView({
     });
 
     if (snapshot) {
-      setPassword("");
       navigateWithinShell({
         view: "provisioning-job",
         provisioningJobId: snapshot.job.config.id,
@@ -76,7 +63,6 @@ export function RebuildWorkspaceView({
     label: actionLabel,
     form: formId,
     loading: provisioning.starting,
-    disabled: executionHost.kind === "ssh" && !selectedServer,
   }];
   useHeaderActions({ primary: headerActions });
 
@@ -95,29 +81,6 @@ export function RebuildWorkspaceView({
               value={workspace.name}
               disabled
             />
-
-            <div>
-              <SelectField
-                label="Execution host"
-                id={`${mode}-ssh-server`}
-                value={sshServerId}
-                disabled
-              >
-                {executionHost.kind !== "ssh" && (
-                  <option value="">{executionHost.kind}</option>
-                )}
-                {servers.map((server) => (
-                  <option key={server.config.id} value={server.config.id}>
-                    {server.config.name} ({server.config.username}@{server.config.address})
-                  </option>
-                ))}
-              </SelectField>
-              {!selectedServer && sshServerId && (
-                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                  The SSH server used for provisioning is no longer registered.
-                </p>
-              )}
-            </div>
 
             <TextField
               id={`${mode}-repo-url`}
@@ -161,17 +124,6 @@ export function RebuildWorkspaceView({
               disabled
             />
 
-            {!selectedServerHasStoredCredential && sshServerId && (
-              <TextField
-                id={`${mode}-ssh-password`}
-                label="SSH password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Leave blank for key-based auth"
-                type="password"
-                {...PASSWORD_INPUT_PROPS}
-              />
-            )}
             </div>
           </FormGroup>
 

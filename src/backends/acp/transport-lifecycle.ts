@@ -14,33 +14,21 @@ import {
   buildProviderSpawnEnvironment,
   getProviderAcpCommand,
 } from "../../core/agent-runtime-command";
-import { sshConnectionGate, type SshConnectionGate } from "../../core/ssh-connection-gate";
-import {
-  buildSshConnectionKey,
-  getSshReliabilityPolicy,
-  type SshReliabilityPolicy,
-} from "../../core/ssh-reliability-policy";
 import {
   DEFAULT_SERVER_AGENT_PROVIDER,
   type AgentProvider,
 } from "@/shared/settings";
 import type { BackendConnectionConfig, ConnectionInfo } from "../types";
 
-import {
-  sanitizeSpawnArgsForLogging,
-  getProcessExitHint,
-  isSshAuthenticationFailureExit,
-} from "./process-utils";
+import { sanitizeSpawnArgsForLogging } from "./process-utils";
 import {
   AcpError,
   createAcpConnectionAbortedError,
-  createAcpConnectionTimeoutError,
   createAcpProcessError,
   getAcpErrorMessage,
 } from "./errors";
 import {
   MAX_RECENT_PROCESS_LINES,
-  type AcpAuthenticationMode,
   type AcpProcessExit,
   type AcpTransportStage,
 } from "./types";
@@ -57,8 +45,6 @@ import type {
 } from "./contracts";
 
 export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
-  private readonly reliabilityPolicy: SshReliabilityPolicy;
-  private readonly connectionGate: SshConnectionGate;
   private process: AcpProcess | null = null;
   private connected = false;
   private directory = "";
@@ -73,14 +59,6 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
   private requester: (RpcRequester & RpcPendingController) | null = null;
   private onMessage: ((message: JsonRpcMessage) => void) | null = null;
   private onTransportClosed: ((event: AcpTransportClosedEvent) => void) | null = null;
-
-  constructor(options: {
-    reliabilityPolicy?: SshReliabilityPolicy;
-    connectionGate?: SshConnectionGate;
-  } = {}) {
-    this.reliabilityPolicy = options.reliabilityPolicy ?? getSshReliabilityPolicy();
-    this.connectionGate = options.connectionGate ?? sshConnectionGate;
-  }
 
   /** Narrow transport exposed to the RPC client for writing wire messages. */
   readonly transport: RpcTransport = {
@@ -166,20 +144,15 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
           { details: config.mesh },
         );
       }
-      if (isRemoteOnlyMode() && config.transport !== "ssh") {
+      if (isRemoteOnlyMode()) {
         throw new Error(
           "Local stdio transport is disabled. CLANKY_REMOTE_ONLY environment variable is set. " +
-          "Only ssh transport is allowed.",
+          "Use a Mesh execution host.",
         );
       }
 
       this.connected = true;
-      const connectionAbort = this.createConnectionAbortContext(config, signal);
-      try {
-        return await this.connectSpawn(config, connectionAbort.signal, requester);
-      } finally {
-        connectionAbort.dispose();
-      }
+      return await this.connectSpawn(config, signal, requester);
     } catch (error) {
       const process = this.process;
       this.connected = false;
@@ -207,13 +180,12 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
         }
       : getProviderAcpCommand(
           config.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
-          config.transport,
         );
     const command = providerCommand.command;
     const args = providerCommand.args;
     const spawnEnv = buildProviderSpawnEnvironment(providerCommand, process.env, config.env);
-    const logArgs = sanitizeSpawnArgsForLogging(command, args);
-    const spawnCwd = config.transport === "ssh" ? "/" : config.directory;
+    const logArgs = sanitizeSpawnArgsForLogging(args);
+    const spawnCwd = config.directory;
     this.recentProcessLines = [];
     log.debug("[AcpBackend] Spawning ACP runtime", {
       command,
@@ -231,22 +203,13 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       this.throwIfAborted(signal, config);
       this.recentProcessLines = [];
       let processHandle: AcpProcess | null = null;
-      let releaseConnectionGate: () => void = () => {};
       try {
-        if (config.transport === "ssh") {
-          releaseConnectionGate = await this.connectionGate.acquire(
-            buildSshConnectionKey(config),
-            signal,
-          );
-        }
-
         try {
           const spawned = await AcpProcess.spawn({
             command,
             args,
             cwd: spawnCwd,
             env: spawnEnv,
-            authenticationMode: this.getAuthenticationMode(config),
             onLine: (source, line) => {
               if (processHandle) {
                 this.handleRpcLine(processHandle, line, source);
@@ -298,11 +261,8 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
               exitCode: process.exitCode,
               signalCode: process.signalCode,
               transport: config.transport,
-              authenticationMode: this.getAuthenticationMode(config),
-              authenticationFailure: this.isAuthenticationFailure(command, process.exitCode, config),
               stage: this.stage,
               attempt,
-              target: this.getTargetDetails(config),
               initializationCompleted: false,
             },
           );
@@ -340,8 +300,6 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
         requester.rejectPending(failure);
         requester.clearPending();
         throw failure;
-      } finally {
-        releaseConnectionGate();
       }
     }
     log.debug("[AcpBackend] ACP runtime initialized", { command });
@@ -426,14 +384,10 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     if (this.process !== process || !this.connected) {
       return;
     }
-    const hint = getProcessExitHint(command, exit.exitCode);
     const details = this.recentProcessLines.slice(-5).join(" | ");
     const parts = [`ACP process exited with code ${exit.exitCode}`];
     if (details.length > 0) {
       parts.push(details);
-    }
-    if (hint) {
-      parts.push(hint);
     }
     const reason = parts.join(": ");
     const error = createAcpProcessError(reason, {
@@ -441,11 +395,8 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       exitCode: exit.exitCode,
       signalCode: exit.signalCode,
       transport: config.transport,
-      authenticationMode: this.getAuthenticationMode(config),
-      authenticationFailure: this.isAuthenticationFailure(command, exit.exitCode, config),
       stage: this.stage,
       attempt,
-      target: this.getTargetDetails(config),
       initializationCompleted: this.stage === "runtime",
     });
     log.error("[AcpBackend] ACP process exited", {
@@ -455,9 +406,7 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       transport: config.transport ?? "stdio",
       stage: this.stage,
       attempt,
-      target: this.getTargetDetails(config),
       initializationCompleted: this.stage === "runtime",
-      authenticationMode: this.getAuthenticationMode(config),
     });
     const requester = this.requester;
     const initializationInProgress = this.stage === "spawn" || this.stage === "initialize";
@@ -523,58 +472,14 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
     process.write(`${JSON.stringify(message)}\n`);
   }
 
-  private getTargetDetails(config: BackendConnectionConfig): {
-    hostname?: string;
-    port?: number;
-    username?: string;
-  } | undefined {
-    if (config.transport !== "ssh") {
-      return undefined;
-    }
-    return {
-      ...(config.hostname ? { hostname: config.hostname } : {}),
-      ...(config.port === undefined ? {} : { port: config.port }),
-      ...(config.username ? { username: config.username } : {}),
-    };
-  }
-
-  private getAuthenticationMode(config: BackendConnectionConfig): AcpAuthenticationMode | undefined {
-    if (config.transport !== "ssh") {
-      return undefined;
-    }
-
-    const identityFile = config.identityFile?.trim();
-    const password = config.password?.trim();
-    if (identityFile) {
-      return "identity";
-    }
-    if (password) {
-      return "password";
-    }
-    return "agent";
-  }
-
-  private isAuthenticationFailure(
-    command: string,
-    exitCode: number,
-    config: BackendConnectionConfig,
-  ): boolean {
-    return config.transport === "ssh"
-      && isSshAuthenticationFailureExit(command, exitCode);
-  }
-
   private getConnectionDetails(
     config: BackendConnectionConfig,
     attempt: number,
   ): Readonly<Record<string, unknown>> {
     return {
       transport: config.transport ?? "stdio",
-      ...(this.getAuthenticationMode(config)
-        ? { authenticationMode: this.getAuthenticationMode(config) }
-        : {}),
       stage: this.stage,
       attempt,
-      target: this.getTargetDetails(config),
       initializationCompleted: this.stage === "runtime",
     };
   }
@@ -591,63 +496,15 @@ export class LocalAcpTransportLifecycle implements AcpTransportLifecycle {
       return createAcpConnectionAbortedError({
         transport: config.transport,
         stage: this.stage,
-        target: this.getTargetDetails(config),
         cause: reason,
       });
     }
     return createAcpConnectionAbortedError({
       transport: config.transport,
       stage: this.stage,
-      target: this.getTargetDetails(config),
     });
   }
 
-  private createConnectionAbortContext(
-    config: BackendConnectionConfig,
-    externalSignal: AbortSignal | undefined,
-  ): {
-    signal: AbortSignal;
-    dispose: () => void;
-  } {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const abortFromExternalSignal = (): void => {
-      if (!controller.signal.aborted) {
-        controller.abort(externalSignal?.reason ?? this.getAbortError(controller.signal, config));
-      }
-    };
-
-    if (externalSignal?.aborted) {
-      abortFromExternalSignal();
-    } else {
-      externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
-    }
-
-    if (config.transport === "ssh") {
-      timer = setTimeout(() => {
-        if (!controller.signal.aborted) {
-          controller.abort(createAcpConnectionTimeoutError(
-            this.reliabilityPolicy.connectionTimeoutMs,
-            {
-              transport: config.transport,
-              stage: this.stage,
-              target: this.getTargetDetails(config),
-            },
-          ));
-        }
-      }, this.reliabilityPolicy.connectionTimeoutMs);
-    }
-
-    return {
-      signal: controller.signal,
-      dispose: () => {
-        if (timer !== undefined) {
-          clearTimeout(timer);
-        }
-        externalSignal?.removeEventListener("abort", abortFromExternalSignal);
-      },
-    };
-  }
 }
 
 async function raceWithAbort<T>(

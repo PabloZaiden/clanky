@@ -66,28 +66,16 @@ function parseArgs(argv: string[]): CliOptions {
 
 async function writeRuntimeArtifacts(dataDir: string): Promise<{
   sqlPath: string;
-  keyDir: string;
 }> {
   const sqlSourcePath = join(import.meta.dir, "ui-demo-seed.sql");
-  const keySourceDir = join(import.meta.dir, "ssh-server-keys");
 
   const sqlPath = join(dataDir, "ui-demo-seed.sql");
-  const keyDir = join(dataDir, "ssh-server-keys");
 
   await mkdir(dataDir, { recursive: true });
-  await mkdir(keyDir, { recursive: true });
   await Bun.write(sqlPath, Bun.file(sqlSourcePath));
-
-  for (const keyFileName of new Bun.Glob("*.json").scanSync({ cwd: keySourceDir })) {
-    await Bun.write(
-      join(keyDir, keyFileName),
-      Bun.file(join(keySourceDir, keyFileName)),
-    );
-  }
 
   return {
     sqlPath,
-    keyDir,
   };
 }
 
@@ -170,7 +158,7 @@ async function main(): Promise<void> {
   process.env["CLANKY_LOG_LEVEL"] ??= "fatal";
 
   const options = parseArgs(process.argv.slice(2));
-  const { sqlPath, keyDir } = await writeRuntimeArtifacts(options.dataDir);
+  const { sqlPath } = await writeRuntimeArtifacts(options.dataDir);
 
   if (options.applySeed) {
     await applySeedToDatabase(options.dataDir, sqlPath);
@@ -178,7 +166,6 @@ async function main(): Promise<void> {
 
   console.log(`Demo UI artifacts written to ${options.dataDir}`);
   console.log(`SQL seed: ${sqlPath}`);
-  console.log(`SSH keys: ${keyDir}`);
   console.log(options.applySeed ? "Database seed applied." : "Database seed skipped.");
 }
 

@@ -2,7 +2,7 @@
  * Core manager for terminal sessions.
  *
  * Workspace terminal sessions are transport-neutral — they work with local
- * stdio, SSH, and Mesh workspaces. Each session is bound to an immutable
+ * local and Mesh workspaces. Each session is bound to an immutable
  * snapshot of the workspace execution target at creation time.
  *
  * Direct host sessions use the same lifecycle as workspace sessions.
@@ -34,7 +34,7 @@ import { loadTask } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { terminalSessionEventEmitter } from "./event-emitter";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
+import { buildPersistentSessionDeleteCommand } from "./terminal/persistent-session";
 import { isUniqueConstraint } from "../persistence/errors";
 import { DomainError } from "../domain/domain-error";
 import { managedContextIdentityResolver } from "./managed-context-identity";

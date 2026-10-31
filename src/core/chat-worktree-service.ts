@@ -10,8 +10,6 @@ import { backendManager } from "./backend";
 import { closeCommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
 import { getChatExecutionHostBinding } from "./chat-history-export-service";
-import { getRegisteredSshServerId } from "@/shared/execution-host";
-import { sshCredentialManager } from "./ssh-credential-manager";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
@@ -25,7 +23,6 @@ import { createTimestamp } from "@/shared/events";
 import { saveTrashedChatWorktree } from "../persistence/chats/trash";
 import type {
   ChatDirectoryResolution,
-  ChatCleanupCredentials,
   ChatStatePort,
   ChatWorktreePort,
 } from "./chat-service-contracts";
@@ -300,7 +297,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
     });
   }
 
-  async cleanupWorktree(chat: Chat, credentials: ChatCleanupCredentials = {}): Promise<void> {
+  async cleanupWorktree(chat: Chat): Promise<void> {
     if (isTaskChat(chat)) {
       return;
     }
@@ -311,16 +308,10 @@ export class ChatWorktreeService implements ChatWorktreePort {
     }
 
     const binding = await getChatExecutionHostBinding(this.state, chat);
-    const serverId = getRegisteredSshServerId(binding.host);
-    const credentialToken = (serverId && credentials.credentialTokensByServerId?.[serverId])
-      || credentials.credentialToken;
     const executor = await executionHostService.getCommandExecutor(binding, {
       directory: chat.config.directory,
       operationId: `chat-cleanup:${chat.config.id}`,
       localUserId: requireExecutionOwnerUserId(),
-      ...(serverId && credentialToken ? {
-        sshPassword: sshCredentialManager.getPasswordForToken(serverId, credentialToken),
-      } : {}),
     });
     try {
       const git = GitService.withExecutor(executor);

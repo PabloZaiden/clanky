@@ -308,7 +308,6 @@ export function useFileExplorerDocument(
         {
           startDirectory: scope.target.startDirectory,
           signal: operation.signal,
-          refreshSshCredential: scope.target.type === "executionHost" && scope.target.kind === "ssh",
         },
       ) : null;
       const latestFile = currentFileRef.current;

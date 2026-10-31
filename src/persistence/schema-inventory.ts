@@ -100,7 +100,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_node_identity", "clanky"),
 
   currentTable("workspace_worker_enrollments", "clanky"),
-  currentTable("workspace_execution_targets", "clanky"),
+  resetOnlyTable("workspace_execution_targets", "clanky"),
   currentTable("clanky_context_api_keys", "clanky"),
   currentTable("preview_sessions", "clanky"),
   currentTable("agent_run_transcript_meta", "clanky", {
@@ -151,7 +151,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
     resourceColumn: "chat_id",
   }),
   currentTable("chats", "clanky"),
-  currentTable("ssh_servers", "clanky"),
+  resetOnlyTable("ssh_servers", "clanky"),
   currentTable("workspace_icons", "clanky"),
   currentTable("workspaces", "clanky"),
   currentTable("execution_hosts", "clanky"),

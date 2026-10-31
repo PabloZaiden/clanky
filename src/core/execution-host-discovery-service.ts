@@ -5,16 +5,16 @@
 import type {
   DevboxTemplateSummary,
   ExecutionHostRef,
-  SshServerPrerequisiteReport,
+  ExecutionHostPrerequisiteReport,
 } from "@/shared";
 import { isIPv4 } from "node:net";
 import { serializeExecutionHostRef } from "@/shared/execution-host";
-import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
+import { parseDevboxTemplatesOutput } from "./devbox-templates";
 import {
   executionHostService,
   type ExecutionHostCommandContext,
 } from "./execution-host-service";
-import { checkExecutionHostPrerequisites } from "./ssh-server-prerequisites";
+import { checkExecutionHostPrerequisites } from "./execution-host-prerequisites";
 import { DomainError } from "../domain/domain-error";
 
 export interface ExecutionHostDiscoveryContext extends ExecutionHostCommandContext {
@@ -23,9 +23,6 @@ export interface ExecutionHostDiscoveryContext extends ExecutionHostCommandConte
 }
 
 function transportLabel(ref: ExecutionHostRef): string {
-  if (ref.kind === "ssh") {
-    return "SSH";
-  }
   return ref.kind === "mesh" ? "Mesh" : "Local";
 }
 
@@ -103,7 +100,7 @@ export class ExecutionHostDiscoveryService {
   async checkPrerequisites(
     ref: ExecutionHostRef,
     context: ExecutionHostDiscoveryContext,
-  ): Promise<SshServerPrerequisiteReport> {
+  ): Promise<ExecutionHostPrerequisiteReport> {
     const executor = await executionHostService.getCommandExecutorForRef(ref, context);
     return await checkExecutionHostPrerequisites({
       targetId: context.responseId ?? serializeExecutionHostRef(ref),

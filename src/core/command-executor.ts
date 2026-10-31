@@ -1,7 +1,7 @@
 /**
  * Command execution abstraction for Clanky Tasks Management System.
  * Provides a unified interface for running shell commands and file operations
- * that works both locally (`stdio` transport) and remotely (`ssh` transport).
+ * that works both locally and on Mesh execution hosts.
  */
 
 /**
@@ -186,8 +186,7 @@ export interface FileDeleteOptions {
 
 /**
  * CommandExecutor interface for running shell commands and file operations.
- * Implementation: CommandExecutorImpl executes commands via local or SSH providers.
- * Commands are queued to ensure only one runs at a time.
+ * CommandExecutorImpl owns local processes; MeshCommandExecutor routes to a worker.
  */
 export interface CommandExecutor {
   /** Path semantics used by the execution host. */
@@ -327,7 +326,6 @@ export interface CommandExecutor {
   /**
    * Write content to a file on the server.
    * Creates the file if it doesn't exist, overwrites if it does.
-   * Uses base64 encoding to safely transfer content with special characters.
    * @param path - Absolute path to the file
    * @param content - The content to write
    * @returns true if the write was successful

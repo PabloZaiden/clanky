@@ -1,7 +1,6 @@
 /**
- * Barrel re-export for the remote-executor sub-modules.
+ * Barrel re-export for local command execution.
  */
 
-export type { CommandExecutorConfig, SshAuthMode } from "./types";
-export { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
+export type { CommandExecutorConfig } from "./types";
 export { CommandExecutorImpl } from "./executor";

@@ -26,7 +26,7 @@ bun run test:mesh
 CLANKY_LOG_LEVEL=info bun run test:mesh
 ```
 
-The Linux suite requires `iproute2`, `openssh-server`, `sshpass`, `dtach`, and
+The Linux suite requires `iproute2`, `openssh-client` (for Git), `dtach`, and
 `util-linux`. Automatic Devbox workspace scenarios require `flock`
 (`util-linux` on Linux, `brew install flock` on macOS).
 Install prerequisites before running the relevant journey.
@@ -92,14 +92,13 @@ Do not replace these with another regression layer.
 Committed E2E must not require live AI providers, external credentials, quotas,
 or model output. Put deterministic provider executables in an isolated `PATH`
 or use an external network service. Clanky must discover and invoke them
-through production command resolution, adapters, stdio/RPC, HTTP, SSH, or Mesh,
+through production command resolution, adapters, stdio/RPC, HTTP, or Mesh,
 not injected backends or test-only production switches.
 
 Mocks may model streaming, tools, questions, permissions, failure, cancellation,
 reconnect, and session loss. Assert Clanky's public results and effects, not
 mock internals/counts. Other unavoidable third-party seams use the same
-external-process rule. Use real Git repositories/remotes, Clanky Mesh processes,
-and an ephemeral SSH server.
+external-process rule. Use real Git repositories/remotes and Clanky Mesh processes.
 
 Provider waits for future user input belong to the turn lifecycle and end on
 input, interruption, deletion, or closure. Do not expire them with a separate
@@ -136,7 +135,7 @@ also present in echoed input.
 | Operation | Budget |
 | --- | --- |
 | Individual request, command, local poll, or WebSocket operation | 5 seconds |
-| Async task/chat/agent/SSH/provisioning/startup/recovery lifecycle | 10 seconds |
+| Async task/chat/agent/terminal/provisioning/startup/recovery lifecycle | 10 seconds |
 | Mesh E2E operation (`MESH_OPERATION_TIMEOUT_MS`) | 20 seconds |
 | Whole journey, final slow-CI backstop | 120 seconds |
 
@@ -157,9 +156,8 @@ Do not maintain per-file runtime weights, arbitrary shard counts, or retries;
 serialize only for a documented resource/isolation constraint.
 
 Discover the current Git branch instead of assuming `main` or `master`.
-SSH fixtures keep isolated `HOME`, provider `PATH`, and `/bin/sh` in a single
-OpenSSH `SetEnv` directive: subsequent directives are ignored. Do not source
-the host account's interactive shell initialization.
+Keep fixture `HOME`, provider `PATH`, and shell initialization isolated from
+the host account.
 
 ## Manual visual validation
 

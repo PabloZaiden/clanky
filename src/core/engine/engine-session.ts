@@ -55,8 +55,6 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
       transport: settings.agent.transport,
-      hostname: settings.agent.transport === "ssh" ? settings.agent.hostname : undefined,
-      port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
     });
     log.debug("[TaskEngine] setupSession: About to call backend.connect");
     await ctx.backend.connect({
@@ -91,16 +89,10 @@ export async function setupTaskSession(ctx: SessionOperationContext): Promise<st
     model: ctx.config.model?.modelID ?? "default",
   });
 
-  const connectionConfig = buildConnectionConfig(settings, ctx.workingDirectory);
-  const serverUrl = connectionConfig.transport === "ssh" && connectionConfig.hostname
-    ? `ssh://${connectionConfig.hostname}:${connectionConfig.port ?? 22}`
-    : undefined;
-
   log.debug("[TaskEngine] setupSession: About to update state");
   ctx.updateState({
     session: {
       id: session.id,
-      serverUrl,
       binding: session.binding,
     },
   });
@@ -139,8 +131,6 @@ export async function reconnectTaskSession(ctx: SessionOperationContext): Promis
       ctx.emitLog("info", "Reconnecting to backend...", {
         provider: settings.agent.provider,
         transport: settings.agent.transport,
-        hostname: settings.agent.transport === "ssh" ? settings.agent.hostname : undefined,
-        port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
       });
       await ctx.backend.connect({
         ...buildConnectionConfig(settings, ctx.workingDirectory),

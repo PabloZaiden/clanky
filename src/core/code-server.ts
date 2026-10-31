@@ -41,7 +41,7 @@ async function assertCodeAvailable(executor: CommandExecutor, directory: string,
     );
   }
   if (!["--connection-token-file", "--default-folder", "--port"].every((flag) => help.stdout.includes(flag))) {
-    throw new DomainError("code_unsupported", "The workspace host's code CLI does not advertise the required serve-web options: --connection-token-file, --default-folder, and --port. Use a VS Code CLI that supports serve-web, not a Remote SSH/Codespaces editor launcher.");
+    throw new DomainError("code_unsupported", "The workspace host's code CLI does not advertise the required serve-web options: --connection-token-file, --default-folder, and --port. Use a VS Code CLI that supports serve-web, not an editor launcher.");
   }
   const bash = await executor.exec("bash", ["--version"], { cwd: directory, timeout: 5_000, signal, logFailures: false });
   if (!bash.success) {

@@ -160,7 +160,7 @@ export class MeshAcpGateway {
         );
       }
       throwIfAborted(signal);
-      const providerCommand = getProviderAcpCommand(config.provider, "stdio");
+      const providerCommand = getProviderAcpCommand(config.provider);
       let processExit: AcpProcessExit | null = null;
       let outputLimitExceeded = false;
       let startupStderr = "";

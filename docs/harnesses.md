@@ -23,8 +23,8 @@ CLI in a private workspace prefix. See
 [automatic workspace runtimes](mesh-worker.md#automatic-workspace-runtimes).
 
 Local hosts and end-to-end Mesh v7 paths support native adapters. Every
-controller, relay, and worker on a Mesh route must use v7 over TLS; direct SSH supports
-ACP only. A native failure does not switch to ACP; select ACP explicitly when
+controller, relay, and worker on a Mesh route must use v7 over TLS.
+A native failure does not switch to ACP; select ACP explicitly when
 that is the desired integration. See [Mesh workers](mesh-worker.md) for setup
 details.
 
@@ -65,7 +65,7 @@ still require current server authorization and valid common-control inputs.
 ACP remains available for ordinary model execution, but receives no automatic
 Clanky control or CLI credentials, including with general access enabled.
 Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
-the server, worker or SSH login environment. Other environment variables and
+the server or worker environment. Other environment variables and
 provider authentication are preserved. Personal keys and interactive terminals
 are unchanged. Deterministic programs retain scoped control through their
 controller-owned runner adapter, without granting that authority to ACP.
@@ -192,9 +192,8 @@ and tool actions are not replayed.
 The export is removed after the first continuation completes successfully or
 when the chat is deleted. It cannot be used after its 24-hour expiry. Expiry is
 not a background deletion job: physical cleanup is attempted when the export
-is next used/replaced or during chat deletion. For a registered SSH host, this
-needs a fresh credential; Clanky does not persist SSH credentials, so an
-unreachable or unauthenticated host may retain the expired file until the next
+is next used/replaced or during chat deletion. An
+unreachable host may retain the expired file until the next
 authorized recovery attempt or chat deletion.
 
 ## Token consumption
@@ -232,7 +231,7 @@ Tasks include their task-scoped chat consumption. Scheduled Agent runs share
 their backing chat's accounting rather than counting a second execution.
 Consumption is private to the entity owner. On Mesh, the controller requests
 usage only when the worker advertises token-accounting support; update older
-workers to enable it. Direct SSH continues to support ACP only.
+workers to enable it.
 
 **Partial** means some consumption could not be recovered, such as a Codex
 thread whose usage notification has not been observed. **Last known** means
@@ -290,8 +289,8 @@ parent is observed; no browser is required. Child failures and informational
 question/permission notices remain visible in the conversation, but answers
 and decisions still belong to the parent.
 Older Mesh workers can still serve content already saved on the controller;
-update the worker to enable native child-history recovery. ACP and direct SSH
-do not gain native subagent support.
+update the worker to enable native child-history recovery. ACP
+does not gain native subagent support.
 
 Reasoning identifiers are opaque provider-native strings, not event UUIDs.
 Clanky preserves them unchanged in live events and recovered child history.

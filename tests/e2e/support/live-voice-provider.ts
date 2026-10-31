@@ -29,9 +29,8 @@ interface OperationIndex {
   operations: Array<[string, string, string]>;
   total: number;
 }
-interface Workspace { id: string; name: string }
-interface Host { ref: { kind: string; serverId?: string } }
-interface Server { id: string; repositoriesBasePath: string }
+interface Workspace { id: string; name: string; directory: string }
+interface Host { ref: { kind: string; nodeId: string } }
 interface VoiceStatusWork { id: string; name: string; status: string; voiceStatus: string }
 type Chat = VoiceStatusWork;
 type Task = VoiceStatusWork;
@@ -199,16 +198,12 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   const workspaceA = workspaces.find((workspace) => workspace.name === GLOBAL_LIVE_INTENT.workspaceA)!;
   const workspaceB = workspaces.find((workspace) => workspace.name === GLOBAL_LIVE_INTENT.workspaceB)!;
   if (!workspaceA || !workspaceB) throw new Error("The requested workspaces are unavailable.");
-  const hosts = yield* directCollection<Host>("clanky_list_servers", { kind: "hosts", limit: null });
-  const ssh = hosts.find((host) => host.ref.kind === "ssh");
-  if (!hosts.some((host) => host.ref.kind === "local") || !ssh?.ref.serverId) {
-    throw new Error("The caller's local and SSH execution hosts are unavailable.");
-  }
-  const servers = yield* directCollection<Server>("clanky_list_servers", { kind: "servers", limit: null });
-  const server = servers.find((entry) => entry.id === ssh.ref.serverId)!;
+  const hosts = yield* directCollection<Host>("clanky_list_servers", { limit: null });
+  const local = hosts.find((host) => host.ref.kind === "local");
+  if (!local) throw new Error("The caller's local execution host is unavailable.");
   const hostFile = yield* operation<{ content: string }>("GET /api/execution-hosts/:kind/:id/files/content", {
-    parameters: { kind: ssh.ref.kind, id: server.id },
-    query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: server.repositoriesBasePath },
+    parameters: { kind: local.ref.kind, id: local.ref.nodeId },
+    query: { path: GLOBAL_LIVE_INTENT.hostFile, startDirectory: workspaceB.directory },
   });
   const listedChats = yield* directCollection<Chat>("clanky_list_chats", {
     name: null, workspace: workspaceA.name, status: null, limit: 20,
@@ -271,7 +266,7 @@ function* globalJourney(): Generator<FixtureStep, void, unknown> {
   assertVoiceStatus(recentTasks.entries.find((entry) => entry.name === GLOBAL_LIVE_INTENT.failedTask), "failed", "error");
   const prompt = taskRead.content;
   if (typeof prompt !== "string" || !answer) throw new Error("The requested source work is unreadable.");
-  const handoff = `${prompt}\nTask status: ${task.status}; chat status: ${chat.status}.\nLatest answer: ${answer}\nSSH handoff: ${hostFile.content}`;
+  const handoff = `${prompt}\nTask status: ${task.status}; chat status: ${chat.status}.\nLatest answer: ${answer}\nHost handoff: ${hostFile.content}`;
 
   // The user declines retirement of A, then explicitly approves new work on B.
   yield* operation("DELETE /api/tasks/:id", {

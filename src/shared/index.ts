@@ -29,7 +29,7 @@ export * from "./preferences";
 export * from "./prompt-templates";
 export * from "./provisioning";
 export * from "./settings";
-export * from "./ssh-server";
+export * from "./execution-host-discovery";
 export * from "./terminal-session";
 export * from "./terminal-session-events";
 export * from "./tool-call";

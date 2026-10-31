@@ -267,12 +267,6 @@ export async function openTcpTunnel(options: {
     options.binding,
     "tcpTunnel",
   );
-  if (options.binding.host.kind === "ssh") {
-    throw new DomainError(
-      "ssh_tunnel_requires_credentials",
-      "SSH tunnel setup requires adapter credentials.",
-    );
-  }
   if (options.binding.host.kind === "mesh") {
     const tunnel = new MeshTcpTunnel(
       options.binding,

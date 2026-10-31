@@ -158,10 +158,6 @@ export class LiveVoiceManager {
     return await this.requireCall(id, clientId).confirm(requestId, approved);
   }
 
-  supplyCredential(id: string, clientId: string, requestId: string, token: string | null): void {
-    this.requireCall(id, clientId).actions.supplyCredential(requestId, token);
-  }
-
   async close(id: string, clientId: string): Promise<LiveVoiceCallState> {
     const call = this.requireCall(id, clientId);
     // A cancelled response can hide the successor's ID from the browser.

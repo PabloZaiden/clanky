@@ -51,14 +51,7 @@ export const settingsRoutes = defineRoutes({
         automation: {
           policy: "confirm",
           reason: "Starts restart jobs for every automatic workspace.",
-          hiddenInputs: ["credentialTokensByServerId", "credentialUnavailableServerIds"],
           completion: "admission",
-          credential: {
-            kind: "ssh",
-            resource: { name: "workspaces", purpose: "restart-automatic" },
-            mapInput: "credentialTokensByServerId",
-            unavailableInput: "credentialUnavailableServerIds",
-          },
         },
       },
     },

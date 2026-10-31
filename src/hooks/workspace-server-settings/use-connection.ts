@@ -2,7 +2,6 @@ import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
 import type { ExecutionHostRef } from "@/shared";
-import type { WorkspaceSshTargetRequest } from "@/contracts/schemas";
 import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceConnection(
@@ -16,7 +15,6 @@ export function useWorkspaceConnection(
     async (
       testSettings: ServerSettings,
       executionHost: ExecutionHostRef | null,
-      sshTarget?: WorkspaceSshTargetRequest | null,
     ): Promise<{ success: boolean; error?: string }> => {
       if (!workspaceId) {
         return { success: false, error: "No workspace selected" };
@@ -34,7 +32,6 @@ export function useWorkspaceConnection(
             body: JSON.stringify({
               settings: testSettings,
               ...(executionHost ? { executionHost } : {}),
-              ...(sshTarget ? { sshTarget } : {}),
             }),
             action: "Test workspace server connection",
             fallbackMessage: "Failed to test workspace server connection",

@@ -14,7 +14,7 @@ export function ControlRequestRow({ request, onNavigate, showPrivateItems }: {
 }) {
   return <ClankyListRow
     title={request.description}
-    description={request.kind === "confirmation" ? "Approval required" : "Private SSH credential required"}
+    description="Approval required"
     meta={`Expires ${new Date(request.expiresAt).toLocaleString()}`}
     metaPlacement="below"
     privateHidden={shouldObscurePrivateItem(request.isPrivate, showPrivateItems)}

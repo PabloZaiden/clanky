@@ -15,7 +15,7 @@ export function ClipboardFallbackCard({
 }: ClipboardFallbackCardProps) {
   return (
     <Card
-      data-testid="ssh-terminal-clipboard-fallback"
+      data-testid="terminal-clipboard-fallback"
       padding={false}
       className={[
         "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40",
