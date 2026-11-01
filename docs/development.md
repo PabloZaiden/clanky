@@ -18,6 +18,21 @@ The combined development server runs `bun --hot src/index.ts serve` at
 server or `CLANKY_WEB_DIST_DIR`. Use a disposable `CLANKY_DATA_DIR` for local
 experiments so developer/production data is not modified.
 
+## Local-only information
+
+Keep personal, environment-specific, or otherwise non-shareable local material
+in the repository-root `.personal/` directory. Create it as needed for private
+configuration, operational notes and other local-only files. It is excluded
+from Git and Docker build contexts.
+
+Never force-add, commit or publish its contents, copy private details into
+tracked files, or link to private notes from shared documentation. Keep tracked
+guides, examples and configuration reusable, using placeholders instead of
+personal environment values.
+
+Ignored storage is not a secret manager. Keep passwords, tokens and private
+keys in approved secret storage, not documentation or personal notes.
+
 ## Choose a development guide
 
 Read the guide relevant to the change, not every guide for every task.
@@ -55,6 +70,11 @@ The optional [Apple app shell](apple-apps.md) packages the same frontend in
 Swift + WKWebView for macOS and iPhone/iPad. Use `bun run build:apple:macos`
 for a Mac `.app` including the existing standalone CLI/controller, or
 `bun run build:apple:ios` for the client-only iOS simulator app.
+`bun run build:apple:ios:linux` cross-compiles the physical-device app on Linux;
+`bun run build:apple:ios:simulator:linux` builds for Apple Silicon simulators.
+Both use Swift and xtool; simulation, signing and wireless installation can
+remain on a Mac without installing Clanky's source or dependencies there.
+See the Apple guide for the SDK and device setup.
 
 Use the [testing guide](development/testing.md) for prerequisites, narrower
 checks, coverage decisions, and required validation.

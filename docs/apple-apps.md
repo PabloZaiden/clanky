@@ -38,7 +38,9 @@ business logic. Indicators remain visible. Other layouts keep the web controls.
 The composer combines its ordinary bottom spacing with safe-area clearance
 using the greater of the two, not their sum.
 
-The project requires Xcode 27.1+ and targets macOS 14+ and iOS/iPadOS 17+.
+The Xcode project requires Xcode 27.1+ and targets macOS 14+ and iOS/iPadOS 17+.
+Physical-device and Apple Silicon simulator iOS apps can also be cross-compiled
+on Linux with Swift 6.4+ and xtool 1.24.0, using an SDK prepared from Xcode 27.1.
 Build tools require Bun and the repository's dependencies; installed apps
 do not require Bun, Node, a frontend server installation or a preinstalled
 Clanky CLI.
@@ -72,9 +74,10 @@ Release builds still require a helper supporting every requested architecture.
 Replace/rebuild the whole app to update it; running CLI self-update against
 the embedded helper would modify the signed bundle and is not an app updater.
 
-Both Apple targets use the checked-in `AppIcon` asset catalog for Clanky's
+Both Xcode targets use the checked-in `AppIcon` asset catalog for Clanky's
 native app icon, including Finder/Dock on Mac and the iPhone/iPad Home Screen.
 These native icons are separate from web favicon and manifest assets.
+The Linux build packages the iOS PNG from that same catalog through xtool.
 After changing `src/logo.png`, regenerate those native assets on macOS with
 `swift scripts/generate-apple-icons.swift` and rebuild the apps. The generator
 keeps transparent clearance for Mac and produces an opaque square for iOS,
@@ -174,6 +177,322 @@ The simulator and Mac app share the host's loopback network. Each installation
 chooses its own available asset port on first startup and keeps it afterward,
 so Mac and simulated clients can run together. Physical devices have their own
 loopback network.
+
+### Compile on Linux; simulate or sign and install on a Mac
+
+The Linux workflow compiles both the web UI and the Swift shell. It does not
+need an Apple account or signing key on Linux. It preserves the Xcode workflow
+and reuses its shared Swift sources, Debug iOS settings, permissions and icon
+artwork; generated SwiftPM/xtool configuration and build output stay under
+`dist/apple/`. The executable records the installed SDK version separately from
+the minimum iOS version, preserving iOS's linked-SDK behavior.
+
+Install Swift 6.4+ and xtool using the
+[xtool Linux guide](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Linux.md).
+For unsigned builds, prepare the SDK without running `xtool setup` or logging
+in. An existing Mac Xcode installation can supply it. With xtool available on
+the Mac, prepare an SDK for your Linux build architecture (`x86_64` or `arm64`).
+Replace the paths and architecture placeholder below:
+
+```bash
+XCODE_APP="/path/to/Xcode.app"
+SDK_OUTPUT="/path/to/sdk-output"
+mkdir -p "$SDK_OUTPUT"
+xtool sdk build "$XCODE_APP" "$SDK_OUTPUT" --arch "<linux-architecture>"
+COPYFILE_DISABLE=1 tar -czf /path/to/darwin.xtoolsdk.tar.gz \
+  -C "$SDK_OUTPUT" darwin.xtoolsdk
+```
+
+Transfer the archive privately to Linux and verify its checksum.
+Do not publish the SDK or commit it to Git.
+`COPYFILE_DISABLE=1` avoids macOS AppleDouble metadata, which otherwise appears
+as invalid extra platforms to the Linux build system.
+
+On Linux, extract and install that SDK, then build from the repository root:
+
+```bash
+tar --exclude='._*' -xzf /path/to/darwin.xtoolsdk.tar.gz -C /path/to/sdk-directory
+xtool sdk install /path/to/sdk-directory/darwin.xtoolsdk
+bun install --frozen-lockfile
+bun run build:apple:ios:linux
+```
+
+The output is `dist/apple/ios-linux/xtool/Clanky.app`, an arm64 physical-device
+app, not a simulator build. It still needs development signing and provisioning;
+an unsigned build is not installable merely by downloading it on the phone.
+Copy the whole app to the signing Mac, preserving its contents and verifying
+the transfer checksum. Keep the same Apple team and app identity for updates.
+
+To build for an Apple Silicon iOS simulator instead, use the same Linux
+toolchain and the SDK's iPhoneSimulator platform:
+
+```bash
+bun run build:apple:ios:simulator:linux
+```
+
+The output is `dist/apple/ios-simulator-linux/xtool/Clanky.app`. This is an
+arm64 `IOS_SIMULATOR` artifact, distinct from the physical-device app even
+though both executables use arm64. Transfer the complete app privately and
+verify its checksum before installing it on the simulation Mac.
+
+#### Container builds
+
+An existing Linux Swift/xtool installation can be reused in a container.
+First install the repository's locked dependencies and run
+`bun run build && bun run test` on the source host. Use a Swift 6.4+ image and
+Linux Bun/xtool binaries matching the container's architecture.
+
+Set `PROJECT` to the checkout, `XTOOL_ROOT` to the complete xtool installation
+containing `tools/bin/xtool`, `SDK_HOME` to the home containing the installed
+Darwin SDK, and `SWIFT_IMAGE` to the selected image. Adjust the installation
+layout if necessary; preserve any relative CLI dependencies when mounting it.
+Then build the simulator app:
+
+```bash
+set -euo pipefail
+BUN_BINARY="$(command -v bun)"
+docker run --rm \
+  -v "$PROJECT:/project" \
+  -v "$XTOOL_ROOT:/experiment" \
+  -v "$SDK_HOME:/root" \
+  -v "$BUN_BINARY:/usr/local/bin/bun:ro" \
+  -e "GITHUB_SHA=$(git -C "$PROJECT" rev-parse HEAD)" \
+  "$SWIFT_IMAGE" /bin/bash -lc '
+    set -eu
+    export PATH="/experiment/tools/bin:/usr/local/bin:$PATH"
+    cd /project
+    bun run build:apple:ios:simulator:linux
+  '
+```
+
+Use `bun run build:apple:ios:linux` in the same container for the physical-device
+artifact. Writable project/SDK-home mounts let build output and compiler caches
+persist without installing build dependencies on the signing Mac. Pass the
+source revision explicitly when a worktree's Git metadata lives outside the
+mounted checkout. Record uncommitted source changes too: a commit ID alone does
+not identify a dirty build.
+
+#### Transfer built bundles
+
+Archive the complete `.app`, preserving its executable permissions and resource
+layout. Keep simulator and physical-device artifacts separate. For example,
+on Linux after a simulator build:
+
+```bash
+set -euo pipefail
+REV="$(git rev-parse --short=12 HEAD)"
+BUILD="$(date -u +%Y%m%dT%H%M%SZ)"
+ARTIFACT_DIR=".personal/artifacts"
+mkdir -p "$ARTIFACT_DIR"
+ARCHIVE="$ARTIFACT_DIR/Clanky-simulator-$REV-$BUILD.tar.gz"
+tar -czf "$ARCHIVE" -C dist/apple/ios-simulator-linux/xtool Clanky.app
+sha256sum "$ARCHIVE" | awk '{print $1}' > "$ARCHIVE.sha256"
+git diff --binary HEAD > "$ARTIFACT_DIR/source-$REV-$BUILD.patch"
+```
+
+For a physical build, archive `dist/apple/ios-linux/xtool/Clanky.app` with a
+distinct device-artifact name. Keep source patches and other local-only metadata
+private; transfer only the intended app archive and its checksum.
+
+For registered Clanky hosts, use the authenticated file explorer: download the
+archive from the source workspace/host and upload it into the destination
+execution host's artifact directory. Enable hidden-file visibility when browsing
+`.personal/`. This browser-owned binary transfer is separate from native command
+execution; raw upload/WebDAV protocols are not JSON control operations. Do not
+invent a JSON binary-upload workaround or an API-credential bridge. A different
+transfer transport requires its own approval.
+
+Verify against the trusted source digest before extraction on the Mac. Use a
+fresh destination instead of partially overwriting an old bundle:
+
+```bash
+set -euo pipefail
+ARCHIVE="/path/to/received-app.tar.gz"
+DEST="/path/to/new-artifact-directory"
+EXPECTED_SHA256="<trusted-source-sha256>"
+ACTUAL_SHA256="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
+if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+  printf 'App archive checksum mismatch\n' >&2
+  exit 1
+fi
+if [ -e "$DEST" ] || [ -L "$DEST" ]; then
+  printf 'Artifact destination already exists\n' >&2
+  exit 1
+fi
+mkdir -p "$DEST"
+tar -xzf "$ARCHIVE" -C "$DEST"
+test -d "$DEST/Clanky.app"
+```
+
+The trusted archive should contain only the intended `Clanky.app` tree.
+Native signing changes the Mac copy; do not compare its post-signing bytes to
+the original unsigned Linux bundle and mistake that change for transfer damage.
+
+#### Run and inspect the simulator
+
+That Mac or macOS VM needs only Xcode 27.1+ and a compatible installed iOS
+CoreSimulator runtime, not a Clanky checkout, Bun or its dependencies.
+Complete Xcode's first-launch setup and install the desired iOS runtime;
+the SDK alone does not include a runnable simulator. License acceptance and
+any administrator prompts remain the user's responsibility. Xcode can live
+in a user-owned location; set `DEVELOPER_DIR` to the selected app's
+`Contents/Developer` instead of changing the system selection.
+Check that the intended model can actually be created with the installed
+runtime; appearing in `simctl list devicetypes` alone does not establish
+compatibility. Select a compatible runtime for the intended model; do not
+substitute a different model to claim its layouts were validated or edit
+Apple's compatibility metadata.
+
+No Apple Developer account is required for simulation. Use the installed
+Xcode's Developer directory, list the available device types/runtimes and
+create or select the intended simulator. Boot it once if it is shut down.
+The Linux simulator bundle is unsigned: apply a native ad-hoc signature to
+the transferred Mac copy before installing. This does not use an Apple
+development identity or make the physical-device artifact installable.
+
+```bash
+export DEVELOPER_DIR="/path/to/Xcode.app/Contents/Developer"
+xcrun simctl list devicetypes
+xcrun simctl list runtimes
+xcrun simctl list devices available
+codesign --force --sign - --timestamp=none /path/to/simulator/Clanky.app
+codesign --verify --strict --verbose=2 /path/to/simulator/Clanky.app
+xcrun simctl bootstatus "<simulator-identifier>" -b
+xcrun simctl install "<simulator-identifier>" /path/to/simulator/Clanky.app
+xcrun simctl launch --terminate-running-process "<simulator-identifier>" com.clanky.app
+open "${DEVELOPER_DIR%/Developer}/Applications/DeviceHub.app"
+```
+
+For a new simulator, select its device type and runtime from the available
+lists, create it once and boot the returned identifier:
+
+```bash
+xcrun simctl create "<simulator-name>" \
+  "<device-type-identifier>" \
+  "<runtime-identifier>"
+xcrun simctl boot "<simulator-identifier>"
+```
+
+Do not recreate or erase the device to install subsequent builds.
+
+In current Xcode, **Xcode > Open Developer Tool > Device Hub** opens the
+interactive device canvas; the legacy `Simulator.app` path is not required.
+For a foldable simulator, use its pose controls to inspect the intended
+layouts. See [Apple's Device Hub interaction guide](https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub).
+
+Some simulators have multiple displays. Use
+`xcrun simctl io "<simulator-identifier>" enumerate`
+to inspect their IDs and powered state, then select a display explicitly:
+
+```bash
+xcrun simctl io "<simulator-identifier>" screenshot --type=png \
+  --display="<screen-identifier>" /path/to/simulator.png
+```
+
+Change the pose before reviewing the other display. A screenshot of an inactive
+display can be black; capturing both IDs without unfolding is not validation
+of both layouts.
+
+Retrieve or preview PNGs through the authenticated file explorer or an approved
+transfer. A successful launch/process ID is not visual validation. Record which
+device, pose and display were actually reviewed; if capture/review is unavailable,
+state that limitation instead of claiming the layout passed.
+
+Keep the chosen simulator and install later builds on that same device to
+preserve its app data. A physical iPhone cannot install this simulator artifact.
+Run application builds and the repository suite on Linux; use the Mac for
+simulator runtime and visual checks, then native signing when the account,
+certificate and provisioning requirements below are met. A private-NAT VM
+does not automatically discover a real iPhone on the host's Wi-Fi: use a
+reachable paired Mac for network deployment rather than assuming simulation
+or signing establishes physical-device connectivity.
+
+For wireless installation:
+
+1. Put the Mac and iPhone on the same local network. In Xcode, open
+   **Manage Devices > Device Hub**. On iOS/iPadOS 27+, use
+   **Add Device > Pair Nearby Device** for initial wireless pairing. Older
+   versions need a cable for the first pairing. Enable Developer Mode and
+   accept the trust/pairing prompts on the phone. For subsequent Wi-Fi runs,
+   Apple requires a compatible network with IPv6 enabled; a routed VPN alone
+   is not a substitute for local device discovery. See
+   [Apple's pairing guide](https://developer.apple.com/documentation/xcode/managing-your-simulated-and-physical-devices-in-device-hub).
+2. Set up native development signing in Xcode on the Mac: add your Apple
+   account, select its team for **Clanky-iOS**, and use automatic provisioning
+   for the intended phone and a unique bundle identifier. An **Apple
+   Development** certificate with its private key and a valid device development
+   profile must be available before signing can proceed. A free Personal Team
+   is sufficient. Keep the keys on the Mac; no Apple login is needed on Linux.
+3. Use Apple's `codesign` to sign the existing Linux-built app. First verify
+   that the profile is unexpired, authorizes this phone and signing certificate,
+   and matches the app's bundle identifier. Embed it as
+   `Clanky.app/embedded.mobileprovision` and prepare development entitlements
+   permitted by that profile. The application/team identifiers must match;
+   do not copy wildcard entitlements unchanged or silently change the app ID.
+4. Verify the signature, then use Apple's `devicectl` installer. Neither step
+   recompiles the app or depends on xtool finding the phone.
+
+#### Physical signing and installation gates
+
+Before using the commands below, check the intended Mac's currently usable
+development identities with `security find-identity -v -p codesigning`.
+An ad-hoc simulator signature is not an Apple Development identity.
+Decode a selected profile locally with
+`security cms -D -i /path/to/profile.mobileprovision` and verify its expiration,
+provisioned device, developer certificate and authorized application identifier.
+Keep decoded account/device details in private local storage, not shared guides.
+
+Prepare entitlements from the matching provisioning configuration. App identifier
+prefixes, team identifiers, keychain groups and development permissions must
+match what the profile authorizes; do not assume every prefix equals the team
+ID or copy wildcard entitlements unchanged. If the selected team cannot use the
+current bundle ID, obtain approval to change it and rebuild from the authoritative
+project settings instead of silently patching the signed bundle.
+Confirm that the artifact is the physical-device build, not the simulator build.
+
+Account setup, certificate/profile creation, keychain access, pairing and actual
+phone installation require fresh user approval where applicable. Use private
+OS prompts for account passwords and keychain unlocks; never put them in command
+arguments or note files. Check current device connectivity again immediately
+before installation; being on a reachable LAN alone does not prove pairing.
+
+With the matching profile and entitlements already prepared:
+
+```bash
+cp /path/to/profile.mobileprovision /path/to/Clanky.app/embedded.mobileprovision
+codesign --force --sign "<Apple Development identity>" \
+  --entitlements /path/to/Entitlements.plist /path/to/Clanky.app
+codesign --verify --strict --verbose=2 /path/to/Clanky.app
+xcrun devicectl list devices
+xcrun devicectl device install app --device "<device-identifier>" /path/to/Clanky.app
+```
+
+These commands normally run as the Mac's ordinary user, without `sudo`.
+Administrative privileges cannot replace a missing Apple signing identity or
+profile. A locked signing keychain may still require the user's interaction.
+On an artifact-only signing host, Xcode's Accounts settings can create the
+development certificate, but a matching provisioning profile is still required.
+Automatic provisioning requires an Xcode project with the intended bundle
+identifier; it can be a separate minimal signing-only project, rather than a
+Clanky checkout or a Mac-side Clanky build. Keep the actual Linux-built app's
+identifier and entitlements aligned with that profile.
+Account/team setup can be performed through remote desktop; being physically
+at the Mac is not required, but credentials, two-factor codes and private keys
+must not be sent to an agent. Open Clanky on the phone after installation
+succeeds.
+
+xtool is optional for Mac signing/deployment. Its device discovery is separate
+from Apple's CoreDevice: a phone paired and connected in `devicectl` can still
+be absent from `xtool devices --network --no-wait`. Do not wait indefinitely in
+`xtool install --network` when its discovery list is empty; use the native
+signing/installation route above.
+
+Neither a successful cross-build nor a visible simulator proves physical-device
+installation. Missing development signing, an unpaired phone or unavailable
+network discovery must be resolved before claiming deployment. Free-account
+expiry and app/device limits still apply. In the installed app, connect to the
+existing Clanky API's reachable HTTPS address, not the build Mac's loopback
+address.
 
 ## Connections and web behavior
 
