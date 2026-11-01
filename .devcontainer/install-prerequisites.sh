@@ -21,23 +21,34 @@ echo "Installing devcontainer prerequisites..."
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   7zip \
+  binutils \
   ca-certificates \
   curl \
   dtach \
   fontconfig \
   fonts-liberation \
   fonts-noto-color-emoji \
+  gnupg2 \
+  gpgv \
   jq \
   libarchive-tools \
   libasound2t64 \
   libatk-bridge2.0-0t64 \
   libatk1.0-0t64 \
+  libc6-dev \
   libcups2t64 \
+  libcurl4-openssl-dev \
   libdrm2 \
+  libedit2 \
   libgbm1 \
+  libgcc-13-dev \
   libgtk-3-0t64 \
+  libncurses-dev \
   libnspr4 \
   libnss3 \
+  libpython3-dev \
+  libsqlite3-0 \
+  libstdc++-13-dev \
   libx11-xcb1 \
   libxcomposite1 \
   libxdamage1 \
@@ -45,7 +56,15 @@ sudo apt-get install -y --no-install-recommends \
   libxkbcommon0 \
   libxrandr2 \
   libxshmfence1 \
-  unzip
+  libxml2-dev \
+  libz3-dev \
+  pkg-config \
+  tzdata \
+  unzip \
+  zip \
+  zlib1g-dev
+
+bash "$(dirname "${BASH_SOURCE[0]}")/install-apple-toolchain.sh"
 
 bash "$(dirname "${BASH_SOURCE[0]}")/install-sf-pro.sh"
 
