@@ -20,17 +20,23 @@ experiments so developer/production data is not modified.
 
 ## Local-only information
 
-Keep personal, environment-specific, or otherwise non-shareable local material
-in the repository-root `.personal/` directory. Create it as needed for private
-configuration, operational notes and other local-only files. It is excluded
-from Git and Docker build contexts.
+Keep personal, environment-specific, or otherwise non-shareable local guidance
+in `$HOME/.clanky-personal-guidance.md`, outside repository checkouts. Read it
+when present at the start of work and before environment-specific actions,
+using only the notes relevant to the current repository and execution host.
 
-Never force-add, commit or publish its contents, copy private details into
-tracked files, or link to private notes from shared documentation. Keep tracked
-guides, examples and configuration reusable, using placeholders instead of
-personal environment values.
+Create or update that file when recording verified local facts, preserving
+unrelated notes. Keep it private to the user and identify which repository or
+host each note applies to. All checkouts and worktrees using the same user home
+share this one file; do not keep separate worktree copies.
 
-Ignored storage is not a secret manager. Keep passwords, tokens and private
+Never commit or publish the file, copy private details into tracked files, or
+link to private notes from shared documentation. Keep tracked guides, examples
+and configuration reusable, using placeholders instead of personal values.
+Keep binary artifacts and private source patches outside repository checkouts,
+separate from the Markdown guidance.
+
+Personal guidance is not a secret manager. Keep passwords, tokens and private
 keys in approved secret storage, not documentation or personal notes.
 
 ## Choose a development guide

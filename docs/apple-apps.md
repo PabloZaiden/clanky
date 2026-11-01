@@ -282,7 +282,7 @@ on Linux after a simulator build:
 set -euo pipefail
 REV="$(git rev-parse --short=12 HEAD)"
 BUILD="$(date -u +%Y%m%dT%H%M%SZ)"
-ARTIFACT_DIR=".personal/artifacts"
+ARTIFACT_DIR="$HOME/.cache/clanky/apple-artifacts"
 mkdir -p "$ARTIFACT_DIR"
 ARCHIVE="$ARTIFACT_DIR/Clanky-simulator-$REV-$BUILD.tar.gz"
 tar -czf "$ARCHIVE" -C dist/apple/ios-simulator-linux/xtool Clanky.app
@@ -294,13 +294,15 @@ For a physical build, archive `dist/apple/ios-linux/xtool/Clanky.app` with a
 distinct device-artifact name. Keep source patches and other local-only metadata
 private; transfer only the intended app archive and its checksum.
 
-For registered Clanky hosts, use the authenticated file explorer: download the
-archive from the source workspace/host and upload it into the destination
-execution host's artifact directory. Enable hidden-file visibility when browsing
-`.personal/`. This browser-owned binary transfer is separate from native command
-execution; raw upload/WebDAV protocols are not JSON control operations. Do not
-invent a JSON binary-upload workaround or an API-credential bridge. A different
-transfer transport requires its own approval.
+For registered Clanky hosts, use the authenticated file explorer with execution
+host targets: download the archive from the source host's artifact directory and
+upload it into the destination host's artifact directory. Select each directory
+explicitly; the source cache above is outside the workspace checkout. Enable
+hidden-file visibility when browsing `.cache/`. This browser-owned binary
+transfer is separate from native command execution; raw upload/WebDAV protocols
+are not JSON control operations. Do not invent a JSON binary-upload workaround
+or an API-credential bridge. A different transfer transport requires its own
+approval.
 
 Verify against the trusted source digest before extraction on the Mac. Use a
 fresh destination instead of partially overwriting an old bundle:
