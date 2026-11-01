@@ -35,7 +35,7 @@ type Settings = Omit<typeof defaults, "lastDeliveryError"> & {
   lastDeliveryError: { message: string; timestamp: string } | null;
 };
 interface Task {
-  config: { id: string };
+  config: { id: string; name: string };
   state: { status: string; planMode?: { isPlanReady: boolean } };
 }
 
@@ -228,8 +228,9 @@ test("users configure private event notifications, pause them without losing sel
     await send("Finish this chat response.");
     await notificationCount(5);
     expect(received[4]!.payload).toEqual({
-      title: "Chat: Work has finished.", shortDescription: "Work has finished.",
-      markdownContent: "Chat: Work has finished.\n\nOpen Clanky to view the details.",
+      title: "Chat: Explicit notifications: Work has finished.",
+      shortDescription: "Chat: Explicit notifications: Work has finished.",
+      markdownContent: "Chat: Explicit notifications: Work has finished.\n\nOpen Clanky to view the details.",
     });
     const selected = await configure({ events: { completed: false } });
     expect(selected.events).toEqual({ ...events, completed: false });
@@ -248,7 +249,7 @@ test("users configure private event notifications, pause them without losing sel
     await application.json(`/api/chats/${chat.config.id}/messages`, {
       apiKey: ownerKey, method: "POST", body: JSON.stringify({
         message: `Secret request: ${JSON.stringify({
-          identifier: secretIdentifier, label: secretIdentifier, reason: secretIdentifier,
+          identifier: secretIdentifier, label: "GitHub access token", reason: "Authenticate the GitHub CLI to publish the requested changes.",
         })}`,
       }),
     });
@@ -258,7 +259,10 @@ test("users configure private event notifications, pause them without losing sel
       { description: "private secret form to need human input", timeoutMs: 10_000 },
     );
     await notificationCount(7);
-    expect((received[6]!.payload as NotificationPayload).shortDescription).toBe("A private secret request needs your attention.");
+    expect((received[6]!.payload as NotificationPayload).shortDescription).toBe(
+      "Chat: Explicit notifications: A private secret request needs your attention. "
+      + "GitHub access token: Authenticate the GitHub CLI to publish the requested changes.",
+    );
     expect(JSON.stringify(received)).not.toContain(secretIdentifier);
     expect(secretChat.state.status).toBe("waiting");
     await application.json(`/api/chats/${chat.config.id}/interrupt`, {
@@ -282,7 +286,10 @@ test("users configure private event notifications, pause them without losing sel
       message.role === "assistant" && message.content.startsWith("Control results: "));
     const [approval] = JSON.parse(approvalMessage!.content.slice("Control results: ".length)) as Array<{ requestId: string }>;
     await notificationCount(8);
-    expect((received[7]!.payload as NotificationPayload).shortDescription).toBe("A permission or approval request needs your decision.");
+    expect((received[7]!.payload as NotificationPayload).shortDescription).toBe(
+      "Chat: Explicit notifications: A permission or approval request needs your decision. "
+      + "Move Explicit notifications to Trash, stopping active work and keeping it recoverable for 30 days.",
+    );
     const rejected = await requestWithCookies(application, human, `/api/control/requests/${approval!.requestId}/decision`, {
       method: "POST", body: JSON.stringify({ approved: false }),
     });
@@ -323,7 +330,9 @@ test("users configure private event notifications, pause them without losing sel
       (current) => current.state.harness?.questions?.some((request) => request.status === "pending") === true,
       { description: "ordinary question to await a human answer", timeoutMs: 10_000 });
     await notificationCount(9);
-    expect((received[8]!.payload as NotificationPayload).shortDescription).toBe("A question needs your answer.");
+    expect((received[8]!.payload as NotificationPayload).shortDescription).toBe(
+      "Chat: Interactive notices: A question needs your answer. Which implementation style should I mimic in the response?",
+    );
     await application.json(`${interactivePath}/questions/${questioned.state.harness!.questions![0]!.requestId}`, {
       apiKey: ownerKey, method: "POST", body: JSON.stringify({ answers: [["Concise"]] }),
     });
@@ -350,7 +359,9 @@ test("users configure private event notifications, pause them without losing sel
         { description: "task plan to await manual approval", timeoutMs: 10_000 },
       );
       await notificationCount(count);
-      expect((received[count - 1]!.payload as NotificationPayload).shortDescription).toBe("A plan is ready for your approval.");
+      expect((received[count - 1]!.payload as NotificationPayload).shortDescription).toBe(
+        `Task: ${task.config.name}: A plan is ready for your approval.`,
+      );
       await application.json(`/api/tasks/${task.config.id}/plan/accept`, {
         apiKey: ownerKey, method: "POST", body: JSON.stringify({ mode: "start_task" }),
       });
@@ -366,12 +377,14 @@ test("users configure private event notifications, pause them without losing sel
     await plan(completedTask, 11);
     await taskStatus(completedTask, "completed");
     await notificationCount(12);
-    expect((received[11]!.payload as NotificationPayload).title).toBe("Task: Work has finished.");
+    expect((received[11]!.payload as NotificationPayload).title).toBe("Task: Completion notification: Work has finished.");
     const blockedTask = await createTask("Blocker notification", "Resolve an unavailable prerequisite [blocked].");
     await plan(blockedTask, 13);
     await taskStatus(blockedTask, "stopped");
     await notificationCount(14);
-    expect((received[13]!.payload as NotificationPayload).shortDescription).toBe("Work is blocked and needs your attention.");
+    expect((received[13]!.payload as NotificationPayload).shortDescription).toBe(
+      "Task: Blocker notification: Work is blocked and needs your attention.",
+    );
 
     await application.json(`${interactivePath}/messages`, {
       apiKey: ownerKey, method: "POST", body: JSON.stringify({ message: "[chat-provider-error]" }),
@@ -379,7 +392,7 @@ test("users configure private event notifications, pause them without losing sel
     await pollUntil(readInteractive, (current) => current.state.status === "failed",
       { description: "chat provider error to be reported", timeoutMs: 10_000 });
     await notificationCount(15);
-    expect((received[14]!.payload as NotificationPayload).shortDescription).toBe("An error occurred.");
+    expect((received[14]!.payload as NotificationPayload).shortDescription).toBe("Chat: Interactive notices: An error occurred.");
     expect(JSON.stringify(received)).not.toContain("Deterministic external provider failure");
 
     webhookStatus = 500;

@@ -15,6 +15,7 @@ import {
 } from "./clanky-operation-service";
 import { DomainError } from "../domain/domain-error";
 import { agentNotificationService } from "./agent-notification-service";
+import type { ManagedContextIdentity } from "@/shared/context-api-key";
 
 const PENDING_TTL_MS = 60_000;
 const MAX_PENDING = 16;
@@ -46,6 +47,7 @@ export class ControlActions {
     service: ClankyOperationService;
     confirmationTtlMs?: number;
     requiresConfirmation?: () => Promise<boolean>;
+    notificationOrigin?: ManagedContextIdentity;
     notify?: (content: string) => void;
     remember?: (operation: PreparedOperation, result: OperationResult) => void;
     interact: (action: ControlUiAction, requestId: string, signal: AbortSignal) => Promise<ControlInteractionOutcome>;
@@ -174,7 +176,9 @@ export class ControlActions {
           return { ok: false, completion: "not_executed", outcome };
         }
         retained = true;
-        agentNotificationService.notify("approval", "Agent operation");
+        agentNotificationService.notify("approval", {
+          kind: "Agent operation", operation: prepared, context: description, origin: this.options.notificationOrigin,
+        });
         return {
           ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt,
           ...(outcome.status === "pending" ? { approvalUrl: outcome.url } : {}),

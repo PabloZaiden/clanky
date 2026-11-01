@@ -3,6 +3,7 @@ import { executionHostRefFromParts, isPrivateMeshExecutionHostRef } from "@/shar
 import { readReferenceField } from "@/shared/record";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
+import { loadAgent } from "../persistence/agents";
 import { getWorkspace } from "../persistence/workspaces";
 import type { PreparedOperation } from "./clanky-operation-service";
 
@@ -11,7 +12,7 @@ async function workspacePrivate(id: string): Promise<boolean> {
   return !workspace || workspace.isPrivate === true;
 }
 
-async function resourcePrivate(resource: string, id: string): Promise<boolean> {
+export async function resourcePrivate(resource: string, id: string): Promise<boolean> {
   if (resource === "workspace") return await workspacePrivate(id);
   if (resource === "task") {
     const task = await loadTaskSummary(id);
@@ -23,6 +24,10 @@ async function resourcePrivate(resource: string, id: string): Promise<boolean> {
     if (chat.config.workspaceId) return await workspacePrivate(chat.config.workspaceId);
     return chat.config.source?.kind === "execution_host"
       ? isPrivateMeshExecutionHostRef(chat.config.source.executionHost.host) : false;
+  }
+  if (resource === "agent") {
+    const agent = await loadAgent(id);
+    return !agent || agent.config.isPrivate === true || await workspacePrivate(agent.config.workspaceId);
   }
   return false;
 }
