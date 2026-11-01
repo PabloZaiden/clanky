@@ -84,8 +84,9 @@ file delivery and allowed request headers. `clanky_execute_operation` accepts
 absolute paths on the originating execution's admitted host: `bodyFile` supplies
 raw bytes or private JSON instead of `bodyJson`, `headersFile` supplies a JSON
 record of declared header names/string values, and `responseFile` receives the
-response. The target workspace may be on another host. Inputs are frozen before
-approval; editing their original files does not change approved work. Outputs
+response. Private JSON input is limited to 1 MiB and header JSON to 40,000 bytes;
+raw binary input remains streamed. The target workspace may be on another host.
+Inputs are frozen before approval; editing their original files does not change approved work. Outputs
 are privately staged beside their destination and published with mode `600`;
 only path, byte count and content type return to the model. Existing destinations
 require explicit `overwrite: true`. Never place credential contents inline.

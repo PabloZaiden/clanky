@@ -2,6 +2,8 @@ import { z } from "zod";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 
 export const CONTROL_REQUEST_MAX_BYTES = 256 * 1024;
+export const CONTROL_PRIVATE_JSON_MAX_BYTES = 1024 * 1024;
+export const CONTROL_PRIVATE_HEADERS_MAX_BYTES = 40_000;
 export const ControlApprovalPolicySchema = z.object({ requireApproval: z.boolean() }).strict();
 export type ControlApprovalPolicy = z.infer<typeof ControlApprovalPolicySchema>;
 
@@ -25,8 +27,9 @@ export const ExecuteOperationSchema = z.object({
   bodyFile: z.object({
     path: z.string().min(1).max(16_384),
     contentType: z.string().min(1).max(500).default("application/json"),
-  }).strict().optional(),
-  headersFile: z.object({ path: z.string().min(1).max(16_384) }).strict().optional(),
+  }).strict().describe("Private JSON is limited to 1 MiB; raw binary input remains streamed.").optional(),
+  headersFile: z.object({ path: z.string().min(1).max(16_384) }).strict()
+    .describe("A private JSON string record of declared headers, limited to 40,000 bytes.").optional(),
   responseFile: z.object({
     path: z.string().min(1).max(16_384),
     overwrite: z.boolean().default(false),

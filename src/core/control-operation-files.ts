@@ -1,6 +1,8 @@
 import type { RouteAutomationMetadata } from "@pablozaiden/webapp/server";
 import { z } from "zod";
-import type { ExecuteOperationInput } from "@/contracts/schemas/control";
+import {
+  CONTROL_PRIVATE_HEADERS_MAX_BYTES, CONTROL_PRIVATE_JSON_MAX_BYTES, type ExecuteOperationInput,
+} from "@/contracts/schemas/control";
 import { DomainError } from "../domain/domain-error";
 import { closeCommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
@@ -40,7 +42,7 @@ export async function prepareControlOperationFiles(
       throw new DomainError("control_files_unavailable", "The execution host does not support streaming file writes.");
     }
     const writeStream = executor.writeFileStream.bind(executor);
-    const existing = destination ? await executor.getFileMetadata(destination, { signal }) : null;
+    const existing = destination ? await executor.getFileMetadata(destination, { includeContentHash: false, signal }) : null;
     if (existing && existing.kind !== "file") {
       throw new DomainError("control_file_path_invalid", "The response destination must be a file, not a directory.");
     }
@@ -57,18 +59,42 @@ export async function prepareControlOperationFiles(
     let body: unknown;
     let headers: Record<string, string> | undefined;
     const raw = automation.execution?.requestFormat === "raw";
-    const freeze = async (path: string, frozen: string): Promise<number> => {
-      const sourceMetadata = await executor.getFileMetadata(path, { signal });
+    const sizeLimitError = (maxBytes: number) => new DomainError(
+      "control_file_too_large", `The private input file exceeds the ${maxBytes} byte limit.`,
+    );
+    const freeze = async (path: string, frozen: string, maxBytes?: number): Promise<void> => {
+      const sourceMetadata = await executor.getFileMetadata(path, { includeContentHash: false, signal });
       if (sourceMetadata?.kind !== "file") throw new DomainError("control_file_unavailable", "The input must be an existing file on the execution host.");
-      const stream = await executor.streamFile(path, { signal });
-      if (!stream) throw new DomainError("control_file_unavailable", "The input file could not be read.");
-      const copied = await writeStream(frozen, stream, { signal });
-      if (!copied.success) throw new DomainError("control_file_unavailable", "The input file could not be frozen.");
-      return copied.bytesWritten;
+      if (maxBytes !== undefined && sourceMetadata.size > maxBytes) throw sizeLimitError(maxBytes);
+      if (!executor.copyFile) throw new DomainError("control_files_unavailable", "The execution host does not support host-side file copying.");
+      signal.throwIfAborted();
+      if (!await executor.copyFile(path, frozen)) throw new DomainError("control_file_unavailable", "The input file could not be frozen.");
+      signal.throwIfAborted();
+      const frozenMetadata = await executor.getFileMetadata(frozen, { includeContentHash: false, signal });
+      if (frozenMetadata?.kind !== "file") throw new DomainError("control_file_unavailable", "The frozen input file is unavailable.");
+      if (maxBytes !== undefined && frozenMetadata.size > maxBytes) throw sizeLimitError(maxBytes);
     };
-    const readJson = async (path: string): Promise<unknown> => {
-      const content = await executor.readFile(path, { signal });
-      if (content === null) throw new DomainError("control_file_unavailable", "The frozen JSON input could not be read.");
+    const readJson = async (path: string, maxBytes: number): Promise<unknown> => {
+      const stream = await executor.streamFile(path, { signal });
+      if (!stream) throw new DomainError("control_file_unavailable", "The frozen JSON input could not be read.");
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let content = "";
+      let bytes = 0;
+      try {
+        while (true) {
+          signal.throwIfAborted();
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.byteLength;
+          if (bytes > maxBytes) throw sizeLimitError(maxBytes);
+          content += decoder.decode(value, { stream: true });
+        }
+        content += decoder.decode();
+      } finally {
+        try { await reader.cancel(); }
+        finally { reader.releaseLock(); }
+      }
       try { return JSON.parse(content); }
       catch (error) {
         if (!(error instanceof SyntaxError)) throw error;
@@ -76,22 +102,20 @@ export async function prepareControlOperationFiles(
       }
     };
     if (source) {
-      await freeze(source, frozenPath);
+      await freeze(source, frozenPath, raw ? undefined : CONTROL_PRIVATE_JSON_MAX_BYTES);
       if (!raw) {
         if (!input.bodyFile?.contentType.toLowerCase().startsWith("application/json")) {
           throw new DomainError("control_body_invalid", "JSON operations require an application/json bodyFile.");
         }
-        body = await readJson(frozenPath);
+        body = await readJson(frozenPath, CONTROL_PRIVATE_JSON_MAX_BYTES);
       }
     }
     if (headerSource) {
       const allowed = automation.execution?.requestHeaders ?? [];
       if (!allowed.length) throw new DomainError("control_headers_invalid", "This operation does not declare request headers.");
       const frozenHeaders = joinExecutionPath(executor.pathStyle, reservation, "headers");
-      if (await freeze(headerSource, frozenHeaders) > 40_000) {
-        throw new DomainError("control_headers_invalid", "The private header file exceeds the request header limit.");
-      }
-      const parsed = z.record(z.string(), z.string()).parse(await readJson(frozenHeaders));
+      await freeze(headerSource, frozenHeaders, CONTROL_PRIVATE_HEADERS_MAX_BYTES);
+      const parsed = z.record(z.string(), z.string()).parse(await readJson(frozenHeaders, CONTROL_PRIVATE_HEADERS_MAX_BYTES));
       const validatedHeaders: Record<string, string> = Object.create(null);
       for (const [name, value] of Object.entries(parsed)) {
         const normalized = name.toLowerCase();
@@ -129,7 +153,7 @@ export async function prepareControlOperationFiles(
         // A same-filesystem link publishes without a check/rename overwrite race.
         const published = input.responseFile?.overwrite
           ? await executor.movePath(staged, destination, { overwrite: true })
-          : await executor.exec("ln", ["--", staged, destination], { signal: responseSignal, timeout: 5_000, logFailures: false });
+          : await executor.exec("link", [staged, destination], { signal: responseSignal, timeout: 5_000, logFailures: false });
         if (!published.success) throw new DomainError("control_response_file_failed", "The response destination could not be published. Inspect the operation target before repeating a mutation.");
         return {
           ok: response.ok, status: response.status,

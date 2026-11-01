@@ -80,13 +80,14 @@ export interface PreparedOperation {
 const SECRET_INPUTS = new Set([
   "apikey", "apikeys", "password", "credentialtoken", "encryptedcredential",
   "privatekey", "authorization", "cookie", "accesstoken", "refreshtoken",
-  "token", "secret", "webhookurl", "enrollmenttoken", "invitationtoken", "locktoken",
+  "token", "secret", "webhookurl", "enrollmenttoken", "invitationtoken", "invitation", "locktoken",
 ]);
 
 function assertSafeInputs(value: unknown): void {
   if (!value || typeof value !== "object") return;
   for (const [key, child] of Object.entries(value)) {
-    if (SECRET_INPUTS.has(key.replace(/[-_]/g, "").toLowerCase())) {
+    const name = key.replace(/[-_]/g, "").toLowerCase();
+    if (SECRET_INPUTS.has(name) && !(name === "secret" && typeof child === "boolean")) {
       throw new DomainError("voice_operation_invalid", "Credential material must use a private input file, not inline tool arguments.");
     }
     assertSafeInputs(child);

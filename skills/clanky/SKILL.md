@@ -37,7 +37,8 @@ For non-direct intents, list and describe the canonical operation before calling
 `clanky_execute_operation`. Obey `bodyFileRequired`, `responseFileRequired` and
 the exact `requestHeaders`. Use absolute paths on the originating execution
 host: `bodyFile: { path, contentType }` supplies frozen raw bytes or private JSON
-instead of `bodyJson`; `headersFile: { path }` supplies a frozen JSON record of
+instead of `bodyJson` (private JSON is limited to 1 MiB; raw bytes stay streamed);
+`headersFile: { path }` supplies a frozen JSON record of at most 40,000 bytes of
 declared headers; `responseFile: { path, overwrite }` saves private/binary output
 with mode `600`. The target can reside on another host. File results expose only
 path, bytes and content type. Never print credentials, copy them into repository

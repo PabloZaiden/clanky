@@ -167,13 +167,20 @@ approvals for generic activity.
 
 Execution-only file transport belongs to the same operation/action owner and
 uses the admitted host's executor, never controller-local filesystem access.
-Freeze private JSON, raw bytes and declared headers before approval; retain only
-file references in public arguments. Raw/private responses require mode-600 file
+Freeze private JSON, raw bytes and declared headers with host-side copying before
+approval; retain only file references in public arguments. Raw/private responses require mode-600 file
 delivery, staged on the destination filesystem, and never enter model-visible
 results. File transport is revalidated at dispatch and after approval; narrowing
 the grant disables it. The action/session owner releases staging on completion,
 rejection, cancellation, expiry and graceful shutdown. Pending requests and their
 protected staging are not a restart-recovery mechanism.
+Private JSON is bounded to 1 MiB and header JSON to 40,000 bytes before copying
+and while reading; raw binary input stays streamed. Metadata checks do not hash
+contents. No-overwrite responses use the exact-target POSIX `link` utility so a
+destination that becomes a directory cannot silently redirect publication.
+Mesh read streams release the worker-wide filesystem lock after initialization,
+not after consumption, allowing same-host transfer consumers to write. Stream
+cancellation and session lifetime remain tracked; mutations remain serialized.
 
 ## Execution hosts and workspace paths
 
