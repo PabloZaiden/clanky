@@ -49,7 +49,7 @@ import { createTimestamp } from "@/shared/events";
 import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
-import { closeOpenQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/harness-questions";
+import { closeOpenQuestions, formatHarnessQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/harness-questions";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { HarnessError } from "../backends/harness-errors";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
@@ -364,23 +364,31 @@ export class ChatStateService implements ChatStatePort {
       for (const request of updated.state.harness?.questions ?? []) {
         if (request.status === "pending"
           && !previous.state.harness?.questions?.some((existing) => existing.requestId === request.requestId)) {
-          agentNotificationService.notify(request.secretIdentifier === undefined ? "question" : "secret", "Chat");
+          const secret = request.secretIdentifier !== undefined;
+          agentNotificationService.notify(secret ? "secret" : "question", {
+            kind: "Chat", id: updated.config.id,
+            context: secret
+              ? request.questions.map((question) => `${question.header}: ${question.question}`).join("\n\n")
+              : formatHarnessQuestions(request.questions),
+          });
         }
       }
       for (const request of updated.state.pendingPermissionRequests ?? []) {
         if (request.status === "pending"
           && !previous.state.pendingPermissionRequests?.some((existing) => existing.requestId === request.requestId)) {
-          agentNotificationService.notify("approval", "Chat");
+          agentNotificationService.notify("approval", {
+            kind: "Chat", id: updated.config.id,
+          });
         }
       }
     }
     if (chat.config.scope === "workspace" && saved.previousStatus !== updated.state.status) {
-      if (updated.state.status === "failed") agentNotificationService.notify("error", "Chat");
+      if (updated.state.status === "failed") agentNotificationService.notify("error", { kind: "Chat", id: updated.config.id });
       if (options.completedTurn && updated.state.status === "idle"
         && !updated.state.interruptRequested
         && !updated.state.harness?.questions?.some(isQuestionOpen)
         && !updated.state.pendingPermissionRequests?.some((request) => request.status === "pending")) {
-        agentNotificationService.notify("completed", "Chat");
+        agentNotificationService.notify("completed", { kind: "Chat", id: updated.config.id });
       }
     }
     if (saved.previousStatus !== updated.state.status) {

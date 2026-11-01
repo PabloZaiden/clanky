@@ -186,6 +186,7 @@ export class ControlSessionService {
       context: { revision: 0, route: {} }, authority, service: this.options.service,
       confirmationTtlMs: CONFIRMATION_TTL_MS,
       requiresConfirmation: () => preferencesManager.getControlApprovalRequired(),
+      notificationOrigin: access.grant.managedContext,
       interact: async (action, _requestId, signal) => await this.interact(action, signal),
     });
     session = { access, authority, actions, expiresAt: Date.now() + SESSION_TTL_MS, runs: new Set() };

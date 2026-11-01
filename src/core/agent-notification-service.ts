@@ -14,8 +14,27 @@ import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId, requireExecutionOwnerUserId } from "../context/user-context";
 import type { NotificationEventKind } from "@/shared/agent-notifications";
 import { agentEventEmitter, taskEventEmitter } from "./event-emitter";
+import { loadChatMetadata } from "../persistence/chats";
+import { loadTaskSummary } from "../persistence/tasks";
+import { loadAgent, loadAgentRunSummary } from "../persistence/agents";
+import { controlRequestPrivate, resourcePrivate } from "./control-request-privacy";
+import type { PreparedOperation } from "./clanky-operation-service";
+import type { ManagedContextIdentity } from "@/shared/context-api-key";
 
 const log = createLogger("core:agent-notifications");
+
+type AutomaticNotificationSource =
+  | { kind: "Chat" | "Task" | "Agent run"; id: string; context?: string }
+  | { kind: "Agent operation"; operation: PreparedOperation; context: string; origin?: ManagedContextIdentity };
+
+function boundedText(value: string, maximum: number): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length <= maximum ? text : `${text.slice(0, maximum - 3).replace(/[\uD800-\uDBFF]$/u, "").trimEnd()}...`;
+}
+
+function markdownText(value: string): string {
+  return value.replace(/[\\`*_{}[\]()<>#!|]/g, "\\$&");
+}
 
 class AgentNotificationService {
   private controller?: AbortController;
@@ -45,20 +64,20 @@ class AgentNotificationService {
       taskEventEmitter.subscribe((event, context) => {
         if (!context.userId) return;
         switch (event.type) {
-          case "task.error": this.notify("error", "Task", context.userId); break;
+          case "task.error": this.notify("error", { kind: "Task", id: event.taskId }, context.userId); break;
           case "task.stopped":
-            if (event.blocked) this.notify("blocked", "Task", context.userId);
+            if (event.blocked) this.notify("blocked", { kind: "Task", id: event.taskId }, context.userId);
             break;
           case "task.plan.ready":
-            if (event.requiresApproval) this.notify("planReady", "Task", context.userId);
+            if (event.requiresApproval) this.notify("planReady", { kind: "Task", id: event.taskId }, context.userId);
             break;
-          case "task.completed": this.notify("completed", "Task", context.userId); break;
+          case "task.completed": this.notify("completed", { kind: "Task", id: event.taskId }, context.userId); break;
         }
       }),
       agentEventEmitter.subscribe((event, context) => {
         if (!context.userId) return;
-        if (event.type === "agent.run.failed") this.notify("error", "Agent run", context.userId);
-        if (event.type === "agent.run.completed") this.notify("completed", "Agent run", context.userId);
+        if (event.type === "agent.run.failed") this.notify("error", { kind: "Agent run", id: event.agentId }, context.userId);
+        if (event.type === "agent.run.completed") this.notify("completed", { kind: "Agent run", id: event.agentId }, context.userId);
       }),
     ];
   }
@@ -73,7 +92,7 @@ class AgentNotificationService {
   }
 
   // The server lifecycle owns detached delivery; domain mutations never wait for a webhook.
-  notify(event: NotificationEventKind, source: "Chat" | "Task" | "Agent run" | "Agent operation",
+  notify(event: NotificationEventKind, source: AutomaticNotificationSource,
     ownerUserId = requireExecutionOwnerUserId()): void {
     const signal = this.controller?.signal;
     if (!signal || signal.aborted) return;
@@ -83,7 +102,34 @@ class AgentNotificationService {
     this.pending.add(work);
   }
 
-  private async sendAutomatic(event: NotificationEventKind, source: string, ownerUserId: string,
+  private async sourceDetails(source: AutomaticNotificationSource): Promise<{
+    kind?: AutomaticNotificationSource["kind"]; name?: string; context?: string;
+  }> {
+    if (source.kind === "Agent operation") {
+      if (await controlRequestPrivate(source.operation)) return {};
+      const origin = source.origin;
+      if (!origin) return { context: source.context };
+      let work: AutomaticNotificationSource;
+      if (origin.contextType === "chat" || origin.contextType === "task") {
+        work = { kind: origin.contextType === "chat" ? "Chat" : "Task", id: origin.contextId };
+      } else if (origin.contextType === "agent_run") {
+        const run = await loadAgentRunSummary(origin.contextId);
+        if (!run) return {};
+        work = { kind: "Agent run", id: run.agentId };
+      } else {
+        return {};
+      }
+      const details = await this.sourceDetails(work);
+      return details.name ? { ...details, context: source.context } : {};
+    }
+    const resource = source.kind === "Chat" ? "chat" : source.kind === "Task" ? "task" : "agent";
+    const work = source.kind === "Chat" ? await loadChatMetadata(source.id)
+      : source.kind === "Task" ? await loadTaskSummary(source.id) : await loadAgent(source.id);
+    if (!work || await resourcePrivate(resource, source.id)) return {};
+    return { kind: source.kind, name: work.config.name, context: source.context };
+  }
+
+  private async sendAutomatic(event: NotificationEventKind, source: AutomaticNotificationSource, ownerUserId: string,
     signal: AbortSignal): Promise<void> {
     const generation = getNotificationWebhookGeneration(ownerUserId);
     let failure: string | undefined;
@@ -92,8 +138,10 @@ class AgentNotificationService {
       if (!preferences.enabled || !preferences.events[event]) return;
       const url = await this.webhookUrl(ownerUserId);
       if (!url || signal.aborted || generation !== getNotificationWebhookGeneration(ownerUserId)) return;
+      const details = await this.sourceDetails(source);
       const current = getNotificationPreferences(ownerUserId);
-      if (!current.enabled || !current.events[event]) return;
+      if (!current.enabled || !current.events[event] || signal.aborted
+        || generation !== getNotificationWebhookGeneration(ownerUserId)) return;
       const descriptions: Record<NotificationEventKind, string> = {
         error: "An error occurred.",
         blocked: "Work is blocked and needs your attention.",
@@ -104,10 +152,13 @@ class AgentNotificationService {
         completed: "Work has finished.",
       };
       const description = descriptions[event];
+      const name = details.name ? boundedText(details.name, 120) : undefined;
+      const label = name ? `${details.kind ?? source.kind}: ${name}` : source.kind;
+      const context = details.context ? boundedText(details.context, 1_000) : undefined;
       const result = await this.deliver(url, {
-        title: `${source}: ${description}`,
-        shortDescription: description,
-        markdownContent: `${source}: ${description}\n\nOpen Clanky to view the details.`,
+        title: `${boundedText(label, 100 - description.length - 2)}: ${description}`,
+        shortDescription: boundedText(`${name ? `${label}: ` : ""}${description}${context ? ` ${context}` : ""}`, 500),
+        markdownContent: `${markdownText(label)}: ${description}${context ? `\n\n${markdownText(context)}` : ""}\n\nOpen Clanky to view the details.`,
       }, signal);
       if (!result.ok) failure = result.message;
     } catch {
