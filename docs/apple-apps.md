@@ -190,8 +190,10 @@ the minimum iOS version, preserving iOS's linked-SDK behavior.
 The default Ubuntu 24.04 devcontainer installs Swift 6.4.2, xtool 1.24.0 and
 their Linux build dependencies for amd64 or arm64. Existing containers can run
 `bash .devcontainer/install-prerequisites.sh` to install the same tools.
-The installer verifies Swift's official archive signature and xtool's release
-checksum, unpacks xtool without requiring FUSE, and exposes the tools on PATH.
+The installer verifies Swift's official archive signature against a keyring
+containing only the pinned Swift release key and its subkeys, and verifies
+xtool's release checksum. It unpacks xtool without requiring FUSE and exposes
+the tools on PATH.
 Repeated setup reuses the versioned installations and does not remove SDKs.
 
 Outside the devcontainer, install Swift 6.4+ and xtool using the

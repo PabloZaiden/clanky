@@ -56,8 +56,11 @@ if [[ ! -e "$swift_directory" && ! -L "$swift_directory" ]]; then
   fi
   gpg --batch --homedir "${temporary_directory}/gnupg" \
     --import "${temporary_directory}/swift-keys.asc"
-  gpg --batch --homedir "${temporary_directory}/gnupg" \
-    --verify "${temporary_directory}/swift.tar.gz.sig" "${temporary_directory}/swift.tar.gz"
+  gpg --batch --homedir "${temporary_directory}/gnupg" --export "$fingerprint" \
+    > "${temporary_directory}/swift-release-key.gpg"
+  gpgv --homedir "${temporary_directory}/gnupg" \
+    --keyring "${temporary_directory}/swift-release-key.gpg" \
+    "${temporary_directory}/swift.tar.gz.sig" "${temporary_directory}/swift.tar.gz"
   mkdir "${temporary_directory}/swift"
   tar -xzf "${temporary_directory}/swift.tar.gz" --strip-components=1 \
     -C "${temporary_directory}/swift"

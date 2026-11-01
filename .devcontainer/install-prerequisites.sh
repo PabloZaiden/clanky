@@ -29,6 +29,7 @@ sudo apt-get install -y --no-install-recommends \
   fonts-liberation \
   fonts-noto-color-emoji \
   gnupg2 \
+  gpgv \
   jq \
   libarchive-tools \
   libasound2t64 \
