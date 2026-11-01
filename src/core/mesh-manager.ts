@@ -766,11 +766,6 @@ export class MeshManager {
     if (decision.kind === "apply") {
       await revokeWorkerRegistration(workerNodeId, userId);
     }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
-      { userId },
-    );
-
     // The controller is authoritative. A worker may be offline, so failure to
     // prepare or deliver the signed notice must not undo the local revocation.
     try {
@@ -818,8 +813,13 @@ export class MeshManager {
           error: String(error),
         });
       }
+    } finally {
+      // Broker authorization cleanup must not close the notice's transport first.
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
+        { userId },
+      );
     }
-
   }
 
   async killWorker(

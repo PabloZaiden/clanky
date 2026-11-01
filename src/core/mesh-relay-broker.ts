@@ -1588,6 +1588,14 @@ export class MeshRelayBroker {
     }
   }
 
+  getDataBufferedAmount(dataConnectionId: string): number {
+    const connection = this.dataConnections.get(dataConnectionId);
+    const stream = connection && this.streams.get(connection.streamId);
+    if (!connection || !stream) return 0;
+    return (connection.side === "initiator" ? stream.receiverSocket : stream.initiatorSocket)
+      .getBufferedAmount();
+  }
+
   handleDataMessage(
     dataConnectionId: string,
     message: string | Uint8Array,

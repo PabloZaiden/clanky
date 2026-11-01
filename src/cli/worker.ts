@@ -13,6 +13,7 @@ import type {
   WebAppCliCommandDefinition,
 } from "@pablozaiden/webapp/cli";
 import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import { MESH_INSTANCE_NAME_MAX_LENGTH } from "@/shared/mesh";
 import { getDataDir } from "../persistence/database";
 import {
   normalizeMeshInstanceName,
@@ -118,7 +119,9 @@ export function parseWorkerBootstrapArgs(
     index += 1;
   }
   workerDirectory ??= resolve(homedir());
-  instanceName ??= normalizeMeshInstanceName(hostname());
+  instanceName ??= normalizeMeshInstanceName(
+    hostname().replace(/\..*$/, "").slice(0, MESH_INSTANCE_NAME_MAX_LENGTH),
+  );
   if (!host && port === undefined && !meshEndpoint) relayOnly = true;
   if (relayOnly) {
     if (meshEndpoint) {
@@ -412,7 +415,7 @@ export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliConte
       "",
       "Outbound-only mode uses a private loopback API and an ephemeral port; no public worker endpoint is needed.",
       "--relay-only is the existing name for outbound-only bootstrap and accepts either invitation target.",
-      "Defaults: --worker-directory uses $HOME; --instance-name uses the system hostname.",
+      "Defaults: --worker-directory uses $HOME; --instance-name uses the short system hostname, capped at 64 characters.",
     ].join("\n"),
     handler: runWorkerCommand,
   };

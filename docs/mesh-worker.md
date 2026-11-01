@@ -345,6 +345,9 @@ Revocation, a changed worker route or endpoint, disabling remote execution, or
 removing execution capabilities invalidates resources belonging to that user
 and worker. Intentional connection closures report `harness_transport_closed`
 with their lifecycle reason. New execution cannot reuse a revoked grant.
+General-worker revocation marks the controller grant revoked immediately,
+attempts the signed worker notice, and then invalidates its transport resources
+even when notice delivery fails.
 Relay maintenance affects the routes using that relay, not direct workers or
 workers using another relay. Switching the primary relay does not migrate
 existing routes.
@@ -368,9 +371,11 @@ service or convert an existing controller data directory into a worker.
 
 Optional `clanky worker bootstrap` configures an outbound-only worker before
 joining. `--worker-directory` defaults to `$HOME` and `--instance-name` to the
-system hostname. `--outbound-only` makes the default explicit; `--relay-only`
-retains its existing configuration meaning but now accepts either invitation
-target. Both use a private loopback management API with an ephemeral port.
+short system hostname, capped at 64 characters; explicitly supplied names still
+require 1-64 visible characters. `--outbound-only` makes the default explicit;
+`--relay-only` retains its existing configuration meaning but now accepts either
+invitation target. Both use a private loopback management API with an ephemeral
+port.
 
 Use HTTPS for controller, worker and relay Mesh endpoints, including during
 local development. Plain HTTP listeners are only appropriate behind trusted

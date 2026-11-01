@@ -27,11 +27,14 @@ export function createMeshLocalBrokerSocketFactory(broker: MeshRelayBroker): Mes
 
 class LocalBrokerSocket extends EventTarget {
   readyState = 0;
-  bufferedAmount = 0;
   binaryType: BinaryType = "arraybuffer";
   private connectionId?: string;
   private reservationId?: string;
   private queuedBytes = 0;
+
+  get bufferedAmount(): number {
+    return this.reservationId ? this.broker.getDataBufferedAmount(this.reservationId) : 0;
+  }
 
   constructor(private readonly broker: MeshRelayBroker, url: URL) {
     super();

@@ -216,7 +216,7 @@ export class WorkerRelayService {
     const active = grants.filter((grant) => grant.grantStatus === "active" && isMeshOutboundRoute(grant.controllerRoute));
     for (const [id, runtime] of this.directManagers) {
       const grant = active.find((candidate) => candidate.controllerNodeId === id);
-      if (!grant || !isMeshOutboundRoute(grant.controllerRoute)
+      if (!runtime.manager.activeConfig || !grant || !isMeshOutboundRoute(grant.controllerRoute)
         || grant.controllerRoute.endpoint !== runtime.endpoint
         || grant.controllerFingerprint !== runtime.fingerprint) {
         await runtime.manager.stop();
