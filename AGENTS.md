@@ -53,6 +53,8 @@ for unrelated work.
 - Document changed behavior in the appropriate guide and update applicable
   skills. Ask before adding root README sections or making major README changes;
   small factual corrections and link fixes do not need separate approval.
+- Follow [Webapp skill ownership](docs/development/webapp.md#webapp-skill-source-of-truth)
+  for framework-specific guidance. Never change only the local `webapp` skill.
 - For releases, use `bun run release`. Ask for `major`, `minor`, or `patch`
   if unspecified, and review the proposed version and target before confirming
   publication. Never publish just to validate tooling. Follow the

@@ -29,6 +29,7 @@ import type {
   MeshWorkerStatus,
 } from "@/shared/mesh";
 import {
+  isMeshOutboundRoute,
   MESH_RUNTIME_SNAPSHOT_HEADER,
   MESH_RUNTIME_SNAPSHOT_VERSION,
   MESH_WORKER_KILL_REQUEST_TTL_MS,
@@ -105,7 +106,6 @@ import {
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
-  getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "../domain/domain-error";
@@ -128,7 +128,7 @@ import {
   createMeshRelayEnrollmentAdmission,
   isMeshRelayEnrollmentAdmissionToken,
 } from "./mesh-relay-admission";
-import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
+import { discoverMeshEnrollmentTarget, normalizeMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { createMeshNodeRelayConnector } from "./mesh-relay-node-connector";
 import { createMeshRelayPeerTransport } from "./mesh-relay-transport";
 import { getMeshRelayFingerprint } from "./mesh-relay-identity";
@@ -155,6 +155,8 @@ function meshRoutesEqual(
   }
   return left.kind === "direct" && right.kind === "direct"
     ? left.endpoint === right.endpoint
+      && left.connection === right.connection
+      && (!isMeshOutboundRoute(left) || isMeshOutboundRoute(right) && left.targetNodeId === right.targetNodeId)
       && left.transport === right.transport
       && left.tlsTrust === right.tlsTrust
       && left.tlsCertificate === right.tlsCertificate
@@ -419,7 +421,10 @@ export class MeshManager {
         "The enrollment request has expired.",
       );
     }
-    const directRoute = envelope.route.kind === "direct"
+    const directRoute = envelope.route.kind === "direct" && !("connection" in envelope.route)
+      ? envelope.route
+      : null;
+    const outboundRoute = envelope.route.kind === "direct" && "connection" in envelope.route
       ? envelope.route
       : null;
     const relayRoute = envelope.route.kind === "relay"
@@ -438,6 +443,15 @@ export class MeshManager {
         directRoute.endpoint,
         directRoute.tlsFingerprint,
       );
+    } else if (outboundRoute) {
+      const controller = await ensureLocalMeshIdentityWithEndpoint();
+      if (!controller.meshEndpoint
+        || normalizeMeshEnrollmentTarget(controller.meshEndpoint) !== outboundRoute.endpoint) {
+        throw new DomainError(
+          "mesh_enrollment_controller_mismatch",
+          "The outbound worker route must target this controller's advertised HTTPS origin.",
+        );
+      }
     } else if (relayRoute) {
       const pairing = controllerRelayService.assertEnrollmentRelayRoute(
         relayRoute,
@@ -543,7 +557,14 @@ export class MeshManager {
       localNodeId: identity.nodeId,
     });
 
-    const enrollmentRoute: MeshPeerRoute = !isRelayEnrollment
+    const enrollmentRoute: MeshPeerRoute = outboundRoute
+      ? {
+          kind: "direct", connection: "outbound",
+          endpoint: outboundRoute.endpoint, targetNodeId: envelope.workerNodeId,
+          transport: "https", tlsTrust: "system",
+          tlsCertificate: null, tlsFingerprint: null,
+        }
+      : !isRelayEnrollment
       ? {
           kind: "direct",
           endpoint: directRoute!.endpoint,
@@ -570,10 +591,8 @@ export class MeshManager {
           workerNodeId: envelope.workerNodeId,
           localUserId: tokenResult.userId,
           workerInstanceName: envelope.workerInstanceName ?? null,
-          workerEndpoint: directRoute?.endpoint ?? relayRoute!.relayUrl,
-          workerTransport: !isRelayEnrollment
-            ? directRoute!.transport
-            : getMeshTransport(relayRoute!.relayUrl),
+          workerEndpoint: outboundRoute?.endpoint ?? directRoute?.endpoint ?? relayRoute!.relayUrl,
+          workerTransport: "https",
           workerPublicKey: envelope.workerPublicKey,
           workerFingerprint: envelope.workerFingerprint,
           workerEncryptionPublicKey: envelope.workerEncryptionPublicKey,
@@ -747,11 +766,6 @@ export class MeshManager {
     if (decision.kind === "apply") {
       await revokeWorkerRegistration(workerNodeId, userId);
     }
-    meshStateEventEmitter.emit(
-      { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
-      { userId },
-    );
-
     // The controller is authoritative. A worker may be offline, so failure to
     // prepare or deliver the signed notice must not undo the local revocation.
     try {
@@ -799,8 +813,13 @@ export class MeshManager {
           error: String(error),
         });
       }
+    } finally {
+      // Broker authorization cleanup must not close the notice's transport first.
+      meshStateEventEmitter.emit(
+        { type: "mesh.changed", reason: "revoked", impact: "resources", scope: { userId, workerNodeIds: [workerNodeId] } },
+        { userId },
+      );
     }
-
   }
 
   async killWorker(
@@ -1319,11 +1338,14 @@ export class MeshManager {
   }): Promise<MeshControllerGrant> {
     requireMeshRuntimeRole("worker");
     log.info("Discovering Mesh enrollment target");
-    const discovered = await discoverMeshEnrollmentTarget(input.target);
+    const discovered = await discoverMeshEnrollmentTarget(input.target, {
+      outboundWorker: isMeshWorkerRelayOnly(),
+    });
     log.info("Mesh enrollment target discovered", {
       role: discovered.descriptor.role,
     });
-    const identity = discovered.descriptor.role === "controller"
+    const outbound = discovered.descriptor.role === "controller" && isMeshWorkerRelayOnly();
+    const identity = discovered.descriptor.role === "controller" && !outbound
       ? await ensureLocalMeshIdentityWithEndpoint()
       : await ensureLocalMeshNodeIdentity();
     const workerEncryptionPublicKey = identity.encryptionPublicKey;
@@ -1359,10 +1381,10 @@ export class MeshManager {
       null;
 
     if (discovered.descriptor.role === "controller") {
-      if (isMeshWorkerRelayOnly()) {
+      if (outbound && discovered.descriptor.outboundWorker !== 1) {
         throw new DomainError(
-          "mesh_relay_only_direct_enrollment_forbidden",
-          "A relay-only Mesh worker cannot enroll through a direct controller route.",
+          "mesh_outbound_worker_unsupported",
+          "This controller does not support outbound workers. Upgrade the controller before joining.",
         );
       }
       if (discovered.descriptor.fingerprint !== input.expectedFingerprint) {
@@ -1376,28 +1398,35 @@ export class MeshManager {
         discovered.descriptor.fingerprint,
         "discovered controller",
       );
-      if (!identity.meshEndpoint) {
+      if (!outbound && !identity.meshEndpoint) {
         throw new DomainError(
           "mesh_endpoint_required",
           "This worker must have a configured mesh endpoint before direct enrollment.",
         );
       }
-      assertMeshEndpointAllowed(identity.meshEndpoint, "https");
-      workerTlsIdentity = await getMeshWorkerTlsIdentity();
-      if (!workerTlsIdentity) {
+      if (!outbound) {
+        assertMeshEndpointAllowed(identity.meshEndpoint!, "https");
+        workerTlsIdentity = await getMeshWorkerTlsIdentity();
+      }
+      if (!outbound && !workerTlsIdentity) {
         throw new DomainError(
           "mesh_worker_tls_identity_missing",
           "The HTTPS worker TLS identity is missing from the data directory.",
         );
       }
-      controllerRoute = {
+      const directControllerRoute = {
         kind: "direct" as const,
         endpoint: discovered.target,
-        transport: "https",
-        tlsTrust: "system",
+        transport: "https" as const,
+        tlsTrust: "system" as const,
         tlsCertificate: null,
         tlsFingerprint: null,
       };
+      controllerRoute = outbound ? {
+          ...directControllerRoute,
+          connection: "outbound" as const,
+          targetNodeId: discovered.descriptor.nodeId,
+        } : directControllerRoute;
     } else {
       if (
         discovered.descriptor.controllerFingerprint
@@ -1452,7 +1481,12 @@ export class MeshManager {
         ...meshProtocolProjection(discovered.negotiatedProtocolVersion),
         ...common,
         binaryVersion: localProtocol.binaryVersion!,
-        route: controllerRoute.kind === "direct"
+        route: isMeshOutboundRoute(controllerRoute)
+          ? {
+              kind: "direct" as const, connection: "outbound" as const,
+              endpoint: discovered.target, transport: "https" as const,
+            }
+          : controllerRoute.kind === "direct"
           ? {
               kind: "direct" as const,
               endpoint: identity.meshEndpoint!,
@@ -1475,7 +1509,10 @@ export class MeshManager {
       let rawResponse: unknown;
       if (controllerRoute.kind === "direct") {
         const response = await postMeshControlMessage(
-          controllerRoute,
+          {
+            kind: "direct", endpoint: discovered.target, transport: "https",
+            tlsTrust: "system", tlsCertificate: null, tlsFingerprint: null,
+          },
           "api/mesh/internal/enrollment",
           envelope,
           identity.nodeId,

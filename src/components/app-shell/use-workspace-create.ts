@@ -77,10 +77,6 @@ export interface UseWorkspaceCreateResult {
   primaryRelayName: string | null;
   automaticRelayAvailable: boolean;
   automaticRelayStatusLoading: boolean;
-  automaticWorkerHostAddress: string;
-  setAutomaticWorkerHostAddress: (address: string) => void;
-  automaticWorkerHostAddressMode: AutomaticWorkerHostAddressMode;
-  setAutomaticWorkerHostAddressMode: (mode: AutomaticWorkerHostAddressMode) => void;
   automaticRepoUrl: string;
   setAutomaticRepoUrl: (url: string) => void;
   automaticCreateNewRepository: boolean;
@@ -109,7 +105,6 @@ export interface UseWorkspaceCreateResult {
   handleBackToAutomaticWorkspaceForm: () => void;
 }
 
-export type AutomaticWorkerHostAddressMode = "discovered" | "manual";
 
 export interface WorkspaceWorkerEnrollmentState {
   enrollment: {
@@ -208,9 +203,6 @@ export function useWorkspaceCreate({
   const [automaticWorkerEnrollmentRoute, setAutomaticWorkerEnrollmentRouteState] =
     useState<ProvisioningWorkerEnrollmentRoute>("direct");
   const [automaticWorkerRelayName, setAutomaticWorkerRelayName] = useState("");
-  const [automaticWorkerHostAddress, setAutomaticWorkerHostAddress] = useState("");
-  const [automaticWorkerHostAddressMode, setAutomaticWorkerHostAddressMode] =
-    useState<AutomaticWorkerHostAddressMode>("discovered");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
@@ -234,8 +226,6 @@ export function useWorkspaceCreate({
 
   function setAutomaticExecutionHost(host: ExecutionHostRef | null): void {
     setAutomaticExecutionHostState(host);
-    setAutomaticWorkerHostAddress("");
-    setAutomaticWorkerHostAddressMode("discovered");
     if (!automaticWorkerEnrollmentRouteTouchedRef.current && !relayStatusLoading) {
       setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
     }
@@ -246,10 +236,6 @@ export function useWorkspaceCreate({
   ): void {
     automaticWorkerEnrollmentRouteTouchedRef.current = true;
     setAutomaticWorkerEnrollmentRouteState(nextRoute);
-    if (nextRoute === "relay") {
-      setAutomaticWorkerHostAddress("");
-      setAutomaticWorkerHostAddressMode("discovered");
-    }
   }
 
   useEffect(() => {
@@ -295,10 +281,6 @@ export function useWorkspaceCreate({
             ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
         );
         setAutomaticWorkerRelayName(config.workerRelayName ?? "");
-        setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
-        setAutomaticWorkerHostAddressMode(
-          config.workerHostAddressManual ? "manual" : "discovered",
-        );
         setAutomaticRepoUrl(config.repoUrl ?? "");
         setAutomaticCreateNewRepository(config.createNewRepository ?? false);
         setAutomaticBasePath(config.basePath);
@@ -369,7 +351,6 @@ export function useWorkspaceCreate({
           : null
       : null;
     setAutomaticExecutionHost(requestedExecutionHost);
-    setAutomaticWorkerHostAddress("");
     setAutomaticRepoUrl(getAutomaticWorkspaceRepositoryPrefix(githubUsername.githubUsername));
     setAutomaticCreateNewRepository(false);
     setAutomaticBasePath(
@@ -411,10 +392,6 @@ export function useWorkspaceCreate({
       return;
     }
     setAutomaticWorkerEnrollmentRouteState(relayPaired ? "relay" : "direct");
-    if (relayPaired) {
-      setAutomaticWorkerHostAddress("");
-      setAutomaticWorkerHostAddressMode("discovered");
-    }
   }, [automaticWorkerEnrollmentRoute, relayPaired, relayStatusLoading, route]);
 
   useEffect(() => {
@@ -539,7 +516,6 @@ export function useWorkspaceCreate({
       });
       setWorkspaceExecutionHost(null);
       setAutomaticExecutionHost(null);
-      setAutomaticWorkerHostAddress("");
       setWorkspaceWorkerEnrollmentSelected(true);
       setWorkspaceWorkerEnrollment({ ...created, worker: null });
     } catch (error) {
@@ -590,10 +566,6 @@ export function useWorkspaceCreate({
         ?? (config.workerHostAddress ? "direct" : relayPaired ? "relay" : "direct"),
     );
     setAutomaticWorkerRelayName(config.workerRelayName ?? "");
-    setAutomaticWorkerHostAddress(config.workerHostAddress ?? "");
-    setAutomaticWorkerHostAddressMode(
-      config.workerHostAddressManual ? "manual" : "discovered",
-    );
     setAutomaticRepoUrl(config.repoUrl ?? "");
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
@@ -653,15 +625,6 @@ export function useWorkspaceCreate({
           ...(!workspaceWorkerEnrollmentSelected
             && automaticWorkerEnrollmentRoute === "relay" && automaticWorkerRelayName
             ? { workerRelayName: automaticWorkerRelayName }
-            : {}),
-          ...(!workspaceWorkerEnrollmentSelected
-            && automaticWorkerEnrollmentRoute !== "relay"
-            ? { workerHostAddress: automaticWorkerHostAddress }
-            : {}),
-          ...(!workspaceWorkerEnrollmentSelected
-            && automaticWorkerEnrollmentRoute !== "relay"
-            && automaticWorkerHostAddressMode === "manual"
-            ? { workerHostAddressManual: true }
             : {}),
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
@@ -771,10 +734,6 @@ export function useWorkspaceCreate({
     primaryRelayName,
     automaticRelayAvailable: relayOptions.length > 0,
     automaticRelayStatusLoading: relayStatusLoading,
-    automaticWorkerHostAddress,
-    setAutomaticWorkerHostAddress,
-    automaticWorkerHostAddressMode,
-    setAutomaticWorkerHostAddressMode,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,

@@ -4,6 +4,8 @@ Clanky uses `@pablozaiden/webapp` for the shared application foundations.
 This guide records Clanky-specific integration and design decisions; consult
 the [webapp skill](../../.agents/skills/webapp/SKILL.md) for framework APIs
 and disposable browser tooling.
+Clanky's Swift/WKWebView wrappers and their app-specific constraints are
+documented in the [Apple app guide](../apple-apps.md), not the framework skill.
 
 ## Framework ownership
 
@@ -210,6 +212,28 @@ git merge-base --is-ancestor <consumed-sha> origin/main
 Follow the [PR review and merge rules](../development.md#pull-request-reviews)
 before merging; needing an upstream change is not permission to bypass review.
 
+## Webapp skill source of truth
+
+The `webapp` skill is owned by
+[`PabloZaiden/webapp/skills/webapp/SKILL.md`](https://github.com/PabloZaiden/webapp/blob/main/skills/webapp/SKILL.md).
+Clanky's `.agents/skills/webapp/SKILL.md` is a complete, identical copy, not a
+place to maintain local additions.
+
+Whenever adding or changing Webapp-specific guidance, compare both full skills
+and combine valid framework guidance in the Webapp repository first. Deliver
+that change through the upstream review workflow, then synchronize the entire
+skill here, including its version. Never make the change only in Clanky, append
+local sections to the copy, or update only the relevant fragment.
+
+Keep Clanky-only instructions and local guide links in this guide, the
+[testing guide](testing.md) or [Apple app guide](../apple-apps.md), as appropriate.
+Do not put them in the distributable skill. Verify full-file equality after
+synchronization, with `WEBAPP_CHECKOUT` pointing to the upstream checkout:
+
+```bash
+cmp "$WEBAPP_CHECKOUT/skills/webapp/SKILL.md" .agents/skills/webapp/SKILL.md
+```
+
 ## Visual validation
 
 Follow the [manual validation policy](testing.md#manual-visual-validation).
@@ -237,6 +261,14 @@ font installations are reused and failures stop setup. Font files and Apple's
 license stay outside the checkout and production images. Review the pinned
 download checksum/extraction paths when updating the Apple package. Linux
 rendering can still differ from Safari despite using the same font family.
+
+### Bun.WebView browser selection
+
+Shared browser-selection and startup diagnostics belong to the
+[canonical Webapp skill](https://github.com/PabloZaiden/webapp/blob/main/skills/webapp/SKILL.md#headless-browser-validation-with-bunwebview),
+with a [local copy](../../.agents/skills/webapp/SKILL.md#browser-selection-and-startup-diagnostics).
+Follow the [upstream-first, full-file synchronization workflow](#webapp-skill-source-of-truth).
+Do not maintain a separate generic procedure here.
 
 ### Markdown rendering
 

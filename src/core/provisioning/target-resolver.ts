@@ -8,7 +8,6 @@ import type {
 import { isValidWorkerHostAddress } from "@/shared";
 import { getWorkspace } from "../../persistence/workspaces";
 import { controllerRelayService } from "../controller-relay-service";
-import { executionHostDiscoveryService } from "../execution-host-discovery-service";
 import { executionHostService } from "../execution-host-service";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import { ProvisioningFailedError } from "./errors";
@@ -117,7 +116,6 @@ export function getProvisioningTargetKey(
 export async function resolveProvisioningTarget(
   userId: string,
   options: StartProvisioningJobOptions,
-  jobId: string,
 ): Promise<ProvisioningTargetResolution> {
   const mode = options.mode ?? "provision";
   const executionHostResolution = await resolveProvisioningExecutionHostBinding(
@@ -143,17 +141,6 @@ export async function resolveProvisioningTarget(
     ? existingWorkerEnrollment?.worker?.route.kind
       ?? options.workerEnrollmentRoute
       ?? controllerRelayService.getDedicatedWorkerEnrollmentRoute()
-    : undefined;
-  const workerHostAddress = automaticWorker
-    && mode === "provision"
-    && workerEnrollmentRoute !== "relay"
-    ? await resolveWorkerHostAddress(
-        userId,
-        executionHostBinding,
-        options,
-        jobId,
-        options.workerHostAddressManual === true,
-      )
     : undefined;
 
   return {
@@ -184,7 +171,6 @@ export async function resolveProvisioningTarget(
     ...(workerEnrollmentRoute === "relay" && options.workerRelayName
       ? { workerRelayName: options.workerRelayName }
       : {}),
-    ...(workerHostAddress ? { workerHostAddress } : {}),
   };
 }
 
@@ -279,34 +265,4 @@ export function releaseProvisioningTargetClaim(
     enrollmentId,
     jobId,
   );
-}
-
-async function resolveWorkerHostAddress(
-  userId: string,
-  binding: ExecutionHostBinding,
-  options: StartProvisioningJobOptions,
-  jobId: string,
-  manual: boolean,
-): Promise<string> {
-  const address = validateWorkerHostAddress(options.workerHostAddress);
-  if (manual) {
-    return address;
-  }
-  const addresses = await executionHostDiscoveryService.listAccessibleIpv4Addresses(
-    binding.host,
-    {
-      operationId: `provisioning-addresses:${jobId}`,
-      directory: "/",
-      provider: options.provider,
-      localUserId: userId,
-    },
-  );
-  if (!addresses.includes(address)) {
-    throw new ProvisioningFailedError(
-      "invalid_worker_host_address",
-      "verify_devbox",
-      "The worker host address must be one of the addresses discovered on the selected execution host.",
-    );
-  }
-  return address;
 }

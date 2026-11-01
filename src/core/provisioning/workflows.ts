@@ -31,6 +31,7 @@ import {
 import { shellQuote, type WorkerPaths } from "./worker-assets";
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
+import { isMeshOutboundRoute } from "@/shared/mesh";
 
 function buildDevboxArgs(
   command: "up" | "rebuild",
@@ -111,8 +112,7 @@ export class ProvisioningWorkflows {
       this.updateState(record, { targetDirectory });
 
       const automaticWorker = !record.job.config.workspaceWorkerEnrollmentId;
-      const relayOnlyWorker = automaticWorker
-        && record.job.config.workerEnrollmentRoute === "relay";
+      const relayOnlyWorker = automaticWorker;
       let workerLauncherPaths: WorkerPaths | undefined;
       const devboxOptions = {
         devcontainerSubpath: record.job.config.devcontainerSubpath,
@@ -413,7 +413,8 @@ export class ProvisioningWorkflows {
           )
         : null;
       const relayOnlyWorker = automaticWorker
-        && workerEnrollment?.worker?.route.kind === "relay";
+        && (workerEnrollment?.worker?.route.kind === "relay"
+          || isMeshOutboundRoute(workerEnrollment?.worker?.route));
       let workerHostAddress: string | undefined;
       if (automaticWorker && !relayOnlyWorker) {
         const workerEndpoint = workerEnrollment?.worker?.workerEndpoint;

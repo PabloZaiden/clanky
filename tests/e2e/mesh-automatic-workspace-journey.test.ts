@@ -462,8 +462,6 @@ test("controller rolls out worker channels and maintains inherited and overridde
       name: "Inherited latest workspace",
       executionHost: successfulHost.ref,
       workerEnrollmentRoute: "direct",
-      workerHostAddress: "127.0.0.1",
-      workerHostAddressManual: true,
       repoUrl: gitFixture.remoteDirectory,
       basePath: join(fixtureDirectory, "automatic-workspace"),
       devcontainerSubpath: null,
@@ -564,6 +562,10 @@ test("controller rolls out worker channels and maintains inherited and overridde
     expect(checkout.status, JSON.stringify(checkout.body)).toBe(200);
     expect(checkout.body.exitCode).toBe(0);
     expect(checkout.body.stdout).toBe(await Bun.file(join(gitFixture.repositoryDirectory, "README.md")).text());
+    const workerHealthPort = (await Bun.file(join(
+      automaticWorkspace.job.state.targetDirectory!,
+      ".devbox", "clanky-worker", "devbox-port",
+    )).text()).trim();
     expect((await meshJsonRequest(controller, `/api/workspaces/${stableWorkspaceId}`, {
       method: "DELETE",
     })).status).toBe(200);
@@ -572,8 +574,7 @@ test("controller rolls out worker channels and maintains inherited and overridde
     })).status).toBe(200);
     await pollUntil(async () => {
       try {
-        const response = await fetch(`${automaticWorker.workerEndpoint}/api/health`, {
-          tls: { rejectUnauthorized: false },
+        const response = await fetch(`http://127.0.0.1:${workerHealthPort}/api/health`, {
           signal: AbortSignal.timeout(MESH_OPERATION_TIMEOUT_MS),
         });
         return { reachable: true, status: response.status, error: null };

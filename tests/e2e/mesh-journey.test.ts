@@ -12,6 +12,7 @@ import {
   restartMeshNode,
   startMeshRelay,
   startMeshNode,
+  startJoinedMeshWorker,
   stopMeshNode,
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
@@ -35,6 +36,7 @@ interface MeshRegistration {
   route: {
     kind: string;
     tlsTrust: string;
+    connection?: string;
   };
 }
 
@@ -736,7 +738,7 @@ test("compiled controller and worker support Mesh chats, shared worktrees, and r
   }
 }, 120_000);
 
-test("compiled relays route worker execution, reconnect, and enforce revocation", async () => {
+test("compiled outbound workers support direct and relay execution, reconnect, and revocation", async () => {
   const fixtureDirectory = await mkdtemp(join(tmpdir(), "clanky-mesh-relay-e2e-"));
   const homeDirectory = join(fixtureDirectory, "home");
   const nodes: ManagedMeshNode[] = [];
@@ -973,6 +975,71 @@ test("compiled relays route worker execution, reconnect, and enforce revocation"
       );
       expect(unpaired.status).toBe(200);
     }
+
+    const binDirectory = join(fixtureDirectory, "bin");
+    await installExternalCode(binDirectory);
+    const directWorker = await startJoinedMeshWorker({
+      controller,
+      command,
+      environment: { PATH: `${binDirectory}${delimiter}${process.env["PATH"] ?? ""}` },
+    });
+    nodes.push(directWorker);
+    const outboundStatus = await meshJsonRequest<ControllerStatus>(controller, "/api/mesh/status");
+    const outboundRegistration = outboundStatus.body.workers[0]!;
+    expect(outboundRegistration.route).toEqual(expect.objectContaining({
+      kind: "direct", connection: "outbound", tlsTrust: "system",
+    }));
+    expect(outboundRegistration.workerEndpoint).toBe(controller.meshEndpoint!);
+    const file = join(directWorker.dataDir, "outbound-work.txt");
+    const write = await waitForWorkerExecution({
+      controller, workerNodeId: outboundRegistration.workerNodeId,
+      description: "direct outbound worker command and file access",
+      input: {
+        command: "sh", args: ["-c", 'printf "OUTBOUND_WORK\\n" > "$1"; cat "$1"', "sh", file],
+        cwd: directWorker.dataDir,
+      },
+    });
+    expect(write.stdout.trim()).toBe("OUTBOUND_WORK");
+    const outboundWorkspace = await meshJsonRequest<Workspace>(controller, "/api/workspaces", {
+      method: "POST",
+      body: {
+        name: "Outbound direct workspace",
+        directory: directWorker.dataDir,
+        executionHost: { kind: "mesh", nodeId: outboundRegistration.workerNodeId },
+        workspaceType: "directory",
+        allowWorktrees: false,
+        serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+      },
+    });
+    expect(outboundWorkspace.status).toBe(201);
+    const outboundKey = await meshJsonRequest<{ token: string }>(controller, "/api/api-keys", {
+      method: "POST", body: { name: "outbound-code", scopes: ["*"] },
+    });
+    expect(outboundKey.status).toBe(200);
+    await exerciseCodePreview({
+      baseUrl: controller.baseUrl,
+      apiKey: outboundKey.body.token,
+      homeDirectory,
+      logsDirectory: fixtureDirectory,
+      workspace: outboundWorkspace.body.id,
+      expectedDirectory: directWorker.dataDir,
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+    });
+    await restartMeshNode(directWorker, 10_000);
+    const read = await waitForWorkerExecution({
+      controller, workerNodeId: outboundRegistration.workerNodeId,
+      description: "persisted direct outbound grant after worker restart",
+      input: { command: "cat", args: [file], cwd: directWorker.dataDir },
+    });
+    expect(read.stdout.trim()).toBe("OUTBOUND_WORK");
+    expect((await meshJsonRequest(controller, "/api/mesh/workers/revoke", {
+      method: "POST", body: { workerNodeId: outboundRegistration.workerNodeId },
+    })).status).toBe(200);
+    const directDenied = await meshJsonRequest<ExecutionResult>(
+      controller, `/api/execution-hosts/mesh/${encodeURIComponent(outboundRegistration.workerNodeId)}/exec`,
+      { method: "POST", body: { command: "cat", args: [file], cwd: directWorker.dataDir } },
+    );
+    expect(directDenied.status !== 200 || !directDenied.body.success).toBe(true);
   } catch (error) {
     for (const node of nodes) {
       const diagnostics = meshNodeDiagnostics(node);

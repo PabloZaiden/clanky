@@ -69,7 +69,6 @@ export class ProvisioningManager {
     const target = await resolveProvisioningTarget(
       owner.id,
       options,
-      jobId,
     );
     const {
       mode,

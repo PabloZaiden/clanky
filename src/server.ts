@@ -79,6 +79,8 @@ import {
 } from "./persistence/mesh-worker-tls";
 import {
   MESH_RELAY_DESCRIPTOR_PATH,
+  MESH_OUTBOUND_WORKER_HEADER,
+  MESH_OUTBOUND_WORKER_VERSION,
   type MeshControllerWellKnownDescriptor,
 } from "./shared/mesh-relay";
 import {
@@ -102,6 +104,8 @@ import { liveVoiceManager } from "./core/live-voice-manager";
 import { startChatTrashMaintenance, stopChatTrashMaintenance, sweepChatTrash } from "./core/chat-trash-maintenance";
 import { previewSessionManager } from "./core/preview-session-manager";
 import { workerRelayService } from "./core/worker-relay-service";
+import { controllerWorkerConnectionService } from "./core/controller-worker-connection-service";
+import { meshOutboundRoutes, meshOutboundHandlers } from "./api/mesh-outbound";
 import { meshHealthService } from "./core/mesh-health-service";
 import { ClankyOperationService } from "./core/clanky-operation-service";
 import { configureLiveVoiceApi } from "./api/live-voice";
@@ -371,6 +375,7 @@ function stopBackgroundWorkers(): void {
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({
   ...mcpRoutes,
+  ...meshOutboundRoutes,
   [MESH_RELAY_DESCRIPTOR_PATH]: {
     auth: "public",
     sameOrigin: "never",
@@ -398,6 +403,8 @@ export const routes = defineRoutes<ClankyRealtimeEvent>({
         fingerprint: identity.fingerprint,
         binaryVersion: protocol.binaryVersion!,
         negotiatedProtocolVersion: negotiatedVersion,
+        ...(req.headers.get(MESH_OUTBOUND_WORKER_HEADER) === String(MESH_OUTBOUND_WORKER_VERSION)
+          ? { outboundWorker: MESH_OUTBOUND_WORKER_VERSION } : {}),
       };
       return Response.json(descriptor, {
         headers: {
@@ -642,6 +649,7 @@ export async function getWebAppServer(
     websockets: {
       clanky: websocketHandlers as never,
       workspaceDirect: workspaceDirectHandlers as never,
+      meshOutbound: meshOutboundHandlers as never,
     },
     lifecycle: {
       beforeStart: meshWorker
@@ -662,6 +670,9 @@ export async function getWebAppServer(
             async (request) => await appServer.handleRequest(request),
           );
         } else {
+          await controllerWorkerConnectionService.startRuntime(
+            async (request) => await appServer.handleRequest(request),
+          );
           await controllerRelayService.startRuntime(
             async (request) => await appServer.handleRequest(request),
             {
@@ -713,6 +724,7 @@ export async function getWebAppServer(
         await cleanup(() => meshWorker
           ? workerRelayService.stopRuntime()
           : controllerRelayService.stopRuntime());
+        if (!meshWorker) await cleanup(() => controllerWorkerConnectionService.stopRuntime());
         await cleanup(() => meshTerminalGateway.closeAll());
         await cleanup(() => meshTcpTunnelGateway.closeAll());
         await cleanup(closeAllMeshTerminalConnections);

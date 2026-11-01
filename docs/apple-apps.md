@@ -76,6 +76,7 @@ the embedded helper would modify the signed bundle and is not an app updater.
 
 Both Xcode targets use the checked-in `AppIcon` asset catalog for Clanky's
 native app icon, including Finder/Dock on Mac and the iPhone/iPad Home Screen.
+These native icons are separate from web favicon and manifest assets.
 The Linux build packages the iOS PNG from that same catalog through xtool.
 After changing `src/logo.png`, regenerate those native assets on macOS with
 `swift scripts/generate-apple-icons.swift` and rebuild the apps. The generator
@@ -541,6 +542,8 @@ silently lose saved sessions and invitation identities. All windows share that
 origin. The initial port is allocated by the operating system while binding
 the listener, not guessed using a separate availability check. The Mac app
 does not allocate its optional controller's port for assets.
+Derive browser bootstrap and native presentation/caller guards from that saved
+origin rather than independently hard-coding their addresses.
 If another process later occupies a saved port, startup fails explicitly:
 the app does not attach to that process or silently choose a different origin.
 Separate saved installations initialized at different times can still encounter
@@ -564,6 +567,8 @@ download flow; it does not mean that a file has already been saved.
 Content popups such as **Open image in a new tab** appear in a closable in-app
 sheet. Authorization popups still hand their external URL to the system browser
 and dismiss the temporary sheet.
+Validate native bridge payloads before Foundation `JSONSerialization`; scalar
+roots can raise an Objective-C exception rather than a catchable Swift error.
 The invited client's **Ready to export** still means browser storage, not a
 confirmed save to Files/Downloads. Platform storage/export limits still apply.
 

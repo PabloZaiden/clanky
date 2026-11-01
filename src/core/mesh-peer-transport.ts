@@ -1,4 +1,4 @@
-import type { MeshPeerRoute } from "@/shared/mesh";
+import { isMeshOutboundRoute, type MeshPeerRoute } from "@/shared/mesh";
 import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
 import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
@@ -133,12 +133,26 @@ const directTransport: MeshPeerTransport = {
 };
 
 let relayTransport: MeshPeerTransport | null = null;
+let outboundTransport: MeshPeerTransport | null = null;
+
+export function setMeshOutboundTransport(transport: MeshPeerTransport | null): void {
+  outboundTransport = transport;
+}
 
 export function setMeshRelayTransport(transport: MeshPeerTransport | null): void {
   relayTransport = transport;
 }
 
 export function getMeshPeerTransport(route: MeshPeerRoute): MeshPeerTransport {
+  if (isMeshOutboundRoute(route)) {
+    if (!outboundTransport) {
+      throw new DomainError(
+        "mesh_worker_connection_unavailable",
+        "The worker's outbound Mesh connection is not available.",
+      );
+    }
+    return outboundTransport;
+  }
   if (route.kind === "direct") {
     return directTransport;
   }

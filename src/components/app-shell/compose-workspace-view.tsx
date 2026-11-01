@@ -2,13 +2,11 @@ import { useEffect, useMemo, useRef } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
-import { useExecutionHostAddresses } from "../../hooks/workspace-server-settings";
 import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
 import {
   isIncompleteGitHubRepositoryUrl,
-  isValidWorkerHostAddress,
   parseExecutionHostRef,
   HARNESS_ADAPTER_IDS,
   serializeExecutionHostRef,
@@ -38,8 +36,6 @@ interface ComposeWorkspaceViewProps {
 }
 
 const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
-const MANUAL_WORKER_HOST_ADDRESS_OPTION = "__manual_worker_host_address__";
-const RELAY_WORKER_HOST_ADDRESS_OPTION = "__relay_worker_host_address__";
 
 function DedicatedWorkerEnrollment({
   enrollment,
@@ -192,10 +188,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     primaryRelayName,
     automaticRelayAvailable,
     automaticRelayStatusLoading,
-    automaticWorkerHostAddress,
-    setAutomaticWorkerHostAddress,
-    automaticWorkerHostAddressMode,
-    setAutomaticWorkerHostAddressMode,
     automaticRepoUrl,
     setAutomaticRepoUrl,
     automaticCreateNewRepository,
@@ -231,49 +223,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     ),
     [dashboardData.remoteOnly, executionTargets],
   );
-  const {
-    addresses: workerHostAddresses,
-    loading: workerHostAddressesLoading,
-    error: workerHostAddressesError,
-  } = useExecutionHostAddresses(
-    !workspaceWorkerEnrollmentSelected
-      && automaticWorkerEnrollmentRoute !== "relay"
-      && !automaticRelayStatusLoading
-      ? automaticExecutionHost
-      : null,
-  );
   const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!automaticExecutionHost) {
-      setAutomaticWorkerHostAddressMode("discovered");
-      setAutomaticWorkerHostAddress("");
-      return;
-    }
-    if (automaticRelayStatusLoading) {
-      return;
-    }
-    if (automaticWorkerEnrollmentRoute === "relay") {
-      setAutomaticWorkerHostAddressMode("discovered");
-      setAutomaticWorkerHostAddress("");
-      return;
-    }
-    if (automaticWorkerHostAddressMode === "manual") {
-      return;
-    }
-    if (!workerHostAddresses.includes(automaticWorkerHostAddress)) {
-      setAutomaticWorkerHostAddress("");
-    }
-  }, [
-    automaticExecutionHost,
-    automaticRelayStatusLoading,
-    automaticWorkerEnrollmentRoute,
-    automaticWorkerHostAddress,
-    automaticWorkerHostAddressMode,
-    setAutomaticWorkerHostAddress,
-    setAutomaticWorkerHostAddressMode,
-    workerHostAddresses,
-  ]);
 
   const workspaceCreateFormId = "workspace-create-form";
   const {
@@ -309,17 +259,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       && !isIncompleteGitHubRepositoryUrl(automaticRepoUrl)
     )) &&
     automaticBasePath.trim().length > 0 &&
-    (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0) &&
-    (
-      workspaceWorkerEnrollmentSelected
-      || automaticWorkerEnrollmentRoute === "relay"
-      || (automaticWorkerHostAddressMode === "manual"
-        ? isValidWorkerHostAddress(automaticWorkerHostAddress)
-        : (
-          automaticWorkerHostAddress.trim().length > 0
-          && workerHostAddresses.includes(automaticWorkerHostAddress)
-        ))
-    );
+    (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
   const manualFormValid =
     (localAdministration || Boolean(workspaceControllerId)) &&
     workspaceName.trim().length > 0 &&
@@ -487,7 +427,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   if (value === "workspace-worker") {
                     setWorkspaceWorkerEnrollmentSelected(true);
                     setAutomaticExecutionHost(null);
-                    setAutomaticWorkerHostAddress("");
                     setAutomaticBasePath("/workspaces");
                     setAutomaticDevboxTemplate("");
                     return;
@@ -526,53 +465,27 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               </SelectField>
 
               {automaticExecutionHost && !workspaceWorkerEnrollmentSelected && (
-                  <>
-                      <SelectField
-                        id="automatic-worker-host-address"
-                        label="Worker host address"
-                        value={
-                          automaticWorkerEnrollmentRoute === "relay"
-                            ? RELAY_WORKER_HOST_ADDRESS_OPTION
-                            : automaticWorkerHostAddressMode === "manual"
-                            ? MANUAL_WORKER_HOST_ADDRESS_OPTION
-                            : automaticWorkerHostAddress
-                        }
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          if (value === RELAY_WORKER_HOST_ADDRESS_OPTION) {
-                            setAutomaticWorkerEnrollmentRoute("relay");
-                            return;
-                          }
-                          if (value === MANUAL_WORKER_HOST_ADDRESS_OPTION) {
-                            setAutomaticWorkerEnrollmentRoute("direct");
-                            setAutomaticWorkerHostAddressMode("manual");
-                            setAutomaticWorkerHostAddress("");
-                            return;
-                          }
-                          setAutomaticWorkerEnrollmentRoute("direct");
-                          setAutomaticWorkerHostAddressMode("discovered");
-                          setAutomaticWorkerHostAddress(value);
-                        }}
-                        disabled={automaticRelayStatusLoading}
-                        required
-                      >
-                        <option value="">
-                          {automaticRelayStatusLoading
-                            ? "Checking relay status..."
-                            : workerHostAddressesLoading
-                            ? "Discovering addresses..."
-                            : "Select an address"}
-                        </option>
-                        {automaticRelayAvailable && (
-                          <option value={RELAY_WORKER_HOST_ADDRESS_OPTION}>
-                            Via Clanky Relay
-                          </option>
-                        )}
-                        {workerHostAddresses.map((address) => (
-                          <option key={address} value={address}>{address}</option>
-                        ))}
-                        <option value={MANUAL_WORKER_HOST_ADDRESS_OPTION}>Enter manually</option>
-                      </SelectField>
+                <>
+                  <SelectField
+                    id="automatic-worker-route"
+                    label="Worker connection"
+                    value={automaticWorkerEnrollmentRoute}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "direct" || value === "relay") {
+                        setAutomaticWorkerEnrollmentRoute(value);
+                      }
+                    }}
+                    disabled={automaticRelayStatusLoading}
+                    required
+                  >
+                    <option value="direct">Direct to controller</option>
+                    {(automaticRelayAvailable || automaticWorkerEnrollmentRoute === "relay") && (
+                      <option value="relay" disabled={!automaticRelayAvailable}>
+                        {automaticRelayAvailable ? "Via Clanky Relay" : "Via Clanky Relay (unavailable)"}
+                      </option>
+                    )}
+                  </SelectField>
                     {automaticWorkerEnrollmentRoute === "relay" ? (
                       <SelectField
                         id="automatic-worker-relay"
@@ -596,26 +509,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                         ))}
                       </SelectField>
                     ) : null}
-                    {automaticWorkerHostAddressMode === "manual" && (
-                      <TextField
-                        id="automatic-worker-host-address-manual"
-                        label="Manual worker host"
-                        value={automaticWorkerHostAddress}
-                        onChange={(event) =>
-                          setAutomaticWorkerHostAddress(event.target.value.replace(/\s/g, ""))
-                        }
-                        placeholder="worker.example.com"
-                        pattern="\S+"
-                        required
-                      />
-                    )}
-                    {automaticWorkerEnrollmentRoute !== "relay"
-                      && workerHostAddressesError && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        {workerHostAddressesError}
-                      </p>
-                    )}
-                  </>
+                </>
               )}
 
               {automaticExecutionTargets.length === 0 && (
