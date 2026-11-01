@@ -56,6 +56,7 @@ export const MeshControllerWellKnownDescriptorSchema = z.object({
   publicKey: RelayPublicKeySchema,
   fingerprint: RelayFingerprintSchema,
   binaryVersion: z.string().trim().min(1).max(200),
+  outboundWorker: z.literal(1).optional(),
 }).strict().superRefine(assertMeshProtocolMetadata);
 
 export const MeshWellKnownDescriptorSchema = z.union([

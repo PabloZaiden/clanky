@@ -130,7 +130,7 @@ function hasNoQuery(url: URL): boolean {
   return url.search.length === 0;
 }
 
-function hasValidControlQuery(url: URL): boolean {
+export function hasValidControlQuery(url: URL): boolean {
   const keys = [...url.searchParams.keys()];
   return keys.length === 1
     && keys[0] === "protocolVersion"
@@ -138,7 +138,7 @@ function hasValidControlQuery(url: URL): boolean {
     && MESH_SUPPORTED_PROTOCOL_VERSIONS.some((version) => String(version) === url.searchParams.get("protocolVersion"));
 }
 
-function hasValidStreamQuery(url: URL): boolean {
+export function hasValidStreamQuery(url: URL): boolean {
   const keys = [...url.searchParams.keys()];
   return keys.length === 2
     && keys.includes("ticket")
@@ -191,7 +191,7 @@ function upgradeServer(
   return server as Server<MeshRelayWebSocketData> | undefined;
 }
 
-function createRelayWebSocketHandler(
+export function createRelayWebSocketHandler(
   broker: MeshRelayBroker,
 ): Partial<WebSocketHandler<WebAppWebSocketData>> {
   return {

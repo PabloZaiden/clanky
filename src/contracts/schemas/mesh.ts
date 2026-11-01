@@ -139,6 +139,13 @@ const MeshEnrollmentDirectRouteSchema = z.object({
   tlsFingerprint: z.string().trim().min(1),
 }).strict();
 
+const MeshEnrollmentOutboundRouteSchema = z.object({
+  kind: z.literal("direct"),
+  connection: z.literal("outbound"),
+  endpoint: MeshOriginSchema,
+  transport: MeshTransportSchema,
+}).strict();
+
 const MeshEnrollmentRelayRouteSchema = z.object({
   kind: z.literal("relay"),
   relayUrl: ControllerRelayUrlSchema,
@@ -150,6 +157,7 @@ export const MeshEnrollmentRequestSchema = MeshEnrollmentRequestCommonSchema.ext
   binaryVersion: z.string().trim().min(1).max(200),
   route: z.union([
     MeshEnrollmentDirectRouteSchema,
+    MeshEnrollmentOutboundRouteSchema,
     MeshEnrollmentRelayRouteSchema,
   ]),
 }).strict().superRefine(assertMeshProtocolMetadata);

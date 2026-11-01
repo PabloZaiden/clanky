@@ -58,13 +58,33 @@ export interface MeshNodeIdentity {
   negotiatedProtocolVersion?: MeshProtocolVersion | null;
 }
 
-export interface MeshDirectPeerRoute {
+export interface MeshListenerPeerRoute {
   kind: "direct";
+  connection?: "inbound";
   endpoint: string;
   transport: MeshTransport;
   tlsTrust: MeshDirectTlsTrustMode;
   tlsCertificate: string | null;
   tlsFingerprint: string | null;
+}
+
+export interface MeshOutboundPeerRoute {
+  kind: "direct";
+  connection: "outbound";
+  endpoint: string;
+  targetNodeId: string;
+  transport: "https";
+  tlsTrust: "system";
+  tlsCertificate: null;
+  tlsFingerprint: null;
+}
+
+export type MeshDirectPeerRoute = MeshListenerPeerRoute | MeshOutboundPeerRoute;
+
+export function isMeshOutboundRoute(
+  route: MeshPeerRoute | null | undefined,
+): route is MeshOutboundPeerRoute {
+  return route?.kind === "direct" && route.connection === "outbound";
 }
 
 export interface MeshRelayPeerRoute {

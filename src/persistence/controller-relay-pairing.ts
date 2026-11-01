@@ -74,6 +74,7 @@ interface ActiveWorkerIdentityRow {
 export interface ControllerRelayAuthorizationRoute {
   relayUrl: string;
   relayFingerprint: string;
+  directOutbound?: boolean;
 }
 
 export class InconsistentMeshWorkerIdentityError extends Error {
@@ -377,9 +378,11 @@ export function listActiveControllerWorkerIdentities(
     byNodeId.set(identity.nodeId, identity);
     byFingerprint.set(identity.fingerprint, identity);
     if (
-      row.route_kind === "relay"
-      && row.relay_url === route.relayUrl
-      && row.relay_fingerprint === route.relayFingerprint
+      route.directOutbound
+        ? row.route_kind === "direct-outbound"
+        : row.route_kind === "relay"
+          && row.relay_url === route.relayUrl
+          && row.relay_fingerprint === route.relayFingerprint
     ) {
       matching.set(exactKey, identity);
     }

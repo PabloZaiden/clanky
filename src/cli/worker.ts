@@ -1,5 +1,5 @@
 import { homedir, hostname } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   createLogger,
   createManagedApiKey,
@@ -77,7 +77,7 @@ export function parseWorkerBootstrapArgs(
       rotate = true;
       continue;
     }
-    if (arg === "--relay-only") {
+    if (arg === "--relay-only" || arg === "--outbound-only") {
       relayOnly = true;
       continue;
     }
@@ -119,9 +119,10 @@ export function parseWorkerBootstrapArgs(
   }
   workerDirectory ??= resolve(homedir());
   instanceName ??= normalizeMeshInstanceName(hostname());
+  if (!host && port === undefined && !meshEndpoint) relayOnly = true;
   if (relayOnly) {
     if (meshEndpoint) {
-      throw new Error("worker bootstrap --relay-only does not accept --mesh-endpoint");
+      throw new Error("Outbound-only worker bootstrap does not accept --mesh-endpoint");
     }
     if (host && !isLoopbackHost(host)) {
       throw new Error("worker bootstrap --relay-only requires a loopback --host");
@@ -194,6 +195,7 @@ async function persistWorkerBootstrapConfiguration(
 
 async function bootstrapWorker(
   context: Parameters<NonNullable<WebAppCliCommandDefinition<ClankyCliContext>["handler"]>>[0],
+  printResult = true,
 ): Promise<CliCommandResult> {
   const options = parseWorkerBootstrapArgs(context.args);
   if (options.relayOnly) {
@@ -232,7 +234,7 @@ async function bootstrapWorker(
 
   const existing = listManagedApiKeys(app.store, owner.id, "clanky-mesh-worker");
   if (existing.length > 0 && !options.rotate) {
-    context.stdout.write(`${JSON.stringify({
+    if (printResult) context.stdout.write(`${JSON.stringify({
       apiKey: null,
       keyId: existing[0]!.id,
       ownerId: owner.id,
@@ -261,7 +263,7 @@ async function bootstrapWorker(
     prefix: "clanky",
     managedBy: "clanky-mesh-worker",
   });
-  context.stdout.write(`${JSON.stringify({
+  if (printResult) context.stdout.write(`${JSON.stringify({
     apiKey: created.token,
     keyId: created.key.id,
     ownerId: owner.id,
@@ -316,9 +318,18 @@ async function joinWorker(
   context: Parameters<NonNullable<WebAppCliCommandDefinition<ClankyCliContext>["handler"]>>[0],
 ): Promise<CliCommandResult> {
   const options = parseWorkerJoinArgs(context.args);
-  const runtime = resolveWorkerRuntimeConfiguration({
+  let runtime = resolveWorkerRuntimeConfiguration({
     environment: context.environment,
   });
+  const persisted = readWebAppConfig(runtime.dataDir);
+  if (persisted.serve?.options?.["mesh-worker"] !== true) {
+    if (await Bun.file(join(runtime.dataDir, "clanky.db")).exists()) {
+      throw new Error("worker join will not convert an existing controller data directory. Use a separate CLANKY_DATA_DIR or explicitly bootstrap this worker.");
+    }
+    const bootstrapped = await bootstrapWorker({ ...context, args: ["bootstrap", "--outbound-only"] }, false);
+    if (bootstrapped.exitCode !== 0) return bootstrapped;
+    runtime = resolveWorkerRuntimeConfiguration({ environment: context.environment });
+  }
   const startedAt = performance.now();
   log.info("Initializing worker enrollment runtime");
   const { getWebAppServer } = await import("../server");
@@ -388,12 +399,19 @@ export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliConte
     usage: [
       "worker <bootstrap|join|channel|service|ssh-agent> [options]",
       "",
-      "Bootstrap (choose direct mode or --relay-only):",
-      "  clanky worker bootstrap --host HOST --port PORT --mesh-endpoint HTTPS_URL [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
-      "  clanky worker bootstrap --relay-only [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
+      "The invitation selects a controller or relay; the worker connects outward in both cases.",
+      "  clanky worker join HTTPS_TARGET --token TOKEN --fingerprint CONTROLLER_FINGERPRINT",
+      "Fresh join initializes an outbound-only worker. Install/start its service explicitly afterward.",
       "",
-      "Direct mode requires --host, --port, and an HTTPS --mesh-endpoint.",
-      "Relay-only mode needs no --host or --port, uses loopback and an ephemeral port, and does not accept --mesh-endpoint.",
+      "Bootstrap (optional before join):",
+      "  clanky worker bootstrap [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
+      "  clanky worker bootstrap --outbound-only [--worker-directory DIR] [--instance-name NAME]",
+      "",
+      "Existing listener-based direct workers:",
+      "  clanky worker bootstrap --host HOST --port PORT --mesh-endpoint HTTPS_URL [--worker-directory DIR] [--instance-name NAME] [--name KEY_NAME] [--rotate]",
+      "",
+      "Outbound-only mode uses a private loopback API and an ephemeral port; no public worker endpoint is needed.",
+      "--relay-only is the existing name for outbound-only bootstrap and accepts either invitation target.",
       "Defaults: --worker-directory uses $HOME; --instance-name uses the system hostname.",
     ].join("\n"),
     handler: runWorkerCommand,

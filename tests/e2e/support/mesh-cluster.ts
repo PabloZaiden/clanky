@@ -535,14 +535,14 @@ export async function meshJsonRequest<T>(
 
 export async function enrollMeshWorker(
   controller: MeshHttpNode,
-  worker: ManagedMeshNode,
+  worker: Pick<ManagedMeshNode, "command" | "environment">,
 ): Promise<MeshEnrollmentResult> {
   const created = await meshJsonRequest<MeshEnrollmentResult>(
     controller,
     "/api/mesh/enrollment-tokens",
     {
       method: "POST",
-      body: { name: "e2e-worker", ttlSeconds: 900 },
+      body: { name: "e2e-worker", ttlSeconds: 900, route: "direct" },
     },
   );
   if (created.status !== 201) {
@@ -584,6 +584,44 @@ export async function enrollMeshWorker(
     throw new Error(`Worker enrollment failed (pid=${String(joinResult.pid)}, exitCode=${String(joinResult.exitCode)}, signalCode=${String(joinResult.signalCode)}, timedOut=${String(joinResult.exitedDueToTimeout)}, maxBuffer=${String(joinResult.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - joinStartedAt))}): ${output}`);
   }
   return created.body;
+}
+
+export async function startJoinedMeshWorker(options: {
+  controller: MeshHttpNode;
+  command: string[];
+  environment?: Record<string, string | undefined>;
+}): Promise<ManagedMeshNode> {
+  const dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-outbound-worker-"));
+  let node: ManagedMeshNode | undefined;
+  try {
+    const port = await availablePort();
+    const tls = await getMeshTestTls();
+    const environment = currentEnvironment({
+      ...options.environment,
+      HOME: dataDir,
+      CLANKY_DATA_DIR: dataDir,
+      CLANKY_HOST: "127.0.0.1",
+      CLANKY_PORT: String(port),
+      NODE_EXTRA_CA_CERTS: tls.certificatePath,
+      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
+    });
+    delete environment["CLANKY_PUBLIC_BASE_URL"];
+    delete environment["CLANKY_DISABLE_PASSKEY"];
+    await enrollMeshWorker(options.controller, { command: options.command, environment });
+    const serveArguments = ["serve"];
+    const started = spawnNodeServer({ command: options.command, environment, serveArguments });
+    node = {
+      role: "worker", command: options.command, environment, serveArguments,
+      dataDir, baseUrl: `http://127.0.0.1:${String(port)}`,
+      child: started.child, output: started.output, generation: 1,
+    };
+    await waitForNodeHealth(node, "invitation-joined worker to become healthy", MESH_STARTUP_TIMEOUT_MS);
+    return node;
+  } catch (error) {
+    const diagnostics = node ? await stopNodeServer(node) : "";
+    await removeMeshDataDirectory(dataDir);
+    throw new Error(`Failed to start invitation-joined worker${diagnostics ? `:\n${diagnostics}` : ""}`, { cause: error });
+  }
 }
 
 export async function enrollRelayMeshWorker(

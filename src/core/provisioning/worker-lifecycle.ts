@@ -199,7 +199,7 @@ export class ProvisioningWorkerLifecycle {
         "--instance-name",
         record.job.config.name,
         ...(options.relayOnlyWorker
-          ? ["--relay-only"]
+          ? ["--outbound-only"]
           : [
               "--host",
               "0.0.0.0",
@@ -330,7 +330,7 @@ export class ProvisioningWorkerLifecycle {
         "--instance-name",
         record.job.config.name,
         ...(options.relayOnlyWorker
-          ? ["--relay-only"]
+          ? ["--outbound-only"]
           : [
               "--host",
               "0.0.0.0",

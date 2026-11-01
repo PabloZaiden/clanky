@@ -1,8 +1,9 @@
 # Mesh workers and relays
 
-Mesh lets a Clanky controller run workspaces on another host. A worker can
-connect directly to one or more controllers, or it can make an outbound
-connection through a relay when inbound connections are not possible.
+Mesh lets a Clanky controller run workspaces on another host. New workers
+connect outward to the HTTPS controller or relay named in their invitation.
+Neither topology requires an externally reachable worker listener.
+Existing listener-based direct workers retain their enrolled routes.
 
 To let another full Clanky instance use selected existing workspaces without
 exposing its execution host, use [workspace collaboration](workspace-collaboration.md)
@@ -356,18 +357,41 @@ creating a replacement worker does not transfer ownership of old sessions.
 
 | Situation | Setup |
 | --- | --- |
-| The controller can reach the worker over HTTPS | Direct worker |
-| The worker cannot accept inbound connections | Relay plus relay-only worker |
+| The worker can reach the controller over HTTPS/WSS | Direct outbound worker |
+| The controller is reachable only through a paired relay | Relayed outbound worker |
 
-For `clanky worker bootstrap`, choose direct mode with `--host`, `--port`,
-and an HTTPS `--mesh-endpoint`, or use `--relay-only` instead. In both modes,
-`--worker-directory` defaults to `$HOME` and `--instance-name` defaults to the
-system hostname; pass either optional flag to override its default. Relay-only
-mode does not require `--host` or `--port` and does not accept `--mesh-endpoint`.
+Run the generated `clanky worker join` command on a fresh worker to initialize
+and enroll it. Discovery selects the controller or relay from the invitation;
+there is no worker host, port, endpoint or certificate to configure.
+Install/start its service explicitly afterward. Join does not install an OS
+service or convert an existing controller data directory into a worker.
+
+Optional `clanky worker bootstrap` configures an outbound-only worker before
+joining. `--worker-directory` defaults to `$HOME` and `--instance-name` to the
+system hostname. `--outbound-only` makes the default explicit; `--relay-only`
+retains its existing configuration meaning but now accepts either invitation
+target. Both use a private loopback management API with an ephemeral port.
 
 Use HTTPS for controller, worker and relay Mesh endpoints, including during
 local development. Plain HTTP listeners are only appropriate behind trusted
-TLS-terminating proxies or for a relay-only worker's private local API.
+TLS-terminating proxies or for an outbound-only worker's private local API.
+
+Direct outbound support is an opt-in Mesh v7 extension. Supporting workers
+request it during discovery; the controller advertises it only to those
+requests. An unsupported controller is rejected explicitly before enrollment,
+not retried with a publicly exposed worker listener. Direct connections use
+the controller's own signed identity and the existing authenticated control,
+ticketed stream, route allowlist and execution gateway infrastructure. No
+separate relay process or relay pairing is created on the controller.
+Upgrade the controller before joining new outbound workers. Both endpoints
+must retain binaries supporting this extension; older binaries do not
+understand persisted outbound grants. Existing listener and relay routes
+continue to use their negotiated Mesh v7 transport.
+
+Persisted grants restore the outbound connections after service/controller
+restart. Each direct controller grant has its own connection lifecycle;
+existing relay association limits remain unchanged. Connection loss never
+replays an enrollment token, command or prompt.
 
 ## Set up a relay
 
@@ -454,9 +478,17 @@ standard WebApp logger to stdout/stderr: routine connection and stream details
 are visible at trace level, and abnormal outcomes remain warnings. The relay
 does not retain a persistent audit history.
 
-## Bootstrap a direct worker
+## Existing listener-based direct workers
 
-Run this on the host that will execute workspaces:
+Existing direct registrations are not migrated on startup, binary update or
+workspace restart/rebuild. Their controller still dials the enrolled HTTPS
+worker endpoint. Preserve the data directory, identity, workspace binding and
+working directory; do not delete or replace them to change a transport.
+Migration is a separate explicit operation, not a prerequisite for using the
+new binary. Dedicated worker grants remain workspace-managed and cannot be
+converted into general workers with a global enrollment invitation.
+
+Explicit listener-based bootstrap remains available for those installations:
 
 ```bash
 clanky worker bootstrap \
@@ -500,18 +532,20 @@ The bootstrap command prints the worker API key only when it creates or
 rotates it. Keep that value on the worker; enrollment uses a short-lived
 controller token instead.
 
-## Bootstrap a relay-only worker
+## Bootstrap an outbound worker
 
-Use relay-only mode when the worker must not listen on a public worker
-endpoint:
+Bootstrap is optional before a fresh join. Use it to customize worker defaults:
 
 ```bash
-clanky worker bootstrap --relay-only
+clanky worker bootstrap \
+  --worker-directory /workspaces \
+  --instance-name worker-1
 ```
 
-Relay-only workers listen only on loopback with an ephemeral port, do not
-accept `--mesh-endpoint`, and maintain an outbound TLS connection through the
-paired relay.
+These workers listen only on loopback with an ephemeral management port and
+do not need a worker TLS identity or advertised endpoint. Their invitation
+selects direct controller or relay transport. The controller's advertised
+HTTPS endpoint must be reachable from a direct worker.
 
 ## Run the worker as a service
 
@@ -548,14 +582,14 @@ and Files and Folders permissions when those capabilities are used.
 
 ## Enroll a worker
 
-Create a single-use invitation on the controller. Use `--route direct` for a
-direct worker:
+Create a single-use invitation on the controller. Use `--route direct` to
+connect the worker outward to that controller:
 
 ```bash
 clanky mesh enrollment-token create --name worker-1 --route direct
 ```
 
-For a relay-only worker, use `--route relay`:
+To connect outward through a paired relay, use `--route relay`:
 
 ```bash
 clanky mesh enrollment-token create --name worker-1 --route relay
@@ -703,6 +737,11 @@ and do not prevent finished jobs from being dismissed. Individual jobs can
 still be dismissed from their detail view.
 
 ## Automatic workspace runtimes
+
+New automatic workers use outbound connections for both invitation routes.
+Workspace creation selects **Worker connection**, not a worker address;
+provisioning does not publish a container worker port. Existing listener-based
+workers preserve their route and published endpoint during restart/rebuild.
 
 Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or
 **OpenCode 2**. ACP also selects a harness preset. Native adapters require a

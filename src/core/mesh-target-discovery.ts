@@ -11,6 +11,8 @@ import {
   MESH_RELAY_DESCRIPTOR_PATH,
   MESH_RELAY_WORKSPACE_CLIENT_HEADER,
   MESH_RELAY_WORKSPACE_CLIENT_VERSION,
+  MESH_OUTBOUND_WORKER_HEADER,
+  MESH_OUTBOUND_WORKER_VERSION,
   normalizeMeshRelayOrigin,
   type MeshWellKnownDescriptor,
 } from "@/shared/mesh-relay";
@@ -111,6 +113,7 @@ export async function discoverMeshEnrollmentTarget(
     timeoutMs?: number;
     maxBytes?: number;
     workspaceClient?: boolean;
+    outboundWorker?: boolean;
   } = {},
 ): Promise<{
   target: string;
@@ -135,6 +138,9 @@ export async function discoverMeshEnrollmentTarget(
           [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(meshTransportProtocolVersions(normalizedTarget)),
           ...(options.workspaceClient ? {
             [MESH_RELAY_WORKSPACE_CLIENT_HEADER]: String(MESH_RELAY_WORKSPACE_CLIENT_VERSION),
+          } : {}),
+          ...(options.outboundWorker ? {
+            [MESH_OUTBOUND_WORKER_HEADER]: String(MESH_OUTBOUND_WORKER_VERSION),
           } : {}),
         },
         signal: controller.signal,

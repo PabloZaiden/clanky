@@ -16,7 +16,7 @@ export const CLANKY_SERVE_OPTIONS = [
   {
     name: "relay-only",
     type: "boolean",
-    description: "Run a loopback-only worker through its outbound relay grant.",
+    description: "Run a loopback-only worker through outbound controller or relay grants.",
     defaultValue: false,
   },
   {

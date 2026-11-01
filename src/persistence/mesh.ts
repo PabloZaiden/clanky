@@ -15,6 +15,9 @@ import type {
   MeshWorkerRegistration,
 } from "@/shared/mesh";
 import {
+  isMeshOutboundRoute,
+} from "@/shared/mesh";
+import {
   MESH_PROTOCOL_VERSION,
   isMeshProtocolGeneration,
   isSupportedMeshProtocolVersion,
@@ -200,7 +203,7 @@ export async function saveWorkerRegistration(
       input.workerEncryptionPublicKey,
       input.workerTlsCertificate,
       input.workerTlsFingerprint,
-      route.kind,
+      isMeshOutboundRoute(route) ? "direct-outbound" : route.kind,
       route.kind === "relay" ? route.relayUrl : null,
       route.kind === "relay" ? route.relayFingerprint : null,
       input.workerDirectory,
@@ -694,7 +697,9 @@ export async function saveControllerGrant(
         input.controllerRoute?.kind === "direct"
           ? input.controllerRoute.endpoint
           : null,
-        input.controllerRoute?.kind ?? "direct",
+        isMeshOutboundRoute(input.controllerRoute)
+          ? "direct-outbound"
+          : input.controllerRoute?.kind ?? "direct",
         input.controllerRoute?.kind === "relay"
           ? input.controllerRoute.relayUrl
           : null,
@@ -1006,6 +1011,17 @@ function mapWorkerRegistrationRow(
       relayUrl: row.relay_url,
       relayFingerprint: row.relay_fingerprint,
     };
+  } else if (row.route_kind === "direct-outbound") {
+    route = {
+      kind: "direct",
+      connection: "outbound",
+      endpoint: row.worker_endpoint,
+      targetNodeId: row.worker_node_id,
+      transport: "https",
+      tlsTrust: "system",
+      tlsCertificate: null,
+      tlsFingerprint: null,
+    };
   } else {
     route = {
       kind: "direct",
@@ -1110,6 +1126,17 @@ function mapControllerGrantRow(
       targetNodeId: row.controller_node_id,
       relayUrl: row.relay_url,
       relayFingerprint: row.relay_fingerprint,
+    };
+  } else if (row.route_kind === "direct-outbound" && row.controller_endpoint) {
+    controllerRoute = {
+      kind: "direct",
+      connection: "outbound",
+      endpoint: row.controller_endpoint,
+      targetNodeId: row.controller_node_id,
+      transport: "https",
+      tlsTrust: "system",
+      tlsCertificate: null,
+      tlsFingerprint: null,
     };
   } else {
     controllerRoute = row.controller_endpoint

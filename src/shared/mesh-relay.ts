@@ -15,6 +15,8 @@ export const MESH_RELAY_MAX_AUTHORIZATION_STAGED_BYTES = 4 * 1_024 * 1_024;
 export const MESH_RELAY_DESCRIPTOR_PATH = "/.well-known/clanky-mesh";
 export const MESH_RELAY_CONTROL_PATH = "/api/mesh/relay/control";
 export const MESH_RELAY_STREAM_PATH = "/api/mesh/relay/stream";
+export const MESH_OUTBOUND_WORKER_HEADER = "x-clanky-mesh-outbound-worker";
+export const MESH_OUTBOUND_WORKER_VERSION = 1;
 export const MESH_RELAY_CONTROL_CLOSE_REPLACED = 4409;
 export const MESH_RELAY_WORKSPACE_CLIENT_HEADER = "x-clanky-workspace-client";
 export const MESH_RELAY_WORKSPACE_CLIENT_VERSION = 1;
@@ -66,6 +68,7 @@ export interface MeshControllerWellKnownDescriptor extends MeshProtocolMetadata 
   nodeId: string;
   publicKey: string;
   fingerprint: string;
+  outboundWorker?: typeof MESH_OUTBOUND_WORKER_VERSION;
 }
 
 export type MeshWellKnownDescriptor =

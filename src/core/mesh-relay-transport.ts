@@ -2,7 +2,7 @@
  * `MeshPeerTransport` implementation backed by a relay control connection.
  */
 
-import type { MeshPeerRoute, MeshRelayPeerRoute } from "@/shared/mesh";
+import { isMeshOutboundRoute, type MeshPeerRoute, type MeshRelayPeerRoute } from "@/shared/mesh";
 import { DomainError } from "../domain/domain-error";
 import type {
   MeshDuplexSocket,
@@ -43,14 +43,24 @@ function requireRelayRoute(route: MeshPeerRoute): MeshRelayPeerRoute {
 export function createMeshRelayPeerTransport(
   resolve: MeshRelayConnectorResolver,
 ): MeshPeerTransport {
+  return createMeshStreamPeerTransport((route) => resolve(requireRelayRoute(route)));
+}
+
+export function createMeshStreamPeerTransport(
+  resolve: (route: MeshPeerRoute) => MeshRelayConnector,
+): MeshPeerTransport {
+  const targetNodeId = (route: MeshPeerRoute): string => {
+    if (route.kind === "relay" || isMeshOutboundRoute(route)) return route.targetNodeId;
+    throw new DomainError("mesh_transport_route_invalid", "Mesh streams require an outbound peer route.");
+  };
   return {
     async request(
       route: MeshPeerRoute,
       path: string,
       request: MeshPeerRequest,
     ): Promise<Response> {
-      const relayRoute = requireRelayRoute(route);
-      const connector = resolve(relayRoute);
+      const target = targetNodeId(route);
+      const connector = resolve(route);
       const headers = new Headers(request.headers);
       headers.set(MESH_RELAY_RESPONSE_FLOW_HEADER, String(MESH_RELAY_RESPONSE_FLOW_VERSION));
       const stream = await connector.openStream({
@@ -58,7 +68,7 @@ export function createMeshRelayPeerTransport(
         method: (request.method ?? "GET").toUpperCase(),
         path,
         headers: sanitizeMeshRelayRequestHeaders(headers),
-        targetNodeId: relayRoute.targetNodeId,
+        targetNodeId: target,
         ...(request.signal ? { signal: request.signal } : {}),
       });
       return await performMeshRelayHttpRequest(stream, {
@@ -75,13 +85,13 @@ export function createMeshRelayPeerTransport(
       headers: Record<string, string>,
     ): MeshDuplexSocket {
       return new MeshRelayDuplexSocket(async (signal) => {
-        const relayRoute = requireRelayRoute(route);
-        const connector = resolve(relayRoute);
+        const target = targetNodeId(route);
+        const connector = resolve(route);
         return await connector.openStream({
           kind: "socket",
           path,
           headers: sanitizeMeshRelayRequestHeaders(headers),
-          targetNodeId: relayRoute.targetNodeId,
+          targetNodeId: target,
           signal,
         });
       });
