@@ -1,4 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
+import { executionAutomation } from "../execution-automation";
 /**
  * Scheduled-agent transfer API routes.
  */
@@ -22,7 +23,7 @@ export const transferRoutes = defineRoutes({
       GET: {
         requestSchema: undefined,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Attachment download; use the normal agent JSON detail operation." },
+        automation: executionAutomation("read", "Exports the portable scheduled-agent configuration."),
       },
     },
     async GET(_req: Request, ctx): Promise<Response> {

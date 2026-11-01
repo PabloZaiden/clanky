@@ -1,4 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
+import { executionAutomation } from "../execution-automation";
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { TranscriptDownloadQuerySchema, TranscriptSnapshotQuerySchema } from "../route-schemas";
@@ -122,7 +123,7 @@ export const chatsTranscriptRoutes = defineRoutes({
       GET: {
         requestSchema: undefined,
         querySchema: TranscriptDownloadQuerySchema,
-        automation: { policy: "excluded", reason: "Raw Markdown transcript download; use the paged JSON snapshot operation." },
+        automation: executionAutomation("read", "Markdown transcript exports require file delivery.", { responseFormat: "file" }),
       },
     },
     async GET(req: Request, ctx): Promise<Response> {
@@ -154,7 +155,7 @@ export const chatsTranscriptRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Open a chat transcript as a standalone HTML document.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw HTML transcript document; use the paged JSON snapshot operation." } },
+      GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "HTML transcript exports require file delivery.", { responseFormat: "file" }) },
     },
     async GET(_req: Request, ctx): Promise<Response> {
       const chat = await chatManager.getChat(ctx.params["id"]!);

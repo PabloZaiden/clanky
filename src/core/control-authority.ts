@@ -6,6 +6,7 @@ import type { ControlGrantSelection } from "@/contracts/schemas/control";
 import {
   findRouteCatalogEntry, resolveRouteOperation,
   type HttpMethod, type RouteCatalogEntry,
+  type RouteAutomationMetadata,
 } from "@pablozaiden/webapp/server";
 import {
   CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE,
@@ -21,6 +22,8 @@ import { managedContextIdentityResolver } from "./managed-context-identity";
 import { collaborationService } from "./collaboration-service";
 import { requireBoundWorkspaceResource } from "./workspace-operation-authority";
 import type { OperationAuthority, OperationRequest, OperationResult, PreparedOperation } from "./clanky-operation-service";
+import type { ExecuteOperationInput } from "@/contracts/schemas/control";
+import { prepareControlOperationFiles } from "./control-operation-files";
 
 export const CONTROL_INTERACTION_TAG = "clanky-control-interaction";
 const WORKSPACE_RESOURCES = new Set(["chat", "task", "workspace", "review-comment"]);
@@ -141,14 +144,33 @@ export class ControlOperationAuthority implements OperationAuthority {
 
   get general(): boolean { return this.options.grant.general && this.current.general; }
 
+  get executionAccess(): boolean {
+    return this.general && !!this.options.grant.managedContext && !!this.current.managedContext;
+  }
+
+  automationFor = (entry: RouteCatalogEntry, method: HttpMethod): RouteAutomationMetadata => {
+    const automation = resolveRouteOperation(entry, method).automation;
+    if (!this.executionAccess) return { ...automation, execution: undefined };
+    return automation.execution ? { ...automation, policy: automation.execution.policy } : automation;
+  };
+
+  async prepareFiles(input: ExecuteOperationInput, automation: RouteAutomationMetadata, signal: AbortSignal) {
+    await this.revalidate();
+    if (!this.executionAccess || !this.options.grant.executionHostBinding) {
+      throw new DomainError("control_files_unavailable", "File operations require an active general-access workspace execution.");
+    }
+    return await prepareControlOperationFiles(this.options.grant, input, automation, signal);
+  }
+
   allows = (entry: RouteCatalogEntry, method: HttpMethod): boolean => {
     if (this.released || !entry.methods.includes(method)) return false;
     for (const { user } of [this.options.grant, this.current]) {
       if (entry.auth === "admin" && !user.isAdmin || entry.auth === "owner" && !user.isOwner) return false;
     }
     const metadata = resolveRouteOperation(entry, method);
-    if (!metadata.automation || metadata.automation.policy === "excluded") return false;
-    if (entry.tags.includes(CONTROL_INTERACTION_TAG)) return metadata.automation.policy === "read";
+    const automation = this.automationFor(entry, method);
+    if (automation.policy === "excluded") return false;
+    if (entry.tags.includes(CONTROL_INTERACTION_TAG)) return automation.policy === "read";
     if (!this.workspaceId) return this.options.grant.general && this.current.general;
     const delegation = metadata.delegation;
     return !!delegation && WORKSPACE_RESOURCES.has(delegation.resource)
@@ -170,7 +192,7 @@ export class ControlOperationAuthority implements OperationAuthority {
   }
 
   async validate(prepared: PreparedOperation, signal: AbortSignal): Promise<void> {
-    await this.authorize({ method: prepared.method, path: prepared.path, body: prepared.body, signal });
+    await this.authorize({ method: prepared.method, path: prepared.path, body: prepared.body, files: prepared.files, signal });
   }
 
   async revalidate(): Promise<ControlGrant> {
@@ -192,6 +214,9 @@ export class ControlOperationAuthority implements OperationAuthority {
       throw new DomainError("control_context_ended", "The control execution was cancelled.");
     }
     const current = await this.revalidate();
+    if (request.files && !this.executionAccess) {
+      throw new DomainError("control_files_unavailable", "Private file transport requires current general-access execution authority.");
+    }
     const url = new URL(request.path, "http://clanky.invalid");
     const match = findRouteCatalogEntry(this.options.catalog, url.pathname);
     if (!match || !this.allows(match.entry, request.method)) {
@@ -199,7 +224,7 @@ export class ControlOperationAuthority implements OperationAuthority {
     }
     const operation = { entry: match.entry, method: request.method, params: match.params };
     const metadata = resolveRouteOperation(match.entry, request.method);
-    const readOnly = metadata.automation!.policy === "read";
+    const readOnly = this.automationFor(match.entry, request.method).policy === "read";
     const workspaceId = this.workspaceId;
     if (!workspaceId || match.entry.tags.includes(CONTROL_INTERACTION_TAG)) {
       return { operation, readOnly };

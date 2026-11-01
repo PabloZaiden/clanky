@@ -22,6 +22,15 @@ export const ExecuteOperationSchema = z.object({
   parameters: z.array(z.object({ name: z.string().min(1).max(100), value: z.string().max(16_384) }).strict()).max(16),
   query: z.array(z.object({ name: z.string().min(1).max(100), value: z.string().max(16_384) }).strict()).max(32),
   bodyJson: z.string().max(40_000).nullable(),
+  bodyFile: z.object({
+    path: z.string().min(1).max(16_384),
+    contentType: z.string().min(1).max(500).default("application/json"),
+  }).strict().optional(),
+  headersFile: z.object({ path: z.string().min(1).max(16_384) }).strict().optional(),
+  responseFile: z.object({
+    path: z.string().min(1).max(16_384),
+    overwrite: z.boolean().default(false),
+  }).strict().optional(),
 }).strict();
 export type ExecuteOperationInput = z.infer<typeof ExecuteOperationSchema>;
 

@@ -1,4 +1,5 @@
 import { workspaceOperation } from "./workspace-delegation";
+import { executionAutomation } from "./execution-automation";
 /**
  * Shared HTTP routes for executor-backed file explorers.
  *
@@ -244,7 +245,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "excluded", reason: "Raw image bytes belong to browser media rendering, not JSON automation." },
+          automation: executionAutomation("read", "Image bytes require file delivery.", { responseFormat: "file" }),
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -283,7 +284,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "excluded", reason: "Raw ranged video stream; use file metadata or JSON explorer operations." },
+          automation: executionAutomation("read", "Video bytes require file delivery.", { responseFormat: "file" }),
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -367,7 +368,7 @@ export function createFileExplorerRoutes(
         GET: {
           requestSchema: undefined,
           querySchema: GetFileExplorerFileRequestSchema,
-          automation: { policy: "excluded", reason: "Raw attachment download; use the JSON content or metadata operation." },
+          automation: executionAutomation("read", "Downloads require file delivery.", { responseFormat: "file" }),
         },
       },
       async GET(req: Request, ctx: RouteContext): Promise<Response> {
@@ -637,7 +638,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: CreateFileExplorerUploadRequestSchema,
           querySchema: undefined,
-          automation: { policy: "excluded", reason: "Browser-owned binary upload protocol requires raw chunk delivery." },
+          automation: executionAutomation("confirm", "Creates an upload session on the selected execution host."),
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
@@ -684,7 +685,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: undefined,
           querySchema: UploadFileExplorerChunkRequestSchema,
-          automation: { policy: "excluded", reason: "Raw binary upload chunks are not JSON automation inputs." },
+          automation: executionAutomation("write", "Appends bytes to an admitted upload session.", { requestFormat: "raw" }),
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
@@ -732,7 +733,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: CompleteFileExplorerUploadRequestSchema,
           querySchema: undefined,
-          automation: { policy: "excluded", reason: "Completion belongs to the browser-owned binary upload session." },
+          automation: executionAutomation("confirm", "Publishes the uploaded file and may overwrite the destination."),
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
@@ -774,7 +775,7 @@ export function createFileExplorerRoutes(
         POST: {
           requestSchema: CancelFileExplorerUploadRequestSchema,
           querySchema: undefined,
-          automation: { policy: "excluded", reason: "Cancellation belongs to the browser-owned binary upload session." },
+          automation: executionAutomation("write", "Cancels an upload and removes its staged bytes."),
         },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {

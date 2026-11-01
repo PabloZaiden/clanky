@@ -3,6 +3,7 @@
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import { CreateWorkspaceWorkerEnrollmentRequestSchema } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";
 import { meshErrorResponse } from "./mesh";
@@ -17,8 +18,8 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
     description: "List or create workspace-exclusive Mesh worker enrollments.",
     requestSchema: CreateWorkspaceWorkerEnrollmentRequestSchema,
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Dedicated worker enrollment records contain private bootstrap credentials." } },
-      POST: { requestSchema: CreateWorkspaceWorkerEnrollmentRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Creates private dedicated-worker bootstrap and enrollment credentials." } },
+      GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Reads private dedicated-worker bootstrap credentials.", { privateResponse: true }) },
+      POST: { requestSchema: CreateWorkspaceWorkerEnrollmentRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Creates private dedicated-worker bootstrap credentials.", { privateResponse: true }) },
     },
     async GET(_req, ctx): Promise<Response> {
       try {
@@ -56,8 +57,8 @@ export const workspaceWorkerEnrollmentRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read or cancel a workspace-exclusive Mesh worker enrollment.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Reads private dedicated-worker bootstrap and enrollment credentials." } },
-      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Revokes dedicated-worker enrollment credentials outside model operations." } },
+      GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Reads private dedicated-worker bootstrap credentials.", { privateResponse: true }) },
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("confirm", "Revokes dedicated-worker enrollment credentials.") },
     },
     async GET(_req, ctx): Promise<Response> {
       try {

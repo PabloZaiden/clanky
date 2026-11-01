@@ -180,14 +180,16 @@ async function stopNodeServer(node: ManagedMeshNode): Promise<string> {
   return await readProcessOutput(node);
 }
 
-async function stopTlsProxy(node: ManagedMeshNode): Promise<void> {
+export async function stopTlsProxy(node: Pick<ManagedMeshNode, "tlsProxy">): Promise<void> {
   if (!node.tlsProxy) return;
   if (node.tlsProxy.child.exitCode === null) node.tlsProxy.child.kill();
   await node.tlsProxy.child.exited;
   await Promise.all([node.tlsProxy.output.stdout, node.tlsProxy.output.stderr]);
 }
 
-async function startTlsProxy(node: ManagedMeshNode, upstreamPort: number): Promise<void> {
+export async function startTlsProxy(
+  node: Pick<ManagedMeshNode, "dataDir" | "meshEndpoint" | "tlsProxy">, upstreamPort: number,
+): Promise<void> {
   const tls = await getMeshTestTls();
   const port = await availablePort();
   node.meshEndpoint = `https://127.0.0.1:${String(port)}`;

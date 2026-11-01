@@ -3,6 +3,7 @@
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import {
   ControllerRelayPairingStatusSchema,
   PairControllerRelayRequestSchema,
@@ -31,7 +32,7 @@ export const meshRelayRoutes = defineRoutes({
     description: "Inspect or pair named Mesh relays for this controller.",
     operations: {
       GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
-      POST: { requestSchema: PairControllerRelayRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Establishes Mesh relay trust; pairing is managed outside model operations." } },
+      POST: { requestSchema: PairControllerRelayRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Pairs a named relay and establishes controller trust.") },
     },
     tags: ["mesh", "relay"],
     requestSchema: PairControllerRelayRequestSchema,
@@ -67,7 +68,7 @@ export const meshRelayRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Select the primary Mesh relay used by default for invitations.",
     operations: {
-      POST: { requestSchema: SelectPrimaryControllerRelayRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Primary Mesh relay trust routing is managed outside model operations." } },
+      POST: { requestSchema: SelectPrimaryControllerRelayRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Changes the primary relay used for invitations.") },
     },
     tags: ["mesh", "relay"],
     requestSchema: SelectPrimaryControllerRelayRequestSchema,
@@ -92,7 +93,7 @@ export const meshRelayRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Unpair a named Mesh relay without changing worker enrollments.",
     operations: {
-      DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh relay trust revocation is managed outside model operations." } },
+      DELETE: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("confirm", "Revokes trust in a named controller relay.") },
     },
     tags: ["mesh", "relay"],
     responseSchema: ControllerRelayPairingStatusSchema,

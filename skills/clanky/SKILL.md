@@ -26,6 +26,25 @@ requests stay pending. Voice always confirms. Inspect returned status instead
 of assuming confirmation or completion. Native/MCP/deterministic confirmations
 expire after one hour; do not renew or repeat uncertain work to avoid that deadline.
 
+Workspaces with **Allow general Clanky access** give managed native and
+deterministic executions all application capabilities allowed to their real
+user, including account/integration administration, private credentials and
+binary transfers. They cannot approve requests or alter approval policy;
+API-key-backed browser sessions cannot substitute for a real WebAuthn approval.
+External integration and Voice grants keep their existing limits.
+
+For non-direct intents, list and describe the canonical operation before calling
+`clanky_execute_operation`. Obey `bodyFileRequired`, `responseFileRequired` and
+the exact `requestHeaders`. Use absolute paths on the originating execution
+host: `bodyFile: { path, contentType }` supplies frozen raw bytes or private JSON
+instead of `bodyJson`; `headersFile: { path }` supplies a frozen JSON record of
+declared headers; `responseFile: { path, overwrite }` saves private/binary output
+with mode `600`. The target can reside on another host. File results expose only
+path, bytes and content type. Never print credentials, copy them into repository
+files or supply them inline. Source-file edits after requesting approval do not
+change the frozen operation. Staging is cleaned up during graceful teardown;
+unclean shutdown can leave protected staging on the execution host.
+
 ## Conversation files
 
 For chat/task/Agent inputs, discover the endpoint's `attachments` schema before

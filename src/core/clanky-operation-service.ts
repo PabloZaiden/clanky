@@ -11,6 +11,7 @@ import {
   routeSchemaToJsonSchema,
   type HttpMethod,
   type RouteCatalogEntry,
+  type RouteAutomationMetadata,
 } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
 import { contentReadPage, readBytes, readRevision, DEFAULT_READ_BYTES } from "../client-sdk/collaboration/resource-read";
@@ -27,6 +28,20 @@ export interface OperationRequest {
   body?: unknown;
   headers?: Readonly<Record<string, string>>;
   signal: AbortSignal;
+  files?: OperationFiles;
+}
+
+export interface OperationFiles {
+  body?: unknown;
+  headers?: Readonly<Record<string, string>>;
+  raw: boolean;
+  contentType?: string;
+  requestBody: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | undefined>;
+  responseFile: boolean;
+  saveResponse: (body: ReadableStream<Uint8Array> | null, options: {
+    ok: boolean; status: number; contentType: string | null; signal: AbortSignal;
+  }) => Promise<Omit<OperationResult, "operationId" | "completion">>;
+  release: () => Promise<void>;
 }
 
 export interface OperationResult {
@@ -45,6 +60,8 @@ export interface OperationAuthority {
   refresh: (next: OperationAuthority) => void;
   release: () => void;
   validate?: (operation: PreparedOperation, signal: AbortSignal) => Promise<void>;
+  automationFor?: (entry: RouteCatalogEntry, method: HttpMethod) => RouteAutomationMetadata;
+  prepareFiles?: (input: ExecuteOperationInput, automation: RouteAutomationMetadata, signal: AbortSignal) => Promise<OperationFiles>;
 }
 
 type OperationMetadata = ReturnType<typeof resolveRouteOperation>;
@@ -57,18 +74,20 @@ export interface PreparedOperation {
   body?: unknown;
   parameters: Readonly<Record<string, string>>;
   input: ExecuteOperationInput;
+  files?: OperationFiles;
 }
 
 const SECRET_INPUTS = new Set([
   "apikey", "apikeys", "password", "credentialtoken", "encryptedcredential",
   "privatekey", "authorization", "cookie", "accesstoken", "refreshtoken",
+  "token", "secret", "webhookurl", "enrollmenttoken", "invitationtoken", "locktoken",
 ]);
 
 function assertSafeInputs(value: unknown): void {
   if (!value || typeof value !== "object") return;
   for (const [key, child] of Object.entries(value)) {
     if (SECRET_INPUTS.has(key.replace(/[-_]/g, "").toLowerCase())) {
-      throw new DomainError("voice_operation_invalid", "Credential material is not a voice-tool input.");
+      throw new DomainError("voice_operation_invalid", "Credential material must use a private input file, not inline tool arguments.");
     }
     assertSafeInputs(child);
   }
@@ -142,16 +161,21 @@ export class ClankyOperationService {
     if (!operation || !authority.allows(operation.entry, operation.method)) {
       throw new DomainError("voice_operation_unavailable", "The operation is unavailable to this call.");
     }
-    const metadata = resolveRouteOperation(operation.entry, operation.method);
+    const metadata = this.metadata(authority, operation.entry, operation.method);
     if (!metadata.automation || metadata.automation.policy === "excluded") {
       throw new DomainError("voice_operation_unavailable", "This operation is not available through voice.");
     }
     return { ...operation, metadata };
   }
 
+  private metadata(authority: OperationAuthority, entry: RouteCatalogEntry, method: HttpMethod): OperationMetadata {
+    const metadata = resolveRouteOperation(entry, method);
+    return { ...metadata, automation: authority.automationFor?.(entry, method) ?? metadata.automation };
+  }
+
   private *authorizedOperations(authority: OperationAuthority) {
     for (const [id, { entry, method }] of this.operations) {
-      const metadata = resolveRouteOperation(entry, method);
+      const metadata = this.metadata(authority, entry, method);
       if (metadata.automation.policy !== "excluded" && authority.allows(entry, method)) {
         yield { id, entry, method, metadata };
       }
@@ -217,6 +241,10 @@ export class ClankyOperationService {
       parameters: compileRoutePatterns(entry.path, entry.cliPath).api.captures.map(({ name }) => name),
       querySchema: publicSchema(metadata.querySchema, automation.hiddenQuery),
       requestSchema: publicSchema(metadata.requestSchema, automation.hiddenInputs),
+      ...(automation.execution?.requestFormat === "raw" ? { bodyFileRequired: true } : {}),
+      ...(automation.execution?.requestHeaders?.length ? { requestHeaders: automation.execution.requestHeaders } : {}),
+      ...(automation.execution?.privateResponse || automation.execution?.responseFormat === "file"
+        ? { responseFileRequired: true } : {}),
       method,
     };
     const source = (options.section === "query" ? description.querySchema
@@ -238,9 +266,44 @@ export class ClankyOperationService {
     });
   }
 
-  prepare(authority: OperationAuthority, input: ExecuteOperationInput, options: { bounded?: boolean; maxBytes?: number } = {}): PreparedOperation {
+  async prepareWithFiles(authority: OperationAuthority, input: ExecuteOperationInput, options: {
+    signal: AbortSignal; bounded?: boolean; maxBytes?: number;
+  }): Promise<PreparedOperation> {
+    const { metadata } = this.requireOperation(input.operationId, authority);
+    const execution = metadata.automation.execution;
+    if (execution?.requestFormat === "raw" && !input.bodyFile) {
+      throw new DomainError("control_body_file_required", "This operation requires a bodyFile on the execution host.");
+    }
+    if ((execution?.privateResponse || execution?.responseFormat === "file") && !input.responseFile) {
+      throw new DomainError("control_response_file_required", "This operation requires a responseFile on the execution host.");
+    }
+    if (!input.bodyFile && !input.responseFile && !input.headersFile) return this.prepare(authority, input, options);
+    if (!authority.prepareFiles) {
+      throw new DomainError("control_files_unavailable", "File inputs and outputs require an admitted general-access workspace execution.");
+    }
+    if (input.bodyFile && input.bodyJson !== null) {
+      throw new DomainError("control_body_invalid", "Supply bodyJson or bodyFile, not both.");
+    }
+    const files = await authority.prepareFiles(input, metadata.automation, options.signal);
+    try {
+      return this.prepare(authority, input, { ...options, files });
+    } catch (error) {
+      await files.release();
+      throw error;
+    }
+  }
+
+  prepare(authority: OperationAuthority, input: ExecuteOperationInput, options: {
+    bounded?: boolean; maxBytes?: number; files?: OperationFiles;
+  } = {}): PreparedOperation {
     const { entry, method, metadata } = this.requireOperation(input.operationId, authority);
     const automation = metadata.automation!;
+    if (automation.execution?.requestFormat === "raw" && !options.files?.raw) {
+      throw new DomainError("control_body_file_required", "This operation requires a frozen bodyFile.");
+    }
+    if ((automation.execution?.privateResponse || automation.execution?.responseFormat === "file") && !options.files?.responseFile) {
+      throw new DomainError("control_response_file_required", "This operation requires private file delivery.");
+    }
     const patterns = compileRoutePatterns(entry.path, entry.cliPath);
     const parameters = namedValues(input.parameters);
     const names = patterns.api.captures.map(({ name }) => name);
@@ -281,7 +344,9 @@ export class ClankyOperationService {
       }
     }
     let body: unknown;
-    if (input.bodyJson !== null) {
+    if (options.files && input.bodyFile) {
+      body = options.files.body;
+    } else if (input.bodyJson !== null) {
       body = JSON.parse(input.bodyJson);
       assertSafeInputs(body);
     }
@@ -291,10 +356,14 @@ export class ClankyOperationService {
       if (body === undefined && bodySchema instanceof z.ZodObject) body = {};
       body = bodySchema.parse(body);
     }
-    else if (input.bodyJson !== null && input.bodyJson !== "{}") {
+    else if (body !== undefined || input.bodyJson !== null && input.bodyJson !== "{}") {
       throw new DomainError("voice_operation_invalid", "This operation has no request body.");
     }
-    return { id: input.operationId, entry, method, metadata, path: `${url.pathname}${url.search}`, body, parameters, input };
+    if ((input.bodyFile || input.responseFile || input.headersFile) && !options.files) {
+      throw new DomainError("control_files_unavailable", "File operations must be prepared by their execution authority.");
+    }
+    return { id: input.operationId, entry, method, metadata, path: `${url.pathname}${url.search}`, body, parameters, input,
+      ...(options.files ? { files: options.files } : {}) };
   }
 
   async targetRevision(authority: OperationAuthority, prepared: PreparedOperation, signal: AbortSignal): Promise<string | null> {
@@ -312,7 +381,9 @@ export class ClankyOperationService {
     const target = this.catalog.filter((entry) => prepared.entry.path.startsWith(entry.path)
       && entry.methods.includes("GET")
       && compileRoutePatterns(entry.path, entry.cliPath).api.captures.length > 0
-      && resolveRouteOperation(entry, "GET").automation?.policy === "read"
+      && this.metadata(authority, entry, "GET").automation.policy === "read"
+      && !this.metadata(authority, entry, "GET").automation.execution?.privateResponse
+      && this.metadata(authority, entry, "GET").automation.execution?.responseFormat !== "file"
       && (executableSchema(resolveRouteOperation(entry, "GET").querySchema)?.safeParse({}).success ?? true)
       && authority.allows(entry, "GET")).sort((left, right) => right.path.length - left.path.length)[0];
     if (!target) return null;
@@ -341,7 +412,7 @@ export class ClankyOperationService {
       body = prepared.metadata.requestSchema.parse(body);
     }
     const result = await authority.request({
-      method: prepared.method, path: prepared.path, body, signal: options.signal,
+      method: prepared.method, path: prepared.path, body, signal: options.signal, files: prepared.files,
     });
     return {
       ...result,

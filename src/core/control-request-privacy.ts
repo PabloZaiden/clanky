@@ -30,6 +30,7 @@ async function resourcePrivate(resource: string, id: string): Promise<boolean> {
 export async function controlRequestPrivate(operation?: PreparedOperation): Promise<boolean> {
   // Missing targets stay obscured until the human reviews the frozen request.
   if (!operation) return false;
+  if (operation.input.bodyFile || operation.input.headersFile || operation.input.responseFile) return true;
   if (readReferenceField(operation.body, "isPrivate") === true) return true;
   const bindings = operation.metadata.delegation ? operation.metadata.delegation.bindings ?? [] : [];
   for (const binding of bindings) {

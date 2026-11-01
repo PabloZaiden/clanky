@@ -1,4 +1,5 @@
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "../execution-automation";
 /**
  * User preferences API routes.
  *
@@ -64,12 +65,12 @@ export const preferencesRoutes = defineRoutes({
       GET: {
         requestSchema: undefined, querySchema: undefined,
         responseSchema: AgentNotificationSettingsSchema,
-        automation: { policy: "excluded", reason: "Private notification credential configuration is not exposed to agents." },
+        automation: executionAutomation("read", "Reads notification preferences without the webhook credential."),
       },
       PUT: {
         requestSchema: SetAgentNotificationSettingsSchema, querySchema: undefined,
         responseSchema: AgentNotificationSettingsSchema,
-        automation: { policy: "excluded", reason: "Only the user configures or clears their notification webhook." },
+        automation: executionAutomation("confirm", "Changes notification delivery preferences or the private webhook."),
       },
     },
     async GET(): Promise<Response> {

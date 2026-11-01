@@ -156,7 +156,7 @@ and render the collection below it. The control-request route without a request
 ID redirects to that Settings category; individual detail links remain valid
 and their All approvals link returns there. There is no separate sidebar action
 or standalone inbox. Pending requests also appear in Home's Needs attention;
-both surfaces use the same human-only collection and user-scoped realtime updates,
+both surfaces use the same user-scoped collection and realtime updates,
 with local expiry removal during a connection interruption.
 Subscribe to pending-collection changes, not generic workspace/chat/task/host
 activity or policy/result updates. Read initially and after a relevant WS

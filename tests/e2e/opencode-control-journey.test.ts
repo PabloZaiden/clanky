@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { E2EApplication } from "./support/application";
@@ -7,10 +7,12 @@ import { createFileAttachment, expectedFileInspection } from "./support/attachme
 import { pollUntil } from "./support/polling";
 import { subscribeRealtime } from "./support/realtime";
 import { installExternalNativeOpenCodeProvider } from "./support/provider";
-import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
+import { MESH_OPERATION_TIMEOUT_MS, operationSignal } from "./support/timeouts";
+import { bootstrapOwner, CookieJar, requestWithCookies } from "./support/passkey";
+import { getMeshTestTls } from "./support/mesh-tls";
 import {
-  compiledClankyCommand, enrollMeshWorker, meshJsonRequest, meshNodeDiagnostics,
-  startMeshNode, stopMeshNode, type ManagedMeshNode,
+  availablePort, compiledClankyCommand, enrollMeshWorker, meshJsonRequest, meshNodeDiagnostics,
+  startMeshNode, stopMeshNode, startTlsProxy, stopTlsProxy, type ManagedMeshNode, type MeshHttpNode,
 } from "./support/mesh-cluster";
 
 interface Client {
@@ -27,7 +29,7 @@ interface Snapshot {
 }
 interface ToolResult {
   ok?: boolean;
-  status?: string;
+  status?: string | number;
   completion?: string;
   code?: string;
   requestId?: string;
@@ -36,7 +38,7 @@ interface ToolResult {
   operations?: Array<[string, string, string]>;
   total?: number;
   content?: unknown;
-  data?: { id?: string };
+  data?: { id?: string; file?: { path: string; bytes: number; contentType: string } };
   error?: { code: string };
 }
 interface Command { name: string; input: Record<string, unknown> }
@@ -282,6 +284,212 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
         { description: "OpenCode browser clients to disconnect", timeoutMs: 5_000 });
     } finally {
       await application.cleanup();
+    }
+  }
+});
+
+test("General-access OpenCode transfers binary files across hosts and administers credentials with human approval", async () => {
+  const application = await E2EApplication.create();
+  let worker: ManagedMeshNode | undefined;
+  let controller: (MeshHttpNode & Pick<ManagedMeshNode, "tlsProxy">) | undefined;
+  try {
+    await installExternalNativeOpenCodeProvider(application.providerBinDirectory);
+    const tls = await getMeshTestTls();
+    const port = await availablePort();
+    await application.start({
+      disablePasskey: false, requestHostname: "localhost", port,
+      env: {
+        NODE_EXTRA_CA_CERTS: tls.certificatePath, CLANKY_PUBLIC_BASE_URL: `http://localhost:${String(port)}`,
+        CLANKY_TRUST_PROXY: "true", CLANKY_TRUST_PROXY_HEADERS: "proto,host",
+      },
+    });
+    const human = new CookieJar();
+    await bootstrapOwner(application, human);
+    const client: Client = {
+      async json<T>(path: string, options?: { method?: string; body?: string }, expectedStatus = 200) {
+        const response = await requestWithCookies(application, human, path, {
+          ...options, headers: { origin: application.baseUrl },
+        });
+        expect(response.status, `${options?.method ?? "GET"} ${new URL(path, application.baseUrl).pathname}`).toBe(expectedStatus);
+        return { data: await response.json() as T };
+      },
+    };
+    const enrollmentKey = (await client.json<{ token: string }>("/api/api-keys", {
+      method: "POST", body: JSON.stringify({ name: "Mesh enrollment fixture", scopes: ["*"] }),
+    })).data.token;
+    controller = { baseUrl: application.baseUrl, dataDir: application.dataDirectory, apiKey: enrollmentKey };
+    await startTlsProxy(controller, port);
+    await client.json("/api/mesh/endpoint", {
+      method: "POST", body: JSON.stringify({ meshEndpoint: controller.meshEndpoint }),
+    });
+    worker = await startMeshNode({
+      role: "worker", command: await compiledClankyCommand(), instanceName: "Native transfer host",
+      environment: { PATH: `${application.providerBinDirectory}${delimiter}${process.env["PATH"] ?? ""}` },
+    });
+    await enrollMeshWorker(controller, worker);
+    const hosts = (await client.json<Array<{ ref: Record<string, unknown> }>>("/api/execution-hosts")).data;
+    const local = hosts.find((entry) => entry.ref["kind"] === "local")!;
+    const remote = hosts.find((entry) => entry.ref["kind"] === "mesh")!;
+    const localDirectory = join(application.runDirectory, "destination-workspace");
+    const remoteDirectory = join(worker.dataDir, "native-workspace");
+    await Promise.all([mkdir(localDirectory), mkdir(remoteDirectory)]);
+    const destination = await prepare(client, localDirectory, local.ref, "Transfer destination");
+    const origin = await prepare(client, remoteDirectory, remote.ref, "General native transfer");
+    await client.json(`/api/workspaces/${origin.workspace.id}`, {
+      method: "PUT", body: JSON.stringify({ allowClankyContext: true }),
+    });
+    const id = await origin.createChat("Native administration and transfer");
+    const call = async (operationId: string, input: Record<string, unknown> = {}): Promise<ToolResult> => {
+      await send(client, id, instruction([{
+        name: "clanky_execute_operation",
+        input: { operationId, parameters: [], query: [], bodyJson: null, confirmationDescription: null, ...input },
+      }]));
+      return (await results(client, id))[0]!;
+    };
+    expect(await call("GET /api/users")).toMatchObject({ ok: true, completion: "completed" });
+    expect(await call("GET /api/control/credentials")).toMatchObject({ ok: true, completion: "completed" });
+
+    const target = join(localDirectory, "artifact.bin");
+    const initial = new TextEncoder().encode("Existing artifact");
+    const bytes = Uint8Array.from({ length: 4096 }, (_, index) => index % 256);
+    const bodyPath = join(remoteDirectory, "upload.bin");
+    const headerPath = join(remoteDirectory, "conditions.json");
+    await Promise.all([Bun.write(target, initial), Bun.write(bodyPath, bytes)]);
+    const filesystemPath = `/api/workspaces/${destination.workspace.id}/files/filesystem`;
+    const ownerId = crypto.randomUUID();
+    const lock = (await client.json<{ lock: { token: string } }>(filesystemPath, {
+      method: "POST", body: JSON.stringify({
+        operation: "lock", path: target, ownerId, scope: "exclusive", depth: "0",
+        owner: "Artifact editor", timeoutSeconds: 300,
+      }),
+    })).data.lock;
+    await Bun.write(headerPath, JSON.stringify({
+      "x-clanky-file-conditions": JSON.stringify({
+        davIf: [{ terms: [{ kind: "token", value: lock.token, not: false }] }],
+      }),
+    }));
+    const pending = await call("PUT /api/workspaces/:id/files/filesystem/content", {
+      parameters: [{ name: "id", value: destination.workspace.id }],
+      query: [{ name: "path", value: target }],
+      bodyFile: { path: bodyPath, contentType: "application/octet-stream" },
+      headersFile: { path: headerPath },
+      confirmationDescription: "Replace the artifact in Transfer destination with the uploaded binary file.",
+    });
+    expect(pending).toMatchObject({ ok: true, code: "confirmation_required", completion: "not_executed" });
+    if (!pending.requestId) throw new Error("The native upload did not return a human approval request.");
+    expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(initial);
+    const frozen = (await client.json<{ operation: Record<string, unknown> }>(`/api/control/requests/${pending.requestId}`)).data;
+    expect(frozen.operation).toMatchObject({ bodyJson: null, bodyFile: { path: bodyPath }, headersFile: { path: headerPath } });
+    expect(JSON.stringify(frozen).includes(lock.token)).toBe(false);
+    await Promise.all([
+      Bun.write(bodyPath, "Source edited after requesting approval"),
+      Bun.write(headerPath, JSON.stringify({ "x-clanky-file-conditions": JSON.stringify({ ifMatch: '"changed"' }) })),
+    ]);
+    expect(await call("POST /api/control/requests/:id/decision", {
+      parameters: [{ name: "id", value: pending.requestId }], bodyJson: JSON.stringify({ approved: true }),
+    })).toMatchObject({ ok: false });
+    expect(await call("PUT /api/control/approval-policy", {
+      bodyJson: JSON.stringify({ requireApproval: false }),
+    })).toMatchObject({ ok: false });
+
+    const keyPath = join(remoteDirectory, "native-key.json");
+    const keyBodyPath = join(remoteDirectory, "key-request.json");
+    await Bun.write(keyBodyPath, JSON.stringify({ name: "Native managed key", scopes: ["*"] }));
+    const keyRequest = await call("POST /api/api-keys", {
+      bodyFile: { path: keyBodyPath }, responseFile: { path: keyPath },
+      confirmationDescription: "Create Native managed key with full access for this account and save it privately on Native transfer host.",
+    });
+    expect(keyRequest).toMatchObject({ ok: true, code: "confirmation_required", completion: "not_executed" });
+    if (!keyRequest.requestId) throw new Error("Credential creation did not require human approval.");
+    expect(await Bun.file(keyPath).exists()).toBe(false);
+    const before = (await client.json<Array<{ name: string }>>("/api/api-keys")).data;
+    expect(before.some((key) => key.name === "Native managed key")).toBe(false);
+    await Bun.write(keyBodyPath, JSON.stringify({ name: "Changed after approval request", scopes: [] }));
+    await client.json(`/api/control/requests/${keyRequest.requestId}/decision`, {
+      method: "POST", body: JSON.stringify({ approved: true }),
+    });
+    const keyResult = (await client.json<{ result: ToolResult }>(`/api/control/requests/${keyRequest.requestId}`)).data.result;
+    expect(keyResult).toMatchObject({ ok: true, completion: "completed", data: { file: { path: keyPath } } });
+    expect((await stat(keyPath)).mode & 0o777).toBe(0o600);
+    const issued = await Bun.file(keyPath).json() as { token: string };
+    expect(typeof issued.token === "string" && issued.token.length > 0).toBe(true);
+    expect(JSON.stringify(keyResult).includes(issued.token)).toBe(false);
+    const keys = (await client.json<Array<{ name: string }>>("/api/api-keys")).data;
+    expect(keys.some((key) => key.name === "Native managed key")).toBe(true);
+    const transcript = (await client.json<Snapshot>(`/api/chats/${id}/snapshot?full=1`)).data;
+    expect(JSON.stringify(transcript).includes(issued.token)).toBe(false);
+
+    const apiKeyBrowser = new CookieJar();
+    const login = await requestWithCookies(application, apiKeyBrowser, "/api/passkey-auth/api-key", {
+      method: "POST", headers: { origin: application.baseUrl }, body: JSON.stringify({ apiKey: issued.token }),
+    });
+    expect(login.status).toBe(200);
+    await login.body?.cancel();
+    for (const [path, body] of [
+      [`/api/control/requests/${pending.requestId}/decision`, { approved: true }],
+      ["/api/control/approval-policy", { requireApproval: false }],
+    ] as const) {
+      const denied = await requestWithCookies(application, apiKeyBrowser, path, {
+        method: path.endsWith("decision") ? "POST" : "PUT",
+        headers: { origin: application.baseUrl }, body: JSON.stringify(body),
+      });
+      expect(denied.status).toBe(403);
+      await denied.body?.cancel();
+    }
+    expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(initial);
+    await client.json(`/api/control/requests/${pending.requestId}/decision`, {
+      method: "POST", body: JSON.stringify({ approved: true }),
+    });
+    const completed = (await client.json<{ result: ToolResult }>(`/api/control/requests/${pending.requestId}`)).data.result;
+    expect(completed).toMatchObject({ ok: true, completion: "completed" });
+    expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(bytes);
+    await client.json(filesystemPath, {
+      method: "POST", body: JSON.stringify({ operation: "unlock", path: target, ownerId, token: lock.token }),
+    });
+
+    const downloadPath = join(remoteDirectory, "download.bin");
+    const rangePath = join(remoteDirectory, "range.json");
+    await Bun.write(rangePath, JSON.stringify({ range: "bytes=0-" }));
+    const downloaded = await call("GET /api/workspaces/:id/files/filesystem/content", {
+      parameters: [{ name: "id", value: destination.workspace.id }],
+      query: [{ name: "path", value: target }], headersFile: { path: rangePath },
+      responseFile: { path: downloadPath },
+    });
+    expect(downloaded).toMatchObject({
+      ok: true, status: 206, completion: "completed",
+      data: { file: { path: downloadPath, bytes: bytes.length, contentType: "application/octet-stream" } },
+    });
+    expect(new Uint8Array(await Bun.file(downloadPath).arrayBuffer())).toEqual(bytes);
+    expect((await stat(downloadPath)).mode & 0o777).toBe(0o600);
+
+    const invitationPath = join(remoteDirectory, "account-invitation.json");
+    const invitationRequest = await call("POST /api/users", {
+      bodyJson: JSON.stringify({ username: "artifact-reviewer", role: "user" }),
+      responseFile: { path: invitationPath },
+      confirmationDescription: "Create the artifact-reviewer account and save its private setup invitation on Native transfer host.",
+    });
+    expect(invitationRequest).toMatchObject({ ok: true, code: "confirmation_required", completion: "not_executed" });
+    if (!invitationRequest.requestId) throw new Error("Account invitation did not require human approval.");
+    await client.json(`/api/control/requests/${invitationRequest.requestId}/decision`, {
+      method: "POST", body: JSON.stringify({ approved: true }),
+    });
+    const invitation = await Bun.file(invitationPath).json() as { setupLink: { url: string } };
+    const setupUrl = new URL(invitation.setupLink.url);
+    const setup = await fetch(new URL("/api/user-setup/options", setupUrl), {
+      method: "POST", headers: { origin: setupUrl.origin, "content-type": "application/json" },
+      body: JSON.stringify({ token: setupUrl.searchParams.get("token") }), signal: operationSignal(),
+    });
+    expect(setup.status).toBe(200);
+    await setup.body?.cancel();
+  } catch (error) {
+    console.error(await application.diagnostics());
+    if (worker) console.error(await meshNodeDiagnostics(worker));
+    throw error;
+  } finally {
+    try { await application.cleanup(); }
+    finally {
+      try { if (worker) await stopMeshNode(worker); }
+      finally { if (controller) await stopTlsProxy(controller); }
     }
   }
 });

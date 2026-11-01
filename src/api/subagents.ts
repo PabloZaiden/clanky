@@ -1,4 +1,5 @@
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import { SubagentListQuerySchema } from "@/contracts/schemas/subagent";
 import { getSavedSubagentAssistantMessage, getSavedSubagents, getSavedSubagentSnapshot, getSavedSubagentTool } from "../core/subagent-service";
 import { getTranscriptSnapshotEtag } from "../core/transcript-service";
@@ -70,7 +71,7 @@ export function createSubagentRoutes(kind: "chat" | "task") {
       description: "Read an existing assistant message from this subagent aloud.",
       operations: { POST: {
         requestSchema: undefined, querySchema: undefined,
-        automation: { policy: "excluded" as const, reason: "Raw synthesized audio is coordinated by the browser audio owner." },
+        automation: executionAutomation("read", "Synthesized subagent speech requires file delivery.", { responseFormat: "file" }),
       } },
       async POST(req: Request, ctx: RouteContext) {
         return assistantMessageSpeechResponse(req, () => getSavedSubagentAssistantMessage(
