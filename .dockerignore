@@ -3,6 +3,7 @@
 .github/*
 !.github/release-metadata.json
 .clanky-planning
+.personal
 .devcontainer
 .DS_Store
 .env*
