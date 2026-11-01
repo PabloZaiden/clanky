@@ -95,6 +95,13 @@ export class ControlSessionService {
     return this.actor.run(grantId, invoke);
   }
 
+  requireGeneralExecution(): void {
+    const session = this.invocation.getStore()?.session;
+    if (!session?.authority.executionAccess || session.access.grant.user.id !== requireCurrentUserId()) {
+      throw new DomainError("control_scope_required", "This operation requires an admitted general-access workspace execution.");
+    }
+  }
+
   async tools(access: ControlAccess, chatId?: string) {
     const session = await this.session(access);
     if (chatId) await requireControlChat(access.grant, chatId);
@@ -304,7 +311,8 @@ export class ControlSessionService {
     const request = this.requests.get(id);
     const grantId = this.actor.getStore();
     if (!request || request.session.access.grant.user.id !== requireCurrentUserId()
-      || grantId && grantId !== request.session.access.grant.id) {
+      || grantId && grantId !== request.session.access.grant.id
+        && !this.invocation.getStore()?.session.authority.executionAccess) {
       throw new DomainError("control_request_unavailable", "The control request is unavailable.");
     }
     return request;
@@ -389,6 +397,7 @@ export class ControlSessionService {
     clearInterval(this.pruning);
     await this.privacyUpdates.drain();
     const pending: Promise<unknown>[] = [];
+    const actions = [...this.sessions.values()].map((session) => session.actions);
     for (const request of this.requests.values()) clearTimeout(request.timer);
     for (const session of this.sessions.values()) {
       for (const run of session.runs) {
@@ -401,5 +410,6 @@ export class ControlSessionService {
     this.requests.clear();
     this.sessions.clear();
     await Promise.all(pending);
+    await Promise.all(actions.map((action) => action.drainFiles()));
   }
 }

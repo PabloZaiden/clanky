@@ -10,6 +10,7 @@ const log = createLogger("server:control-operations");
 
 export function createControlOperationAuthority(
   app: WebAppServer<ClankyRealtimeEvent>, catalog: readonly RouteCatalogEntry[], access: ControlAccess,
+  getBaseUrl: () => string,
 ): ControlOperationAuthority {
   return new ControlOperationAuthority({
     grant: access.grant, catalog, revalidate: access.revalidate,
@@ -18,13 +19,17 @@ export function createControlOperationAuthority(
       const signal = AbortSignal.any([input.signal, controller.signal]);
       const timer = setTimeout(() => controller.abort(), 30_000);
       let abortListener: (() => void) | undefined;
+      let request: Request | undefined;
       try {
         const dispatch = async () => {
-          const headers = new Headers({ "content-type": "application/json" });
+          const headers = new Headers({ "content-type": input.files?.raw ? input.files.contentType ?? "application/octet-stream" : "application/json" });
           for (const [name, value] of Object.entries(input.headers ?? {})) headers.set(name, value);
-          const request = new Request(new URL(input.path, "http://clanky.invalid"), {
+          for (const [name, value] of Object.entries(input.files?.headers ?? {})) headers.set(name, value);
+          const body = input.files?.raw ? await input.files.requestBody(signal)
+            : input.body === undefined ? undefined : JSON.stringify(input.body);
+          request = new Request(new URL(input.path, getBaseUrl()), {
             method: input.method, headers, signal,
-            ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+            ...(body === undefined ? {} : { body }),
           });
           const response = await app.dispatchAuthenticated(request, {
             userId: access.grant.user.id,
@@ -34,6 +39,12 @@ export function createControlOperationAuthority(
               && JSON.stringify(operation.params) === JSON.stringify(authorized.params) ? authorized : false,
             run: async ({ actor }, invoke) => await runWithCurrentUser(actor, invoke),
           });
+          if (input.files?.responseFile) {
+            if (!response) throw new DomainError("control_operation_response", "The operation returned no response.");
+            return await input.files.saveResponse(response.body, {
+              ok: response.ok, status: response.status, contentType: response.headers.get("content-type"), signal,
+            });
+          }
           return await readOperationResponse(response, "control");
         };
         return await Promise.race([
@@ -52,6 +63,7 @@ export function createControlOperationAuthority(
         return { ok: false, code: isDomainError(error) ? error.code : "control_operation_failed",
           message: "No authoritative result was received. Inspect the target before repeating a mutation." };
       } finally {
+        if (request?.body && !request.body.locked) await request.body.cancel();
         clearTimeout(timer);
         if (abortListener) signal.removeEventListener("abort", abortListener);
       }

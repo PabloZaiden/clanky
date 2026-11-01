@@ -99,12 +99,17 @@ administration. General grants stay within the real user's in-scope authority,
 not wildcard scopes or a fabricated owner. Enforce the immutable grant ceiling
 and current source authorization for discovery, referenced resources and every
 dispatch, including after approval or private credential entry.
-General control uses canonical automation policies and explicit exclusions,
-not a second module/tag allowlist. Every catalogued method must declare a
+General control uses canonical automation policies, not a second module/tag
+allowlist. Only verified, currently general-access managed workspace executions
+may select a route's execution policy. They can administer the real user's
+accounts, integrations, configuration and transfers, but cannot approve requests
+or change approval policy. External integrations and Live Voice keep the default
+policy. Every catalogued method must declare a
 read/write/confirmation policy or an exclusion reason; missing classification
 fails initialization instead of silently hiding a new operation. The running
-framework's operational catalog is shared with control, including health and
-configuration, while private authentication protocols remain outside it.
+framework's operational catalog is shared with control, including health,
+configuration and account administration; private authentication protocols
+remain outside it.
 The compact single-call index uses the same authority as filtered discovery
 and execution; abbreviated descriptions never replace exact input contracts.
 Internal admission identity stays stable across transport reconnects only for
@@ -150,7 +155,7 @@ survive restart. Voice retains its existing call-bound presentation and direct p
 Nonvoice confirmations have a fixed one-hour review deadline; idle session
 cleanup retains sessions that own pending requests or running work. Live Voice
 confirmations retain their one-minute limits.
-The human-only pending collection drives both Settings' Approvals section and Home's
+The user-scoped pending collection drives both Settings' Approvals section and Home's
 Needs attention through the same user-scoped realtime resource. It excludes
 frozen arguments and operation results; individual request reads retain them.
 Collection notifications represent pending membership or effective summary
@@ -159,6 +164,23 @@ Canonical privacy changes, deletions and Trash transitions notify the control
 owner, which compares pending privacy before publishing. Initial reads and
 reconnect recovery remain authoritative; do not make every browser reread
 approvals for generic activity.
+
+Execution-only file transport belongs to the same operation/action owner and
+uses the admitted host's executor, never controller-local filesystem access.
+Freeze private JSON, raw bytes and declared headers with host-side copying before
+approval; retain only file references in public arguments. Raw/private responses require mode-600 file
+delivery, staged on the destination filesystem, and never enter model-visible
+results. File transport is revalidated at dispatch and after approval; narrowing
+the grant disables it. The action/session owner releases staging on completion,
+rejection, cancellation, expiry and graceful shutdown. Pending requests and their
+protected staging are not a restart-recovery mechanism.
+Private JSON is bounded to 1 MiB and header JSON to 40,000 bytes before copying
+and while reading; raw binary input stays streamed. Metadata checks do not hash
+contents. No-overwrite responses use the exact-target POSIX `link` utility so a
+destination that becomes a directory cannot silently redirect publication.
+Mesh read streams release the worker-wide filesystem lock after initialization,
+not after consumption, allowing same-host transfer consumers to write. Stream
+cancellation and session lifetime remain tracked; mutations remain serialized.
 
 ## Execution hosts and workspace paths
 

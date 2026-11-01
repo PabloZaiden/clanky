@@ -3,6 +3,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { ControlUiAction, ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";
 import { ControlConfirmationDescriptionSchema, type ControlClientContext } from "@/shared/control-interactions";
@@ -17,6 +18,7 @@ import { agentNotificationService } from "./agent-notification-service";
 
 const PENDING_TTL_MS = 60_000;
 const MAX_PENDING = 16;
+const log = createLogger("core:control-actions");
 
 export type ConfirmedWriteExecutor = (input: ExecuteOperationInput, maxBytes?: number) => Promise<OperationResult>;
 export type ConfirmationContinuation = (result: OperationResult, executeWrite: ConfirmedWriteExecutor) => Promise<OperationResult>;
@@ -34,6 +36,7 @@ export class ControlActions {
   private readonly invocation = new AsyncLocalStorage<{ signal: AbortSignal; clientId?: string }>();
   private mutationTail: Promise<unknown> = Promise.resolve();
   private readonly confirmations = new Map<string, PendingConfirmation>();
+  private readonly fileCleanup = new Set<Promise<void>>();
   private context: ControlClientContext;
 
   constructor(private readonly options: {
@@ -130,46 +133,56 @@ export class ControlActions {
     afterConfirmed?: ConfirmationContinuation;
   }): Promise<OperationResult | Record<string, unknown>> {
     const { requestId, confirmationDescription, maxBytes } = options;
-    const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
-    await this.authority.validate?.(prepared, this.signal);
-    if (prepared.metadata.automation!.policy === "read") return await this.perform(prepared);
-    return await this.serial(async () => {
-      if (prepared.metadata.automation!.policy !== "confirm") return await this.perform(prepared);
-      if (this.options.requiresConfirmation && !await this.options.requiresConfirmation()) {
-        return await this.performWithContinuation(prepared, options.afterConfirmed);
-      }
-      if (confirmationDescription === null) {
-        throw new DomainError("voice_confirmation_description_required", "Supply a short description of this action, its named target and consequences in the user's language.");
-      }
-      const description = ControlConfirmationDescriptionSchema.parse(confirmationDescription);
-      this.prune();
-      if (this.confirmations.size >= MAX_PENDING) throw new DomainError("voice_live_busy", "Too many actions are awaiting confirmation.");
-      const id = crypto.randomUUID();
-      const revision = await this.options.service.targetRevision(this.authority, prepared, this.signal);
-      const expiresAt = Date.now() + (this.options.confirmationTtlMs ?? PENDING_TTL_MS);
-      const argumentsSize = JSON.stringify({ parameters: input.parameters, query: input.query, body: prepared.body ?? null }, null, 2).length;
-      if (argumentsSize > 40_000) throw new DomainError("voice_operation_invalid", "The arguments exceed the confirmation limit. Request a smaller operation.");
-      const pending = {
-        operation: prepared, description, revision, expiresAt,
-        ...(options.afterConfirmed ? { afterConfirmed: options.afterConfirmed } : {}),
-      };
-      this.confirmations.set(id, pending);
-      const outcome = await this.dispatch({
-        type: "confirm_operation",
-        confirmation: {
-          requestId: id, description: pending.description, expiresAt,
-        },
-      }, requestId);
-      if (outcome.status !== "presented" && outcome.status !== "pending") {
-        this.confirmations.delete(id);
-        return { ok: false, completion: "not_executed", outcome };
-      }
-      agentNotificationService.notify("approval", "Agent operation");
-      return {
-        ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt,
-        ...(outcome.status === "pending" ? { approvalUrl: outcome.url } : {}),
-      };
-    });
+    const prepared = await this.options.service.prepareWithFiles(this.authority, input, { signal: this.signal, bounded: true, maxBytes });
+    let retained = false;
+    try {
+      await this.authority.validate?.(prepared, this.signal);
+      if (prepared.metadata.automation!.policy === "read") return await this.perform(prepared);
+      return await this.serial(async () => {
+        if (prepared.metadata.automation!.policy !== "confirm") return await this.perform(prepared);
+        if (this.options.requiresConfirmation && !await this.options.requiresConfirmation()) {
+          return await this.performWithContinuation(prepared, options.afterConfirmed);
+        }
+        if (confirmationDescription === null) {
+          throw new DomainError("voice_confirmation_description_required", "Supply a short description of this action, its named target and consequences in the user's language.");
+        }
+        const description = ControlConfirmationDescriptionSchema.parse(confirmationDescription);
+        this.prune();
+        if (this.confirmations.size >= MAX_PENDING) throw new DomainError("voice_live_busy", "Too many actions are awaiting confirmation.");
+        const id = crypto.randomUUID();
+        const revision = await this.options.service.targetRevision(this.authority, prepared, this.signal);
+        const expiresAt = Date.now() + (this.options.confirmationTtlMs ?? PENDING_TTL_MS);
+        const argumentsSize = JSON.stringify({ ...input, bodyJson: input.bodyFile ? null : prepared.body ?? null }, null, 2).length;
+        if (argumentsSize > 40_000) throw new DomainError("voice_operation_invalid", "The arguments exceed the confirmation limit. Request a smaller operation.");
+        const pending = {
+          operation: prepared, description, revision, expiresAt,
+          ...(options.afterConfirmed ? { afterConfirmed: options.afterConfirmed } : {}),
+        };
+        this.confirmations.set(id, pending);
+        let outcome: ControlInteractionOutcome;
+        try {
+          outcome = await this.dispatch({
+            type: "confirm_operation",
+            confirmation: { requestId: id, description: pending.description, expiresAt },
+          }, requestId);
+        } catch (error) {
+          this.confirmations.delete(id);
+          throw error;
+        }
+        if (outcome.status !== "presented" && outcome.status !== "pending") {
+          this.confirmations.delete(id);
+          return { ok: false, completion: "not_executed", outcome };
+        }
+        retained = true;
+        agentNotificationService.notify("approval", "Agent operation");
+        return {
+          ok: true, completion: "not_executed", code: "confirmation_required", requestId: id, expiresAt,
+          ...(outcome.status === "pending" ? { approvalUrl: outcome.url } : {}),
+        };
+      });
+    } finally {
+      if (!retained) await prepared.files?.release();
+    }
   }
 
   async confirm(requestId: string, approved: boolean): Promise<OperationResult | Record<string, unknown>> {
@@ -177,35 +190,39 @@ export class ControlActions {
     const pending = this.confirmations.get(requestId);
     if (!pending || this.signal.aborted) throw new DomainError("voice_confirmation_not_found", "The confirmation expired or was already consumed.");
     this.confirmations.delete(requestId);
-    if (!approved) {
-      this.options.remember?.(pending.operation, {
-        ok: true, operationId: pending.operation.id, code: "confirmation_rejected", completion: "not_executed",
-      });
-      this.options.notify?.("The user rejected the pending operation. No operation was executed.");
-      return { ok: true, code: "confirmation_rejected", completion: "not_executed" };
-    }
-    const result = await this.serial<OperationResult>(async () => {
-      await this.authority.validate?.(pending.operation, this.signal);
-      const revision = await this.options.service.targetRevision(this.authority, pending.operation, this.signal);
-      if (revision !== pending.revision) {
+    try {
+      if (!approved) {
         this.options.remember?.(pending.operation, {
-          ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
+          ok: true, operationId: pending.operation.id, code: "confirmation_rejected", completion: "not_executed",
         });
-        return { ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
-          message: "The target changed since the dialog opened. Read it again and request a new confirmation." };
+        this.options.notify?.("The user rejected the pending operation. No operation was executed.");
+        return { ok: true, code: "confirmation_rejected", completion: "not_executed" };
       }
-      return await this.performWithContinuation(pending.operation, pending.afterConfirmed);
-    });
-    this.options.notify?.(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
-    return result;
+      const result = await this.serial<OperationResult>(async () => {
+        await this.authority.validate?.(pending.operation, this.signal);
+        const revision = await this.options.service.targetRevision(this.authority, pending.operation, this.signal);
+        if (revision !== pending.revision) {
+          this.options.remember?.(pending.operation, {
+            ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
+          });
+          return { ok: false, operationId: pending.operation.id, code: "confirmation_target_changed", completion: "not_executed",
+            message: "The target changed since the dialog opened. Read it again and request a new confirmation." };
+        }
+        return await this.performWithContinuation(pending.operation, pending.afterConfirmed);
+      });
+      this.options.notify?.(`Visual confirmation result (authoritative data): ${JSON.stringify(result)}`);
+      return result;
+    } finally { await pending.operation.files?.release(); }
   }
 
   async read(input: ExecuteOperationInput): Promise<OperationResult> {
-    const prepared = this.options.service.prepare(this.authority, input);
-    if (prepared.metadata.automation!.policy !== "read") {
-      throw new DomainError("voice_operation_invalid", "Internal preparation may only read authorized data.");
-    }
-    return await this.perform(prepared);
+    const prepared = await this.options.service.prepareWithFiles(this.authority, input, { signal: this.signal });
+    try {
+      if (prepared.metadata.automation!.policy !== "read") {
+        throw new DomainError("voice_operation_invalid", "Internal preparation may only read authorized data.");
+      }
+      return await this.perform(prepared);
+    } finally { await prepared.files?.release(); }
   }
 
   private async performWithContinuation(
@@ -214,12 +231,14 @@ export class ControlActions {
     const created = await this.perform(operation);
     if (!created.ok || !continuation) return created;
     return await continuation(created, async (input, maxBytes) => {
-      const prepared = this.options.service.prepare(this.authority, input, { bounded: true, maxBytes });
-      if (prepared.metadata.automation!.policy !== "write") {
-        throw new DomainError("voice_operation_invalid", "Follow-on stages may only execute ordinary write operations.");
-      }
-      // The continuation owns this queue slot; re-entering execute() would deadlock.
-      return await this.perform(prepared);
+      const prepared = await this.options.service.prepareWithFiles(this.authority, input, { signal: this.signal, bounded: true, maxBytes });
+      try {
+        if (prepared.metadata.automation!.policy !== "write") {
+          throw new DomainError("voice_operation_invalid", "Follow-on stages may only execute ordinary write operations.");
+        }
+        // The continuation owns this queue slot; re-entering execute() would deadlock.
+        return await this.perform(prepared);
+      } finally { await prepared.files?.release(); }
     });
   }
 
@@ -234,8 +253,25 @@ export class ControlActions {
   }
 
   cancelRequest(requestId: string): void {
+    const pending = this.confirmations.get(requestId);
     this.confirmations.delete(requestId);
+    if (pending) this.releaseFiles(pending.operation);
   }
+
+  private releaseFiles(operation: PreparedOperation): void {
+    if (!operation.files) return;
+    const cleanup = operation.files.release().catch((error: unknown) => {
+      log.error("Private control files could not be cleaned up", { error: error instanceof Error ? error.name : "unexpected_error" });
+      throw error;
+    });
+    this.fileCleanup.add(cleanup);
+    void cleanup.then(
+      () => this.fileCleanup.delete(cleanup),
+      () => this.fileCleanup.delete(cleanup),
+    );
+  }
+
+  async drainFiles(): Promise<void> { await Promise.all(this.fileCleanup); }
 
   private async serial<T>(operation: () => Promise<T>): Promise<T> {
     const predecessor = this.mutationTail;
@@ -249,11 +285,13 @@ export class ControlActions {
   }
 
   private prune(): void {
-    for (const [id, pending] of this.confirmations) if (pending.expiresAt <= Date.now()) this.confirmations.delete(id);
+    for (const [id, pending] of this.confirmations) {
+      if (pending.expiresAt <= Date.now()) this.cancelRequest(id);
+    }
   }
 
   dispose(): void {
     this.controller.abort();
-    this.confirmations.clear();
+    for (const id of this.confirmations.keys()) this.cancelRequest(id);
   }
 }

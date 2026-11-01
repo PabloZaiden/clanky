@@ -1,4 +1,5 @@
 import { workspaceOperation } from "./workspace-delegation";
+import { executionAutomation } from "./execution-automation";
 /**
  * Authenticated exact-path file operations, shared by workspace and host routes.
  */
@@ -79,10 +80,7 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
         POST: {
           requestSchema: FileSystemCommandSchema,
           querySchema: undefined,
-          automation: {
-            policy: "excluded",
-            reason: "The WebDAV command contract mixes filesystem mutations with private lock-owner credentials and returns lock tokens; use the JSON explorer operations.",
-          },
+          automation: executionAutomation("confirm", "Runs an exact-path filesystem command that may mutate files or create private lock credentials.", { privateResponse: true, requestHeaders: ["x-clanky-file-target"] }),
         },
       },
       async POST(req, ctx): Promise<Response> {
@@ -110,13 +108,17 @@ export function createFileSystemRoutes(config: FileExplorerRouteConfig): RouteTa
           requestSchema: undefined,
           querySchema: FileSystemReadQuerySchema,
           responseSchema: undefined,
-          automation: { policy: "excluded", reason: "Raw ranged file stream for the WebDAV bridge; use JSON explorer content." },
+          automation: executionAutomation("read", "Exact-path file streams require file delivery.", {
+            responseFormat: "file", requestHeaders: ["x-clanky-file-target", "range", "if-range", "if-match", "if-none-match"],
+          }),
         },
         PUT: {
           requestSchema: undefined,
           querySchema: FileSystemReadQuerySchema,
           responseSchema: FileSystemResultSchema,
-          automation: { policy: "excluded", reason: "Raw binary replacement with header-based lock conditions belongs to the WebDAV bridge." },
+          automation: executionAutomation("confirm", "Replaces an exact-path file with the frozen input bytes.", {
+            requestFormat: "raw", requestHeaders: ["x-clanky-file-target", "x-clanky-file-conditions"],
+          }),
         },
       },
       async GET(req, ctx): Promise<Response> {

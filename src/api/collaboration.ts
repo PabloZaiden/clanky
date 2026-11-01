@@ -2,6 +2,7 @@
  * Per-user pairing controls; a shared-workspace guest cannot delegate these.
  */
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import { CreateCollaborationInvitationSchema, UpdateCollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import { ConnectWorkspaceControllerSchema } from "@/contracts/schemas/mesh-client";
 import {
@@ -47,7 +48,7 @@ export const collaborationRoutes = defineRoutes({
       GET: { automation: { policy: "read" } },
       POST: {
         requestSchema: CreateCollaborationInvitationSchema,
-        automation: { policy: "excluded", reason: "Creates a private invitation token granting workspace access; use human-only sharing." },
+        automation: executionAutomation("confirm", "Creates a private invitation granting workspace access.", { privateResponse: true }),
       },
     },
     GET() {
@@ -139,7 +140,7 @@ export const collaborationRoutes = defineRoutes({
     description: "List controller connection health or accept a signed workspace invitation.",
     operations: {
       GET: { automation: { policy: "read" } },
-      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: { policy: "excluded", reason: "Consumes a private workspace invitation to establish controller trust; use human-only pairing." } },
+      POST: { requestSchema: ConnectWorkspaceControllerSchema, automation: executionAutomation("confirm", "Accepts a private workspace invitation and establishes controller trust.") },
     },
     GET() {
       return Response.json(workspaceConnections.list());

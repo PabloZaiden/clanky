@@ -3,6 +3,7 @@
  */
 
 import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import {
   VoiceSettingsUpdateSchema,
   VoiceTranslationRequestSchema,
@@ -100,7 +101,7 @@ const voiceBaseRoutes = defineRoutes({
       PUT: {
         requestSchema: VoiceSettingsUpdateSchema,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Updates voice provider credentials and private configuration." },
+        automation: executionAutomation("confirm", "Changes voice provider configuration or private credentials."),
       },
     },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
@@ -132,7 +133,7 @@ const voiceBaseRoutes = defineRoutes({
       POST: {
         requestSchema: VoiceValidationRequestSchema,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Private provider credential validation and browser WebRTC negotiation." },
+        automation: executionAutomation("confirm", "Validates the configured voice provider capability."),
       },
     },
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
@@ -156,7 +157,7 @@ const voiceBaseRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Transcribe an audio recording with the user's configured provider.",
     operations: {
-      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Multipart/raw audio transcription is not a JSON operation." } },
+      POST: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("confirm", "Transcribes an uploaded recording with the configured provider.", { requestFormat: "raw" }) },
     },
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
       let form: FormData;
@@ -217,10 +218,7 @@ const voiceBaseRoutes = defineRoutes({
         requestSchema: VoiceTranslationRequestSchema,
         querySchema: undefined,
         responseSchema: VoiceTranslationResponseSchema,
-        automation: {
-          policy: "excluded",
-          reason: "Interactive transcript translation sends selected text to the user's configured provider.",
-        },
+        automation: executionAutomation("confirm", "Sends selected transcript text to the configured translation provider."),
       },
     },
     async POST(req: Request, _ctx: RouteContext): Promise<Response> {
@@ -255,7 +253,7 @@ export function createVoiceSpeechRoutes(manager: typeof voiceManager) {
       sameOrigin: "mutations",
       description: "Generate a spoken summary for an existing assistant message in an owned chat.",
       operations: {
-        POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Raw synthesized audio is coordinated by the browser audio owner." } },
+        POST: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Synthesized speech requires file delivery.", { responseFormat: "file" }) },
       },
       async POST(req: Request, ctx: RouteContext): Promise<Response> {
         return assistantMessageSpeechResponse(req, () => chatManager.getAssistantMessage(

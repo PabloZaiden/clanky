@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.5.12
+version: 0.5.13
 description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating Bun/React apps or API-only services; adding routes, auth, settings, realtime, CLI, sidebar UI, Docker, GitHub Actions, or validating apps with Bun.WebView.'
 ---
 
@@ -79,6 +79,8 @@ the application being built; they are not expected to exist beside this skill.
 - In server routes prefer declarative `auth: "user"`, `auth: "admin"` or `auth: "owner"` and use `ctx.requireUser()`, `ctx.requireAdmin()`, `ctx.requireOwner()`, `ctx.assertUser(userId)`, `ctx.filterOwned(records)` and `ctx.requireOwned(record)` instead of ad-hoc auth checks.
 - Treat TypeScript types as compile-time guidance, not input validation. Use `parseJson(req, schema)` for runtime body validation; `requestSchema` route metadata alone does not validate handler input. Define explicit create/update inputs and assign only allowlisted fields instead of mass-assigning request bodies. Return intentional 4xx responses for malformed or invalid input.
 - Add route metadata (`description`, `cliPath`, `tags`, schemas) directly to `defineRoutes` entries when an app needs CLI API discovery; use `createRouteCatalog` instead of maintaining a separate API catalog.
+- `automation.execution` may declare a policy for application-admitted executions, including raw request/file response requirements, private responses and exact lowercase request headers. It is metadata, never authority: only an application's verified execution grant may select it. Headers cannot override authentication, origin or transport. Framework account/key/session operations remain excluded by default, but are catalogued and available to explicitly authorized server dispatch; keep their private results outside model-visible output.
+- Declare `actorInvalidation: { userParameter }` only for operations that intentionally mutate their own authenticated account and need to preserve a successful receipt after invalidation. The path parameter must identify that actor, pre-handler checks remain enforced, and future calls still reauthenticate.
 - Make public endpoints explicit with `auth: "public", sameOrigin: "never"`.
 - Do not disable same-origin except for deliberate non-browser routes.
 - Use scopes for API keys and device bearer tokens.

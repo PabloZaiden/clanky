@@ -1717,6 +1717,8 @@ export class MeshExecutionGateway {
         session.inFlight -= 1;
         return null;
       }
+      // A same-host stream consumer must be able to acquire the write lock.
+      releaseFileOperation();
       return this.trackStream(stream, operation.signal, () => {
         releaseFileOperation?.();
         operation.cleanup();

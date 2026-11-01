@@ -3,6 +3,7 @@
  */
 
 import { defineRoutes } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "./execution-automation";
 import {
   CreateMeshEnrollmentTokenRequestSchema,
   EnrollMeshWorkerRequestSchema,
@@ -47,8 +48,8 @@ export const meshRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List or create single-use worker enrollment tokens.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Lists private Mesh enrollment credentials." } },
-      POST: { requestSchema: CreateMeshEnrollmentTokenRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Creates private Mesh enrollment credentials." } },
+      GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Reads private Mesh enrollment credentials.", { privateResponse: true }) },
+      POST: { requestSchema: CreateMeshEnrollmentTokenRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Creates private Mesh enrollment credentials.", { privateResponse: true }) },
     },
     tags: ["mesh", "workers"],
     async GET(_req, ctx): Promise<Response> {
@@ -82,7 +83,7 @@ export const meshRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Enroll this worker with a controller.",
     operations: {
-      POST: { requestSchema: EnrollMeshWorkerRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh trust enrollment consumes private invitation credentials." } },
+      POST: { requestSchema: EnrollMeshWorkerRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Enrolls this worker with a controller using private invitation credentials.") },
     },
     tags: ["mesh", "workers"],
     async POST(req): Promise<Response> {
@@ -112,7 +113,7 @@ export const meshRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Revoke one controller-to-worker grant.",
     operations: {
-      POST: { requestSchema: RevokeMeshWorkerRequestSchema, querySchema: undefined, automation: { policy: "excluded", reason: "Mesh trust grant management remains an explicit owner credential operation." } },
+      POST: { requestSchema: RevokeMeshWorkerRequestSchema, querySchema: undefined, automation: executionAutomation("confirm", "Revokes a controller-to-worker trust grant.") },
     },
     tags: ["mesh", "workers"],
     async POST(req, ctx): Promise<Response> {

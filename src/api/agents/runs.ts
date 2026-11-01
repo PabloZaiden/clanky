@@ -1,4 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
+import { executionAutomation } from "../execution-automation";
 /**
  * Scheduled-agent run and deterministic code-test API routes.
  */
@@ -344,7 +345,7 @@ export const runsRoutes = defineRoutes({
       POST: {
         requestSchema: TestAgentCodeRequestSchema,
         querySchema: undefined,
-        automation: { policy: "excluded", reason: "Long-lived NDJSON execution stream; use the JSON code test or an agent run." },
+        automation: executionAutomation("confirm", "Runs deterministic code and saves its execution stream.", { responseFormat: "file" }),
       },
     },
     async POST(req: Request, ctx): Promise<Response> {

@@ -3,6 +3,7 @@
  */
 
 import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { executionAutomation } from "../execution-automation";
 import {
   WorkspaceIconCandidatesResponseSchema,
   WorkspaceIconCandidateQuerySchema,
@@ -145,7 +146,7 @@ export const workspaceIconRoutes = defineRoutes({
     description: "Read, select, or remove the private icon for a workspace.",
     requestSchema: WorkspaceIconCandidateRequestSchema,
     operations: {
-      GET: { delegation: workspaceOperation("workspace"), requestSchema: undefined, automation: { policy: "read" } },
+      GET: { delegation: workspaceOperation("workspace"), requestSchema: undefined, automation: { policy: "read", execution: { policy: "read", responseFormat: "file" } } },
       PUT: { delegation: workspaceAdministrationOperation(), automation: { policy: "write" } },
       DELETE: { delegation: workspaceAdministrationOperation(), automation: { policy: "write" } },
     },
@@ -229,7 +230,7 @@ export const workspaceIconRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Upload a private SVG, PNG, or ICO icon for a workspace.",
     operations: {
-      POST: { automation: { policy: "excluded", reason: "Multipart binary icon upload belongs to the browser upload flow." } },
+      POST: { automation: executionAutomation("confirm", "Uploads a new workspace icon.", { requestFormat: "raw" }) },
     },
     async POST(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));
@@ -331,7 +332,7 @@ export const workspaceIconRoutes = defineRoutes({
     description: "Preview a validated icon candidate from a workspace Git repository.",
     querySchema: WorkspaceIconCandidateQuerySchema,
     operations: {
-      GET: { automation: { policy: "excluded", reason: "Raw icon image bytes belong to browser media rendering; use JSON icon candidates." } },
+      GET: { automation: executionAutomation("read", "Icon preview bytes require file delivery.", { responseFormat: "file" }) },
     },
     async GET(req: Request, ctx) {
       const workspaceResult = await requireWorkspace(workspaceIdFromContext(ctx));

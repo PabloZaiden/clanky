@@ -62,11 +62,14 @@ permissions and human-approval policies. Explicit general access is required
 for other workspaces and in-scope workspace/server administration. A workspace
 agent cannot grant itself that authority.
 
-General access uses explicit route exclusions rather than an additional list of
-permitted modules. It includes ordinary application and framework diagnostics
-such as health/version, subject to the real user's roles and existing
-confirmation policies. Private credentials, account/session administration,
-self-approval and internal/binary protocols remain excluded; see the canonical
+For these workspace executions, general access includes all catalogued application
+capabilities within the real user's permissions, including account/key/session
+and integration administration, invitations, enrollment, settings and binary
+transfers. Roles, ownership and human confirmation still apply. Agents cannot
+approve requests or change the approval policy. Internal authentication,
+execution leases and real-client acknowledgements are infrastructure, not
+application operations. External integration grants and Live Voice retain
+their existing exclusions; see the canonical
 [access and discovery policy](deployment.md#agent-control-and-mcp).
 
 Common direct tools need no discovery. For other intents, request
@@ -75,6 +78,23 @@ then describe and execute the chosen operation. Its abbreviated descriptions
 are an index, not input contracts. Do not repeatedly guess keywords or invent
 API paths. The index adds no authority, and existing Codex threads still retain
 their originally registered definitions as described below.
+
+For binary or private operations, `clanky_describe_operation` declares required
+file delivery and allowed request headers. `clanky_execute_operation` accepts
+absolute paths on the originating execution's admitted host: `bodyFile` supplies
+raw bytes or private JSON instead of `bodyJson`, `headersFile` supplies a JSON
+record of declared header names/string values, and `responseFile` receives the
+response. Private JSON input is limited to 1 MiB and header JSON to 40,000 bytes;
+raw binary input remains streamed. The target workspace may be on another host.
+Inputs are frozen before approval; editing their original files does not change approved work. Outputs
+are privately staged beside their destination and published with mode `600`;
+only path, byte count and content type return to the model. Existing destinations
+require explicit `overwrite: true`. Never place credential contents inline.
+Generated account setup links use the same resolved controller base URL as
+approval links, not an internal dispatch origin.
+Graceful rejection, cancellation, expiry and shutdown remove staging files.
+Pending work is not restored after an abrupt termination; protected staging
+directories may remain on the execution host after an unclean shutdown.
 
 For work on another repository, an authorized agent delegates by sending an
 instruction to that repository's chat. It does not run Git commands directly

@@ -107,18 +107,24 @@ data directory whenever passkey enforcement is disabled.
 Supported native agents and deterministic programs collaborate within their
 own project without enabling general Clanky access or installing a CLI/skill.
 The workspace's **Allow general
-Clanky access** setting permits all normal catalogued JSON operations within
+Clanky access** setting permits all catalogued application operations within
 the user's existing permissions, including cross-project work, Git, scheduled
-agents, terminals, previews, maintenance, Mesh administration and framework
-diagnostics. There is no separate list of enabled control modules. Operations
+agents, terminals, previews, maintenance, Mesh administration, account/key/session
+and integration administration, private invitations/enrollment and binary
+transfers. There is no separate list of enabled control modules. Operations
 declare their read/write/confirmation policy or an explicit exclusion at their
 canonical route definition. General access does not make the user an admin or
 owner and does not bypass confirmations.
 
-Exclusions cover account/key/session and control-grant administration, private
-credentials and invitation/enrollment/trust material, approving one's own
-actions or changing approval policy, client-provenance acknowledgements,
-internal protocols and browser-owned binary/media/streaming flows. Public
+These admitted workspace executions cannot approve requests or change approval
+policy. Internal authentication/lease protocols and real-client acknowledgements
+remain infrastructure rather than application operations. Private inputs and
+binary/private outputs use frozen execution-host file references, not inline
+credentials or unrestricted CLI credentials; see
+[native file transport](control-chats.md#what-the-agent-can-do).
+External MCP/service/OAuth grants and Live Voice retain their existing
+exclusions; a general integration grant does not acquire workspace-execution
+administration or private-file capabilities. Public
 configuration/status projections without secrets remain readable, including
 Voice settings and relay status. Native tools, Live Voice, external MCP and
 deterministic programs share the application-control implementation; they do not
@@ -142,7 +148,8 @@ General control can read `GET /api/health` to obtain the connected instance's
 health and running application version, plus public framework configuration and
 authorized operational settings. This diagnoses the instance owning the control
 connection, not an arbitrary production URL or the browser's loaded frontend
-version. Account/authentication protocols are not part of this operational catalog.
+version. Account administration is catalogued, while private authentication
+protocols are not part of the operational inventory.
 
 ACP model processes do not receive automatic Clanky control or CLI credentials,
 even when general access is enabled. Ordinary ACP chats and prompts still work.
@@ -237,9 +244,15 @@ Approval is single-use. Pending requests do not survive restart or restore
 revoked/ended execution authority. A pending result is not completed work,
 and an uncertain outcome must be inspected before repeating a mutation.
 
-Real browser passkey authentication is required for approval, approval-policy
-changes, credential handoff and integration administration. `CLANKY_DISABLE_PASSKEY=true` does
-not grant those human capabilities, even on loopback.
+Real WebAuthn-backed browser authentication is required for approval and
+approval-policy changes. Signing into a browser with an API key does not grant
+those human capabilities, even if the key has full account access.
+Account setup requires a hostname, not an IP-address origin; configure
+`CLANKY_PUBLIC_BASE_URL` with the browser's hostname when binding to an IP.
+`CLANKY_DISABLE_PASSKEY=true` does not enable approval, even on loopback.
+Admitted general-access workspace executions may administer integrations and
+deliver private credentials through files, subject to the same human
+confirmation policy.
 
 ## Reset persisted data
 
