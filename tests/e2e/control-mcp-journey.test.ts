@@ -148,9 +148,9 @@ test("external MCP integrations receive explicit human grants, isolated control 
     expect(application.baseUrl).toBe(baseUrl);
     await bootstrapOwner(application, human);
 
-    async function restart(disablePasskey = false): Promise<void> {
+    async function restart(): Promise<void> {
       previousDiagnostics.push(await application.diagnostics());
-      await application.restart({ ...startOptions, disablePasskey });
+      await application.restart(startOptions);
     }
     async function humanJson<T>(path: string, options: RequestInit = {}, status = 200): Promise<T> {
       const response = await requestWithCookies(application, human, path, {
@@ -496,10 +496,14 @@ test("external MCP integrations receive explicit human grants, isolated control 
     const apiKey = await humanJson<{ token: string }>("/api/api-keys", {
       method: "POST", body: JSON.stringify({ name: "Ordinary API client", scopes: ["*"] }),
     });
-    await denied("/api/control/requests", { apiKey: apiKey.token });
-    await denied("/api/control/credentials", {
+    await application.json("/api/control/requests", { apiKey: apiKey.token });
+    const accountIntegration = (await application.json<Credential>("/api/control/credentials", {
       apiKey: apiKey.token, method: "POST",
-      body: JSON.stringify({ name: "API self-grant", grant: { level: "general" }, expiresInDays: 1 }),
+      body: JSON.stringify({ name: "Account API integration", grant: { level: "general" }, expiresInDays: 1 }),
+    }, 201)).data;
+    expect(accountIntegration.credential.grant).toEqual({ level: "general" });
+    await application.json(`/api/control/credentials/${accountIntegration.credential.id}`, {
+      apiKey: apiKey.token, method: "DELETE",
     });
 
     const rejected = await prepareTrash(projectClient, shared, "Project discussion");
@@ -638,15 +642,6 @@ test("external MCP integrations receive explicit human grants, isolated control 
     expect((await humanJson<{ items: Array<{ id: string }> }>("/api/trash")).items
       .filter(({ id }) => id === archived)).toHaveLength(1);
 
-    await restart(true);
-    await denied("/api/control/approval-policy", {
-      method: "PUT", body: JSON.stringify({ requireApproval: false }),
-    });
-    await denied("/api/control/requests");
-    await denied("/api/control/credentials", {
-      method: "POST",
-      body: JSON.stringify({ name: "Emergency bypass is not consent", grant: { level: "general" }, expiresInDays: 1 }),
-    });
   } catch (error) {
     console.error([...previousDiagnostics, await application.diagnostics()].join("\n"));
     throw error;

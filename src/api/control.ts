@@ -28,7 +28,7 @@ const ERROR_STATUS: Readonly<Record<string, number>> = {
   control_workspace_unavailable: 404, control_context_unavailable: 410,
   control_authority_unavailable: 403, control_context_ended: 410,
   control_request_unavailable: 410, control_tool_unavailable: 404,
-  control_client_unavailable: 409, control_human_required: 403,
+  control_client_unavailable: 409,
   control_busy: 429, control_credential_limit: 409, control_cancelled: 499,
   control_unavailable: 503,
   control_request_invalid: 400, control_result_invalid: 502,
@@ -38,8 +38,6 @@ interface ControlApi {
   sessions: ControlSessionService;
   integrations: ControlIntegrationService;
   access: (request: Request, context: RouteContext) => Promise<ControlAccess>;
-  requireHuman: (request: Request, context: RouteContext) => void;
-  requireHumanOrExecution: (request: Request, context: RouteContext) => void;
   mcp: (request: Request, context: RouteContext) => Promise<Response>;
 }
 let configured: ControlApi | undefined;
@@ -60,25 +58,37 @@ export function controlErrorResponse(error: unknown): Response {
   return response;
 }
 
-const EXCLUDED = { policy: "excluded", reason: "Private control admission or human-only interaction, never an executable agent operation." } as const;
+function requireAccountInteraction(context: RouteContext): void {
+  context.requireUser();
+  if (context.auth.kind === "server") {
+    throw new DomainError("control_operation_unavailable", "Workspace executions cannot decide control requests or change approval policy.");
+  }
+}
+
+function requireAccountOrExecution(context: RouteContext): void {
+  context.requireUser();
+  if (context.auth.kind === "server") control().sessions.requireGeneralExecution();
+}
+
+const EXCLUDED = { policy: "excluded", reason: "Private control admission or account interaction, never an executable agent operation." } as const;
 
 export const controlRoutes = defineRoutes({
   "/api/control/approval-policy": {
     auth: "user", sameOrigin: "always", tags: ["control"],
-    description: "Read the per-user nonvoice approval policy; only a human can change it. Voice always requires confirmation.",
+    description: "Read the per-user nonvoice approval policy; workspace executions cannot change it. Voice always requires confirmation.",
     operations: {
       GET: { responseSchema: ControlApprovalPolicySchema, automation: executionAutomation("read", "Approval policy is readable by admitted general executions.") },
       PUT: { requestSchema: ControlApprovalPolicySchema, responseSchema: ControlApprovalPolicySchema, automation: EXCLUDED },
     },
-    async GET(req, ctx) {
+    async GET(_req, ctx) {
       try {
-        control().requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         return Response.json({ requireApproval: await preferencesManager.getControlApprovalRequired() }, { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
     async PUT(req, ctx) {
       try {
-        control().requireHuman(req, ctx);
+        requireAccountInteraction(ctx);
         const body = await parseAndValidate(ControlApprovalPolicySchema, req);
         if (!body.success) return body.response;
         await preferencesManager.setControlApprovalRequired(body.data.requireApproval);
@@ -118,10 +128,10 @@ export const controlRoutes = defineRoutes({
     auth: "user", sameOrigin: "always", tags: ["control"],
     description: "Pending control requests for the current user, without frozen arguments or operation results.",
     operations: { GET: { responseSchema: ControlRequestsResponseSchema, automation: executionAutomation("read", "Pending approvals are readable by admitted general executions.") } },
-    async GET(req, ctx) {
+    async GET(_req, ctx) {
       try {
         const api = control();
-        api.requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         return Response.json(await api.sessions.listPendingRequests(), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
@@ -134,24 +144,24 @@ export const controlRoutes = defineRoutes({
     async GET(req, ctx) {
       try {
         const api = control();
-        if (ctx.auth.kind === "api-key") {
+        if (ctx.auth.kind === "api-key" && !ctx.auth.scopes.includes("*")
+          || ctx.auth.kind === "bearer" && !ctx.auth.claims.scope.split(/\s+/).includes("*")) {
           const access = await api.access(req, ctx);
           return Response.json(api.sessions.withGrant(access.grant.id,
             () => api.sessions.getRequest(ctx.params["id"]!)), { headers: NO_STORE });
         }
-        if (ctx.auth.kind !== "server") api.requireHuman(req, ctx);
         return Response.json(api.sessions.getRequest(ctx.params["id"]!), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
   },
   "/api/control/requests/:id/decision": {
     auth: "user", sameOrigin: "always", tags: ["control"],
-    description: "Human-only approval or rejection of an exact frozen control operation.",
+    description: "Account approval or rejection of an exact frozen control operation, excluded from workspace execution tools.",
     operations: { POST: { requestSchema: ControlDecisionSchema, automation: EXCLUDED } },
     async POST(req, ctx) {
       try {
         const api = control();
-        api.requireHuman(req, ctx);
+        requireAccountInteraction(ctx);
         const body = await parseAndValidate(ControlDecisionSchema, req);
         if (!body.success) return body.response;
         return Response.json(await api.sessions.decide(ctx.params["id"]!, body.data.approved, req.signal), { headers: NO_STORE });
@@ -160,12 +170,12 @@ export const controlRoutes = defineRoutes({
   },
   "/api/control/consent-options": {
     auth: "user", sameOrigin: "always", tags: ["control"],
-    description: "Read human grant choices for named scoped integrations.",
+    description: "Read account grant choices for named scoped integrations.",
     operations: { GET: { automation: executionAutomation("read", "Integration grant choices are readable by admitted general executions.") } },
-    async GET(req, ctx) {
+    async GET(_req, ctx) {
       try {
         const api = control();
-        api.requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         return Response.json(await api.integrations.consentOptions(), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
@@ -177,17 +187,17 @@ export const controlRoutes = defineRoutes({
       GET: { responseSchema: z.array(ControlCredentialSummarySchema), automation: executionAutomation("read", "Lists owned integration grants without their tokens.") },
       POST: { requestSchema: CreateControlCredentialSchema, automation: executionAutomation("confirm", "Creates a scoped integration credential.", { privateResponse: true }) },
     },
-    async GET(req, ctx) {
+    async GET(_req, ctx) {
       try {
         const api = control();
-        api.requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         return Response.json(api.integrations.list(), { headers: NO_STORE });
       } catch (error) { return controlErrorResponse(error); }
     },
     async POST(req, ctx) {
       try {
         const api = control();
-        api.requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         const body = await parseAndValidate(CreateControlCredentialSchema, req);
         if (!body.success) return body.response;
         const result = await api.integrations.create(body.data);
@@ -200,10 +210,10 @@ export const controlRoutes = defineRoutes({
     auth: "user", sameOrigin: "always", tags: ["control"],
     description: "Revoke an owned named control integration.",
     operations: { DELETE: { automation: executionAutomation("confirm", "Revokes an owned scoped integration credential.") } },
-    async DELETE(req, ctx) {
+    async DELETE(_req, ctx) {
       try {
         const api = control();
-        api.requireHumanOrExecution(req, ctx);
+        requireAccountOrExecution(ctx);
         api.integrations.revoke(ctx.params["id"]!);
         ctx.realtime.publishChanged("control-credentials");
         return Response.json({ revoked: true }, { headers: NO_STORE });

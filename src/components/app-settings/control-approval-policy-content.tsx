@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { createLogger, EmptyState, ErrorState, LoadingState, useLiveQuery, useWebAppConfig } from "@pablozaiden/webapp/web";
+import { createLogger, EmptyState, ErrorState, LoadingState, useCurrentUser, useLiveQuery } from "@pablozaiden/webapp/web";
 import type { ControlApprovalPolicy } from "@/contracts/schemas/control";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
 import { SettingsCheckbox, SettingsError } from "./settings-row-controls";
@@ -8,9 +9,8 @@ import { SettingsCheckbox, SettingsError } from "./settings-row-controls";
 const log = createLogger("control-approval-policy");
 
 export function ControlApprovalPolicyContent() {
-  const { config } = useWebAppConfig();
-  const available = config?.passkeyAuth.enabled === true
-    && config.passkeyAuth.authenticated && !config.passkeyAuth.passkeyDisabled;
+  const user = useCurrentUser();
+  const available = getClankyClientCapabilities().controllerAdministration && Boolean(user);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const query = useLiveQuery({
@@ -31,7 +31,7 @@ export function ControlApprovalPolicyContent() {
       setSaveError(String(error));
     } finally { setSaving(false); }
   }
-  if (!available) return <EmptyState title="Passkey sign-in required" />;
+  if (!available) return <EmptyState title="Approval policy unavailable" />;
   if (query.error) return <ErrorState title={saveError ? "Could not save approval policy" : "Could not load approval policy"}
     description={saveError ?? String(query.error)}
     action={<Button disabled={query.loading} onClick={() => {

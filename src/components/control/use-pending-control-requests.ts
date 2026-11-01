@@ -1,13 +1,13 @@
-import { useLiveQuery, useWebAppConfig } from "@pablozaiden/webapp/web";
+import { useCurrentUser, useLiveQuery } from "@pablozaiden/webapp/web";
 import type { ControlRequestSummary } from "@/contracts/schemas/control";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { useControlExpiry } from "./use-control-expiry";
 
 export function usePendingControlRequests() {
-  const { config } = useWebAppConfig();
+  const user = useCurrentUser();
   const available = getClankyClientCapabilities().controllerAdministration
-    && config?.passkeyAuth.enabled === true && config.passkeyAuth.authenticated && !config.passkeyAuth.passkeyDisabled;
+    && Boolean(user);
   const query = useLiveQuery({
     enabled: available,
     load: (signal) => apiRequest<ControlRequestSummary[]>("/api/control/requests", { signal }),

@@ -33,6 +33,8 @@ for unrelated work.
   Follow the [coverage decision gate](docs/development/testing.md#decide-whether-a-scenario-belongs).
 - Discover APIs and helpers from their definitions and callers instead of
   duplicating them or maintaining prose catalogs.
+- Follow [authentication-method equivalence](docs/development/architecture.md#authentication-method-equivalence):
+  never infer human presence or extra privileges from API-key/passkey provenance.
 
 ## Validate and finish
 
