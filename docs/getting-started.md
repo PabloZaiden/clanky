@@ -42,8 +42,8 @@ clanky serve down
 
 ## Authenticate the CLI
 
-The browser uses passkey-backed authentication. The CLI can use the device
-authorization flow:
+The browser supports passkey or API-key authentication with equivalent account
+capabilities. The CLI can use the device authorization flow:
 
 ```bash
 clanky auth --base-url http://localhost:3000

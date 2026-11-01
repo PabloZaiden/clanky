@@ -164,8 +164,12 @@ notification or reconnect; keep the loaded empty/nonempty state visible during
 background refresh rather than hiding it or showing initial loading again.
 Approval summaries carry effective target privacy and use the shared private-row
 reveal behavior, including inherited workspace/host privacy. The collection is
-loaded only for passkey-authenticated sessions; other sessions see a non-retryable
-unavailable Settings collection instead of an approval-load error on Home.
+loaded for authenticated controller account clients, independent of API-key or
+passkey session provenance. Use the framework's current user and client
+capabilities for availability, not passkey configuration or authentication
+flags. See [authentication-method equivalence](architecture.md#authentication-method-equivalence).
+Clients without controller capabilities see an unavailable Settings collection
+instead of an approval-load error on Home.
 OAuth consent reads its opaque request handle from the URL search
 query, not route fields, and requires an explicit workspace/general selection.
 Never pass that query through request-path logging. Scoped service credentials

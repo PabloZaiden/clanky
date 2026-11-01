@@ -147,7 +147,7 @@ the user change servers or sign out. A failed or unreachable API does not preven
 returning to server selection.
 
 Sign-in follows the CLI's device-authorization flow: open the API's page,
-authenticate there with its passkey, verify the code and approve this client.
+authenticate there with a passkey or API key, verify the code and approve this client.
 The frontend polls the token endpoint and receives its own revocable session.
 If the browser blocks the new window, use the displayed authorization link.
 Passkey management opens the API-origin `/account` page, including in API-only

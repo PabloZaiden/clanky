@@ -20,7 +20,8 @@ and human approval links are documented in
 [Agent control and MCP](../../docs/deployment.md#agent-control-and-mcp).
 Humans can also find pending requests in Settings → Agents & integrations →
 Approvals and Home's Needs attention. The per-user approval checkbox defaults
-on; only a passkey-authenticated human can change it. With it off, new nonvoice
+on; authorized account clients can change it with API-key or passkey
+authentication. With it off, new nonvoice
 confirm-class operations execute directly within their existing grant; pending
 requests stay pending. Voice always confirms. Inspect returned status instead
 of assuming confirmation or completion. Native/MCP/deterministic confirmations
@@ -29,8 +30,11 @@ expire after one hour; do not renew or repeat uncertain work to avoid that deadl
 Workspaces with **Allow general Clanky access** give managed native and
 deterministic executions all application capabilities allowed to their real
 user, including account/integration administration, private credentials and
-binary transfers. They cannot approve requests or alter approval policy;
-API-key-backed browser sessions cannot substitute for a real WebAuthn approval.
+binary transfers. They cannot approve requests or alter approval policy through
+execution control. API keys and passkeys are equivalent account authentication
+methods: never infer human presence or additional privileges from session
+provenance. Roles, ownership, scopes and explicit execution policy authorize
+operations, not the login method.
 External integration and Voice grants keep their existing limits.
 
 For non-direct intents, list and describe the canonical operation before calling

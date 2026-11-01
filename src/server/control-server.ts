@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
-  authenticateApiKey, createLogger, getRequestOriginInfo, parseOAuthClients,
+  authenticateApiKey, createLogger, parseOAuthClients,
   type OAuthConfig, type OAuthPrincipal, type RouteContext,
   type WebAppServer, type WebAppStore,
 } from "@pablozaiden/webapp/server";
@@ -191,23 +191,8 @@ export class ControlServer {
     configureControlApi({
       sessions: this.sessions, integrations: this.integrations,
       access: async (request, context) => await this.apiAccess(request, context),
-      requireHuman: (request, context) => this.requireHuman(request, context),
-      requireHumanOrExecution: (request, context) => {
-        if (context.auth.kind === "server") this.sessions.requireGeneralExecution();
-        else this.requireHuman(request, context);
-      },
       mcp: async (request, context) => await this.handleMcp(request, await this.apiAccess(request, context)),
     });
-  }
-
-  private requireHuman(request: Request, context: RouteContext): void {
-    const app = this.requireApp();
-    const origin = request.headers.get("origin");
-    if (context.auth.kind !== "passkey" || !context.auth.passkeyId || app.config.passkeyDisabled
-      || origin !== null && origin !== getRequestOriginInfo(request, app.config).origin
-      || request.method !== "GET" && origin === null) {
-      throw new DomainError("control_human_required", "Sign in with a real browser passkey session to review control requests or manage integrations.");
-    }
   }
 
   private async apiAccess(request: Request, context: RouteContext): Promise<ControlAccess> {

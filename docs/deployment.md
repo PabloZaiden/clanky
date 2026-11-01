@@ -86,9 +86,12 @@ overlap server startup. Locks that outlast that budget still fail explicitly.
 
 ## Authentication and safety
 
-Passkeys protect browser sessions. Device credentials and API keys are
-available for CLI and automation use. Treat API keys, worker keys, and
-persisted application data as secrets.
+Passkeys and API keys support browser authentication; device credentials and
+API keys also support CLI and automation use. API-key and passkey sessions have
+equivalent account capabilities under the same permissions and scopes; the
+method does not prove human presence. See
+[authentication-method equivalence](development/architecture.md#authentication-method-equivalence).
+Treat API keys, worker keys, and persisted application data as secrets.
 
 Keep these development-only overrides unset in a public deployment:
 
@@ -220,8 +223,9 @@ workspace/access policy or enumerate unrelated servers.
 
 In **Settings → Agents & integrations → Approvals**, each user controls
 **Require approval for agent operations**. It is enabled by default for both
-existing and new users. Only a genuine passkey-authenticated human can change
-it; native agents, MCP clients and deterministic code cannot disable it.
+existing and new users. Authorized account clients can change it using ordinary
+authentication, including API-key or passkey sessions. Native agents, scoped
+MCP clients and deterministic code cannot disable it through execution control.
 
 When enabled, destructive and other confirmation-class control operations
 return a frozen, expiring request and an authenticated Clanky link without
@@ -244,12 +248,17 @@ Approval is single-use. Pending requests do not survive restart or restore
 revoked/ended execution authority. A pending result is not completed work,
 and an uncertain outcome must be inspected before repeating a mutation.
 
-Real WebAuthn-backed browser authentication is required for approval and
-approval-policy changes. Signing into a browser with an API key does not grant
-those human capabilities, even if the key has full account access.
+Approvals, approval-policy changes and integration administration use ordinary
+account authorization. API-key browser sessions, unrestricted API credentials,
+device sessions and passkey sessions can perform the same authorized account
+interactions; valid existing cookies do not need to be renewed with a passkey.
+Scoped integrations keep their limited grants and cannot approve their own
+operations. Execution self-approval is excluded by operation policy, not by
+inferring who is operating from the authentication method.
 Account setup requires a hostname, not an IP-address origin; configure
 `CLANKY_PUBLIC_BASE_URL` with the browser's hostname when binding to an IP.
-`CLANKY_DISABLE_PASSKEY=true` does not enable approval, even on loopback.
+Authentication-disabled local validation uses the existing development account
+and ordinary origin checks; it must use isolated data and stay private.
 Admitted general-access workspace executions may administer integrations and
 deliver private credentials through files, subject to the same human
 confirmation policy.
