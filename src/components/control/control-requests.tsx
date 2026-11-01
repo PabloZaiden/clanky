@@ -27,8 +27,7 @@ export function PendingControlRequests({ onNavigate, showPrivateItems }: {
   showPrivateItems: boolean;
 }) {
   const query = usePendingControlRequests();
-  if (!query.available) return <EmptyState title="Approvals unavailable"
-    description="A passkey-authenticated session is required to review approvals." />;
+  if (!query.available) return <EmptyState title="Approvals unavailable" />;
   return <>
     {query.error ? <ErrorState title="Could not load approvals" description={String(query.error)}
       action={<Button disabled={query.loading} onClick={() => void query.refresh()}>Retry</Button>} /> : null}

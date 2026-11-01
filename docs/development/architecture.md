@@ -48,6 +48,24 @@ Use framework ownership helpers for additional entity checks. Keep scopes,
 schemas, descriptions, tags, and `cliPath` on the route definition; do not
 maintain a parallel API/CLI catalog.
 
+### Authentication-method equivalence
+
+API keys and passkeys are equivalent authentication methods. Authorize the
+authenticated account using roles, ownership, credential scopes and explicit
+operation/execution policy, not the method that established its session.
+Never require WebAuthn provenance, a passkey ID or a passkey-only session kind
+for ordinary account operations, including approvals, approval-policy changes,
+integration administration and private input. Valid existing browser sessions
+do not need a new passkey ceremony to acquire those capabilities.
+
+Neither method proves human presence, agent absence or stronger authority.
+Prevent execution self-approval through canonical automation exclusions and
+validated execution authority, not credential-type heuristics. Credential
+validation, expiry/revocation and grant ceilings remain required; limited
+integration credentials do not become unrestricted account credentials.
+Cookie-backed requests retain framework same-origin/CSRF protection, while
+explicit bearer credentials use their existing transport policy.
+
 Await API operations before returning their result. Starting a long-running
 task may return before completion only when its lifecycle owner handles errors,
 persists failed state, and reports progress through public channels. Document
@@ -141,9 +159,9 @@ selection and owns operation policy. See
 Nonvoice control sessions own bounded, expiring confirmation requests.
 Return pending human interaction without blocking an unattended
 agent indefinitely; the session owns detached work, cancellation and cleanup.
-Only a separate real passkey-backed human interaction can approve frozen work
-for execution. A per-user persisted preference, enabled by
-default and writable only through human-only excluded control administration,
+Only a separate authorized account interaction can approve frozen work
+for execution; its authentication method is irrelevant. A per-user persisted
+preference, enabled by default and excluded from execution control writes,
 decides whether new nonvoice confirm-class operations need that interaction.
 The shared action owner reads it at admission, executes directly when disabled
 and reuses the same continuation-aware execution path; it does not create and

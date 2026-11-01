@@ -288,7 +288,7 @@ test("OpenCode users control workspaces, route browser actions, steer and resume
   }
 });
 
-test("General-access OpenCode transfers binary files across hosts and administers credentials with human approval", async () => {
+test("General-access OpenCode transfers files and administers credentials with method-independent account approvals", async () => {
   const application = await E2EApplication.create();
   let worker: ManagedMeshNode | undefined;
   let controller: (MeshHttpNode & Pick<ManagedMeshNode, "tlsProxy">) | undefined;
@@ -425,21 +425,31 @@ test("General-access OpenCode transfers binary files across hosts and administer
     });
     expect(login.status).toBe(200);
     await login.body?.cancel();
-    for (const [path, body] of [
-      [`/api/control/requests/${pending.requestId}/decision`, { approved: true }],
-      ["/api/control/approval-policy", { requireApproval: false }],
-    ] as const) {
-      const denied = await requestWithCookies(application, apiKeyBrowser, path, {
-        method: path.endsWith("decision") ? "POST" : "PUT",
-        headers: { origin: application.baseUrl }, body: JSON.stringify(body),
-      });
-      expect(denied.status).toBe(403);
-      await denied.body?.cancel();
-    }
-    expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(initial);
-    await client.json(`/api/control/requests/${pending.requestId}/decision`, {
-      method: "POST", body: JSON.stringify({ approved: true }),
+    const approvals = await requestWithCookies(application, apiKeyBrowser, "/api/control/requests", {
+      headers: { origin: application.baseUrl },
     });
+    expect(approvals.status).toBe(200);
+    expect(await approvals.json()).toEqual(expect.arrayContaining([expect.objectContaining({ id: pending.requestId })]));
+    const accountRequest = await application.json<{ operation: Record<string, unknown> }>(
+      `/api/control/requests/${pending.requestId}`, { apiKey: issued.token, includeOrigin: false },
+    );
+    expect(accountRequest.data.operation).toMatchObject({ bodyFile: { path: bodyPath }, headersFile: { path: headerPath } });
+    const policy = await requestWithCookies(application, apiKeyBrowser, "/api/control/approval-policy", {
+      method: "PUT", headers: { origin: application.baseUrl }, body: JSON.stringify({ requireApproval: false }),
+    });
+    expect(policy.status).toBe(200);
+    expect(await policy.json()).toEqual({ requireApproval: false });
+    expect((await client.json("/api/control/approval-policy")).data).toEqual({ requireApproval: false });
+    await application.json("/api/control/approval-policy", {
+      method: "PUT", apiKey: issued.token, includeOrigin: false, body: JSON.stringify({ requireApproval: true }),
+    });
+    expect((await client.json("/api/control/approval-policy")).data).toEqual({ requireApproval: true });
+    expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(initial);
+    const approved = await requestWithCookies(application, apiKeyBrowser, `/api/control/requests/${pending.requestId}/decision`, {
+      method: "POST", headers: { origin: application.baseUrl }, body: JSON.stringify({ approved: true }),
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({ ok: true, completion: "completed" });
     const completed = (await client.json<{ result: ToolResult }>(`/api/control/requests/${pending.requestId}`)).data.result;
     expect(completed).toMatchObject({ ok: true, completion: "completed" });
     expect(new Uint8Array(await Bun.file(target).arrayBuffer())).toEqual(bytes);
