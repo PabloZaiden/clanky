@@ -187,11 +187,42 @@ artwork; generated SwiftPM/xtool configuration and build output stay under
 `dist/apple/`. The executable records the installed SDK version separately from
 the minimum iOS version, preserving iOS's linked-SDK behavior.
 
-Install Swift 6.4+ and xtool using the
+The default Ubuntu 24.04 devcontainer installs Swift 6.4.2, xtool 1.24.0 and
+their Linux build dependencies for amd64 or arm64. Existing containers can run
+`bash .devcontainer/install-prerequisites.sh` to install the same tools.
+The installer verifies Swift's official archive signature against a keyring
+containing only the pinned Swift release key and its subkeys, and verifies
+xtool's release checksum. It unpacks xtool without requiring FUSE and exposes
+the tools on PATH.
+Repeated setup reuses the versioned installations and does not remove SDKs.
+
+Outside the devcontainer, install Swift 6.4+ and xtool using the
 [xtool Linux guide](https://github.com/xtool-org/xtool/blob/main/Documentation/xtool.docc/Installation-Linux.md).
-For unsigned builds, prepare the SDK without running `xtool setup` or logging
-in. An existing Mac Xcode installation can supply it. With xtool available on
-the Mac, prepare an SDK for your Linux build architecture (`x86_64` or `arm64`).
+The licensed Apple SDK is separate from the public tools: it is not included in
+the devcontainer or committed to Git. Install it as the Linux user that will
+run builds, and restore it from a private archive after rebuilding a container
+unless its SDK storage is persisted.
+For unsigned builds, install the SDK without running `xtool setup` or logging
+into Apple through xtool.
+
+A Mac is not required to prepare the SDK. Download Xcode 27.1+ from
+[Apple's authenticated download page](https://developer.apple.com/download/all/?q=Xcode)
+through your browser and accept its license, then supply the private archive
+directly on Linux:
+
+```bash
+xtool sdk install --slim /path/to/Xcode.xip
+xtool sdk status
+swift sdk list
+```
+
+Slim SDKs use less space but must be reinstalled rather than updated in place.
+An existing Mac Xcode installation can also supply the SDK without another
+authenticated download. With xtool available on the Mac, prepare an SDK for
+your Linux build architecture (`x86_64` or `arm64`).
+For a downloaded macOS `xtool.app`, use its
+`Contents/Resources/bin/xtool` CLI launcher, not the GUI executable under
+`Contents/MacOS/`.
 Replace the paths and architecture placeholder below:
 
 ```bash
