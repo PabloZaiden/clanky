@@ -377,7 +377,7 @@ export class ChatStateService implements ChatStatePort {
         if (request.status === "pending"
           && !previous.state.pendingPermissionRequests?.some((existing) => existing.requestId === request.requestId)) {
           agentNotificationService.notify("approval", {
-            kind: "Chat", id: updated.config.id, context: `Permission: ${request.permission}.`,
+            kind: "Chat", id: updated.config.id,
           });
         }
       }

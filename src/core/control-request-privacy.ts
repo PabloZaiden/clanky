@@ -3,7 +3,8 @@ import { executionHostRefFromParts, isPrivateMeshExecutionHostRef } from "@/shar
 import { readReferenceField } from "@/shared/record";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
-import { loadAgent } from "../persistence/agents";
+import { listAgentsByWorkspace, loadAgent, loadAgentRunSummary, loadAgentRunSummaryByChatId } from "../persistence/agents";
+import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import type { PreparedOperation } from "./clanky-operation-service";
 
@@ -21,7 +22,18 @@ export async function resourcePrivate(resource: string, id: string): Promise<boo
   if (resource === "chat") {
     const chat = await loadChatMetadata(id);
     if (!chat || chat.config.isPrivate === true) return true;
-    if (chat.config.workspaceId) return await workspacePrivate(chat.config.workspaceId);
+    if (chat.config.workspaceId && await workspacePrivate(chat.config.workspaceId)) return true;
+    if (chat.config.scope === "task" || chat.config.taskId) {
+      return !chat.config.taskId || await resourcePrivate("task", chat.config.taskId);
+    }
+    if (chat.config.scope === "agent") {
+      const run = await loadAgentRunSummaryByChatId(id);
+      if (run) return await resourcePrivate("agent-run", run.id);
+      if (!chat.config.workspaceId) return true;
+      const parent = (await listAgentsByWorkspace(chat.config.workspaceId))
+        .find((agent) => agent.config.generationChatId === id);
+      return !parent || await resourcePrivate("agent", parent.config.id);
+    }
     return chat.config.source?.kind === "execution_host"
       ? isPrivateMeshExecutionHostRef(chat.config.source.executionHost.host) : false;
   }
@@ -29,7 +41,18 @@ export async function resourcePrivate(resource: string, id: string): Promise<boo
     const agent = await loadAgent(id);
     return !agent || agent.config.isPrivate === true || await workspacePrivate(agent.config.workspaceId);
   }
-  return false;
+  if (resource === "agent-run") {
+    const run = await loadAgentRunSummary(id);
+    return !run || await resourcePrivate("agent", run.agentId) || await workspacePrivate(run.configSnapshot.workspaceId);
+  }
+  if (resource === "terminal") {
+    const terminal = await getTerminalSession(id);
+    if (!terminal || terminal.config.isPrivate === true
+      || isPrivateMeshExecutionHostRef(terminal.config.executionHostBinding.host)) return true;
+    if (terminal.config.taskId && await resourcePrivate("task", terminal.config.taskId)) return true;
+    return terminal.config.workspaceId ? await workspacePrivate(terminal.config.workspaceId) : false;
+  }
+  return true;
 }
 
 export async function controlRequestPrivate(operation?: PreparedOperation): Promise<boolean> {

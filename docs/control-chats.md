@@ -166,15 +166,19 @@ interactions.
 Automatic messages identify the chat, task or managed Agent by name and include
 the event description. Questions include a brief excerpt of the question;
 secret requests include the credential's label and purpose, never its value or
-internal identifier. Native permission alerts include the permission kind, not
-path patterns or tool arguments. Agent-operation approvals include the existing
+internal identifier. Native permission alerts identify the work and request a
+decision without copying provider permission text, which can contain tool-call
+titles, commands or paths. Agent-operation approvals include the existing
 human-facing action description. Text is trimmed and shortened to fit Listen's
 title and description limits; the Markdown body includes up to 1,000 characters
 of request context as escaped text.
 
 Private work and work in private workspaces retain generic alerts without names
-or request text. Private approval targets and file-backed operations also retain
-generic alerts. Notifications never copy submitted answers, private secret
+or request text; linked chats also inherit their Task or Agent parent's privacy.
+Private approval targets, including Agent runs and terminals, and file-backed
+operations also retain generic alerts. Terminal target privacy includes its
+Task, workspace and execution host. Targets whose privacy cannot be resolved
+retain generic alerts. Notifications never copy submitted answers, private secret
 files, arbitrary transcript content, error diagnostics, tool arguments or webhook
 credentials. Request labels, purposes and approval descriptions should explain
 what is needed without embedding credentials, since that metadata is sent to
