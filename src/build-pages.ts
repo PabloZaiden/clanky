@@ -29,11 +29,6 @@ await Bun.write(
 );
 await cp(new URL("./favicon.svg", import.meta.url), join(outdir, "favicon.svg"));
 
-await Bun.write(join(outdir, "build-info.json"), `${JSON.stringify({
-  revision,
-  version: CLANKY_VERSION,
-  builtAt: new Date().toISOString(),
-}, null, 2)}\n`);
 await Bun.write(join(outdir, "index.html"), `<!doctype html>
 <html lang="en">
   <head>
@@ -133,6 +128,29 @@ await Bun.write(join(outdir, "index.html"), `<!doctype html>
   </body>
 </html>
 `);
+
+const paths = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: outdir, onlyFiles: true }))).sort();
+const assets = [];
+for (const path of paths) {
+  const file = Bun.file(join(outdir, path));
+  assets.push({
+    path,
+    bytes: file.size,
+    sha256: new Bun.CryptoHasher("sha256").update(await file.arrayBuffer()).digest("hex"),
+  });
+}
+const manifest = `${JSON.stringify({ revision, version: CLANKY_VERSION, files: assets })}\n`;
+await Bun.write(join(outdir, "frontend-update.json"), manifest);
+await Bun.write(join(outdir, "build-info.json"), `${JSON.stringify({
+  revision,
+  version: CLANKY_VERSION,
+  builtAt: new Date().toISOString(),
+  update: {
+    manifest: "frontend-update.json",
+    bytes: Buffer.byteLength(manifest),
+    sha256: new Bun.CryptoHasher("sha256").update(manifest).digest("hex"),
+  },
+}, null, 2)}\n`);
 
 let bytes = 0;
 let files = 0;

@@ -50,12 +50,23 @@ Every push to `main` publishes both clients together:
 The [site root](https://pablozaiden.github.io/clanky/) is a lightweight,
 mobile-friendly connection chooser with dark and light system themes. It links
 both clients and the deployed commit without JavaScript or external resources.
-Its `build-info.json` records the full source revision,
-client version and build timestamp. Sidebar and Settings / About show the
+Its `build-info.json` records the full source revision (`revision`),
+client version (`version`) and UTC build timestamp (`builtAt`). Its `update`
+entry identifies `frontend-update.json` by path, byte size and SHA-256.
+That manifest lists every application asset with its relative path, byte size
+and SHA-256, excluding the two metadata files themselves. Its digest identifies
+the exact frontend snapshot. Generated bundler details can change this digest
+when rebuilding the same source revision, so it is an integrity identifier,
+not an ordered release version. Publish metadata and assets together, not as
+separate deployments.
+The [iPhone/iPad app](apple-apps.md#frontend-updates-on-iphone-and-ipad)
+uses this metadata for frontend-only updates.
+Sidebar and Settings / About show the
 client's own embedded build version, including in collaboration mode without
 a server connection. These deployments follow `main`, not the latest stable release;
 compare the deployed commit when investigating browser behavior or API
-compatibility. Reload the page after deployment to pick up the new frontend.
+compatibility. Browser clients still require a reload after deployment to pick
+up the new frontend; they do not install the native app's downloaded snapshots.
 
 The `Publish browser clients` workflow builds PRs without publishing them.
 Main pushes and manual runs on `main` deploy through the `github-pages`

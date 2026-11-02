@@ -50,10 +50,35 @@ struct BrowserWindow: View {
                     Button("Retry") { Task { await app.start() } }
                 }
             } else {
+                #if os(iOS)
+                if let offer = app.updateOffer {
+                    ContentUnavailableView {
+                        Label("Development frontend", systemImage: "hammer")
+                    } description: {
+                        Text("Replace \(offer.currentVersion) with \(offer.version) (\(offer.revision.prefix(7)))?")
+                    } actions: {
+                        Button("Update") { app.answerUpdate(true) }
+                        Button("Keep Current") { app.answerUpdate(false) }
+                    }
+                } else {
+                    ProgressView(app.startupMessage)
+                }
+                #else
                 ProgressView("Opening Clanky…")
+                #endif
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #if os(iOS)
+        .alert("Frontend Update", isPresented: Binding(
+            get: { app.origin != nil && app.updateWarning != nil },
+            set: { if !$0 { app.updateWarning = nil } }
+        )) {
+            Button("OK") { app.updateWarning = nil }
+        } message: {
+            Text(app.updateWarning ?? "")
+        }
+        #endif
         #if os(macOS)
         .alert("Local Controller", isPresented: Binding(
             get: { controller.error != nil },

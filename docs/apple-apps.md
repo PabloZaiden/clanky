@@ -562,8 +562,9 @@ web form. Validation, pairing, grants and Direct/Relay routing are unchanged.
 See [static clients](static-client.md#browser-only-collaboration) for their
 capabilities and limitations.
 
-All UI assets, including fonts, Monaco and its workers, are bundled. A small
-Swift HTTP listener serves only those assets on `127.0.0.1` using the
+All UI assets, including fonts, Monaco and its workers, are bundled. On iOS,
+a verified downloaded frontend can replace that bundled UI as described below.
+A small Swift HTTP listener serves only the selected frontend on `127.0.0.1` using the
 installation's saved port. This is not
 a local Clanky controller, proxy or API. Both platforms need this loopback web
 origin to preserve secure-context Web Crypto, IndexedDB, Web Locks and worker
@@ -592,7 +593,7 @@ External top-level links open in the system browser. File selection uses WebKit'
 native picker; downloads use the Mac save panel or iPhone/iPad export sheet.
 API resource downloads use the framework's explicit native-save handoff after
 the existing selected-server validation and ticket acquisition. The native host
-checks the calling bundled document and allows HTTPS destinations or loopback
+checks the calling local frontend document and allows HTTPS destinations or loopback
 HTTP without receiving API bearer credentials. Acceptance starts WebKit's
 download flow; it does not mean that a file has already been saved.
 Content popups such as **Open image in a new tab** appear in a closable in-app
@@ -607,3 +608,54 @@ There is no background execution, background transfer, offline synchronization
 or new automatic-retry guarantee. On iPhone/iPad, keep the app in the foreground
 for active transfers; suspension may interrupt connections. If the app reports
 that it stopped responding, choose **Try Again** to reconnect.
+
+### Frontend updates on iPhone and iPad
+
+On a fresh iOS process launch, before opening the WebView, the app checks
+`https://pablozaiden.github.io/clanky/build-info.json`. An unchanged frontend
+manifest digest needs no asset download, installation or confirmation.
+A published frontend also skips rebuilds of its already installed source
+revision, even if bundler details or the resolved version/timestamp change.
+Development frontends do not use that shortcut because they may include
+uncommitted changes. `builtAt` alone never triggers an update. Returning from the background,
+reloading the web page, opening another scene and retrying the local asset
+server do not initiate another update check in that process.
+
+When a different frontend is available, the app prepares it during that same
+startup and opens the updated UI. The version used to detect development
+builds is the frontend version shown in the sidebar, not the backend or native
+bundle version. It originates in `package.json.version`, is passed through
+`CLANKY_VERSION`, and is embedded in each mode's `webapp-client.json` and the
+site's build metadata. The checked-in `0.0.0-development` version retains its
+`-development` marker in local builds; Pages CI resolves a published version
+before packaging. An active version with that development marker offers
+**Update** or **Keep Current** before downloading the update. Keeping it asks
+again on a later cold launch if a different deployment is still available.
+Once the active frontend is a published version, updates are automatic.
+Xcode's Debug configuration is not the development-build criterion.
+
+Downloads use the existing Pages assets and their manifest's byte sizes and
+SHA-256 hashes. Identical verified local assets are reused, including assets
+shared between connection modes. The complete snapshot is prepared in private
+Application Support storage and selected atomically, never written into the
+signed app bundle. The active snapshot stays fixed while the process runs.
+The selection retains the previous downloaded snapshot as well as the bundled
+frontend. A newly installed app with a different bundled frontend starts from
+that bundle rather than an older app's downloaded selection.
+
+The initial metadata check has a five-second deadline; preparing an update
+has a two-minute deadline. An interrupted or invalid download leaves the
+installed frontend selected. Startup and cleanup errors are logged and shown
+explicitly; inability to reach Pages does not prevent opening a usable local
+frontend. Before restoring a saved snapshot, the app verifies every
+manifest-listed asset's type, byte size and SHA-256, including when Pages has
+not changed. A missing or invalid saved snapshot falls back to a verified
+previous snapshot when available, otherwise to the bundle. Sessions and invitation
+identities remain in the same WebKit storage because the saved loopback origin
+and client paths do not change.
+
+The app trusts the published Pages frontend as application code. It currently
+does not check compatibility with the native shell or connected backend.
+Native-code/permission changes and expired development provisioning still
+require installing/signing the app again. macOS remains bundle-only and its
+embedded CLI/controller update behavior is unchanged.

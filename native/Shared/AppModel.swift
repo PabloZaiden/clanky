@@ -8,12 +8,23 @@ final class AppModel: ObservableObject {
     @Published private(set) var origin: URL?
     @Published var error: String?
     private var assets: AssetServer?
+    #if os(iOS)
+    @Published private(set) var startupMessage = "Opening Clanky..."
+    @Published private(set) var updateOffer: FrontendUpdateOffer?
+    @Published var updateWarning: String?
+    private var updateAnswer: CheckedContinuation<Bool, Never>?
+    private var preparedRoot: URL?
+    private var startup: Task<PreparedFrontend, Error>?
+    #endif
+    private var starting = false
     #if os(macOS)
     let controller = LocalController()
     #endif
 
     func start() async {
-        guard assets == nil else { return }
+        guard assets == nil, !starting else { return }
+        starting = true
+        defer { starting = false }
         do {
             let savedPort = UserDefaults.standard.object(forKey: "assetServerPort")
             let port: UInt16?
@@ -28,7 +39,7 @@ final class AppModel: ObservableObject {
             } else {
                 port = nil
             }
-            guard let root = Bundle.main.resourceURL?.appendingPathComponent("Web"),
+            guard var root = Bundle.main.resourceURL?.appendingPathComponent("Web"),
                   FileManager.default.fileExists(atPath: root.appendingPathComponent("index.html").path),
                   FileManager.default.fileExists(atPath: root.appendingPathComponent("api/index.html").path),
                   FileManager.default.fileExists(atPath: root.appendingPathComponent("collaboration/index.html").path) else {
@@ -36,6 +47,35 @@ final class AppModel: ObservableObject {
                     NSLocalizedDescriptionKey: "Bundled web assets are missing. Run the Apple assets build before building the app."
                 ])
             }
+            #if os(iOS)
+            if let preparedRoot {
+                root = preparedRoot
+            } else {
+                if startup == nil {
+                    let bundledRoot = root
+                    startup = Task { [weak self] in
+                        let directory = try FileManager.default.url(
+                            for: .applicationSupportDirectory, in: .userDomainMask,
+                            appropriateFor: nil, create: false
+                        ).appendingPathComponent("FrontendUpdates")
+                        return try await FrontendUpdater(storage: directory).prepare(
+                            bundledRoot: bundledRoot,
+                            progress: { [weak self] message in self?.startupMessage = message },
+                            confirm: { [weak self] offer in
+                                guard let self else { return false }
+                                return await self.confirmUpdate(offer)
+                            }
+                        )
+                    }
+                }
+                if let startup {
+                    let prepared = try await startup.value
+                    preparedRoot = prepared.root
+                    updateWarning = prepared.warning
+                    root = prepared.root
+                }
+            }
+            #endif
             let failureHandler: @Sendable (Error) -> Void = { [weak self] failure in
                 Task { @MainActor in
                     self?.stopAssets()
@@ -59,6 +99,22 @@ final class AppModel: ObservableObject {
             self.error = "Unable to open the bundled UI: \(error.localizedDescription)"
         }
     }
+
+    #if os(iOS)
+    private func confirmUpdate(_ offer: FrontendUpdateOffer) async -> Bool {
+        await withCheckedContinuation { continuation in
+            updateAnswer = continuation
+            updateOffer = offer
+        }
+    }
+
+    func answerUpdate(_ update: Bool) {
+        let continuation = updateAnswer
+        updateAnswer = nil
+        updateOffer = nil
+        continuation?.resume(returning: update)
+    }
+    #endif
 
     func stopAssets() {
         assets?.stop()
