@@ -63,6 +63,10 @@ descriptors. The framework moves them first into overflow on narrow screens
 while preserving native form validation/submission. Do not duplicate or clip
 actions or crowd titles.
 
+The workspace overview promotes **New Chat** to a primary header action when
+space permits, with framework-managed overflow otherwise. Its sidebar context
+menu retains the same action; workspace subpages keep their existing menu.
+
 Ordinary actions, including primary actions, are unboxed icons/clickable labels.
 Use public subtle/link/primary variants intentionally; reserve solid danger
 for irreversible confirmation. Update/restart is not deletion.

@@ -39,7 +39,7 @@ export const SIDEBAR_TABS: SidebarTab[] = [
   { id: "servers", title: "Servers", label: "Servers", icon: <ServerIcon size="h-5 w-5" /> },
 ];
 
-function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode[] {
+function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = false): SidebarNode[] {
   const { handlers } = options;
   const chatContext = {
     route: handlers.route,
@@ -138,10 +138,16 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions): SidebarNode
   };
   function applyWorkspacePermissions(node: SidebarNode, inherited = false): SidebarNode {
     const readOnly = inherited || Boolean(node.route && isReadOnlyWorkspaceRoute(node.route, accessResources));
+    const actions = readOnly ? node.actions?.filter(isReadOnlyWorkspaceAction) : node.actions;
+    const workspaceNode = node.route?.view === "workspace";
+    const contextActions = node.contextActions ?? (workspaceNode ? actions : undefined);
     return {
       ...node,
+      actions: workspaceNode && !forHeader
+        ? actions?.filter((action) => action.id !== "new-chat")
+        : actions,
+      contextActions: readOnly ? contextActions?.filter(isReadOnlyWorkspaceAction) : contextActions,
       ...(readOnly ? {
-        actions: node.actions?.filter(isReadOnlyWorkspaceAction),
         action: undefined,
       } : {}),
       ...(node.children ? { children: node.children.map((child) => applyWorkspacePermissions(child, readOnly)) } : {}),
@@ -194,6 +200,6 @@ export function buildShellSidebarComposition(
 
   return {
     sidebar,
-    headerNodes: flattenSidebarNodes(buildSidebarNodes(options)),
+    headerNodes: flattenSidebarNodes(buildSidebarNodes(options, true)),
   };
 }
