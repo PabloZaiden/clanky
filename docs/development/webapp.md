@@ -42,6 +42,11 @@ The code explorer places its file tree beside the editor from 768 CSS pixels,
 so an unfolded Duo in landscape can use both panels with the app sidebar
 collapsed. Narrower views keep the stacked layout.
 
+Settings category navigation follows the width available after the sidebar and
+safe areas: at 800 CSS pixels or less it uses the Category dropdown; wider layouts
+keep the category list. This applies to global and workspace settings without
+changing the shell breakpoint or losing the selected category or mounted draft.
+
 Route views use `Page` as their top-level wrapper. Prefer framework panels,
 lists, form groups/actions, danger zones, loading/error states, and code values
 before custom CSS. Do not recreate main-content spacing or repeat the fixed

@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.5.13
+version: 0.5.14
 description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating Bun/React apps or API-only services; adding routes, auth, settings, realtime, CLI, sidebar UI, Docker, GitHub Actions, or validating apps with Bun.WebView.'
 ---
 
@@ -118,6 +118,7 @@ the application being built; they are not expected to exist beside this skill.
 - Settings labels use their content width; fields, nested forms/control wrappers and action groups shrink/wrap within the actual panel width. Preserve readable labels and right-aligned action order instead of forcing inline controls or changing the shell breakpoint. Fix generic sizing upstream, not through consumer CSS or a device-specific breakpoint.
 - Inline `SettingsFieldRow` checkbox content stays in a compact right-hand column on mobile, even with wrapping descriptions. Put `CheckboxField` or a raw checkbox directly in `content`; do not recreate boolean-row layouts or hide necessary descriptions to keep controls aligned.
 - Reuse `SettingsLayout` inside `Page layout="full"` for entity settings categories. It shares global Settings navigation without owning routes or drafts; keep draft children mounted across category changes. `Input`/`Select` accept `fieldWidth` for controls already labeled by `SettingsFieldRow`.
+- Settings category navigation responds to the layout's available width after sidebar and safe areas: a Category dropdown at 800 CSS pixels or less, a category list above that. Keep this framework default for global/entity settings instead of adding consumer CSS or changing the shell breakpoint; presentation changes preserve the selected category and mounted content.
 - Let Settings sections/panels/lists fill the remaining content width. Bound short/normal controls rather than entire operational sections; use `fieldWidth="full"` for long inputs/selects that should fill their container, and `Page layout="form"` only for explicitly bounded form pages.
 - All destructive delete actions must show a framework `ConfirmDialog` before the mutation. Never wire Delete buttons directly to `DELETE` requests.
 - Server lifecycle actions such as kill/reboot must show confirmation first and then a 15-second shutdown countdown progress bar after a successful response.
