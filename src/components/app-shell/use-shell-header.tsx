@@ -486,6 +486,11 @@ export function useShellHeader({
     route,
   ]);
   const directHeaderActions = useMemo<HeaderPrimaryAction[] | undefined>(() => {
+    if (route.view === "workspace") {
+      const newChatAction = headerNode?.actions?.find((action) => action.id === "new-chat");
+      return newChatAction ? [newChatAction] : undefined;
+    }
+
     if (route.view === "compose" && composeKind === "task") {
       return composeActionState ? [{
         id: "submit-task",
@@ -500,6 +505,7 @@ export function useShellHeader({
   }, [
     composeActionState,
     composeKind,
+    headerNode,
     route,
   ]);
 
