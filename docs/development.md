@@ -102,7 +102,8 @@ outside their parents' supported ranges.
 
 First-party webapp dependencies use the
 [upstream integration workflow](development/webapp.md#upstream-framework-changes),
-including the final upstream merge and commit verification.
+including development commit pins, coordinated merge timing, and final commit
+verification.
 
 ## Pull request reviews
 
@@ -110,6 +111,10 @@ After opening a PR, wait for review comments before merging unless explicitly
 instructed otherwise. Address every requested or suggested change by implementing
 it or replying with a reason not to. Merge only after review has arrived and
 all feedback has been addressed. This also applies to upstream integration PRs.
+
+Review readiness alone does not authorize an upstream merge. For webapp changes
+consumed by Clanky, also follow the
+[coordinated merge timing](development/webapp.md#upstream-framework-changes).
 
 ## Creating a GitHub release
 
