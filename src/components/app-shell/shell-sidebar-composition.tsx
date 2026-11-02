@@ -1,4 +1,5 @@
 import type {
+  SidebarAction,
   SidebarNode,
   SidebarNodeSnapshot,
   SidebarTab,
@@ -6,6 +7,7 @@ import type {
 } from "@pablozaiden/webapp/web";
 import {
   ActivityIcon,
+  BellIcon,
   FolderTreeIcon,
   ServerIcon,
 } from "../common";
@@ -171,6 +173,26 @@ function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefin
 export function buildShellSidebarComposition(
   options: ShellSidebarCompositionOptions,
 ): ShellSidebarComposition {
+  const notifications = options.notificationSettings;
+  const notificationActions: SidebarAction[] = notifications ? [{
+    id: "automatic-notifications",
+    title: notifications.error ? "Could not load notification settings. Retry"
+      : !notifications.data ? "Loading notification settings"
+        : notifications.data.enabled ? "Disable automatic notifications" : "Enable automatic notifications",
+    icon: <BellIcon disabled={notifications.data?.enabled === false} />,
+    systemImage: notifications.data?.enabled === false ? "bell.slash" : "bell",
+    active: notifications.data?.enabled,
+    busy: notifications.saving !== null || !notifications.data && notifications.loading,
+    onAction: () => {
+      if (notifications.error || !notifications.data) {
+        void notifications.refresh();
+        return;
+      }
+      void notifications.update("enabled", { enabled: !notifications.data.enabled }).catch(() => {
+        options.handlers.onError("Could not save notification preference. Try again.");
+      });
+    },
+  }] : [];
   const getNodes = ({ search, activeTab }: { search: string; activeTab?: string }): SidebarNodeSnapshot => {
     const nodes = selectSidebarTabNodes(buildSidebarNodes(options), activeTab);
     return {
@@ -183,6 +205,7 @@ export function buildShellSidebarComposition(
     tabs: SIDEBAR_TABS.filter((tab) => tab.id !== "servers" || getClankyClientCapabilities().executionHosts),
     pinning: { sectionTitle: "Pinned", storageKey: "clanky.frameworkSidebarPins" },
     topActions: [
+      ...notificationActions,
       ...options.voiceActions,
       {
         id: "quick-chat",

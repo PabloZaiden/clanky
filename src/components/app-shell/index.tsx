@@ -28,6 +28,7 @@ import { LiveVoiceContext, useLiveVoice } from "../../hooks/useLiveVoice";
 import { buildVoiceLauncherActions, LiveVoiceControls } from "./live-voice-controls";
 import { useVoiceClientActions } from "./use-voice-client-actions";
 import { useChatTrash } from "../../hooks/useChatTrash";
+import { useNotificationSettings } from "../../hooks/useNotificationSettings";
 import { useChatTrashActions } from "./use-chat-trash-actions";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { useBrowserDownloadSettings } from "../app-settings/browser-download-settings";
@@ -37,6 +38,7 @@ import { isReadOnlyWorkspaceAction, isReadOnlyWorkspaceRoute } from "../../lib/w
 export function AppShell() {
   const capabilities = getClankyClientCapabilities();
   const toast = useToast();
+  const notificationSettings = useNotificationSettings(capabilities.controllerAdministration);
   const browserDownloadSettings = useBrowserDownloadSettings();
   const [isOwner, setIsOwner] = useState(false);
   const [frameworkConfig, setFrameworkConfig] = useState<WebAppConfigState["config"]>(undefined);
@@ -374,6 +376,7 @@ export function AppShell() {
     mesh,
     workerUpdates,
     voiceSettings,
+    notificationSettings,
   }), ...(browserDownloadSettings ? [browserDownloadSettings] : [])], [
     browserDownloadSettings,
     navigateWithinShell,
@@ -390,6 +393,7 @@ export function AppShell() {
     workspaces,
     workspacesLoading,
     voiceSettings,
+    notificationSettings,
   ]);
 
   const sidebarSnapshotReady = !shellLoading && shellErrors.length === 0;
@@ -436,6 +440,7 @@ export function AppShell() {
     quickChatUnavailableReason,
     quickChatCreating: dialogs.quickChatCreating,
     onQuickChat: () => void dialogs.handleQuickChat(),
+    notificationSettings: capabilities.controllerAdministration ? notificationSettings : null,
     voiceActions,
     voiceControls: liveVoice.busy && !liveVoiceExpanded
       ? <LiveVoiceControls voice={liveVoice} expanded={false} onToggleExpanded={expandLiveVoice} /> : null,
@@ -478,6 +483,8 @@ export function AppShell() {
     toggleWorkspacePrivate,
     workspaces,
     voiceActions,
+    capabilities.controllerAdministration,
+    notificationSettings,
     liveVoice,
     liveVoiceExpanded,
     expandLiveVoice,

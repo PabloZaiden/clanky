@@ -33,6 +33,7 @@ export {
 } from "./status-variants";
 export {
   ActivityIcon,
+  BellIcon,
   ChatIcon,
   ClipboardPasteIcon,
   CloseIcon,

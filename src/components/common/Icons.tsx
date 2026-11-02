@@ -93,6 +93,27 @@ export function MicrophoneIcon({ className = "", size = "h-4 w-4" }: IconProps) 
   );
 }
 
+export function BellIcon({ className = "", size = "h-4 w-4", disabled = false }: IconProps & { disabled?: boolean }) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d={disabled
+          ? "M9 5a6 6 0 019 5v3M6 6a6 6 0 00-1 4c0 5-2 7-2 7h14M10 21h4M3 3l18 18"
+          : "M18 10a6 6 0 00-12 0c0 5-2 7-2 7h16s-2-2-2-7M10 21h4"}
+      />
+    </svg>
+  );
+}
+
 export function PaperclipIcon({ className = "", size = "h-4 w-4" }: IconProps) {
   return (
     <svg

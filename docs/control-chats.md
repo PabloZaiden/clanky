@@ -147,6 +147,10 @@ The master and every event default to off. Turning the master off preserves
 all event selections; turning it back on resumes that selection. Saving a
 webhook does not enable either the master or any event. Preferences may be
 selected before configuring a webhook, but delivery requires a saved webhook.
+The sidebar bell immediately to the left of Live voice toggles the same master
+preference and stays synchronized with Settings. A crossed-out bell means
+automatic notifications are disabled; the toggle does not change the webhook
+or event selections.
 
 Enabling an event is explicit consent for Clanky itself to send that kind of
 automatic notification when the master is on. Finished work includes a chat's
