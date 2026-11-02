@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.5.14
+version: 0.5.15
 description: 'Build, modify, validate, and ship apps using @pablozaiden/webapp. Use when creating Bun/React apps or API-only services; adding routes, auth, settings, realtime, CLI, sidebar UI, Docker, GitHub Actions, or validating apps with Bun.WebView.'
 ---
 
@@ -87,6 +87,7 @@ the application being built; they are not expected to exist beside this skill.
 - Keep settings framework-owned; add app-specific settings as custom sections with `scope: "user"`, `"admin"` or `"owner"`.
 - Use `useTheme()` when app logic needs the effective theme; prefer CSS when it does not. Use framework `createLogger` from `/web` and `/server`, and `useLogLevel()` when UI needs the effective client log-level state; do not fetch framework configuration to initialize a separate logger.
 - Use `WebAppRoot`, `SidebarNode` and framework UI primitives before custom shell/layout code.
+- The sidebar Home button always displays an icon: pass `WebAppRoot.appIcon` for an application logo, or omit it to use the framework Home glyph. Keep `appName` for its accessible name and tooltip; do not recreate a text-name fallback.
 - Use `useToast()` from `@pablozaiden/webapp/web` for transient success, error, warning, and informational feedback. The framework shows a clickable main-header preview for five seconds by default: icon and text on desktop, only the colored severity icon and any additional-message count on mobile. Clicking opens the full active messages in a modal, with no history after expiry. Do not add an app-owned toast provider, queue, timer system, or notification styling; use inline `ErrorState`, loading states, and validation for persistent page/form state.
 - Route components rendered inside `WebAppRoot.routes` must use `Page` as the top-level main-content wrapper. Do not render raw panels/lists directly into `WebAppRoot`, and do not use or recreate `wapp-main-content`; `Page` provides the standard content margins/padding on desktop and mobile by default. Use `<Page layout="full">` for viewport-sized child content that owns its own spacing or scrolling instead of overriding framework CSS.
 - Set `sidebar.search: false` when the app has a small fixed navigation tree and should not show the framework sidebar search box.

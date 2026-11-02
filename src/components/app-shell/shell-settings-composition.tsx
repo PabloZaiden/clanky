@@ -36,6 +36,7 @@ import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { ControlApprovalPolicyContent } from "../app-settings/control-approval-policy-content";
 import { PendingControlRequests } from "../control/control-requests";
 import { NotificationSettingsContent } from "../app-settings/notification-settings-content";
+import type { NotificationSettings } from "../../hooks/useNotificationSettings";
 
 export interface ShellSettingsCompositionOptions {
   onNavigate: (route: WebAppRoute) => void;
@@ -56,6 +57,7 @@ export interface ShellSettingsCompositionOptions {
   mesh: UseMeshResult;
   workerUpdates: UseWorkerUpdateJobsResult;
   voiceSettings: UseVoiceSettingsResult;
+  notificationSettings: NotificationSettings;
 }
 
 export type ShellSettingsSections =
@@ -76,6 +78,7 @@ export function buildShellSettingsSections({
   mesh,
   workerUpdates,
   voiceSettings,
+  notificationSettings,
 }: ShellSettingsCompositionOptions): ShellSettingsSections {
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
@@ -87,7 +90,7 @@ export function buildShellSettingsSections({
       category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
       // The credential form and autosave rows share one private settings query and delivery feedback.
-      render: () => <NotificationSettingsContent />,
+      render: () => <NotificationSettingsContent settings={notificationSettings} />,
     },
     {
       id: "control-approvals",

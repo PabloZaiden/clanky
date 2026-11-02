@@ -1,25 +1,20 @@
 import { useState, type FormEvent } from "react";
 import {
-  Button, createLogger, LoadingState, SettingsFieldRow, useLiveQuery, useToast, useUnsavedChanges,
+  Button, createLogger, LoadingState, SettingsFieldRow, useToast, useUnsavedChanges,
 } from "@pablozaiden/webapp/web";
-import type { AgentNotificationSettings, SetAgentNotificationSettings } from "@/contracts/schemas/agent-notifications";
+import type { SetAgentNotificationSettings } from "@/contracts/schemas/agent-notifications";
 import { NOTIFICATION_EVENT_LABELS, type NotificationEventKind } from "@/shared/agent-notifications";
-import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
-import { apiRequest } from "../../lib/api-client";
+import type { NotificationSettings } from "../../hooks/useNotificationSettings";
 import { SettingsCheckbox, SettingsError, SettingsInput } from "./settings-row-controls";
 
 const log = createLogger("notification-settings");
 
-export function NotificationSettingsContent() {
+export function NotificationSettingsContent({ settings: query }: { settings: NotificationSettings }) {
   const { success } = useToast();
   const [url, setUrl] = useState("");
-  const [saving, setSaving] = useState<"webhook" | "enabled" | NotificationEventKind | null>(null);
+  const { saving } = query;
   const [preferenceError, setPreferenceError] = useState<{ key: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const query = useLiveQuery({
-    load: (signal) => apiRequest<AgentNotificationSettings>("/api/preferences/notifications", { signal }),
-    realtime: { resources: [CLANKY_REALTIME_RESOURCES.notificationSettings] },
-  });
   const dirty = Boolean(url);
   function reset() {
     setUrl("");
@@ -35,13 +30,9 @@ export function NotificationSettingsContent() {
 
   async function update(webhookUrl: string | null) {
     if (saving || !query.data || (webhookUrl === null && !query.data.configured)) return;
-    setSaving("webhook");
     setError(null);
     try {
-      await query.mutate((signal) => apiRequest<AgentNotificationSettings>("/api/preferences/notifications", {
-        signal, method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ webhookUrl }),
-      }), (_previous, result) => result);
+      await query.update("webhook", { webhookUrl });
       reset();
       success(webhookUrl === null ? "Webhook cleared." : "Webhook saved.");
     } catch {
@@ -49,24 +40,20 @@ export function NotificationSettingsContent() {
       setError(webhookUrl === null
         ? "Could not clear the webhook. Try again."
         : "Could not save the webhook. Check the URL and try again.");
-    } finally { setSaving(null); }
+    }
   }
 
   async function updatePreference(key: "enabled" | NotificationEventKind, checked: boolean) {
     if (saving || !query.data) return;
-    setSaving(key);
     setPreferenceError(null);
     const input: SetAgentNotificationSettings = key === "enabled"
       ? { enabled: checked } : { events: { [key]: checked } };
     try {
-      await query.mutate((signal) => apiRequest<AgentNotificationSettings>("/api/preferences/notifications", {
-        signal, method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      }), (_previous, result) => result);
+      await query.update(key, input);
     } catch {
       log.error("Could not save notification preference.", { key });
       setPreferenceError({ key, message: "Could not save this preference. Try again." });
-    } finally { setSaving(null); }
+    }
   }
 
   function preferenceRow(key: "enabled" | NotificationEventKind, title: string, checked: boolean) {

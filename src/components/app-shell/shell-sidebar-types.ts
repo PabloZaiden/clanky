@@ -17,6 +17,7 @@ import type {
   Workspace,
 } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
+import type { NotificationSettings } from "../../hooks/useNotificationSettings";
 import type { PrivateSidebarNode } from "../../lib/private-items";
 import type {
   SidebarExecutionHostNode,
@@ -76,6 +77,7 @@ export interface ShellSidebarCompositionOptions {
   quickChatUnavailableReason: string | null;
   quickChatCreating: boolean;
   onQuickChat: () => void;
+  notificationSettings: NotificationSettings | null;
   voiceActions: FrameworkSidebarAction[];
   voiceControls: ReactNode;
 }
