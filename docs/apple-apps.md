@@ -647,8 +647,10 @@ The initial metadata check has a five-second deadline; preparing an update
 has a two-minute deadline. An interrupted or invalid download leaves the
 installed frontend selected. Startup and cleanup errors are logged and shown
 explicitly; inability to reach Pages does not prevent opening a usable local
-frontend. A missing or invalid saved snapshot falls back to the previous
-snapshot when available, otherwise to the bundle. Sessions and invitation
+frontend. Before restoring a saved snapshot, the app verifies every
+manifest-listed asset's type, byte size and SHA-256, including when Pages has
+not changed. A missing or invalid saved snapshot falls back to a verified
+previous snapshot when available, otherwise to the bundle. Sessions and invitation
 identities remain in the same WebKit storage because the saved loopback origin
 and client paths do not change.
 

@@ -252,6 +252,9 @@ actor FrontendUpdater {
         guard snapshot.info.update.sha256 == identity else {
             throw UpdateError(message: "The saved frontend identity is invalid.")
         }
+        for asset in snapshot.manifest.files {
+            try verify(snapshot.root.appendingPathComponent(asset.path), asset: asset)
+        }
         return snapshot
     }
 
