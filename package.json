@@ -33,7 +33,7 @@
     "@monaco-editor/react": "4.7.0",
     "@noble/hashes": "2.4.0",
     "@opencode/client": "2.1.4",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#v3.4.0",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#321749c7b6ec560e9de714d1ca1f09173c40c27e",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
