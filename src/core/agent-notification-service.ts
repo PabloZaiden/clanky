@@ -77,7 +77,6 @@ class AgentNotificationService {
       agentEventEmitter.subscribe((event, context) => {
         if (!context.userId) return;
         if (event.type === "agent.run.failed") this.notify("error", { kind: "Agent run", id: event.agentId }, context.userId);
-        if (event.type === "agent.run.completed") this.notify("completed", { kind: "Agent run", id: event.agentId }, context.userId);
       }),
     ];
   }

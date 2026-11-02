@@ -150,7 +150,9 @@ selected before configuring a webhook, but delivery requires a saved webhook.
 
 Enabling an event is explicit consent for Clanky itself to send that kind of
 automatic notification when the master is on. Finished work includes a chat's
-completed response/turn, a completed task, and a completed managed Agent run.
+completed response/turn and a completed task. Completed managed Agent runs do
+not generate automatic notifications; an Agent can still send a notification
+when explicitly requested by the user.
 Interruptions, failures, pending questions and progress updates are not
 completion. Embedded task/Agent chats do not generate duplicate completion or
 error alerts for their enclosing work. Automatically accepted plans do not
