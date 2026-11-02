@@ -206,24 +206,39 @@ not an app workaround. Never add dependency patches, `patchedDependencies`,
 or manual edits to installed packages.
 
 Accumulate related upstream work on one dedicated pushed branch for one PR.
-Consume first-party packages directly from GitHub commits, branches, or release
+Consume first-party packages directly from GitHub commits or release
 tags, never npm publication. Prefer explicit SHAs and update `package.json` and
 `bun.lock` together. Validate Clanky against each consumed revision; intermediate
 stable releases are unnecessary.
 
-Before finishing the Clanky integration, merge the upstream PR into webapp
-`main`. The final dependency must resolve to a commit reachable from that branch,
-not a feature-branch ref. After squash/rebase merging, update both manifest and
-lockfile to the resulting commit and validate Clanky again. In the upstream
-checkout, fetch `origin/main` and verify the consumed commit:
+During development, pin the exact immutable commit from the upstream PR, not a
+feature-branch ref. Clanky may be ready and reviewed against that commit while
+the upstream PR remains open, with its review complete and all feedback
+addressed. The development pin does not need to be reachable from webapp `main`.
+
+Do not merge the upstream PR or enable its auto-merge until the user explicitly
+requests merging Clanky. Approval to implement, open a PR, or prepare it for
+merge is not that request; completed reviews and green checks are not merge
+authorization either.
+
+When the user requests merging Clanky, complete this sequence:
+
+1. Follow the [PR review and merge rules](../development.md#pull-request-reviews)
+   and finish merging the upstream PR into webapp `main`, if still needed.
+   Wait for the actual merge; queued auto-merge is not sufficient.
+2. Confirm the resulting upstream commit. If squash/rebase merging changed the
+   consumed SHA, update `package.json` and `bun.lock` together to that commit.
+   Verify that Clanky's final pin is reachable from webapp `main`; an unchanged,
+   main-reachable SHA needs no repin.
+3. Validate Clanky against the final pin, satisfy Clanky's own review, feedback
+   and required checks, and only then merge Clanky or enable its auto-merge.
+
+Before merging Clanky, verify the consumed commit in the upstream checkout:
 
 ```bash
 git fetch origin main
 git merge-base --is-ancestor <consumed-sha> origin/main
 ```
-
-Follow the [PR review and merge rules](../development.md#pull-request-reviews)
-before merging; needing an upstream change is not permission to bypass review.
 
 ## Webapp skill source of truth
 
