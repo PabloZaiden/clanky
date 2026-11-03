@@ -152,6 +152,12 @@ default; the unified server supplies integrated/cookie mode and its public path
 prefix. No second frontend build is needed. Keep this file in static deployments;
 it contains configuration, never credentials.
 
+Webapp parses this deployment configuration and supplies neutral request,
+resource and realtime transports. Clanky initializes authentication, session
+refresh, credential storage and the selected transport adapters. Browser
+preferences are also explicitly configured by Clanky; none of these are
+implicit account or storage services in Webapp.
+
 The client asks for an API URL when no default exists. A local selection takes
 precedence over the distributed default. Settings / General / Connection lets
 the user change servers or sign out. A failed or unreachable API does not prevent
@@ -164,7 +170,7 @@ If the browser blocks the new window, use the displayed authorization link.
 Passkey management opens the API-origin `/account` page, including in API-only
 mode; passkeys are never requested for the static host's origin.
 
-The default browser store keeps access and refresh tokens in localStorage,
+Clanky's selected browser store keeps access and refresh tokens in localStorage,
 namespaced by the exact API and static deployment directory. They are not
 encrypted or HttpOnly. Trust the static host as application code: scripts on
 that origin, including injected XSS or another application, can read its stored
@@ -179,7 +185,9 @@ HTTP requests use bearer authorization without third-party cookies. Realtime
 and raw terminal connections use short-lived, single-use socket tickets.
 Protected downloads and video use short-lived target-bound resource tickets;
 video previews renew them before expiry for workspace, local and remote
-execution targets. Images are fetched with authorization. Long-lived
+execution targets. Images use authenticated requests or target-bound resource
+URLs; those URLs load with anonymous CORS, without third-party cookies or
+relaxing private resource-policy headers. Long-lived
 access/refresh tokens are not put into resource or login URLs. Revoking a device
 session removes its API and resource access.
 

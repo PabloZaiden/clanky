@@ -2,7 +2,15 @@
  * Clanky browser composition; integrated and detached API modes stay unchanged.
  */
 
-import { createLogger, getWebAppClientMode } from "@pablozaiden/webapp/web";
+import {
+  configureWebAppPreferences,
+  createBrowserPreferenceAdapter,
+  createLogger,
+  getWebAppClientBootstrap,
+  getWebAppClientMode,
+  initializeWebAppTheme,
+} from "@pablozaiden/webapp/web";
+import { getClientStorageScope } from "@/platform/web/client-session";
 import { DomainError } from "../domain/domain-error";
 import { BrowserCollaborationClient } from "./collaboration/browser";
 import { configureClientRuntime } from "./public-path";
@@ -21,13 +29,19 @@ export function getBrowserCollaborationClient(): BrowserCollaborationClient | un
 }
 
 export async function initializeClankyClient(): Promise<void> {
-  configureClientRuntime();
+  configureClientRuntime(getWebAppClientBootstrap());
+  configureWebAppPreferences({
+    adapter: createBrowserPreferenceAdapter(),
+    scope: getClientStorageScope,
+  });
+  initializeWebAppTheme();
   if (!isBrowserCollaborationClient()) return;
   client = await BrowserCollaborationClient.open({
     catalogUrl: new URL("./webapp-assets/collaboration-operations.json", document.baseURI),
     logger: log,
   });
   configureClientRuntime({ mode: "external", external: client });
+  initializeWebAppTheme();
   let retired = false;
   window.addEventListener("pagehide", () => {
     retired = true;

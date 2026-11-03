@@ -4,7 +4,7 @@
 import { MeshWorkerProtocolDescriptorSchema, type MeshWorkerProtocolDescriptor } from "@/contracts/schemas/mesh";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import { MESH_PROTOCOL_VERSION_HEADER, MESH_PROTOCOL_VERSIONS_HEADER, MESH_SUPPORTED_PROTOCOL_VERSIONS, isSupportedMeshProtocolVersion, negotiateMeshProtocolVersion, serializeMeshProtocolVersions, parseMeshProtocolVersionsHeader, meshProtocolProjection, type MeshProtocolVersion } from "@/shared/mesh-protocol";
-import { requestMeshPeer } from "./mesh-peer-transport";
+import { describeMeshTransportFailure, requestMeshPeer } from "./mesh-peer-transport";
 import { meshRouteSupportedProtocolVersions } from "./mesh-route-version";
 import { verifyMeshPayloadSignature, ensureLocalMeshNodeIdentity, signMeshPayload } from "../persistence/mesh-node-identity";
 import { DomainError } from "../domain/domain-error";
@@ -71,7 +71,7 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       const transient = [502, 503, 504].includes(response.status);
       throw new DomainError(
         transient ? "mesh_execution_unreachable" : "mesh_execution_protocol_mismatch",
-        "The worker generation discovery request was rejected.",
+        `The worker generation discovery request was rejected (HTTP ${response.status}).`,
         { details: { status: response.status } },
       );
     }
@@ -107,7 +107,13 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
     });
     return descriptor.protocolVersion;
   } catch (error) {
+    if (signal?.aborted) {
+      throw new DomainError("mesh_execution_aborted", "Worker generation discovery was aborted.", { cause: error });
+    }
+    if (controller.signal.aborted) {
+      throw new DomainError("mesh_execution_unreachable", "Worker generation discovery timed out after 10 seconds.", { cause: error });
+    }
     if (error instanceof DomainError) throw error;
-    throw new DomainError("mesh_execution_unreachable", "Worker generation discovery could not complete.", { cause: error });
+    throw new DomainError("mesh_execution_unreachable", `Worker generation discovery could not complete. ${describeMeshTransportFailure(error)}`, { cause: error });
   } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
 }

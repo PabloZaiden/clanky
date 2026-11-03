@@ -158,6 +158,11 @@ serialize only for a documented resource/isolation constraint.
 Discover the current Git branch instead of assuming `main` or `master`.
 Keep fixture `HOME`, provider `PATH`, and shell initialization isolated from
 the host account.
+The canonical runner removes inherited `CLANKY_WORKER_*` lifecycle metadata
+before starting E2E processes. Isolated nodes must not reuse the hosting worker's
+supervisor, stop marker, channel or instance identity. Disposable diagnostics
+run outside that runner must clear those inherited variables themselves; an
+isolated data directory alone does not isolate worker service/channel commands.
 
 ## Manual visual validation
 

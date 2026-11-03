@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { z } from "zod";
 /**
  * Route handlers for workspace server settings: CRUD, status, and test connection.

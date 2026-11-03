@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * Task plan management routes.
  *

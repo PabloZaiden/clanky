@@ -19,6 +19,7 @@ export interface WorkerPaths {
   hostChannel: string;
   containerChannel: string;
   containerRuntime: string;
+  containerMaintenanceResult: string;
   hostInstalledChannel: string;
 }
 
@@ -83,6 +84,7 @@ function workerPaths(hostRoot: string, containerRoot: string): WorkerPaths {
     hostChannel: getWorkerChannelPath(hostRoot),
     containerChannel: getWorkerChannelPath(containerRoot),
     containerRuntime: pathPosix.join(containerRoot, "runtime.json"),
+    containerMaintenanceResult: pathPosix.join(containerRoot, "maintenance-result.json"),
     hostInstalledChannel: pathPosix.join(hostRoot, "release-channel"),
   };
 }
@@ -178,6 +180,14 @@ trap - EXIT
 export function buildWorkerLauncher(paths: WorkerPaths, channel: AutomaticWorkerChannel = "stable"): string {
   return `#!/bin/sh
 set -eu
+update_job=""
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != update ] || [ -z "$2" ]; then
+    echo "Usage: launcher.sh [update JOB_ID]" >&2
+    exit 1
+  fi
+  update_job=$2
+fi
 CLANKY_RELEASE_CHANNEL=${shellQuote(channel)}
 root=${shellQuote(paths.containerRoot)}
 channel_file=${shellQuote(paths.containerChannel)}
@@ -200,7 +210,7 @@ sh "$root/install-runtime.sh"
 PATH="$root/runtime/bin:$PATH"
 export PATH
 mkdir -p "$bin_dir" "$data_dir"
-if [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
+if [ -n "$update_job" ] || [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
 mkdir -p "$install_dir" "$install_home"
 cleanup_installation() {
   rm -rf -- "$install_dir" "$install_home"
@@ -279,6 +289,17 @@ chmod +x "$binary"
 cleanup_installation
 trap - EXIT
 printf '%s\\n' "$CLANKY_RELEASE_CHANNEL" >"$root/release-channel"
+fi
+
+if [ -n "$update_job" ]; then
+  version=$("$binary" version)
+  [ -n "$version" ] || { echo "The installed Clanky binary did not report its version." >&2; exit 1; }
+  result=${shellQuote(paths.containerMaintenanceResult)}
+  staged_result="$result.$$"
+  trap 'rm -f -- "$staged_result"' EXIT
+  node -e 'const fs = require("node:fs"); fs.writeFileSync(process.argv[1], JSON.stringify({jobId:process.argv[2],binaryVersion:process.argv[3],releaseChannel:process.argv[4]}));' "$staged_result" "$update_job" "$version" "$CLANKY_RELEASE_CHANNEL"
+  mv -f -- "$staged_result" "$result"
+  trap - EXIT
 fi
 
 if [ ! -f "$data_dir/config.json" ]; then exit 0; fi

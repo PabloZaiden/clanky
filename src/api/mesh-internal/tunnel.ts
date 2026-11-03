@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { MeshTcpTunnelSessionRequestSchema } from "@/contracts/schemas/mesh-tcp-tunnel";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 import { assertMeshRequestTransport } from "../../core/mesh-transport-security";

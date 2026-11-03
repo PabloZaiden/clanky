@@ -1,9 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  authenticateApiKey, createLogger, parseOAuthClients,
-  type OAuthConfig, type OAuthPrincipal, type RouteContext,
-  type WebAppServer, type WebAppStore,
-} from "@pablozaiden/webapp/server";
+import { authenticateApiKey, parseOAuthClients, type OAuthConfig, type OAuthPrincipal, type RouteContext, type ClankyAccountStore } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
+import type { WebAppServer } from "@/platform/server";
 import { routeToHash } from "@pablozaiden/webapp/web";
 import {
   createMcpHandler, McpServer, ProtocolError, originValidationResponse,
@@ -53,7 +51,7 @@ export class ControlServer {
   private readonly mcp;
 
   constructor(private readonly options: {
-    store: WebAppStore; getBaseUrl: () => string | undefined;
+    store: ClankyAccountStore; getBaseUrl: () => string | undefined;
   }) {
     this.integrations = new ControlIntegrationService(options.store);
     this.mcp = createMcpHandler(async () => {

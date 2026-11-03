@@ -4,7 +4,8 @@ import { executionAutomation } from "./execution-automation";
  * Authenticated exact-path file operations, shared by workspace and host routes.
  */
 
-import { createLogger, defineRoutes, type RouteTable } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteTable } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   FileSystemCommandSchema, FileSystemConditionsSchema, FileSystemReadQuerySchema,
   FileSystemInfoSchema, FileSystemResultSchema,

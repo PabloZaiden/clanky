@@ -1,10 +1,10 @@
 /**
  * Server-only delegated application dispatch over authenticated Mesh streams.
  */
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { CollaborationGuestGrant } from "@/shared/collaboration";
 import { collaborationRoute } from "@/shared/collaboration";
-import type { WebAppServer } from "@pablozaiden/webapp/server";
+import type { WebAppServer } from "@/platform/server";
 import { WorkspaceClientEnrollmentSchema } from "@/contracts/schemas/mesh-client";
 import { CollaborationGuestGrantSchema } from "@/contracts/schemas/collaboration";
 import { ChatTrashPageSchema, ChatTrashQuerySchema, type ChatTrashPage } from "@/contracts/schemas/chat-trash";

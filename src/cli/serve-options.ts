@@ -1,4 +1,4 @@
-import type { WebAppServeOptionDefinition } from "@pablozaiden/webapp/cli";
+import type { WebAppServeOptionDefinition } from "@/platform/cli";
 
 export const CLANKY_SERVE_OPTIONS = [
   {

@@ -2,7 +2,7 @@
  * User-context adapters for the shared invited terminal and preview bridge.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import { runWithCurrentUser } from "../context/user-context";
 import { workspaceConnections } from "../core/workspace-connections";
 import {

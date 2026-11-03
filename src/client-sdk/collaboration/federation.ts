@@ -3,8 +3,9 @@
  */
 import {
   compileRouteOperations, matchRouteOperations,
-  type HttpMethod, type RouteDelegationMetadata,
+  type HttpMethod,
 } from "@pablozaiden/webapp/routing";
+import type { RouteDelegationMetadata } from "@/platform/contracts";
 import {
   decodeCollaborationResourceReference,
   encodeCollaborationResourceReference,

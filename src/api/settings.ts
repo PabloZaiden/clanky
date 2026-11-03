@@ -1,4 +1,4 @@
-import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext } from "@/platform/server";
 import {
   RestartAutomaticWorkspacesRequestSchema,
   RestartAutomaticWorkspacesResponseSchema,

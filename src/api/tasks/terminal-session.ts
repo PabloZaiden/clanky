@@ -5,7 +5,7 @@ import { workspaceOperation } from "../workspace-delegation";
  * - GET/POST /api/tasks/:id/terminal-session  - Get or create a terminal session for a task
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { taskManager } from "../../core/task-manager";
 import { terminalSessionManager } from "../../core/terminal-session-manager";
 import { createLogger } from "@pablozaiden/webapp/server";

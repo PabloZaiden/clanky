@@ -33,7 +33,7 @@ share the asynchronous route-catalog loader with the Mesh CLI.
 ## Authorization and route contracts
 
 Application data is private per user; new users start with empty Clanky data.
-Declare authorization and same-origin policy on every framework route:
+Declare authorization and same-origin policy on every Clanky route:
 
 | Route | Authorization | Same-origin policy |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ Declare authorization and same-origin policy on every framework route:
 
 Public routes require a documented product rationale. Do not apply policy
 through a global path allowlist, blanket rewrite, or method-based adapter.
-Use framework ownership helpers for additional entity checks. Keep scopes,
+Use Clanky's ownership helpers for additional entity checks. Keep scopes,
 schemas, descriptions, tags, and `cliPath` on the route definition; do not
 maintain a parallel API/CLI catalog.
 
@@ -75,7 +75,7 @@ that intentional background lifecycle at the call site.
 
 Control contracts, direct intents, operation discovery/execution and human
 interaction policy belong to the common control core, not Live Voice or a
-provider adapter. Canonical framework route declarations remain the operation
+provider adapter. Canonical Clanky route declarations remain the operation
 inventory. Native tools, voice, MCP and deterministic runner IPC adapt that
 core; do not duplicate domain transitions or launch an internal MCP server per
 execution.
@@ -125,7 +125,7 @@ or change approval policy. External integrations and Live Voice keep the default
 policy. Every catalogued method must declare a
 read/write/confirmation policy or an exclusion reason; missing classification
 fails initialization instead of silently hiding a new operation. The running
-framework's operational catalog is shared with control, including health,
+application's operational catalog is shared with control, including health,
 configuration and account administration; private authentication protocols
 remain outside it.
 The compact single-call index uses the same authority as filtered discovery
@@ -148,11 +148,11 @@ authority to ACP prompts. Retire old automatic nonterminal API keys and prevent
 their reissuance; do not change external integrations, unrelated personal keys
 or interactive terminal contracts.
 
-Server control dispatch uses the framework's authenticated dispatcher with
+Server control dispatch uses Clanky's authenticated dispatcher with
 mandatory operation admission, preserving current account checks and the
 application's bound workspace authority. Do not forward unrestricted bearer
 credentials or expose arbitrary user-ID impersonation over HTTP. Generic OAuth
-and its persistence belong to the framework; Clanky validates workspace/general
+and its persistence belong to Clanky; the control core validates workspace/general
 selection and owns operation policy. See
 [deployment and MCP authorization](../deployment.md#agent-control-and-mcp).
 

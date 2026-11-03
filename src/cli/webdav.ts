@@ -3,7 +3,7 @@
  */
 
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import type { WebAppCliCommandContext, CliCommandResult } from "@pablozaiden/webapp/cli";
+import type { WebAppCliCommandContext, CliCommandResult } from "@/platform/cli";
 import type { ClankyCliContext } from "./mesh";
 import type { CliApiContext } from "./remote-api";
 import { handleDavRequest } from "./webdav/handler";

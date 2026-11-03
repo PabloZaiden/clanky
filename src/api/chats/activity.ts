@@ -1,5 +1,6 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { errorResponse, successResponse } from "../helpers";
 import { chatActionErrorResponse } from "./helpers";

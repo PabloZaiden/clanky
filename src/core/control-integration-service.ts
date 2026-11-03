@@ -1,7 +1,7 @@
 import {
   createManagedApiKey, listManagedApiKeys, revokeManagedApiKey,
-  type WebAppStore, type ManagedApiKeySummary,
-} from "@pablozaiden/webapp/server";
+  type ClankyAccountStore, type ManagedApiKeySummary,
+} from "@/platform/server";
 import {
   ControlGrantSelectionSchema, ControlCredentialSummarySchema,
   type ControlGrantSelection, type ControlCredentialSummary, type CreateControlCredentialSchema,
@@ -17,7 +17,7 @@ const MANAGED_BY = "clanky.control-integration";
 const MAX_CREDENTIALS = 32;
 
 export class ControlIntegrationService {
-  constructor(private readonly store: WebAppStore) {}
+  constructor(private readonly store: ClankyAccountStore) {}
 
   async consentOptions() {
     return {

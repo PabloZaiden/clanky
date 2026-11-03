@@ -1,7 +1,8 @@
 /**
  * Public, owner-scoped standalone chat recovery and permanent deletion.
  */
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { ChatTrashPageSchema, ChatTrashQuerySchema, EmptyChatTrashResponseSchema, PurgeChatTrashRequestSchema } from "@/contracts/schemas/chat-trash";
 import { chatManager } from "../core/chat-manager";
 import { isDomainError } from "../domain/domain-error";

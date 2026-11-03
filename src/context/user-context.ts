@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { CollaborationActor, WorkspaceAccessAuthority } from "@/shared/collaboration";
 import { DomainError } from "../domain/domain-error";
 

@@ -2,7 +2,8 @@
  * Authenticated workspace icon routes.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { executionAutomation } from "../execution-automation";
 import {
   WorkspaceIconCandidatesResponseSchema,

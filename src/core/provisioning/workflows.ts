@@ -473,7 +473,7 @@ export class ProvisioningWorkflows {
           githubUser: record.job.config.githubUser,
           ...(workerLauncherPaths
             ? {
-                startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)}`,
+                startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)} update ${shellQuote(record.job.config.id)}`,
               }
             : {}),
         }),

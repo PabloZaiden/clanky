@@ -2,7 +2,8 @@
  * Data-only client policy projected from canonical application route definitions.
  */
 
-import type { RouteDelegationMetadata, RouteOperation } from "@pablozaiden/webapp/routing";
+import type { RouteOperation } from "@pablozaiden/webapp/routing";
+import type { RouteDelegationMetadata } from "@/platform/contracts";
 
 export interface CollaborationReadMetadata {
   readOnly: boolean;

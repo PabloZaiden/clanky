@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import {

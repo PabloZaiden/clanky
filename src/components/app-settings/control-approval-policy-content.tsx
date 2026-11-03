@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { createLogger, EmptyState, ErrorState, LoadingState, useCurrentUser, useLiveQuery } from "@pablozaiden/webapp/web";
+import { createLogger, EmptyState, ErrorState, LoadingState, useLiveQuery } from "@pablozaiden/webapp/web";
+import { useCurrentUser } from "@/platform/web/webapp-config";
 import type { ControlApprovalPolicy } from "@/contracts/schemas/control";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 import { apiRequest } from "../../lib/api-client";

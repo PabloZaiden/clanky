@@ -2,7 +2,7 @@
  * Authenticated API routes for the optional per-user voice features.
  */
 
-import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import {
   VoiceSettingsUpdateSchema,

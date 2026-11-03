@@ -6,7 +6,7 @@
  * @module api/workspaces
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 
 import { crudRoutes } from "./crud";
 import { archivedTasksRoutes } from "./archived-tasks";

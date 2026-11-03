@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { HTTP_METHODS, type HttpMethod } from "@pablozaiden/webapp/routing";
-import { resolveRouteOperationMetadata, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
+import { resolveRouteOperationMetadata, type RouteDefinition, type RouteTable } from "@/platform/server";
 import type { CollaborationOperationMetadata, CollaborationRouteOperation } from "@/shared/collaboration-operation";
 
 export function collaborationOperationMetadata(

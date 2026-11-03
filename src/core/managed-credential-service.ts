@@ -11,8 +11,8 @@ import {
   revokeManagedApiKey,
   type ManagedApiKeySummary,
   type RuntimeConfig,
-  type WebAppStore,
-} from "@pablozaiden/webapp/server";
+  type ClankyAccountStore,
+} from "@/platform/server";
 import type { ManagedContextIdentity } from "@/shared/context-api-key";
 import {
   createContextApiKeyAssociationForUser,
@@ -75,14 +75,14 @@ function contextDetails(identity: ManagedContextIdentity): Record<string, string
 }
 
 export class ManagedCredentialService {
-  private store: WebAppStore | undefined;
+  private store: ClankyAccountStore | undefined;
   private publicBaseUrl: string | undefined;
   private localBaseUrl: string | undefined;
   private readonly activeCredentials = new Map<string, ManagedRuntimeCredential>();
   private readonly credentialLocks = new Map<string, Promise<void>>();
 
   configure(
-    store: WebAppStore,
+    store: ClankyAccountStore,
     config: Pick<RuntimeConfig, "publicBaseUrl"> & { localBaseUrl?: string },
   ): void {
     this.store = store;
@@ -419,7 +419,7 @@ export class ManagedCredentialService {
     }
   }
 
-  private requireStore(): WebAppStore {
+  private requireStore(): ClankyAccountStore {
     if (!this.store) {
       throw new ManagedCredentialError(
         "managed_context_not_configured",

@@ -1,7 +1,7 @@
 /**
  * Resolves workspace and participant authority for private realtime publications.
  */
-import type { RealtimePublication } from "@pablozaiden/webapp/contracts";
+import type { RealtimePublication } from "@/platform/contracts";
 import type { CollaborationGuestGrant } from "@/shared/collaboration";
 import { WORKSPACE_REALTIME_RESOURCE_KINDS } from "@/shared/realtime";
 import { findResourceWorkspace } from "../persistence/workspace-resource-index";

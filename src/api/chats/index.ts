@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { chatsCrudRoutes } from "./crud";
 import { chatsLifecycleRoutes } from "./lifecycle";
 import { chatsMessagingRoutes } from "./messaging";

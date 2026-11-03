@@ -230,7 +230,7 @@ export class WorkerUpdateJobRunner {
     });
     this.appendLog(
       userId, job, "system",
-      "Checking Mesh health and the worker service within the 20-second restart deadline.",
+      `Checking Mesh health and the worker service within the ${WORKER_RESTART_TIMEOUT_MS / 1000}-second restart deadline.`,
       "restart",
     );
     try {
@@ -300,6 +300,7 @@ export class WorkerUpdateJobRunner {
       timeout: null,
       maxOutputBytes: MAX_COMMAND_OUTPUT_BYTES,
       longRunning: true,
+      preserveOnDisconnect: true,
       logFailures: false,
       onExecutionState: (execution) => {
         const job = getJob();

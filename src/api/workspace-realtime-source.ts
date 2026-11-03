@@ -2,7 +2,7 @@
  * Attach the shared invited realtime client to the authoritative local user bus.
  */
 import { createLogger, type RealtimeBus } from "@pablozaiden/webapp/server";
-import type { RealtimeInterest } from "@pablozaiden/webapp/contracts";
+import type { RealtimeInterest } from "@/platform/contracts";
 import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import { workspaceConnections, type WorkspaceConnectionRuntime } from "../core/workspace-connections";
 import { CollaborationRealtimeSource } from "../client-sdk/collaboration/realtime";

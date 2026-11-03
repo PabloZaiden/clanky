@@ -16,7 +16,7 @@
  * @module api/tasks
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 
 export { tasksCrudRoutes } from "./crud";
 export { tasksDataRoutes } from "./data";

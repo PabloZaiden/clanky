@@ -10,6 +10,8 @@ import { ErrorState, renderWebApp } from "@pablozaiden/webapp/web";
 import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RemoteClientBoundary } from "./platform/web/remote-client";
+import { ClankyApplication } from "./platform/web/root";
 
 async function start(): Promise<void> {
   try {
@@ -21,7 +23,7 @@ async function start(): Promise<void> {
   }
   renderWebApp(
     <ErrorBoundary>
-      <App />
+      <RemoteClientBoundary><ClankyApplication><App /></ClankyApplication></RemoteClientBoundary>
     </ErrorBoundary>,
   );
 }

@@ -1,7 +1,7 @@
 /**
  * Per-user pairing controls; a shared-workspace guest cannot delegate these.
  */
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import { CreateCollaborationInvitationSchema, UpdateCollaborationWorkspacePermissionSchema } from "@/contracts/schemas/collaboration";
 import { ConnectWorkspaceControllerSchema } from "@/contracts/schemas/mesh-client";

@@ -2,7 +2,7 @@
  * API route for one-shot commands in a workspace execution context.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import {
   WorkspaceExecRequestSchema,
   WorkspaceExecResponseSchema,

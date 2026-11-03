@@ -2,7 +2,7 @@
  * Opens a workspace's existing working directory in a CLI-owned VS Code preview.
  */
 
-import { normalizeBaseUrl } from "@pablozaiden/webapp/cli";
+import { normalizeBaseUrl } from "@/platform/cli";
 import type { PreviewCommandOptions } from "./preview";
 
 export function parseCodeCommandArgs(args: readonly string[]): PreviewCommandOptions {

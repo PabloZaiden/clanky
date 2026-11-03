@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { LiveVoiceCallState } from "@/shared";
 import type { ControlClientContext } from "@/shared/control-interactions";
 import { runWithCurrentUser } from "../context/user-context";

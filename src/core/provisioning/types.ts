@@ -7,7 +7,7 @@ import type {
   ProvisioningLogEntry,
   ProvisioningWorkerEnrollmentRoute,
 } from "@/shared";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type {
   ProvisioningAttempt,
   ProvisioningResourceHandle,

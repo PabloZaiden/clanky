@@ -2,7 +2,8 @@
  * Authoritative metadata for tables that Clanky creates, inspects, or resets.
  *
  * This module deliberately describes table ownership and lifecycle capabilities
- * without copying schema definitions owned by Clanky or the webapp framework.
+ * without copying their schema definitions. Account tables retain their physical
+ * webapp_ names to preserve existing data and credentials.
  * A new table added by a base schema or migration must be classified here.
  */
 
@@ -10,7 +11,6 @@ import type { Database } from "bun:sqlite";
 
 export type SchemaTableCategory =
   | "clanky"
-  | "framework"
   | "metadata";
 
 export type SchemaTranscriptResource = "chat" | "task" | "agent_run" | "subagent";
@@ -34,7 +34,7 @@ export interface SchemaTableDefinition {
 
 function currentTable(
   name: string,
-  category: "clanky" | "framework" | "metadata",
+  category: "clanky" | "metadata",
   transcript?: SchemaTranscriptTableMetadata,
 ): SchemaTableDefinition {
   return {
@@ -49,7 +49,7 @@ function currentTable(
 
 function resetOnlyTable(
   name: string,
-  category: "clanky" | "framework",
+  category: "clanky",
 ): SchemaTableDefinition {
   return {
     name,
@@ -60,18 +60,22 @@ function resetOnlyTable(
   };
 }
 
+function internalAccountTable(name: string): SchemaTableDefinition {
+  return { ...currentTable(name, "clanky"), introspectable: false };
+}
+
 export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
-  resetOnlyTable("webapp_oauth_authorizations", "framework"),
-  resetOnlyTable("webapp_oauth_sessions", "framework"),
-  resetOnlyTable("webapp_audit_events", "framework"),
-  resetOnlyTable("webapp_user_setup_links", "framework"),
-  resetOnlyTable("webapp_preferences", "framework"),
-  currentTable("webapp_refresh_sessions", "framework"),
-  currentTable("webapp_device_auth_requests", "framework"),
-  currentTable("webapp_api_keys", "framework"),
-  currentTable("webapp_passkeys", "framework"),
-  resetOnlyTable("webapp_signing_keys", "framework"),
-  currentTable("webapp_users", "framework"),
+  internalAccountTable("webapp_oauth_authorizations"),
+  internalAccountTable("webapp_oauth_sessions"),
+  internalAccountTable("webapp_audit_events"),
+  internalAccountTable("webapp_user_setup_links"),
+  internalAccountTable("webapp_preferences"),
+  currentTable("webapp_refresh_sessions", "clanky"),
+  currentTable("webapp_device_auth_requests", "clanky"),
+  currentTable("webapp_api_keys", "clanky"),
+  currentTable("webapp_passkeys", "clanky"),
+  internalAccountTable("webapp_signing_keys"),
+  currentTable("webapp_users", "clanky"),
 
   currentTable("collaboration_interactive_resources", "clanky"),
   currentTable("collaboration_authorship", "clanky"),
@@ -183,11 +187,6 @@ const RESETTABLE_TABLE_NAMES = Object.freeze(
     (table) => table.name,
   ),
 );
-const NON_FRESH_FRAMEWORK_TABLE_NAMES = new Set(
-  SCHEMA_TABLE_INVENTORY.filter(
-    (table) => !table.expectedInFreshSchema && table.category === "framework",
-  ).map((table) => table.name),
-);
 const INTROSPECTABLE_TABLE_NAME_SET = new Set(INTROSPECTABLE_TABLE_NAMES);
 
 export function getFreshSchemaTableNames(): readonly string[] {
@@ -208,8 +207,7 @@ export function isIntrospectableTableName(tableName: string): boolean {
 
 /**
  * Verifies that all current tables exist and that no unknown user table has
- * been introduced. Known reset-only framework tables are allowed to remain
- * until the next database reset; the retired Clanky relay table is not.
+ * been introduced. Reset-only tables are retired and must not survive startup.
  */
 export function assertSchemaInventory(db: Database): void {
   const actualTableNames = (
@@ -227,8 +225,7 @@ export function assertSchemaInventory(db: Database): void {
   );
   const unexpectedTableNames = actualTableNames.filter(
     (tableName) =>
-      !FRESH_SCHEMA_TABLE_NAME_SET.has(tableName)
-      && !NON_FRESH_FRAMEWORK_TABLE_NAMES.has(tableName),
+      !FRESH_SCHEMA_TABLE_NAME_SET.has(tableName),
   );
 
   if (missingTableNames.length === 0 && unexpectedTableNames.length === 0) {

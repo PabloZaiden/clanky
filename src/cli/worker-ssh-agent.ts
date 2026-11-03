@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type {
   CliCommandResult,
   WebAppCliCommandContext,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import type { RuntimeEnvironment } from "@pablozaiden/webapp/server";
 import type { ClankyCliContext } from "./mesh";
 import { systemdToken } from "./systemd";
