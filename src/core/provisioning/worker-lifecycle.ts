@@ -1,4 +1,5 @@
 import { posix as pathPosix } from "node:path";
+import { z } from "zod";
 import type { CommandExecutor, CommandResult } from "../command-executor";
 import { meshManager } from "../mesh-manager";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
@@ -58,6 +59,12 @@ type ProvisioningCommandRunner = (
   options: RunCommandOptions,
   maxLogEntries: number,
 ) => Promise<CommandResult>;
+
+const maintenanceResultSchema = z.object({
+  jobId: z.string().min(1),
+  binaryVersion: z.string().trim().min(1),
+  releaseChannel: z.enum(["stable", "latest", "prerelease"]),
+});
 
 export class ProvisioningWorkerLifecycle {
   constructor(
@@ -299,6 +306,42 @@ export class ProvisioningWorkerLifecycle {
       }
     }
     const paths = getWorkerPaths(options.targetDirectory, options.resolvedDirectory);
+    const updateResult = await this.runDevboxExec(
+      record,
+      executor,
+      options.targetDirectory,
+      ["cat", paths.containerMaintenanceResult],
+      {
+        step: options.step,
+        label: "Confirming the workspace worker binary update",
+        errorCode: "provisioning_execution_unconfirmed",
+        errorMessage: "Cannot confirm which worker binary this maintenance operation installed",
+      },
+    );
+    let maintenanceResult: z.infer<typeof maintenanceResultSchema>;
+    try {
+      maintenanceResult = maintenanceResultSchema.parse(JSON.parse(updateResult.stdout));
+    } catch (error) {
+      throw new ProvisioningFailedError(
+        "worker_update_result_invalid",
+        options.step,
+        "The workspace worker binary update returned an invalid result.",
+        { cause: error },
+      );
+    }
+    if (maintenanceResult.jobId !== record.job.config.id) {
+      throw new ProvisioningFailedError(
+        "provisioning_execution_unconfirmed",
+        options.step,
+        "Cannot confirm that this maintenance operation installed the selected worker release.",
+      );
+    }
+    appendSystemLog(
+      record,
+      this.maxLogEntries,
+      `Workspace worker ${maintenanceResult.releaseChannel} binary resolved: ${maintenanceResult.binaryVersion}`,
+      options.step,
+    );
     const workerEndpoint = options.relayOnlyWorker
       ? undefined
       : `https://${workerHostAddress!}:${publishedPort?.hostPort ?? ""}`;
@@ -376,12 +419,13 @@ export class ProvisioningWorkerLifecycle {
         );
       }
     }
-    await this.waitForEnrollment(record, enrollmentId);
+    await this.waitForEnrollment(record, enrollmentId, maintenanceResult.binaryVersion);
   }
 
   async waitForEnrollment(
     record: ProvisioningJobRecord,
     enrollmentId: string,
+    expectedVersion?: string,
   ): Promise<void> {
     const timeoutAt = Date.now() + WORKER_READINESS_TIMEOUT_MS;
     let lastHealthError: unknown;
@@ -410,7 +454,7 @@ export class ProvisioningWorkerLifecycle {
           await meshManager.checkWorkerReachability(
             record.owner.id,
             status.worker.workerNodeId,
-            { signal: probe.signal },
+            { signal: probe.signal, expectedBinaryVersion: expectedVersion },
           );
           appendSystemLog(
             record,

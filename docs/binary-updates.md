@@ -40,7 +40,10 @@ does not immediately update the binary. With a saved worker default,
 **Stable/Latest** applies both operations and restarts the worker only
 after verification. **Default** preserves each worker's selection.
 The same selector controls automatic workspace creation and Restart/Rebuild;
-see [Mesh worker maintenance](mesh-worker.md#update-servers-and-automatic-workspaces-together).
+Restart/Rebuild always resolves and installs the current release of the selected
+channel, then verifies that its full build version is running. This also applies
+when the previous binary already used that channel. See
+[Mesh worker maintenance](mesh-worker.md#update-servers-and-automatic-workspaces-together).
 
 Every main push builds the supported Linux and macOS targets. After
 all target builds succeed, the shared installer workflow replaces assets in

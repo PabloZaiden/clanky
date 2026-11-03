@@ -1074,6 +1074,7 @@ export class MeshManager {
       identity: MeshNodeIdentity;
       worker: MeshWorkerRegistration;
       signal?: AbortSignal;
+      expectedBinaryVersion?: string;
     },
   ): Promise<"inventory" | "cache" | "resources"> {
     const { identity, worker } = options;
@@ -1149,6 +1150,15 @@ export class MeshManager {
     const workerCapabilities = parseExecutionHostCapabilities(
       health.workerCapabilities,
     );
+    if (options.expectedBinaryVersion !== undefined
+      && health.binaryVersion !== options.expectedBinaryVersion) {
+      throw new DomainError(
+        "mesh_worker_binary_version_mismatch",
+        `Expected worker build ${options.expectedBinaryVersion}, but health reported ${
+          health.binaryVersion ?? "no binary version"
+        }.`,
+      );
+    }
     if (health.workerConfigRevision < worker.workerConfigRevision) {
       throw new DomainError(
         "mesh_health_check_response_invalid",
@@ -1188,7 +1198,7 @@ export class MeshManager {
   async checkWorkerReachability(
     userId: string,
     workerNodeId: string,
-    options: { signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal; expectedBinaryVersion?: string } = {},
   ): Promise<void> {
     requireMeshRuntimeRole("controller");
     const worker = await getWorkerRegistration(workerNodeId, userId);
@@ -1204,6 +1214,7 @@ export class MeshManager {
       identity,
       worker,
       signal: options.signal,
+      expectedBinaryVersion: options.expectedBinaryVersion,
     });
     meshStateEventEmitter.emit(
       impact === "inventory"

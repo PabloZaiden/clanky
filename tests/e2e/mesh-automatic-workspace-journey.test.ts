@@ -28,6 +28,7 @@ interface ControllerStatus {
     workerEndpoint: string;
     registrationScope?: "global" | "workspace";
     grantStatus: string;
+    workerBinaryVersion?: string | null;
   }>;
 }
 
@@ -543,6 +544,8 @@ test("controller rolls out worker channels and maintains inherited and overridde
     expect(await readWorkerChannel(controller, nativeExecutionPath)).toBe("latest");
     expect(await readWorkerChannel(controller, automaticExecutionPath)).toBe("latest");
     expect(await readWorkerChannel(controller, stableExecutionPath)).toBe("stable");
+    const latestReleaseHash = devbox.publishRelease("latest");
+    const stableReleaseHash = devbox.publishRelease("stable");
     await runAutomaticWorkspaceJob(controller, {
       ...automaticRequest, mode: "restart", workspaceId: automaticWorkspaceId,
       targetDirectory: automaticWorkspace.job.state.targetDirectory,
@@ -553,6 +556,30 @@ test("controller rolls out worker channels and maintains inherited and overridde
     });
     expect(await readWorkerChannel(controller, automaticExecutionPath)).toBe("latest");
     expect(await readWorkerChannel(controller, stableExecutionPath)).toBe("stable");
+    const maintainedWorkers = await meshJsonRequest<ControllerStatus>(controller, "/api/mesh/status");
+    for (const [executionPath, originalWorker, releaseHash] of [
+      [automaticExecutionPath, automaticWorker, latestReleaseHash],
+      [stableExecutionPath, stableWorker, stableReleaseHash],
+    ] as const) {
+      const [installed, version] = await Promise.all([
+        meshJsonRequest<{ exitCode: number; stdout: string }>(controller, executionPath, {
+          method: "POST",
+          body: { command: "sha256sum", args: [".devbox/clanky-worker/bin/clanky"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
+        }),
+        meshJsonRequest<{ exitCode: number; stdout: string }>(controller, executionPath, {
+          method: "POST",
+          body: { command: "clanky", args: ["version"], timeoutMs: MESH_OPERATION_TIMEOUT_MS },
+        }),
+      ]);
+      expect(installed.status, JSON.stringify(installed.body)).toBe(200);
+      expect(installed.body.exitCode).toBe(0);
+      expect(installed.body.stdout.split(/\s+/)[0]).toBe(releaseHash);
+      expect(version.status, JSON.stringify(version.body)).toBe(200);
+      expect(version.body.exitCode).toBe(0);
+      const maintained = maintainedWorkers.body.workers.find((worker) => worker.workerNodeId === originalWorker.workerNodeId);
+      expect(maintained?.grantStatus).toBe("active");
+      expect(maintained?.workerBinaryVersion).toBe(version.body.stdout.trim());
+    }
     const checkout = await meshJsonRequest<{ exitCode: number; stdout: string }>(
       controller, `/api/workspaces/${automaticWorkspaceId}/exec`, {
         method: "POST",

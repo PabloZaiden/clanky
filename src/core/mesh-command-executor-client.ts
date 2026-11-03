@@ -46,7 +46,7 @@ import {
 } from "../persistence/mesh-node-identity";
 import { readMeshPayload, type MeshPayloadFields } from "./mesh-payload";
 import { buildMeshExecutionSessionSigningPayload } from "./mesh-protocol";
-import { requestMeshPeer } from "./mesh-peer-transport";
+import { describeMeshTransportFailure, requestMeshPeer } from "./mesh-peer-transport";
 import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -933,7 +933,7 @@ export class MeshCommandExecutorClient {
           jobId,
           stdoutOffset: output.stdout.length,
           stderrOffset: output.stderr.length,
-        }, { signal: options.signal, retry: !options.preserveOnDisconnect });
+        }, { signal: options.signal });
         remoteMayBeRunning = snapshot.status === "running";
         observeExecution(snapshot);
         this.consumeAsyncCommandOutput(snapshot, output, options);
@@ -1160,21 +1160,24 @@ export class MeshCommandExecutorClient {
         } catch (error) {
           commandDispatched ||= error instanceof DomainError
             && error.details["requestDispatched"] === true;
+          const invalidSession = error instanceof DomainError && (
+            error.code === "mesh_execution_session_invalid"
+            || error.code === "mesh_execution_session_expired"
+            || error.code === "mesh_execution_context_changed"
+          );
           if (
             attempt === 0
             && options.retry !== false
             && error instanceof DomainError
             && (
-              error.code === "mesh_execution_session_invalid"
-              || error.code === "mesh_execution_session_expired"
-              || error.code === "mesh_execution_context_changed"
-              || (
-                error.code === "mesh_execution_unreachable"
-                || error.code === "mesh_execution_response_invalid"
-              )
+              invalidSession
+              || error.code === "mesh_execution_unreachable"
+              || error.code === "mesh_execution_response_invalid"
+              || (error.code === "mesh_execution_request_failed"
+                && [502, 503, 504].includes(Number(error.details["status"])))
             )
           ) {
-            this.session = null;
+            if (invalidSession) this.session = null;
             continue;
           }
           throw error;
@@ -1858,7 +1861,9 @@ export class MeshCommandExecutorClient {
           details: { requestDispatched },
         });
       }
-      throw new DomainError("mesh_execution_unreachable", "The selected mesh execution peer could not be reached.", {
+      throw new DomainError("mesh_execution_unreachable", controller.signal.aborted
+        ? "The Mesh execution request timed out."
+        : `The selected Mesh execution peer could not be reached. ${describeMeshTransportFailure(error)}`, {
         cause: error,
         details: { requestDispatched },
       });

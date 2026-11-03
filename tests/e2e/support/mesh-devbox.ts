@@ -10,7 +10,9 @@ import { MESH_OPERATION_TIMEOUT_MS } from "./timeouts";
 import { renderExternalWorkerUpdateBinary } from "./provider";
 import { getMeshTestTls } from "./mesh-tls";
 
-async function githubReleaseResponse(path: string, binary: string | Bun.BunFile): Promise<Response> {
+type ReleaseBinaries = Record<"stable" | "latest", string | Bun.BunFile>;
+
+async function githubReleaseResponse(path: string, binaries: ReleaseBinaries): Promise<Response> {
   const root = resolve(import.meta.dir, "../../..");
   if (/^\/raw\/pablozaiden\/installer\/[a-f0-9]{40}\/install.sh$/.test(path)) {
     return new Response(Bun.file(join(root, "node_modules", "@pablozaiden", "installer", "install.sh")));
@@ -27,6 +29,7 @@ async function githubReleaseResponse(path: string, binary: string | Bun.BunFile)
     return Response.json({ schemaVersion: 1, channel: "latest", version: latestVersion, revision: "abcdef0".padEnd(40, "0") });
   }
   for (const [tag, version] of [["latest", latestVersion], ["v0.0.0-development", "0.0.0-development"]]) {
+    const binary = binaries[tag === "latest" ? "latest" : "stable"];
     const asset = `clanky-v${version}-${process.platform}-${process.arch}`;
     if (path === `${base}/${tag}/${asset}`) return new Response(binary);
     if (path === `${base}/${tag}/${asset}.sha256`) {
@@ -43,12 +46,15 @@ export async function startMeshDevboxFixture(
 ): Promise<{
   stop(): Promise<void>;
   diagnostics(): string;
+  publishRelease(channel: "stable" | "latest"): string;
 }> {
   const binary = resolve(import.meta.dir, "../../../dist/clanky");
   const tls = await getMeshTestTls();
   const curl = Bun.which("curl");
   if (!curl) throw new Error("The external GitHub release fixture requires curl.");
   const releaseBinary = options.updateStateDirectory ? renderExternalWorkerUpdateBinary() : Bun.file(binary);
+  const releaseBinaries: ReleaseBinaries = { stable: releaseBinary, latest: releaseBinary };
+  let releaseGeneration = 0;
   const workers = new Map<string, Record<string, string>>();
   const outputs: string[] = [];
   async function stopWorker(directory: string, environment: Record<string, string>): Promise<void> {
@@ -62,9 +68,9 @@ export async function startMeshDevboxFixture(
     async fetch(request: Request): Promise<Response> {
       try {
         if (request.method === "GET") {
-          return await githubReleaseResponse(new URL(request.url).pathname, releaseBinary);
+          return await githubReleaseResponse(new URL(request.url).pathname, releaseBinaries);
         }
-        const body = await request.json() as { directory: string };
+        const body = await request.json() as { directory: string; command: string[] };
         const root = join(body.directory, ".devbox", "clanky-worker");
         await mkdir(join(root, "home"), { recursive: true });
         const environment = currentEnvironment({
@@ -80,7 +86,7 @@ export async function startMeshDevboxFixture(
             CLANKY_E2E_MESH_BINARY: binary,
         });
         workers.set(body.directory, environment);
-        const result = await runCommand(["sh", join(root, "launcher.sh")], {
+        const result = await runCommand(body.command, {
           cwd: body.directory, env: environment, timeoutMs: MESH_OPERATION_TIMEOUT_MS,
         });
         outputs.push(result.stdout, result.stderr);
@@ -105,6 +111,12 @@ export async function startMeshDevboxFixture(
     throw error;
   }
   return {
+    publishRelease(channel): string {
+      if (!options.updateStateDirectory) throw new Error("Publishing a release requires the external update runtime.");
+      const payload = `${renderExternalWorkerUpdateBinary()}# Published ${channel} release ${++releaseGeneration}\n`;
+      releaseBinaries[channel] = payload;
+      return new Bun.CryptoHasher("sha256").update(payload).digest("hex");
+    },
     diagnostics: () => [
       ...[...workers.keys()].map((directory) => {
         const log = join(directory, ".devbox", "clanky-worker", "worker.log");
