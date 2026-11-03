@@ -37,9 +37,6 @@ export interface EventStream<T> {
   close(): void;
 }
 
-/** Default maximum buffer size for event streams */
-const DEFAULT_MAX_BUFFER_SIZE = 32_768;
-
 /**
  * Options for creating an event stream.
  */
@@ -49,7 +46,7 @@ export interface EventStreamOptions {
   /**
    * Maximum number of items to buffer before dropping oldest items.
    * When the buffer exceeds this limit, the oldest items are evicted
-   * to make room for new ones. Defaults to 32,768.
+   * to make room for new ones. Omit for an unbounded queue.
    * Values less than 1 are clamped to 1; non-integer values are floored.
    */
   maxBufferSize?: number;
@@ -87,7 +84,9 @@ export function createEventStream<T>(options?: EventStreamOptions): {
   end: () => void;
   fail: (error: Error) => void;
 } {
-  const maxBufferSize = Math.max(1, Math.floor(options?.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE));
+  const maxBufferSize = options?.maxBufferSize === undefined
+    ? undefined
+    : Math.max(1, Math.floor(options.maxBufferSize));
   const items: T[] = [];
   const waiters: Array<{
     resolve: (value: T | null) => void;
@@ -106,6 +105,7 @@ export function createEventStream<T>(options?: EventStreamOptions): {
     }
 
     state = nextState;
+    if (nextState.status !== "ended") items.length = 0;
     if (nextState.status === "failed") {
       for (const waiter of waiters) {
         waiter.reject(nextState.error);
@@ -131,7 +131,7 @@ export function createEventStream<T>(options?: EventStreamOptions): {
       waiter.resolve(item);
     } else {
       // Evict oldest items if buffer is full
-      if (items.length >= maxBufferSize) {
+      if (maxBufferSize !== undefined && items.length >= maxBufferSize) {
         if (options?.overflow === "fail") {
           const error = new EventStreamOverflowError(streamId, items.length, maxBufferSize);
           log.warn("Event stream queue overflow", {
@@ -142,7 +142,6 @@ export function createEventStream<T>(options?: EventStreamOptions): {
             pendingWaiters: waiters.length,
           });
           fail(error);
-          items.length = 0;
           return;
         }
         const evictCount = Math.max(1, Math.floor(maxBufferSize * 0.1));

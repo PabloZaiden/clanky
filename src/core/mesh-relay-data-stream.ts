@@ -23,7 +23,6 @@ import {
 } from "./mesh-relay-client-socket";
 import { MeshRelayStreamError } from "./mesh-relay-errors";
 import {
-  MESH_RELAY_MAX_QUEUED_BYTES,
   MESH_RELAY_MAX_STREAM_FRAME_BYTES,
   MESH_RELAY_STREAM_CLOSE_TIMEOUT,
 } from "./mesh-relay-policy";
@@ -33,8 +32,6 @@ export const MESH_RELAY_BODY_CHUNK_BYTES = 64 * 1_024;
 export const MESH_RELAY_SEND_HIGH_WATER_BYTES = 1_024 * 1_024;
 const DRAIN_POLL_INTERVAL_MS = 5;
 const FLUSH_TIMEOUT_MS = 30_000;
-/** Bound the frames buffered for a consumer that has not read them yet. */
-const MAX_QUEUED_ITEMS = 32_768;
 
 export type MeshRelayStreamItem =
   | { kind: "text"; text: string }
@@ -59,7 +56,6 @@ function toBytes(data: unknown): Uint8Array | undefined {
 
 export class MeshRelayDataStream {
   private readonly queue: MeshRelayStreamItem[] = [];
-  private queuedBytes = 0;
   private pendingRead?: PendingRead;
   private closedItem?: MeshRelayStreamItem & { kind: "closed" };
   private closeRequested = false;
@@ -111,40 +107,7 @@ export class MeshRelayDataStream {
       pending.resolve(item);
       return;
     }
-    const itemBytes = item.kind === "text"
-      ? utf8ByteLength(item.text)
-      : item.kind === "binary"
-        ? item.bytes.byteLength
-        : 0;
-    if (this.queue.length >= MAX_QUEUED_ITEMS && item.kind !== "closed") {
-      this.failReceiveQueue("relay_receive_frame_limit", itemBytes);
-      return;
-    }
-    if (
-      item.kind !== "closed"
-      && this.queuedBytes + itemBytes > MESH_RELAY_MAX_QUEUED_BYTES
-    ) {
-      this.failReceiveQueue("relay_receive_byte_limit", itemBytes);
-      return;
-    }
     this.queue.push(item);
-    this.queuedBytes += itemBytes;
-  }
-
-  private failReceiveQueue(reason: "relay_receive_frame_limit" | "relay_receive_byte_limit", incomingBytes: number): void {
-    this.log.warn("Mesh relay receive queue overflow", {
-      reason,
-      requestId: this.requestId,
-      streamId: this.streamId,
-      queuedFrames: this.queue.length,
-      limitFrames: MAX_QUEUED_ITEMS,
-      queuedBytes: this.queuedBytes,
-      incomingBytes,
-      limitBytes: MESH_RELAY_MAX_QUEUED_BYTES,
-    });
-    const limit = reason === "relay_receive_frame_limit"
-      ? `${MAX_QUEUED_ITEMS}-frame` : `${MESH_RELAY_MAX_QUEUED_BYTES}-byte`;
-    this.close(1009, `Mesh relay receive queue exceeded its ${limit} limit`);
   }
 
   /** Observe closure without consuming a queued data frame. */
@@ -161,11 +124,6 @@ export class MeshRelayDataStream {
   async next(timeoutMs?: number): Promise<MeshRelayStreamItem> {
     const queued = this.queue.shift();
     if (queued) {
-      this.queuedBytes -= queued.kind === "text"
-        ? utf8ByteLength(queued.text)
-        : queued.kind === "binary"
-          ? queued.bytes.byteLength
-          : 0;
       return queued;
     }
     if (this.closedItem) {
@@ -238,15 +196,12 @@ export class MeshRelayDataStream {
 
   /**
    * Wait until the socket send buffer drops below the relay backpressure
-   * limit. WebSocket has no drain event, so this polls the buffer size.
+   * high-water mark. WebSocket has no drain event, so this polls the buffer size.
    */
   async waitForDrain(): Promise<void> {
     while (
       !this.closed
-      && this.socket.bufferedAmount > Math.min(
-        MESH_RELAY_SEND_HIGH_WATER_BYTES,
-        MESH_RELAY_MAX_QUEUED_BYTES,
-      )
+      && this.socket.bufferedAmount > MESH_RELAY_SEND_HIGH_WATER_BYTES
     ) {
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, DRAIN_POLL_INTERVAL_MS);
@@ -338,7 +293,6 @@ export class MeshRelayDataStream {
     }
     pending?.resolve(this.closedItem);
     this.queue.length = 0;
-    this.queuedBytes = 0;
   }
 }
 

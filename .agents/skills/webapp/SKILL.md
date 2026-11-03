@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.1
+version: 0.6.2
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -34,6 +34,10 @@ catalog. Use immutable dependency pins with synchronized manifests/lockfiles.
 
 - One Bun process serves React, HTTP and WS. Keep native Bun hot reload; no
   separate frontend server. Apps declare compatible `react` and `react-dom`.
+- Keep generated HTML and its fixed-scale viewport framework-owned across
+  development, compiled/static clients and PWAs. Browsers honoring the scaling
+  tokens cannot pinch-to-zoom; normal scrolling remains enabled. Do not add
+  app-owned HTML or global touch handlers to enforce zoom policy.
 - Core startup does not open SQLite, initialize accounts or read durable
   configuration. Core UI is memory-only without an explicit preference adapter.
 - Apps own all identity/account/role/resource policy, auth routes/screens,
@@ -46,6 +50,12 @@ catalog. Use immutable dependency pins with synchronized manifests/lockfiles.
 - `request(req,server?)` returns Response or undefined before generic dispatch
   and document fallback. A successful upgrade consumes the request. Select
   custom WS handlers with `data.webappSocketHandler`; they are not realtime.
+- Configure listener-wide Bun send buffering with `server.websocket`:
+  `backpressureLimit` and `closeOnBackpressureLimit`. Omitted values retain Bun
+  defaults; `backpressureLimit:0` explicitly disables the ceiling and can exhaust
+  memory without consumer flow control. Named `websockets` entries select
+  callbacks, not listener options; preserve framework dispatch, realtime delivery
+  limits and transport cleanup.
 - Routes default private and fail closed without an app identity. Explicit
   public intent and realtime `access:"public"` are for deliberately public apps.
   Generic `policy` is opaque app data, not a second framework policy registry.

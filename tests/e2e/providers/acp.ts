@@ -14,8 +14,6 @@ import { inspectAttachedFiles } from "./file-input";
 
 const SUPPORTED_PROTOCOL_VERSION = 1;
 const OUTBOUND_REQUEST_TIMEOUT_MS = 5_000;
-const STREAM_DELAY_MS = 35;
-const SLOW_STREAM_DELAY_MS = 120;
 const REQUEST_CANCELLED_ERROR_CODE = -32800;
 const METHOD_NOT_FOUND_ERROR_CODE = -32601;
 const INVALID_PARAMS_ERROR_CODE = -32602;
@@ -713,7 +711,6 @@ class MockAcpServer {
         if (abortController?.signal.aborted) {
           throw this.rpcError(REQUEST_CANCELLED_ERROR_CODE, "Request cancelled");
         }
-        await this.delay(STREAM_DELAY_MS);
         this.sendNotification("session/update", {
           sessionId: session.id,
           update: {
@@ -859,7 +856,6 @@ class MockAcpServer {
     session.history.push({ role: "user", text: promptText });
 
     this.sendStatus(session, "busy");
-    await this.delay(STREAM_DELAY_MS);
 
     if (!session.title) {
       session.title = this.generateSessionTitle(promptText);
@@ -900,7 +896,6 @@ class MockAcpServer {
 
     if (promptText.includes("[retry]")) {
       this.sendStatus(session, "retry", 1, "Mock agent retrying after transient issue");
-      await this.delay(STREAM_DELAY_MS);
       this.sendStatus(session, "busy");
     }
 
@@ -1022,7 +1017,6 @@ class MockAcpServer {
 
     const reasoningText = this.buildReasoningText(promptText, session.promptCount);
     for (const chunk of splitIntoChunks(reasoningText, 3)) {
-      await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {
         this.sendStatus(session, "idle");
         return "cancelled";
@@ -1057,7 +1051,6 @@ class MockAcpServer {
       fileReceipt, responseText,
     ].filter(Boolean).join("\n");
     for (const chunk of splitIntoChunks(responseWithImageReceipt, 4)) {
-      await this.delay(promptText.includes("[slow]") ? SLOW_STREAM_DELAY_MS : STREAM_DELAY_MS);
       if (signal.aborted) {
         this.sendStatus(session, "idle");
         return "cancelled";
@@ -1506,10 +1499,6 @@ class MockAcpServer {
     const controller = new AbortController();
     this.requestAbortControllers.set(requestId, controller);
     return controller;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return Bun.sleep(ms).then(() => undefined);
   }
 
   private async waitForVoiceStatusRelease(cwd: string, signal: AbortSignal): Promise<void> {

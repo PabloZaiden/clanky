@@ -8,14 +8,12 @@ import type { ThreadItem } from "./generated/v2/ThreadItem";
 import { HarnessError } from "../harness-errors";
 import { formatHarnessQuestions } from "@/shared/harness-questions";
 import {
-  ProviderImageOutputBudget,
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
-  private readonly imageOutputBudget = new ProviderImageOutputBudget();
 
   constructor(private readonly options: { includeProviderImageFileReference?: boolean } = {}) {}
 
@@ -37,7 +35,6 @@ export class CodexEventTranslator {
     });
     switch (event.method) {
       case "turn/started":
-        this.imageOutputBudget.reset();
         return [wrap({ type: "session.status", sessionId: event.params.threadId, status: "busy" })];
       case "turn/completed":
         if (event.params.turn.status === "failed") return [wrap({
@@ -109,7 +106,6 @@ export class CodexEventTranslator {
         const projection = projectProviderImageOutput(
           item,
           `codex-image:${item.id}`,
-          this.imageOutputBudget,
         );
         const savedPath = item.savedPath;
         if (
@@ -173,7 +169,6 @@ export class CodexEventTranslator {
       : projectProviderImageOutput(
           item,
           `codex-tool:${item.id}`,
-          this.imageOutputBudget,
         );
     return [
       {

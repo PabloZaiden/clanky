@@ -28,7 +28,8 @@ export interface MeshControlRequestOptions {
 
 export interface MeshControlResponseJsonOptions {
   signal?: AbortSignal;
-  maxBytes?: number;
+  /** null explicitly allows an unbounded response, such as a native history page. */
+  maxBytes?: number | null;
 }
 
 function meshControlResponseAborted(): DomainError {
@@ -163,7 +164,7 @@ export async function readMeshControlResponseJson<T>(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  const maxBytes = options.maxBytes ?? MESH_CONTROL_RESPONSE_MAX_BYTES;
+  const maxBytes = options.maxBytes === undefined ? MESH_CONTROL_RESPONSE_MAX_BYTES : options.maxBytes;
   let abortHandler: (() => void) | undefined;
   let cancellation: Promise<void> | undefined;
   const readBody = async (): Promise<string> => {
@@ -175,7 +176,7 @@ export async function readMeshControlResponseJson<T>(
         return `${text}${decoder.decode()}`;
       }
       totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
+      if (maxBytes !== null && totalBytes > maxBytes) {
         await reader.cancel();
         throw new DomainError(
           "mesh_control_response_too_large",

@@ -2,29 +2,12 @@
  * A fresh collector per read keeps history projection separate from live state.
  */
 import type { HarnessEvent } from "@/shared/harness-events";
-import {
-  HARNESS_HISTORY_MAX_BYTES,
-  HARNESS_HISTORY_MAX_EVENTS,
-  HARNESS_HISTORY_MAX_NATIVE_BYTES,
-  HARNESS_HISTORY_MAX_NATIVE_EVENTS,
-  type HarnessHistoryEvent,
-} from "@/shared/harness-history";
+import type { HarnessHistoryEvent } from "@/shared/harness-history";
 import { HarnessError } from "./harness-errors";
 
 export class NativeSessionHistory {
-  private nativeCount = 0;
-  private nativeBytes = 0;
-  private eventBytes = 0;
   private readonly events: HarnessHistoryEvent[] = [];
   private readonly tools = new Map<string, Extract<HarnessEvent, { type: "tool.start" }>>();
-
-  observeNative(value: unknown): void {
-    this.nativeCount++;
-    this.nativeBytes += Buffer.byteLength(JSON.stringify(value));
-    if (this.nativeCount > HARNESS_HISTORY_MAX_NATIVE_EVENTS || this.nativeBytes > HARNESS_HISTORY_MAX_NATIVE_BYTES) {
-      throw new HarnessError("harness_event_gap", "Native history exceeds the recovery limit.");
-    }
-  }
 
   append(event: HarnessEvent): void {
     if (event.scope.kind !== "principal") return;
@@ -35,7 +18,7 @@ export class NativeSessionHistory {
       return;
     }
     if (event.type === "tool.start") {
-      if (!event.toolCallId || this.tools.size >= HARNESS_HISTORY_MAX_NATIVE_EVENTS) {
+      if (!event.toolCallId || this.tools.size >= 100_000) {
         throw new HarnessError("harness_event_gap", "Native history tool identity is unavailable.");
       }
       this.tools.set(event.toolCallId, event);
@@ -66,15 +49,10 @@ export class NativeSessionHistory {
   }
 
   takeEvents(): HarnessHistoryEvent[] {
-    this.eventBytes = 0;
     return this.events.splice(0);
   }
 
   private push(event: HarnessHistoryEvent): void {
-    this.eventBytes += Buffer.byteLength(JSON.stringify(event)) + 1;
-    if (this.events.length >= HARNESS_HISTORY_MAX_EVENTS || this.eventBytes > HARNESS_HISTORY_MAX_BYTES - 256) {
-      throw new HarnessError("harness_event_gap", "Completed native history exceeds the recovery limit.");
-    }
     this.events.push(event);
   }
 }

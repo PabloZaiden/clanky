@@ -6,7 +6,6 @@ import type { OpenCodeEvent, SessionEventDurable } from "@opencode/client";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
 import {
-  ProviderImageOutputBudget,
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
@@ -14,7 +13,6 @@ import {
 export class OpenCodeEventTranslator {
   private readonly messages = new Map<string, Map<number, string>>();
   private readonly tools = new Map<string, string>();
-  private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private lastSequence?: number;
   private readonly childInputs = new Map<string, string>();
 
@@ -52,7 +50,6 @@ export class OpenCodeEventTranslator {
         this.childInputs.delete(event.data.inboxID);
         return [];
       case "session.execution.started":
-        this.imageOutputBudget.reset();
         return [wrap({ type: "session.status", sessionId: event.data.sessionID, status: "busy" })];
       case "session.execution.succeeded":
         return [wrap({ type: "prompt.complete", outcome: "completed" }), wrap({ type: "activity.changed" })];
@@ -70,11 +67,6 @@ export class OpenCodeEventTranslator {
       case "session.text.ended": {
         const events = this.startMessage(event.data.assistantMessageID).map(wrap);
         const parts = this.messages.get(event.data.assistantMessageID)!;
-        const totalLength = [...parts.values()].reduce((total, text) => total + text.length, 0)
-          - (parts.get(event.data.ordinal)?.length ?? 0) + event.data.text.length;
-        if (totalLength > 2 * 1024 * 1024 || parts.size >= 256) {
-          throw new HarnessError("harness_event_gap", "Native message content exceeded the observation limit.");
-        }
         parts.set(event.data.ordinal, event.data.text);
         return events;
       }
@@ -109,7 +101,6 @@ export class OpenCodeEventTranslator {
           ? projectProviderImageOutput(
               output,
               `opencode-tool:${event.data.id}`,
-              this.imageOutputBudget,
             )
           : undefined;
         return [wrap({

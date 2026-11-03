@@ -36,7 +36,6 @@ async function* readOpenCodeHistory<TEvent extends HarnessEvent>(
         synced = true;
         break;
       }
-      history.observeNative(event);
       if (event.durable.aggregateID !== sessionId || event.data.sessionID !== sessionId) {
         throw new HarnessError("harness_session_not_owned", "Native history belongs to a different conversation.");
       }

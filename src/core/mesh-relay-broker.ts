@@ -57,7 +57,6 @@ import {
   MESH_RELAY_CONTROLLER_SOCKET_ROUTES,
   MESH_RELAY_MAX_CONTROL_FRAME_BYTES,
   MESH_RELAY_MAX_HEADER_BYTES,
-  MESH_RELAY_MAX_QUEUED_BYTES,
   MESH_RELAY_MAX_STREAM_FRAME_BYTES,
   MESH_RELAY_PROHIBITED_HEADERS,
   MESH_RELAY_QUERY_ROUTE,
@@ -174,7 +173,6 @@ export const RELAY_MAX_STREAMS_PER_NODE = 32;
 export const RELAY_MAX_TICKETS_PER_NODE = 64;
 export const RELAY_MAX_CONTROL_FRAME_BYTES = MESH_RELAY_MAX_CONTROL_FRAME_BYTES;
 export const RELAY_MAX_DATA_FRAME_BYTES = MESH_RELAY_MAX_STREAM_FRAME_BYTES;
-export const RELAY_MAX_QUEUED_BYTES = MESH_RELAY_MAX_QUEUED_BYTES;
 
 const CONTROL_CLOSE_INVALID = 4400;
 const CONTROL_CLOSE_UNAUTHORIZED = 4401;
@@ -1633,18 +1631,6 @@ export class MeshRelayBroker {
     message: string | Uint8Array,
   ): void {
     const bytes = dataBytes(message);
-    const queuedBytes = socket.getBufferedAmount();
-    if (
-      queuedBytes > RELAY_MAX_QUEUED_BYTES
-      || queuedBytes + bytes > RELAY_MAX_QUEUED_BYTES
-    ) {
-      this.logStreamFailure(stream, "relay_send_byte_limit", {
-        queuedBytes, incomingBytes: bytes, limitBytes: RELAY_MAX_QUEUED_BYTES,
-        destination: socket === stream.initiatorSocket ? "initiator" : "receiver",
-      });
-      this.closeStream(stream.id, 1013, "Relay stream backpressure limit exceeded");
-      return;
-    }
     const status = socket.send(message);
     if (status === 0) {
       this.logStreamFailure(stream, "relay_send_failed", { queuedBytes: socket.getBufferedAmount(), incomingBytes: bytes });
@@ -1849,26 +1835,6 @@ export class MeshRelayBroker {
     frame: MeshRelayServerControlFrame,
   ): void {
     const serialized = JSON.stringify(frame);
-    const incomingBytes = encodedBytes(serialized);
-    const queuedBytes = connection.socket.getBufferedAmount();
-    if (
-      queuedBytes + incomingBytes
-      > RELAY_MAX_QUEUED_BYTES
-    ) {
-      log.warn("Mesh relay control send buffer overflow", {
-        reason: "relay_control_send_byte_limit",
-        connectionId: connection.id,
-        queuedBytes,
-        incomingBytes,
-        limitBytes: RELAY_MAX_QUEUED_BYTES,
-      });
-      this.closeControl(
-        connection.id,
-        CONTROL_CLOSE_CAPACITY,
-        "Relay control backpressure limit exceeded",
-      );
-      return;
-    }
     if (connection.socket.send(serialized) === 0) {
       this.closeControl(connection.id, 1011, "Relay control send failed");
     }

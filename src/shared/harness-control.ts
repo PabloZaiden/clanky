@@ -116,7 +116,7 @@ export interface HarnessInputReceipt {
 export interface HarnessConversationState {
   capabilities?: HarnessCapabilities;
   activeTurnAttachmentBytes?: number;
-  unfinishedMessages?: { nativeId: string; messageIds: string[] };
+  unfinishedMessages?: { nativeId: string; messageIds: string[]; completedTurnMessageIds?: string[] };
   activity?: HarnessActivitySnapshot;
   cleanup?: HarnessCleanupResult;
   gitSafety?: HarnessGitSafety;

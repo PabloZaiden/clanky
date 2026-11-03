@@ -7,13 +7,8 @@ interface ArchitectureRule {
   pattern: RegExp;
 }
 
-interface TestShard {
-  index: number;
-  files: string[];
-}
-
-interface ShardResult {
-  shard: TestShard;
+interface TestResult {
+  file: string;
   exitCode: number;
   output: string;
   elapsedMs: number;
@@ -24,8 +19,6 @@ const testFilePattern = "tests/**/*.test.{ts,tsx,js,jsx}";
 const e2eTestFilePattern = "tests/e2e/**/*.test.{ts,tsx,js,jsx}";
 const e2eSourcePattern = "tests/e2e/**/*.{ts,tsx,js,jsx}";
 const meshTestFile = "tests/e2e/mesh-journey.test.ts";
-const meshAutomaticTestFile = "tests/e2e/mesh-automatic-workspace-journey.test.ts";
-const publicAddressFixtureTestFile = "tests/e2e/workspace-icon-journey.test.ts";
 
 const architectureRules: ArchitectureRule[] = [
   {
@@ -92,18 +85,6 @@ function resolveWorkerCapacity(fileCount: number): number {
   return Math.min(fileCount, Math.max(1, availableParallelism()));
 }
 
-function partitionFiles(files: string[], capacity: number): TestShard[] {
-  const shardCount = Math.min(files.length, capacity);
-  const shards = Array.from({ length: shardCount }, (_, index) => ({
-    index,
-    files: [] as string[],
-  }));
-  for (const [index, file] of files.entries()) {
-    shards[index % shardCount]!.files.push(file);
-  }
-  return shards;
-}
-
 function lineNumberAt(source: string, index: number): number {
   return source.slice(0, index).split("\n").length;
 }
@@ -139,22 +120,9 @@ async function validateTestArchitecture(): Promise<void> {
   }
 }
 
-async function supportsUnprivilegedNetworkNamespaces(): Promise<boolean> {
-  const probe = Bun.spawn({
-    cmd: ["unshare", "--user", "--map-root-user", "--net", "--", "true"],
-    cwd: rootDirectory,
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  return await probe.exited === 0;
-}
-
-async function runTestFiles(
-  files: string[],
-  isolatedPublicAddressFixture: boolean,
-): Promise<{ exitCode: number; output: string }> {
-  const testCommand = [
+async function runFile(file: string): Promise<TestResult> {
+  const startedAt = performance.now();
+  const command = [
     process.execPath,
     "test",
     "--timeout",
@@ -163,7 +131,7 @@ async function runTestFiles(
     "--no-orphans",
     "--max-concurrency",
     "1",
-    ...files,
+    file,
   ];
   const environment: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
@@ -172,63 +140,6 @@ async function runTestFiles(
     }
   }
   environment["CLANKY_LOG_LEVEL"] = process.env["CLANKY_LOG_LEVEL"] ?? "fatal";
-  delete environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"];
-  if (isolatedPublicAddressFixture) {
-    environment["CLANKY_TEST_PUBLIC_IP_FIXTURE"] = "1";
-  }
-  let command = testCommand;
-  if (isolatedPublicAddressFixture) {
-    const uid = process.getuid?.();
-    const gid = process.getgid?.();
-    if (uid === undefined || gid === undefined) {
-      throw new Error("The isolated public-IP fixture requires Linux user and group IDs.");
-    }
-
-    const wrapper = `${rootDirectory}/tests/e2e/support/with-isolated-public-ip.sh`;
-    if (uid === 0) {
-      command = [
-        "unshare",
-        "--net",
-        "--",
-        "sh",
-        wrapper,
-        "0",
-        "0",
-        "--",
-        ...testCommand,
-      ];
-    } else if (await supportsUnprivilegedNetworkNamespaces()) {
-      command = [
-        "unshare",
-        "--user",
-        "--map-root-user",
-        "--net",
-        "--",
-        "sh",
-        wrapper,
-        "0",
-        "0",
-        "--",
-        ...testCommand,
-      ];
-    } else {
-      console.log("Unprivileged network namespaces are disabled; using sudo for the isolated icon fixture.");
-      command = [
-        "sudo",
-        "-n",
-        "--preserve-env=PATH,HOME,TMPDIR,CI,GITHUB_ACTIONS,CLANKY_LOG_LEVEL,CLANKY_TEST_PUBLIC_IP_FIXTURE",
-        "unshare",
-        "--net",
-        "--",
-        "sh",
-        wrapper,
-        String(uid),
-        String(gid),
-        "--",
-        ...testCommand,
-      ];
-    }
-  }
   const processHandle = Bun.spawn({
     cmd: command,
     cwd: rootDirectory,
@@ -242,31 +153,9 @@ async function runTestFiles(
     processHandle.exited,
   ]);
   return {
+    file,
     exitCode,
     output: [stdout, stderr].filter(Boolean).join("\n").trim(),
-  };
-}
-
-async function runShard(shard: TestShard): Promise<ShardResult> {
-  const startedAt = performance.now();
-  const useIsolatedPublicAddressFixture = process.platform === "linux";
-  const isolatedFiles = useIsolatedPublicAddressFixture
-    ? shard.files.filter((file) => file === publicAddressFixtureTestFile)
-    : [];
-  const isolatedFileSet = new Set<string>(isolatedFiles);
-  const regularFiles = shard.files.filter((file) => !isolatedFileSet.has(file));
-  const invocations = [
-    ...(regularFiles.length > 0 ? [{ files: regularFiles, isolated: false }] : []),
-    ...(isolatedFiles.length > 0 ? [{ files: isolatedFiles, isolated: true }] : []),
-  ];
-  const results: Array<{ exitCode: number; output: string }> = [];
-  for (const invocation of invocations) {
-    results.push(await runTestFiles(invocation.files, invocation.isolated));
-  }
-  return {
-    shard,
-    exitCode: results.find((result) => result.exitCode !== 0)?.exitCode ?? 0,
-    output: results.map((result) => result.output).filter(Boolean).join("\n\n"),
     elapsedMs: performance.now() - startedAt,
   };
 }
@@ -275,28 +164,30 @@ async function main(): Promise<void> {
   const mode = parseMode(process.argv[2]);
   await validateTestArchitecture();
   const discovered = await globFiles(e2eTestFilePattern);
-  const meshFiles = new Set([meshTestFile]);
-  if (process.platform === "linux" || process.platform === "darwin") {
-    meshFiles.add(meshAutomaticTestFile);
-  }
   const files = mode === "mesh"
-    ? discovered.filter((file) => meshFiles.has(file))
+    ? discovered.filter((file) => file === meshTestFile)
     : discovered;
   if (files.length === 0) {
     throw new Error(`No E2E tests discovered for mode ${mode}`);
   }
 
   const workerCapacity = resolveWorkerCapacity(files.length);
-  const shards = partitionFiles(files, workerCapacity);
   console.log(
-    `Running ${String(files.length)} E2E file(s) in ${String(shards.length)} shard(s).`,
+    `Running ${String(files.length)} sanity file(s) with ${String(workerCapacity)} worker(s).`,
   );
   const startedAt = performance.now();
-  const results = await Promise.all(shards.map(runShard));
-  for (const result of results.sort((left, right) => left.shard.index - right.shard.index)) {
-    const label = result.shard.files.join(", ");
+  const results: TestResult[] = [];
+  let nextFile = 0;
+  async function runWorker(): Promise<void> {
+    while (nextFile < files.length) {
+      const file = files[nextFile++]!;
+      results.push(await runFile(file));
+    }
+  }
+  await Promise.all(Array.from({ length: workerCapacity }, runWorker));
+  for (const result of results.sort((left, right) => left.file.localeCompare(right.file))) {
     const status = result.exitCode === 0 ? "PASS" : "FAIL";
-    console.log(`\n== ${status}: ${label} (${(result.elapsedMs / 1000).toFixed(1)}s) ==`);
+    console.log(`\n== ${status}: ${result.file} (${(result.elapsedMs / 1000).toFixed(1)}s) ==`);
     if (result.output.length > 0) {
       console.log(result.output);
     }

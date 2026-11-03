@@ -6,7 +6,6 @@ import type { SessionEvent } from "@github/copilot-sdk";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
 import {
-  ProviderImageOutputBudget,
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
@@ -14,7 +13,6 @@ import {
 export class CopilotEventTranslator {
   private readonly messages = new Set<string>();
   private readonly tools = new Map<string, string>();
-  private readonly imageOutputBudget = new ProviderImageOutputBudget();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
   private principalPromptActive = false;
   interrupted = false;
@@ -22,7 +20,6 @@ export class CopilotEventTranslator {
   constructor(private readonly sessionId: string) {}
 
   beginPrompt(): void {
-    this.imageOutputBudget.reset();
     this.principalPromptActive = true;
     this.queryError = undefined;
     this.interrupted = false;
@@ -104,7 +101,6 @@ export class CopilotEventTranslator {
           : projectProviderImageOutput(
               output,
               `copilot-tool:${event.data.toolCallId}`,
-              this.imageOutputBudget,
             );
         return [
           wrap({

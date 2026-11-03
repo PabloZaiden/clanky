@@ -1,13 +1,9 @@
 import { utf8ByteLength } from "@/shared/encoding";
-import { createLogger } from "@pablozaiden/webapp/server";
 import { MESH_RELAY_CONTROL_PATH, MESH_RELAY_STREAM_PATH } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { DomainError } from "../domain/domain-error";
 import type { MeshRelayBroker, MeshRelaySocket } from "./mesh-relay-broker";
 import type { MeshRelayClientSocketFactory } from "./mesh-relay-client-socket";
-import { MESH_RELAY_MAX_QUEUED_BYTES } from "./mesh-relay-policy";
-
-const log = createLogger("core:mesh-local-broker-socket");
 
 // The controller is an in-process broker participant, never a network callback
 // to its own public endpoint. Workers still authenticate over real WSS.
@@ -49,18 +45,6 @@ class LocalBrokerSocket extends EventTarget {
         send: (data) => {
           if (this.readyState !== 1) return 0;
           const size = typeof data === "string" ? utf8ByteLength(data) : data.byteLength;
-          if (this.queuedBytes + size > MESH_RELAY_MAX_QUEUED_BYTES) {
-            log.warn("Local Mesh delivery queue overflow", {
-              reason: "relay_local_delivery_byte_limit",
-              connectionId: this.connectionId,
-              reservationId: this.reservationId,
-              queuedBytes: this.queuedBytes,
-              incomingBytes: size,
-              limitBytes: MESH_RELAY_MAX_QUEUED_BYTES,
-            });
-            this.close(1013, "Local Mesh stream capacity exceeded");
-            return 0;
-          }
           const copy = typeof data === "string" ? data : new Uint8Array(data);
           this.queuedBytes += size;
           queueMicrotask(() => {

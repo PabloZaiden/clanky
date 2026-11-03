@@ -5,9 +5,10 @@ all extensions and MIME types. File paste works when the browser exposes actual
 files; ordinary clipboard text still inserts text. Browsers may not expose
 every operating-system clipboard format.
 
-Limits are unchanged: 20 attachments per message, 20 MiB per file and 60 MiB
-combined per provider turn, including grouped queued input and steering.
-Empty non-image files are supported.
+User-upload limits are unchanged: 20 attachments per message, 20 MiB per file
+and 60 MiB combined per provider turn, including grouped queued input and steering.
+Empty non-image files are supported. These quotas do not apply to
+[provider-generated images](harnesses.md#provider-generated-images).
 
 ## Images in question answers
 
