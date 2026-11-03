@@ -14,6 +14,9 @@ realtime, origin protections, assets, health, and server lifecycle. Do not
 recreate them in Clanky or add app-local CSS/DOM workarounds for generic
 framework behavior.
 
+Keep the [fixed-scale viewport policy](https://github.com/PabloZaiden/webapp/blob/main/docs/server.md#composition)
+in Webapp for integrated/static clients and PWAs, not in Clanky touch handlers.
+
 Clanky owns account identity and roles, permissions, credential persistence,
 API keys, device sessions, OAuth, account/administration screens, CLI, and
 remote-client authorization. Connect those services to the framework's explicit
