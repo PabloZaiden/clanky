@@ -949,7 +949,11 @@ export class ChatConversationService implements ChatConversationPort {
 
   private async consumeNativeEvent(chatId: string, entry: ActiveChatStream, event: AgentEvent, recovered = false): Promise<void> {
     const native = entry.native!;
+    const streamState = entry.streamState!;
     const messageEvent = event.type === "message.start" || event.type === "message.delta" || event.type === "message.complete";
+    const settlingPreviousMessage = !recovered && messageEvent && !native.executing
+      && event.messageId !== undefined && native.unfinishedMessageIds.has(event.messageId);
+    const previousCompletedResponse = streamState.completedResponse;
     if (messageEvent) {
       if (!event.messageId) throw new HarnessError("harness_event_gap", "A native message has no observed identity.");
       if (native.completedMessages.has(event.messageId)) return;
@@ -959,10 +963,9 @@ export class ChatConversationService implements ChatConversationPort {
       });
       await this.selectNativeMessage(chatId, entry, { ...event, messageId: event.messageId }, recovered);
     }
-    const streamState = entry.streamState!;
     if ((event.type === "tool.start" || event.type === "tool.complete")
       && event.toolCallId && native.completedTools.has(event.toolCallId)) return;
-    if (!recovered && event.scope.kind === "principal"
+    if (!recovered && !settlingPreviousMessage && event.scope.kind === "principal"
       && (event.type === "session.status" && event.status !== "idle"
         || event.type === "message.start" || messageEvent && !native.executing)) {
       native.executing = true;
@@ -974,14 +977,30 @@ export class ChatConversationService implements ChatConversationPort {
         });
       }
     }
-    if (event.type === "prompt.complete" && event.outcome === "completed" && native.pendingMessages.size > 0) {
-      throw new HarnessError("harness_event_gap", "Native execution completed with unfinished messages.");
+    if (event.scope.kind === "principal" && event.type === "prompt.complete"
+      && event.outcome === "completed" && native.pendingMessages.size > 0) {
+      for (const interpreter of native.pendingMessages.values()) {
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, interpreter.flushActiveBlocks());
+        interpreter.acknowledgeCheckpoint();
+      }
+      log.warn("Native execution completed with unfinished messages; preserving received content", {
+        chatId, adapter: native.binding.adapter, nativeId: native.binding.nativeId,
+        unfinishedMessageCount: native.pendingMessages.size,
+      });
     }
     if (event.type !== "message.start") {
       await this.handleChatStreamEvent(chatId, native.backend, entry.generation, streamState, event);
     }
     if (event.type === "message.complete") {
       await this.completeNativeMessage(chatId, entry, event, recovered);
+    }
+    if (settlingPreviousMessage) {
+      streamState.completedResponse = previousCompletedResponse;
+      if (streamState.chat.state.activeMessageId) {
+        streamState.chat = await this.updateState(streamState.chat, {
+          ...streamState.chat.state, activeMessageId: undefined,
+        });
+      }
     }
     if (event.type === "request.error") {
       await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
