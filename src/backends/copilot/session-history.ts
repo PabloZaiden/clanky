@@ -26,8 +26,8 @@ async function* readCopilotHistory<TEvent extends HarnessEvent>(
   const assets = new Map<string, Extract<SessionEvent, { type: "session.binary_asset" }>["data"]>();
   const assetCursors = new Set<string>();
   let assetCursor: string | undefined;
-  let assetsComplete = false;
   const readAsset = async (assetId: string) => {
+    let assetsComplete = false;
     while (!assets.has(assetId) && !assetsComplete) {
       const page = await session.rpc.eventLog.read({
         cursor: assetCursor, direction: "forward", includeEphemeral: false,

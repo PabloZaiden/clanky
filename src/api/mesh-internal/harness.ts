@@ -8,7 +8,6 @@ import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";
 import {
   MESH_HARNESS_CHANNEL,
-  MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_HARNESS_MAX_OPERATION_BYTES,
   MESH_HARNESS_MAX_REQUEST_BYTES,
 } from "@/shared/mesh-execution";
@@ -43,7 +42,6 @@ export const meshHarnessRoutes = defineRoutes({
         const maxBytes = controlReply ? 1024 * 1024 + 8192 : MESH_HARNESS_MAX_OPERATION_BYTES;
         if (Buffer.byteLength(JSON.stringify(envelope.payload)) > maxBytes) throw new DomainError("mesh_execution_request_too_large", "The native Mesh harness request exceeds the supported size limit.");
         const result = await meshHarnessGateway.execute(envelope.sessionId, envelope.sessionToken, envelope.payload, req.signal);
-        if (Buffer.byteLength(JSON.stringify(result)) > MESH_EXECUTION_MAX_MESSAGE_BYTES) throw new DomainError("mesh_execution_result_too_large", "The native result exceeds the Mesh limit.");
         return Response.json({
           protocolVersion: envelope.protocolVersion, requestId: envelope.requestId,
           payload: result,

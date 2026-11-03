@@ -282,11 +282,12 @@ change the active turn or make an idle disconnect an interruption. Preserve
 their active text blocks and use bounded checkpoints, flushing all dirty
 messages before observation closes or a recoverable deletion.
 
-Native output does not inherit composer upload quotas or fixed event/message
-byte ceilings. Provider images use validated attachments, not duplicated
+Native output and history responses do not inherit composer upload quotas or
+fixed byte ceilings. Provider images use validated attachments, not duplicated
 Base64 tool output; Copilot's persisted binary references resolve through its
-owned event log during recovery. History batching targets create continuations
-rather than rejecting an otherwise valid large result. Preserve identity,
+owned event log during recovery. Asset reads can resume after the current end
+when later pages reference newly appended assets. History batching targets
+create continuations rather than rejecting an otherwise valid large result. Preserve identity,
 sequence, MIME/Base64, ownership and interruption checks independently of size.
 Shared execution event queues and relay accumulation have no default hard
 capacity; consumption-driven transport backpressure still waits for the reader.
