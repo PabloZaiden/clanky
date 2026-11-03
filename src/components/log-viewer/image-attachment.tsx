@@ -30,25 +30,32 @@ export function ImageAttachment({ attachment }: { attachment: TranscriptAttachme
   useEffect(() => {
     if (requested !== identity || !identity.ready || identity.error) return;
     const controller = new AbortController();
-    let loaded: Pick<WebAppResourceUrl, "url" | "dispose"> | undefined;
+    let loaded: WebAppResourceUrl | undefined;
+    let objectUrl: string | undefined;
     setError(null);
     void (async () => {
       try {
-        loaded = identity.isReference
-          ? await appResourceUrl(identity.src, "resource", { signal: controller.signal })
-          : { url: identity.src };
-        if (controller.signal.aborted) {
-          loaded.dispose?.();
-          return;
+        let url = identity.src;
+        if (identity.isReference) {
+          loaded = await appResourceUrl(identity.src, "resource", { signal: controller.signal });
+          if (controller.signal.aborted) return;
+          const response = await fetch(loaded.url, { signal: controller.signal });
+          if (!response.ok) throw new Error(`Could not load image (HTTP ${response.status}).`);
+          const blob = await response.blob();
+          if (controller.signal.aborted) return;
+          objectUrl = URL.createObjectURL(blob);
+          url = objectUrl;
         }
-        setResource({ identity, retry, url: loaded.url });
+        setResource({ identity, retry, url });
       } catch (loadError) {
         if (!controller.signal.aborted) setError({ identity, message: String(loadError) });
+      } finally {
+        loaded?.dispose?.();
       }
     })();
     return () => {
       controller.abort();
-      loaded?.dispose?.();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [identity, requested, retry]);
 

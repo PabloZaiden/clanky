@@ -39,7 +39,7 @@ import type {
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 import type { Backend } from "../backends/types";
-import { includeLiveTranscript } from "./transcript-service";
+import { includeLiveTranscript, withLiveToolCallRevision } from "./transcript-service";
 import type { ReplyToChatQuestionRequest } from "@/contracts/api";
 
 export type {
@@ -268,8 +268,8 @@ export class ChatManager {
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
     if (!await this.services.state.getChatSummary(chatId)) return null;
-    return this.services.conversation.getLiveTranscript(chatId)?.toolCalls.find((tool) => tool.id === toolCallId)
-      ?? this.services.state.getChatToolCall(chatId, toolCallId);
+    const tool = this.services.conversation.getLiveTranscript(chatId)?.toolCalls.find((tool) => tool.id === toolCallId);
+    return tool ? withLiveToolCallRevision(tool) : this.services.state.getChatToolCall(chatId, toolCallId);
   }
 
   async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {

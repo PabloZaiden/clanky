@@ -8,7 +8,7 @@ import type {
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import { taskTranscriptStore } from "../persistence/transcripts/task-store";
 import { loadTaskSummary } from "../persistence/tasks";
-import { createTranscriptFromStoragePage, includeLiveTranscript } from "./transcript-service";
+import { createTranscriptFromStoragePage, includeLiveTranscript, withLiveToolCallRevision } from "./transcript-service";
 import { taskManager } from "./task";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { isPersistedMessage } from "../persistence/transcripts/codec";
@@ -92,6 +92,6 @@ export async function getTaskTranscriptToolCall(
   if (!taskTranscriptStore.getMeta(taskId)) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
-  return taskManager.getLiveTranscript(taskId)?.toolCalls.find((tool) => tool.id === toolCallId)
-    ?? taskTranscriptStore.getToolCall(taskId, toolCallId);
+  const tool = taskManager.getLiveTranscript(taskId)?.toolCalls.find((tool) => tool.id === toolCallId);
+  return tool ? withLiveToolCallRevision(tool) : taskTranscriptStore.getToolCall(taskId, toolCallId);
 }

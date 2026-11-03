@@ -60,21 +60,21 @@ export function createSubagentRoutes(kind: "chat" | "task") {
             }, { headers });
         } catch (error) { return failure(error); }
       },
-      [`${base}/:subagentId/messages/:messageId/attachments/:attachmentId`]: {
-        ...common,
-        description: "Read one original image attachment from an owned saved subagent.",
-        operations: { GET: {
-          requestSchema: undefined, querySchema: undefined,
-          automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }),
-        } },
-        async GET(req: Request, ctx: RouteContext) {
-          try {
-            return transcriptImageResponse(req, await getTranscriptImage(
-              { kind: "subagent", id: ctx.params["subagentId"]!, parent: context(ctx) },
-              ctx.params["messageId"]!, ctx.params["attachmentId"]!,
-            ));
-          } catch (error) { return failure(error); }
-        },
+    },
+    [`${base}/:subagentId/messages/:messageId/attachments/:attachmentId`]: {
+      ...common,
+      description: "Read one original image attachment from an owned saved subagent.",
+      operations: { GET: {
+        requestSchema: undefined, querySchema: undefined,
+        automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }),
+      } },
+      async GET(req: Request, ctx: RouteContext) {
+        try {
+          return transcriptImageResponse(req, await getTranscriptImage(
+            { kind: "subagent", id: ctx.params["subagentId"]!, parent: context(ctx) },
+            ctx.params["messageId"]!, ctx.params["attachmentId"]!,
+          ));
+        } catch (error) { return failure(error); }
       },
     },
     [`${base}/:subagentId/tool-calls/:toolCallId`]: {

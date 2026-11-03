@@ -25,6 +25,7 @@ import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import type { SubagentEvent } from "@/shared/subagent";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
+import { withLiveToolCallRevision } from "./core/transcript-service";
 import type {
   RealtimeBus,
   RealtimeAction,
@@ -245,7 +246,7 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         { taskId: event.taskId },
       );
@@ -315,7 +316,7 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         { chatId: event.chatId },
       );
@@ -366,7 +367,7 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         {
           agentId: event.agentId,

@@ -248,6 +248,9 @@ Image-preview additions use ordinary versioned tool-call updates with lightweigh
 summaries; original image bytes remain behind the lazy detail/image reads.
 Snapshot ETags distinguish the image-reference representation, so an upgrade
 does not reuse cached snapshots containing inline image bytes.
+Live tool summaries and lazy details share a content revision, including tools
+in older pages; those pages retain their historical window and are not new
+live baselines.
 Terminal, preview and Mesh sockets remain separate raw transports.
 
 ## Compact reads and literal conversations
