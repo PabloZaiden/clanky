@@ -113,7 +113,6 @@ export class AcpEventTranslator {
         const imageProjection = projectProviderImageOutput(
           block,
           `acp-message:${sessionId}:${crypto.randomUUID()}:${String(index)}`,
-          this.state.getProviderImageOutputBudget(sessionId),
         );
         const includesImageMessage = imageProjection.events.some(
           (payload) => payload.type === "message.start",
@@ -234,7 +233,6 @@ export class AcpEventTranslator {
           : projectProviderImageOutput(
               output,
               `acp-tool:${sessionId}:${toolCallId ?? crypto.randomUUID()}`,
-              this.state.getProviderImageOutputBudget(sessionId),
             );
         this.state.emitSessionEvent(sessionId, {
           type: "tool.complete",

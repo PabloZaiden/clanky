@@ -18,7 +18,6 @@ async function* projectTurn<TEvent extends HarnessEvent>(options: {
   activityId?: string;
 }): AsyncGenerator<TEvent[]> {
   const { history, rpc, threadId, turn } = options;
-  history.observeNative({ ...turn, items: undefined });
   const translator = new CodexEventTranslator();
   const native = { adapter: "codex" as const, conversationId: threadId, turnId: turn.id };
   const scope: HarnessEventScope = options.activityId
@@ -27,15 +26,14 @@ async function* projectTurn<TEvent extends HarnessEvent>(options: {
   const nativeTimestamp = turn.completedAt ?? turn.startedAt;
   let cursor: string | undefined;
   const seen = new Set<string>();
-  for (let page = 0; ; page++) {
-    if (page >= 1000) throw new HarnessError("harness_event_gap", "Native item history exceeds the pagination limit.");
+  const cursors = new Set<string>();
+  for (;;) {
     const result = await rpc.request("thread/items/list", {
       threadId, turnId: turn.id, cursor, limit: 100, sortDirection: "asc",
     });
     for (const entry of result.data) {
       if (entry.turnId !== turn.id) throw new HarnessError("harness_event_gap", "Native item history belongs to a different turn.");
       const item = entry.item;
-      history.observeNative(item);
       if (seen.has(item.id)) throw new HarnessError("harness_event_gap", "Native item history pages overlap.");
       seen.add(item.id);
       if (item.type === "contextCompaction") {
@@ -54,7 +52,8 @@ async function* projectTurn<TEvent extends HarnessEvent>(options: {
       if (events.length) yield events;
     }
     if (!result.nextCursor) break;
-    if (cursor === result.nextCursor) throw new HarnessError("harness_event_gap", "Native item pagination made no progress.");
+    if (cursors.has(result.nextCursor)) throw new HarnessError("harness_event_gap", "Native item pagination made no progress.");
+    cursors.add(result.nextCursor);
     cursor = result.nextCursor;
   }
 }
@@ -75,8 +74,8 @@ async function* readCodexHistory<TEvent extends HarnessEvent>(
   if (initial.thread.historyMode === "paginated" || initial.thread.historyMode === "legacy") {
     let cursor: string | undefined;
     const seen = new Set<string>();
-    for (let page = 0; ; page++) {
-      if (page >= 1000) throw new HarnessError("harness_event_gap", "Native history exceeds the pagination limit.");
+    const cursors = new Set<string>();
+    for (;;) {
       const result = await rpc.request("thread/turns/list", {
         threadId, cursor, limit: 50, sortDirection: "asc", itemsView: "notLoaded",
       });
@@ -86,7 +85,8 @@ async function* readCodexHistory<TEvent extends HarnessEvent>(
         yield* projectTurn({ history, rpc, threadId, turn, activityId });
       }
       if (!result.nextCursor) break;
-      if (cursor === result.nextCursor) throw new HarnessError("harness_event_gap", "Native history pagination made no progress.");
+      if (cursors.has(result.nextCursor)) throw new HarnessError("harness_event_gap", "Native history pagination made no progress.");
+      cursors.add(result.nextCursor);
       cursor = result.nextCursor;
     }
   } else {

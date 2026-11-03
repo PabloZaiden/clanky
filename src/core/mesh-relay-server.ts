@@ -40,7 +40,6 @@ import { isSecureMeshRequest } from "./mesh-transport-security";
 import {
   MeshRelayBroker,
   RELAY_MAX_DATA_FRAME_BYTES,
-  RELAY_MAX_QUEUED_BYTES,
   type MeshRelaySocket,
 } from "./mesh-relay-broker";
 import {
@@ -194,8 +193,6 @@ export function createRelayWebSocketHandler(
 ): Partial<WebSocketHandler<WebAppWebSocketData>> {
   return {
     maxPayloadLength: RELAY_MAX_DATA_FRAME_BYTES,
-    backpressureLimit: RELAY_MAX_QUEUED_BYTES,
-    closeOnBackpressureLimit: true,
     idleTimeout: 60,
     open(rawSocket): void {
       const socket = rawSocket as ServerWebSocket<MeshRelayWebSocketData>;
@@ -420,6 +417,9 @@ export async function createRelayServer(
       envPrefix: "CLANKY",
       appDirectoryName: ".clanky",
       runtimeConfig,
+      server: {
+        websocket: { backpressureLimit: 0, closeOnBackpressureLimit: false },
+      },
       web: false,
       version: options.version ?? CLANKY_VERSION,
       request: req => relayRequestFilter(req) ? undefined : notFound(),

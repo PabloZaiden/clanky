@@ -637,7 +637,10 @@ export async function getWebAppServer(
     appDirectoryName: ".clanky",
     web: meshWorker ? false : { ...CLANKY_WEB_OPTIONS, mode: apiOnly ? "auth" : "app" },
     ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
-    ...(workerTls ? { server: { tls: workerTls } } : {}),
+    server: {
+      ...(workerTls ? { tls: workerTls } : {}),
+      websocket: { backpressureLimit: 0, closeOnBackpressureLimit: false },
+    },
     version: CLANKY_VERSION,
     store,
     auth: meshWorker

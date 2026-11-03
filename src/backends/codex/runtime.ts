@@ -4,10 +4,7 @@
 
 import { HarnessError } from "../harness-errors";
 import { CodexRpcSession } from "./rpc-session";
-import { MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES } from "@/shared/message-attachments";
 import { version } from "../../../package.json";
-
-const MAX_FRAME_BYTES = MESSAGE_ATTACHMENT_MAX_PROMPT_BYTES;
 
 export class CodexRuntime {
   readonly rpc: CodexRpcSession;
@@ -95,7 +92,6 @@ export class CodexRuntime {
           const end = chunk.indexOf(10, start);
           const part = chunk.subarray(start, end === -1 ? chunk.byteLength : end);
           bytes += part.byteLength;
-          if (bytes > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "Codex exceeded its protocol frame limit.");
           if (end === -1) {
             parts.push(part);
             break;

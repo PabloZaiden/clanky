@@ -292,9 +292,10 @@ deletion removes them. They are not standalone chats or sidebar entries.
 Copilot, Codex and OpenCode 2 expose child history through their public native
 APIs; compatible Mesh workers support the same capture. Instructions and
 reasoning are retained only when exposed, not reconstructed from delegation
-summaries or hidden context. Recovery is bounded and reconciles stable native
-identities with already saved content. **Partial history** means some content
-is unfinished, missing or beyond those recovery limits. Disconnected
+summaries or hidden context. Recovery is paginated and reconciles stable native
+identities with already saved content. Large messages do not invalidate recovery
+or have to fit a page's batching target. **Partial history** means some content
+is unfinished, missing or unavailable from the provider. Disconnected
 observation is separate from execution status and does not imply completion.
 Missing native start boundaries or omitted generated images keep coverage
 partial. Transient recovery failures retry with bounded backoff while the
@@ -450,15 +451,24 @@ Codex image-generation results and inline image blocks returned by providers are
 shown as separate assistant messages with image attachments. The image bytes
 are removed from tool output, so an image is not represented by a tool-call row.
 Clanky validates the actual image bytes against the existing PNG, JPEG, WebP and
-GIF allowlist and the 20 MiB per-image and 60 MiB per-turn attachment limits.
-Unsupported, malformed or oversized images are omitted with a warning while the
-provider's text response continues. Mesh normally forwards the validated inline
-image. If a Codex image exceeds Mesh's 2 MiB event limit, Clanky reloads the
-matching `savedPath` through the selected execution host and validates the file
-before attaching it to chat. If that path is unavailable or does not match the
-validated image metadata, the image is omitted with a warning; other events and
-the text response continue normally. Mesh providers without a supported file
-reference retain the omission warning when an image exceeds the event limit.
+GIF allowlist, including Base64 integrity and decoded size. Generated output
+does not inherit user-upload byte, image-count or per-turn quotas. Unsupported
+or malformed images are omitted with a warning while the provider's text
+response continues.
+
+Copilot tool images in `binaryResultsForLlm` use this same image pipeline.
+Native recovery resolves durable image references through Copilot's own binary
+event log rather than losing the image or retaining its Base64 in tool output.
+Local and Mesh output have no fixed event-size ceiling. Mesh sends large
+images/results across the existing transport fragments and flow-control window;
+a fragment limit is not a result-size limit. Existing execution-host image-file
+references are still validated against the returned file's metadata and bytes.
+Update both controller and worker to remove their former event/image ceilings.
+
+Event/relay accumulation has no default count or byte ceiling. Waiting
+backpressure remains, but very large output or a producer that consistently
+outpaces its consumer can exhaust available memory; removal of these caps does
+not provide unlimited physical capacity.
 
 Open an image attachment to preview it, then tap or click the image in the dialog
 to open the full image alone in a new browser tab. Clanky preserves the image

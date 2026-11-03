@@ -263,7 +263,7 @@ questions and permissions retain their origin.
 
 Identified native subagent content has its own durable child resource, never
 a synthetic Chat row. The existing session-lived Activity observer owns capture
-and bounded native-history recovery; browser subscriptions do not own it.
+and paginated native-history recovery; browser subscriptions do not own it.
 Child reads authorize the visible parent and use the shared transcript SQL,
 pagination, lazy tools and versioned realtime. Parent principal filters remain
 intact. Child records cascade on final parent deletion and remain hidden in
@@ -281,6 +281,19 @@ from current-turn work, including after recovery: their late content cannot
 change the active turn or make an idle disconnect an interruption. Preserve
 their active text blocks and use bounded checkpoints, flushing all dirty
 messages before observation closes or a recoverable deletion.
+
+Native output and history responses do not inherit composer upload quotas or
+fixed byte ceilings. Provider images use validated attachments, not duplicated
+Base64 tool output; Copilot's persisted binary references resolve through its
+owned event log during recovery. Asset reads can resume after the current end
+when later pages reference newly appended assets. History batching targets
+create continuations rather than rejecting an otherwise valid large result. Preserve identity,
+sequence, MIME/Base64, ownership and interruption checks independently of size.
+Shared execution event queues and relay accumulation have no default hard
+capacity; consumption-driven transport backpressure still waits for the reader.
+This intentionally permits memory growth when output exceeds consumption, so
+do not describe the absence of arbitrary caps as immunity to memory exhaustion.
+
 Tasks depend on the generic backend contract, not an ACP class.
 Shutdown records interruption before transport cleanup; interrupted planning
 must remain recoverable, while provider exits outside shutdown remain failures.

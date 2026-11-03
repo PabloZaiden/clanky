@@ -2,20 +2,11 @@ import { createHash } from "node:crypto";
 import type { HarnessEventPayload } from "@/shared/harness-events";
 import {
   getBase64DecodedByteLength,
-  MESSAGE_ATTACHMENT_LIMIT,
-  MESSAGE_ATTACHMENT_MAX_BYTES,
-  MESSAGE_ATTACHMENT_MAX_TURN_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
   type MessageAttachment,
 } from "@/shared/message-attachments";
 import { detectBrowserImageMimeType } from "../utils/workspace-file-images";
 
-const MAX_IMAGE_CANDIDATES = 32;
-const MAX_OUTPUT_DEPTH = 16;
-const MAX_OUTPUT_NODES = 2_048;
-const MAX_IMAGE_BASE64_LENGTH = Math.ceil(MESSAGE_ATTACHMENT_MAX_BYTES / 3) * 4;
-const MAX_IMAGE_BASE64_WHITESPACE_LENGTH = 1024 * 1024;
-const MAX_IMAGE_DATA_URI_HEADER_LENGTH = 128;
 const IMAGE_MIME_TYPES: readonly string[] = MESSAGE_IMAGE_ALLOWED_MIME_TYPES;
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const OMIT_IMAGE_PAYLOAD = Symbol("omit-image-payload");
@@ -27,13 +18,6 @@ type ImageCandidate = {
 type CandidateCollection = {
   candidates: ImageCandidate[];
   rejectedImageCount: number;
-  truncated: boolean;
-  nodeCount: number;
-  seen: WeakSet<object>;
-};
-
-type SanitizationState = {
-  nodeCount: number;
   seen: WeakSet<object>;
 };
 
@@ -41,37 +25,6 @@ export interface ProviderImageOutputProjection {
   output: unknown;
   events: HarnessEventPayload[];
   rejectedImageCount: number;
-}
-
-export class ProviderImageOutputBudget {
-  private attachmentCount = 0;
-  private totalBytes = 0;
-
-  reset(): void {
-    this.attachmentCount = 0;
-    this.totalBytes = 0;
-  }
-
-  get hasCapacity(): boolean {
-    return this.attachmentCount < MESSAGE_ATTACHMENT_LIMIT
-      && this.totalBytes < MESSAGE_ATTACHMENT_MAX_TURN_BYTES;
-  }
-
-  get remainingBytes(): number {
-    return MESSAGE_ATTACHMENT_MAX_TURN_BYTES - this.totalBytes;
-  }
-
-  consume(size: number): boolean {
-    if (
-      this.attachmentCount >= MESSAGE_ATTACHMENT_LIMIT
-      || size > this.remainingBytes
-    ) {
-      return false;
-    }
-    this.attachmentCount += 1;
-    this.totalBytes += size;
-    return true;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,192 +80,132 @@ function addImageCandidate(
   candidate: ImageCandidate,
   collection: CandidateCollection,
 ): void {
-  if (collection.candidates.length >= MAX_IMAGE_CANDIDATES) {
-    collection.truncated = true;
-    return;
-  }
   collection.candidates.push(candidate);
 }
 
 function collectImageCandidates(
   value: unknown,
   collection: CandidateCollection,
-  depth = 0,
 ): void {
-  if (collection.nodeCount >= MAX_OUTPUT_NODES || depth > MAX_OUTPUT_DEPTH) {
-    collection.truncated = true;
-    return;
-  }
-  collection.nodeCount += 1;
-
-  if (typeof value === "string") {
-    if (isInlineImageDataUri(value)) {
-      addImageCandidate({ data: value }, collection);
+  const pending = [value];
+  while (pending.length) {
+    const current = pending.pop();
+    if (typeof current === "string") {
+      if (isInlineImageDataUri(current)) addImageCandidate({ data: current }, collection);
+      continue;
     }
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (collection.nodeCount >= MAX_OUTPUT_NODES) {
-        collection.truncated = true;
-        break;
-      }
-      collectImageCandidates(entry, collection, depth + 1);
+    if (current === null || typeof current !== "object" || collection.seen.has(current)) continue;
+    collection.seen.add(current);
+    if (Array.isArray(current)) {
+      for (let index = current.length - 1; index >= 0; index--) pending.push(current[index]);
+      continue;
     }
-    return;
-  }
+    if (!isRecord(current)) continue;
 
-  if (!isRecord(value) || collection.seen.has(value)) {
-    return;
-  }
-  collection.seen.add(value);
-
-  const type = typeof value["type"] === "string" ? value["type"].toLowerCase() : "";
-  if (type === "image" || type === "image_url" || type === "inputimage") {
-    const imageUrl = isRecord(value["image_url"]) ? value["image_url"] : undefined;
-    const data = typeof value["data"] === "string"
-      ? value["data"]
-      : typeof value["url"] === "string" && isInlineImageDataUri(value["url"])
-        ? value["url"]
-        : typeof imageUrl?.["url"] === "string" && isInlineImageDataUri(imageUrl["url"])
-          ? imageUrl["url"]
-          : typeof value["imageUrl"] === "string" && isInlineImageDataUri(value["imageUrl"])
-            ? value["imageUrl"]
-            : undefined;
-    if (data !== undefined) {
-      addImageCandidate({ data }, collection);
-    } else {
-      collection.rejectedImageCount += 1;
+    const type = typeof current["type"] === "string" ? current["type"].toLowerCase() : "";
+    if (type === "image" || type === "image_url" || type === "inputimage") {
+      const imageUrl = isRecord(current["image_url"]) ? current["image_url"] : undefined;
+      const data = typeof current["data"] === "string"
+        ? current["data"]
+        : typeof current["url"] === "string" && isInlineImageDataUri(current["url"])
+          ? current["url"]
+          : typeof imageUrl?.["url"] === "string" && isInlineImageDataUri(imageUrl["url"])
+            ? imageUrl["url"]
+            : typeof current["imageUrl"] === "string" && isInlineImageDataUri(current["imageUrl"])
+              ? current["imageUrl"]
+              : undefined;
+      if (data !== undefined) addImageCandidate({ data }, collection);
+      else collection.rejectedImageCount += 1;
+      continue;
     }
-    return;
-  }
-
-  if (type === "imagegeneration" || type === "image_generation_call" || type === "output_image") {
-    const data = typeof value["result"] === "string"
-      ? value["result"]
-      : typeof value["data"] === "string"
-        ? value["data"]
-        : undefined;
-    if (data !== undefined) {
-      addImageCandidate({ data }, collection);
-    } else {
-      collection.rejectedImageCount += 1;
+    if (type === "imagegeneration" || type === "image_generation_call" || type === "output_image") {
+      const data = typeof current["result"] === "string"
+        ? current["result"]
+        : typeof current["data"] === "string" ? current["data"] : undefined;
+      if (data !== undefined) addImageCandidate({ data }, collection);
+      else collection.rejectedImageCount += 1;
+      continue;
     }
-    return;
-  }
-
-  if (
-    typeof value["data"] === "string"
-    && (isImageMimeType(value["mimeType"]) || isInlineImageDataUri(value["data"]))
-  ) {
-    addImageCandidate({ data: value["data"] }, collection);
-    return;
-  }
-
-  if (isImageMimeType(value["mimeType"]) && typeof value["url"] === "string") {
-    if (isInlineImageDataUri(value["url"])) {
-      addImageCandidate({ data: value["url"] }, collection);
-    } else {
-      collection.rejectedImageCount += 1;
+    if (typeof current["data"] === "string"
+      && (isImageMimeType(current["mimeType"]) || isInlineImageDataUri(current["data"]))) {
+      addImageCandidate({ data: current["data"] }, collection);
+      continue;
     }
-    return;
-  }
-
-  if (
-    isImageMimeType(value["mimeType"])
-    && isRecord(value["image_url"])
-    && typeof value["image_url"]["url"] === "string"
-  ) {
-    const url = value["image_url"]["url"];
-    if (isInlineImageDataUri(url)) {
-      addImageCandidate({ data: url }, collection);
-    } else {
-      collection.rejectedImageCount += 1;
+    const imageUrl = isRecord(current["image_url"]) ? current["image_url"]["url"] : undefined;
+    const url = typeof current["url"] === "string" ? current["url"] : imageUrl;
+    if (isImageMimeType(current["mimeType"]) && typeof url === "string") {
+      if (isInlineImageDataUri(url)) addImageCandidate({ data: url }, collection);
+      else collection.rejectedImageCount += 1;
+      continue;
     }
-    return;
-  }
-
-  for (const key of [
-    "attachments",
-    "content",
-    "contentItems",
-    "images",
-    "items",
-    "output",
-    "parts",
-    "result",
-    "toolOutput",
-    "update",
-  ]) {
-    if (key in value) {
-      collectImageCandidates(value[key], collection, depth + 1);
+    const keys = [
+      "attachments", "content", "contents", "contentItems", "binaryResultsForLlm",
+      "images", "items", "output", "parts", "result", "toolOutput", "update",
+    ];
+    for (let index = keys.length - 1; index >= 0; index--) {
+      const key = keys[index]!;
+      if (key in current) pending.push(current[key]);
     }
   }
 }
 
-function sanitizeImagePayloads(
-  value: unknown,
-  state: SanitizationState,
-  depth = 0,
-): unknown | typeof OMIT_IMAGE_PAYLOAD {
-  if (state.nodeCount >= MAX_OUTPUT_NODES || depth > MAX_OUTPUT_DEPTH) {
-    return OMIT_IMAGE_PAYLOAD;
-  }
-  state.nodeCount += 1;
-  if (typeof value === "string") {
-    return isInlineImageDataUri(value) ? OMIT_IMAGE_PAYLOAD : value;
-  }
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-  if (state.seen.has(value)) {
-    return OMIT_IMAGE_PAYLOAD;
-  }
-  state.seen.add(value);
-
-  if (isRecord(value) && isImagePayloadRecord(value)) {
-    return OMIT_IMAGE_PAYLOAD;
-  }
-  if (Array.isArray(value)) {
-    const sanitized: unknown[] = [];
-    for (const entry of value) {
-      if (state.nodeCount >= MAX_OUTPUT_NODES) {
-        break;
+function sanitizeImagePayloads(value: unknown): unknown | typeof OMIT_IMAGE_PAYLOAD {
+  type Sanitized = unknown | typeof OMIT_IMAGE_PAYLOAD;
+  type Job = { value: unknown; write: (result: Sanitized) => void } | { finish: () => void };
+  let result: Sanitized = OMIT_IMAGE_PAYLOAD;
+  const pending: Job[] = [{ value, write: (value) => { result = value; } }];
+  const seen = new WeakSet<object>();
+  while (pending.length) {
+    const job = pending.pop()!;
+    if ("finish" in job) {
+      job.finish();
+      continue;
+    }
+    const current = job.value;
+    if (typeof current === "string") {
+      job.write(isInlineImageDataUri(current) ? OMIT_IMAGE_PAYLOAD : current);
+      continue;
+    }
+    if (current === null || typeof current !== "object") {
+      job.write(current);
+      continue;
+    }
+    if (seen.has(current) || (isRecord(current) && isImagePayloadRecord(current))) {
+      job.write(OMIT_IMAGE_PAYLOAD);
+      continue;
+    }
+    seen.add(current);
+    if (Array.isArray(current)) {
+      const sanitized: unknown[] = [];
+      pending.push({ finish: () => job.write(sanitized) });
+      for (let index = current.length - 1; index >= 0; index--) {
+        pending.push({ value: current[index], write: (value) => {
+          if (value !== OMIT_IMAGE_PAYLOAD) sanitized.push(value);
+        } });
       }
-      const sanitizedEntry = sanitizeImagePayloads(entry, state, depth + 1);
-      if (sanitizedEntry !== OMIT_IMAGE_PAYLOAD) {
-        sanitized.push(sanitizedEntry);
-      }
+      continue;
     }
-    return sanitized;
-  }
-
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (state.nodeCount >= MAX_OUTPUT_NODES) {
-      break;
-    }
-    const sanitizedChild = sanitizeImagePayloads(child, state, depth + 1);
-    if (sanitizedChild !== OMIT_IMAGE_PAYLOAD) {
-      sanitized[key] = sanitizedChild;
+    const sanitized: Record<string, unknown> = {};
+    pending.push({ finish: () => {
+      const keys = Object.keys(sanitized);
+      job.write(keys.length === 0 || (sanitized["type"] === "content" && keys.length === 1)
+        ? OMIT_IMAGE_PAYLOAD : sanitized);
+    } });
+    const entries = Object.entries(current);
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const [key, child] = entries[index]!;
+      pending.push({ value: child, write: (value) => {
+        if (value !== OMIT_IMAGE_PAYLOAD) sanitized[key] = value;
+      } });
     }
   }
-  if (
-    Object.keys(sanitized).length === 0
-    || (sanitized["type"] === "content" && Object.keys(sanitized).length === 1)
-  ) {
-    return OMIT_IMAGE_PAYLOAD;
-  }
-  return sanitized;
+  return result;
 }
 
 export function redactProviderImagePayloads(value: unknown): unknown {
   const collection: CandidateCollection = {
     candidates: [],
     rejectedImageCount: 0,
-    truncated: false,
-    nodeCount: 0,
     seen: new WeakSet(),
   };
   collectImageCandidates(value, collection);
@@ -323,7 +216,7 @@ export function redactProviderImagePayloads(value: unknown): unknown {
 }
 
 function redactCollectedProviderImagePayloads(value: unknown): unknown {
-  const sanitized = sanitizeImagePayloads(value, { nodeCount: 0, seen: new WeakSet() });
+  const sanitized = sanitizeImagePayloads(value);
   return sanitized === OMIT_IMAGE_PAYLOAD ? null : sanitized;
 }
 
@@ -341,25 +234,12 @@ function decodeImageAttachment(
   candidate: ImageCandidate,
   sourceId: string,
   candidateIndex: number,
-  remainingTurnBytes: number,
 ): MessageAttachment | null {
-  if (
-    candidate.data.length
-    > MAX_IMAGE_BASE64_LENGTH
-      + MAX_IMAGE_BASE64_WHITESPACE_LENGTH
-      + MAX_IMAGE_DATA_URI_HEADER_LENGTH
-  ) {
-    return null;
-  }
   const inlineData = parseInlineImageDataUri(candidate.data);
   const rawBase64 = inlineData?.data ?? candidate.data;
-  if (rawBase64.length > MAX_IMAGE_BASE64_LENGTH + MAX_IMAGE_BASE64_WHITESPACE_LENGTH) {
-    return null;
-  }
   const base64 = rawBase64.replace(/\s/g, "");
   if (
     base64.length === 0
-    || base64.length > MAX_IMAGE_BASE64_LENGTH
     || base64.length % 4 === 1
     || (base64.includes("=") && base64.length % 4 !== 0)
     || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)
@@ -381,11 +261,7 @@ function decodeImageAttachment(
   }
 
   const size = getBase64DecodedByteLength(base64);
-  if (
-    size === 0
-    || size > MESSAGE_ATTACHMENT_MAX_BYTES
-    || size > remainingTurnBytes
-  ) {
+  if (size === 0) {
     return null;
   }
 
@@ -414,8 +290,8 @@ function buildOmissionWarning(count: number): HarnessEventPayload {
     ? "A provider-generated image was"
     : `${String(count)} provider-generated images were`;
   const reason = count === 1
-    ? "its format or size is unsupported"
-    : "their format or size is unsupported";
+    ? "its format is unsupported"
+    : "their format is unsupported";
   return {
     type: "request.error",
     code: "provider_image_omitted",
@@ -426,30 +302,22 @@ function buildOmissionWarning(count: number): HarnessEventPayload {
 export function projectProviderImageOutput(
   value: unknown,
   sourceId: string,
-  budget: ProviderImageOutputBudget,
 ): ProviderImageOutputProjection {
   const collection: CandidateCollection = {
     candidates: [],
     rejectedImageCount: 0,
-    truncated: false,
-    nodeCount: 0,
     seen: new WeakSet(),
   };
   collectImageCandidates(value, collection);
 
   const events: HarnessEventPayload[] = [];
   for (const [candidateIndex, candidate] of collection.candidates.entries()) {
-    if (!budget.hasCapacity) {
-      collection.rejectedImageCount += 1;
-      continue;
-    }
     const attachment = decodeImageAttachment(
       candidate,
       sourceId,
       candidateIndex,
-      budget.remainingBytes,
     );
-    if (!attachment || !budget.consume(attachment.size)) {
+    if (!attachment) {
       collection.rejectedImageCount += 1;
       continue;
     }
@@ -466,13 +334,6 @@ export function projectProviderImageOutput(
       attachments: [attachment],
     });
   }
-  if (
-    collection.truncated
-    && (collection.candidates.length > 0 || collection.rejectedImageCount > 0)
-  ) {
-    collection.rejectedImageCount += 1;
-  }
-
   if (collection.rejectedImageCount > 0) {
     events.push(buildOmissionWarning(collection.rejectedImageCount));
   }

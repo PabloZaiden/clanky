@@ -204,17 +204,19 @@ failures remain errors, not empty trees or compatibility fallbacks.
 Relayed HTTP responses use a negotiated, consumption-driven send window. The
 sender keeps at most 16 binary frames of up to 64 KiB in flight and waits for
 acknowledgements when the receiver consumes them. Slow downloads therefore
-backpressure the worker instead of overflowing the relay receive queue. Files
-remain streamed; the existing queue limits are not file-size limits.
+backpressure the worker and keep the response's in-flight window bounded. Files
+remain streamed; frame/window bounds are not file-size limits.
 
-Relay peers can buffer up to 32,768 received transport frames or 256 MiB per
-stream, whichever limit is reached first. Relay send buffers and local-broker
-delivery also allow 256 MiB per buffer before closing on overflow. These
-per-buffer allowances tolerate bursts; they do not reserve memory or cap total
-process usage, so concurrent streams can still exhaust memory. The 2 MiB
-maximum transport-frame size and the flow-control window remain unchanged.
-Update controller, worker and relay binaries to apply the larger capacities
-throughout a deployment; no wire-generation change is required.
+Relay receive, send, control and local-broker delivery queues have no fixed
+accumulated frame-count or byte ceiling. Relay WebSocket send buffers explicitly
+disable Bun's default backpressure ceiling instead of reintroducing a hidden
+runtime cap. A slow consumer still controls the negotiated send window.
+Unconsumed traffic may grow memory usage without a configured bound; concurrent
+streams or a persistently faster producer can exhaust process memory.
+The 2 MiB maximum transport-frame size and 64 KiB HTTP fragments remain:
+large HTTP/native results span fragments, not a single transport frame.
+Update controller, worker and relay binaries to apply this policy throughout
+a deployment; no wire-generation change is required.
 
 Response flow control is an optional Mesh v7 extension. The initiator advertises
 `x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
@@ -292,8 +294,9 @@ and an additive child-history read operation within Mesh v7. A controller never
 sends that operation to an older worker that does not advertise it. Stored
 controller-side child conversations remain readable without a worker
 connection; missing recovery support is explicit and does not fall back to ACP.
-The owned root lease, native lineage, cursors and existing history-size budgets
-apply to child reads too; principal-history contracts are unchanged.
+The owned root lease, native lineage and cursors apply to child reads too.
+History is paginated; a large event is allowed to exceed the normal page
+batching target without invalidating the read.
 
 ## Native lifetime, recovery, and cleanup
 
@@ -317,37 +320,37 @@ apply to child reads too; principal-history contracts are unchanged.
   durable across leases; a changed or foreign binding is rejected rather than
   silently replaced. Resolving a selected-host working directory does not
   rewrite the original directory in its ownership binding.
-- Event observation is bounded and has no retained global history. A sequence
-  gap or overflow invalidates observation and requires authoritative refresh
+- Event observation has no retained global history. A sequence
+  gap invalidates observation and requires authoritative refresh
   and owned resume, not blind prompt or steering replay.
 
 Native event-response backpressure is not an observation gap. A full response
 queue pauses consumption; the 15-second heartbeat skips a keepalive when no
 response capacity is available instead of closing the native lease. Provider
 events retain their order; native event hubs and Mesh conversation/control
-subscriptions allow 32,768 queued events per subscriber and still fail
-explicitly on overflow. This event count is independent of the relay's
-transport-frame and byte limits. Heartbeats do not accumulate while a consumer
-is paused.
+subscriptions do not impose a default queued-event cap. Native events and
+complete NDJSON observation records are not rejected for exceeding the former
+2/4 MiB ceilings.
+Validated provider images are forwarded in full instead of omitted solely
+for their size. Heartbeats do not accumulate while a consumer is paused.
 
 Worker observation failures use the versioned error-event contract.
 The controller retains `harness_event_gap` for observation integrity failures
 and `harness_transport_closed` for disconnection rather than replacing them
 with a generic relay error. Known failures have specific safe messages and
-allowlisted `details.reason` metadata: event queue overflow, oversized events,
-native source/translation failures, missing tool starts, invalid frames/schema,
-sequence gaps, control/interaction capacity and transport closure. Queue and
-event-size messages include observed counts/bytes and limits when available.
+allowlisted `details.reason` metadata: native source/translation failures,
+missing tool starts, invalid frames/schema, sequence gaps, control/interaction
+capacity and transport closure. Older peers and explicitly bounded consumers
+can still report queue/size failures, including observed counts/bytes and limits.
 Unknown exceptions retain a generic recovery message; neither their arbitrary
 messages nor event/tool contents are forwarded as diagnostics.
 
 Failure logs are emitted at warn/error levels. Worker records include adapter,
 lease/conversation/context IDs, processing stage and last event type; event HTTP
 and controller records include request ID, channel and last sequence. Safe cause
-types are bounded to four entries. Relay failures distinguish receive-frame,
-receive-byte, send-buffer and local-delivery limits, recording occupancy,
-incoming bytes and capacity without payloads. Relay close audits include the
-relay request/stream IDs and close code; send failures also include the native
+types are bounded to four entries. Relay failures distinguish rejected protocol
+frames and socket send failures without logging payloads. Relay close audits
+include the relay request/stream IDs and close code; send failures also include the native
 request ID when it is a UUID, bridging native and relay correlation. Search
 these IDs across controller, worker and relay logs rather than treating a later
 disconnect as proof of the initiating failure.

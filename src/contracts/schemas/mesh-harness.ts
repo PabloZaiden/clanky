@@ -3,18 +3,13 @@
  */
 import { z } from "zod";
 import { HarnessActivitySchema, HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
-import { MessageAttachmentsSchema } from "./task";
+import { ProviderImageAttachmentSchema } from "./task";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 import { ControlToolRequestSchema, ControlToolReplySchema } from "./control-tool-transport";
 import { ReplyToSecretSchema } from "./harness-secret";
+import type { HarnessSessionHistory } from "@/shared/harness-history";
 import {
-  HARNESS_HISTORY_MAX_BYTES,
-  HARNESS_HISTORY_MAX_EVENTS,
-  type HarnessSessionHistory,
-} from "@/shared/harness-history";
-import {
-  MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
 } from "@/shared/message-attachments";
 
@@ -34,7 +29,7 @@ const Session = z.object({ sessionId: Id });
 const InputRecovery = z.object({
   inputId: Id, nativeMessageId: Id.optional(), nativeClientInputId: Id.optional(), nativeTurnId: Id.optional(),
 });
-const ProviderImageAttachmentsSchema = MessageAttachmentsSchema.superRefine((attachments, ctx) => {
+const ProviderImageAttachmentsSchema = z.array(ProviderImageAttachmentSchema).superRefine((attachments, ctx) => {
   attachments.forEach((attachment, index) => {
     if (!(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(attachment.mimeType)) {
       ctx.addIssue({
@@ -51,7 +46,7 @@ const ProviderImageFileReferenceSchema = z.object({
     id: z.string().min(1),
     filename: z.string().min(1),
     mimeType: z.string().min(1),
-    size: z.number().int().positive().max(MESSAGE_ATTACHMENT_MAX_BYTES),
+    size: z.number().int().positive(),
   }).superRefine((attachment, ctx) => {
     if (!(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(attachment.mimeType)) {
       ctx.addIssue({
@@ -157,13 +152,10 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
 }));
 
 export const MeshHarnessSessionHistorySchema = z.object({
-  events: z.array(MeshHarnessEventSchema).max(HARNESS_HISTORY_MAX_EVENTS),
+  events: z.array(MeshHarnessEventSchema),
   principalProcessing: z.boolean(),
   nextCursor: Id.optional(),
 }).strict().superRefine((history, ctx) => {
-  if (new TextEncoder().encode(JSON.stringify(history)).byteLength > HARNESS_HISTORY_MAX_BYTES) {
-    ctx.addIssue({ code: "custom", message: "Native history exceeds its byte limit." });
-  }
   for (let index = 0; index < history.events.length; index += 2) {
     const start = history.events[index]!;
     const complete = history.events[index + 1];
@@ -179,12 +171,11 @@ export const MeshHarnessSessionHistorySchema = z.object({
 }).transform((history) => history as HarnessSessionHistory);
 
 export const MeshHarnessSubagentHistorySchema = z.object({
-  events: z.array(MeshHarnessEventSchema).max(HARNESS_HISTORY_MAX_EVENTS),
+  events: z.array(MeshHarnessEventSchema),
   processing: z.boolean(),
   nextCursor: Id.optional(),
 }).strict().superRefine((history, ctx) => {
-  if (new TextEncoder().encode(JSON.stringify(history)).byteLength > HARNESS_HISTORY_MAX_BYTES
-    || history.events.some((event) => event.scope.kind !== "child")) {
-    ctx.addIssue({ code: "custom", message: "Invalid or oversized native child history." });
+  if (history.events.some((event) => event.scope.kind !== "child")) {
+    ctx.addIssue({ code: "custom", message: "Invalid native child history." });
   }
 });
