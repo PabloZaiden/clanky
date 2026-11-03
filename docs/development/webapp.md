@@ -70,6 +70,8 @@ title as an app-local heading; `EntityHeader` is for distinct entity headings.
 
 Declare entity actions through route-backed `SidebarNode.actions`. Framework
 sidebar context menus and the active title-bar menu share those actions.
+Framework Pin/Unpin actions remain available in both menus, including when
+explicit `contextActions` customize the sidebar menu.
 Do not add Clanky shell/header menus or hide a single fitting action behind
 ellipsis. Use framework dialogs and menus; they own Enter/Escape behavior,
 red/last destructive items, and compact status-dot sidebar badges.
