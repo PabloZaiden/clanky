@@ -16,7 +16,6 @@ import { requestControlTool, controlToolTransportFailure, type ControlToolConnec
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import { HarnessUsageSnapshotSchema } from "@/contracts/schemas/harness-usage";
 import {
-  MESSAGE_ATTACHMENT_MAX_BYTES,
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
   type MessageAttachment,
 } from "@/shared/message-attachments";
@@ -64,7 +63,6 @@ const Session = z.object({
     options: z.array(z.object({ value: z.string(), name: z.string(), description: z.string().optional() })),
   })).optional(),
 });
-const MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const OBSERVATION_PEER_PROBE_TIMEOUT_MS = 5_000;
 
 export class MeshHarnessBackend implements Backend {
@@ -158,7 +156,7 @@ export class MeshHarnessBackend implements Backend {
         }),
       });
       await this.assertResponse(response);
-      const body = await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: MAX_FRAME_BYTES }) as MeshPayloadFields & { protocolVersion: unknown; requestId: unknown };
+      const body = await readMeshControlResponseJson(response, { signal: controller.signal, maxBytes: null }) as MeshPayloadFields & { protocolVersion: unknown; requestId: unknown };
       if (body.protocolVersion !== connection.protocolVersion || body.requestId !== requestId) throw new HarnessError("harness_request_failed", "The native Mesh response does not match its request.");
       return readMeshPayload(body) as T;
     } catch (error) {
@@ -347,7 +345,8 @@ export class MeshHarnessBackend implements Backend {
     const requestId = crypto.randomUUID();
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const decoder = new TextDecoder();
-    let buffer = "";
+    let frameParts: string[] = [];
+    let frameBytes = 0;
     let sequence = 0;
     try {
       const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/events", {
@@ -364,18 +363,24 @@ export class MeshHarnessBackend implements Backend {
       while (true) {
         const chunk = await reader.read().catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
         if (chunk.done) {
-          if (buffer.trim()) throw createHarnessObservationError("event_frame_incomplete", { sequence, frameBytes: Buffer.byteLength(buffer) });
+          const tail = decoder.decode();
+          if (tail) {
+            frameParts.push(tail);
+            frameBytes += Buffer.byteLength(tail);
+          }
+          if (frameParts.some((part) => part.trim())) throw createHarnessObservationError("event_frame_incomplete", { sequence, frameBytes });
           throw new HarnessError("harness_transport_closed", "The native event stream ended.");
         }
-        buffer += decoder.decode(chunk.value, { stream: true });
-        if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw createHarnessObservationError("event_frame_too_large", {
-          sequence, frameBytes: Buffer.byteLength(buffer), limitBytes: MAX_FRAME_BYTES,
-        });
-        let newline = buffer.indexOf("\n");
+        const text = decoder.decode(chunk.value, { stream: true });
+        let start = 0;
+        let newline = text.indexOf("\n");
         while (newline >= 0) {
-          const frameText = buffer.slice(0, newline);
-          buffer = buffer.slice(newline + 1);
-          newline = buffer.indexOf("\n");
+          frameParts.push(text.slice(start, newline));
+          const frameText = frameParts.join("");
+          frameParts = [];
+          frameBytes = 0;
+          start = newline + 1;
+          newline = text.indexOf("\n", start);
           if (!frameText.trim()) {
             continue;
           }
@@ -457,6 +462,11 @@ export class MeshHarnessBackend implements Backend {
             }
             this.hub.publish(id, event);
           } else throw createHarnessObservationError("event_frame_invalid", { sequence: sequence - 1 });
+        }
+        if (start < text.length) {
+          const remaining = text.slice(start);
+          frameParts.push(remaining);
+          frameBytes += Buffer.byteLength(remaining);
         }
       }
     } catch (error) {
@@ -548,7 +558,6 @@ export class MeshHarnessBackend implements Backend {
     if (
       !client
       || expected.size <= 0
-      || expected.size > MESSAGE_ATTACHMENT_MAX_BYTES
       || !(MESSAGE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(expected.mimeType)
     ) {
       return null;
@@ -572,7 +581,7 @@ export class MeshHarnessBackend implements Backend {
             break;
           }
           size += result.value.byteLength;
-          if (size > expected.size || size > MESSAGE_ATTACHMENT_MAX_BYTES) return null;
+          if (size > expected.size) return null;
           chunks.push(result.value);
         }
       } finally {

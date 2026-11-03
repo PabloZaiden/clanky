@@ -5,7 +5,7 @@ import { controllerWorkerConnectionService } from "../core/controller-worker-con
 import { createRelayWebSocketHandler, hasValidControlQuery, hasValidStreamQuery } from "../core/mesh-relay-server";
 import { isSecureMeshRequest } from "../core/mesh-transport-security";
 import { meshErrorResponse } from "./mesh";
-import { RELAY_MAX_DATA_FRAME_BYTES, RELAY_MAX_QUEUED_BYTES } from "../core/mesh-relay-broker";
+import { RELAY_MAX_DATA_FRAME_BYTES } from "../core/mesh-relay-broker";
 
 // Public WSS upgrades authenticate Mesh identities, not application cookies.
 // Reuse the relay wire adapter with the controller's own broker and identity.
@@ -76,8 +76,6 @@ export const meshOutboundRoutes = defineRoutes({
 
 export const meshOutboundHandlers = {
   maxPayloadLength: RELAY_MAX_DATA_FRAME_BYTES,
-  backpressureLimit: RELAY_MAX_QUEUED_BYTES,
-  closeOnBackpressureLimit: true,
   idleTimeout: 60,
   open(...args: Parameters<NonNullable<ReturnType<typeof createRelayWebSocketHandler>["open"]>>) {
     controllerWorkerConnectionService.getWebSocketHandler().open?.(...args);

@@ -62,6 +62,11 @@ export const MessageAttachmentsSchema = z
     }
   });
 
+export const ProviderImageAttachmentSchema = MessageAttachmentSchema.safeExtend({
+  data: z.string().refine(isValidAttachmentBase64, { message: "attachment data must be valid base64" }),
+  size: z.number().int().nonnegative(),
+});
+
 export const TaskPendingInputSchema = z.object({
   id: z.string().min(1),
   attachments: MessageAttachmentsSchema,
