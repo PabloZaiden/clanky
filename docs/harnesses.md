@@ -40,6 +40,19 @@ route becomes invalid, the interruption remains visible and native prompts
 are not automatically resent. See
 [independent worker lifecycle](mesh-worker.md#independent-worker-lifecycle).
 
+If a native provider confirms a chat turn has finished but never confirms the
+completion of one or more streamed messages, Clanky keeps the received text
+and lets the chat continue. This applies to intermediate messages and the last
+answer alike; retained text may be incomplete. The anomaly is recorded only
+as a server warning, not an on-screen error or warning. The messages remain
+unconfirmed until a real completion or native-history recovery reconciles
+their original identities. Starting another message mid-turn is not itself
+an error: messages can interleave and complete later. Late text continues its
+original message without changing a newer turn's state; an empty completion
+does not erase already received text. Retained updates use bounded checkpoints
+and are saved before observation closes. Connection loss,
+explicit provider failures and failures to save content remain errors.
+
 OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.

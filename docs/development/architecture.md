@@ -272,7 +272,16 @@ history or observation must stay explicit rather than becoming empty success.
 
 `message.complete` closes a message, `prompt.complete` closes the principal
 prompt, and idle status alone proves neither prompt completion nor descendant
-process exit. Tasks depend on the generic backend contract, not an ACP class.
+process exit. A native chat's confirmed normal prompt completion remains
+nonfatal when individual message completions are missing: checkpoint received
+content, retain unconfirmed message identities for reconciliation, and warn
+only in server logs. Do not invent message completions or hide transport,
+provider or persistence failures. Retained completed-turn messages are separate
+from current-turn work, including after recovery: their late content cannot
+change the active turn or make an idle disconnect an interruption. Preserve
+their active text blocks and use bounded checkpoints, flushing all dirty
+messages before observation closes or a recoverable deletion.
+Tasks depend on the generic backend contract, not an ACP class.
 Shutdown records interruption before transport cleanup; interrupted planning
 must remain recoverable, while provider exits outside shutdown remain failures.
 
