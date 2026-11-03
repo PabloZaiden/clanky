@@ -10,6 +10,8 @@ import { ClankyControlToolService } from "../clanky-control-tools";
 import type { ControlToolConnection } from "../../core/control-tool-transport";
 import type { HarnessEventHub } from "../harness-event-hub";
 import { HarnessError } from "../harness-errors";
+import { createHarnessObservationError, getHarnessObservationDetails } from "../harness-observation-errors";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { requireMatchingHarnessBinding } from "../harness-binding";
 import { CopilotEventTranslator } from "./event-translator";
 import { toCopilotMessage } from "./prompt";
@@ -18,6 +20,8 @@ import type { CopilotModelCatalog } from "./model-catalog";
 import type { CopilotQuestionCoordinator } from "./question-coordinator";
 import { settleCopilotWork } from "./work-service";
 import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
+
+const log = createLogger("backend:copilot:sessions");
 
 interface Conversation {
   native: CopilotSession;
@@ -247,9 +251,14 @@ export class CopilotSessionService {
           }
         } catch (error) {
           this.endControlTurn(conversation);
-          this.events.failSession(session.sessionId, new HarnessError(
-            "harness_event_gap", "Native event observation failed.", { cause: error },
-          ));
+          const failure = createHarnessObservationError("native_translation_failed", {}, error);
+          log.error("Native event translation failed", {
+            conversationId: session.sessionId,
+            contextId: binding.contextId,
+            nativeEventType: event.type,
+            ...getHarnessObservationDetails(failure),
+          });
+          this.events.failSession(session.sessionId, failure);
         }
       }),
     };

@@ -2,7 +2,8 @@
  * Bounded native observation frames with demand-aware keepalives.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isDomainError } from "../../domain/domain-error";
+import { HarnessError } from "../../backends/harness-errors";
+import { getHarnessObservationFailure } from "../../backends/harness-observation-errors";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { MeshExecutionProtocolVersion } from "@/shared/mesh-execution";
 import type { EventStream } from "../../utils/event-stream";
@@ -14,6 +15,7 @@ export function createHarnessEventStream(options: {
   subscription: EventStream<HarnessEvent | MeshHarnessControlEvent>;
   channel?: "control";
   protocolVersion: MeshExecutionProtocolVersion;
+  context: { requestId: string; leaseSessionId: string; conversationId?: string };
   signal: AbortSignal;
   onObservationClosed: () => void;
 }): ReadableStream<Uint8Array> {
@@ -69,14 +71,17 @@ export function createHarnessEventStream(options: {
       } catch (error) {
         if (closed) return;
         close();
-        const transportClosed = isDomainError(error) && error.code === "harness_transport_closed";
-        const code = transportClosed ? "harness_transport_closed" : "harness_event_gap";
+        const failure = getHarnessObservationFailure(error);
+        const transportClosed = failure.code === "harness_transport_closed";
         log[transportClosed ? "warn" : "error"]("Native Mesh observation ended", {
-          code,
-          errorType: error instanceof Error ? error.name : "unknown",
+          ...options.context,
+          channel: options.channel ?? "conversation",
+          lastSequence: sequence - 1,
+          code: failure.code,
+          ...failure.details,
         });
         if (options.channel === "control") {
-          try { controller.error(error); }
+          try { controller.error(new HarnessError(failure.code, failure.message, { details: failure.details })); }
           finally { options.onObservationClosed(); }
           return;
         }
@@ -85,10 +90,7 @@ export function createHarnessEventStream(options: {
             type: "event",
             event: {
               type: "error",
-              code,
-              message: transportClosed
-                ? "The native Mesh event connection was lost."
-                : "Native Mesh observation is incomplete. Reconnect to recover the conversation.",
+              ...failure,
               scope: { kind: "principal" },
             },
           });

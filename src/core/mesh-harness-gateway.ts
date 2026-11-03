@@ -13,6 +13,7 @@ import { MeshHarnessSessionHistorySchema, MeshHarnessSubagentHistorySchema } fro
 import { meshExecutionGateway, type MeshExecutionGateway } from "./mesh-execution-gateway";
 import { meshInboundResourceRegistry } from "./mesh-inbound-resource-registry";
 import { DomainError } from "../domain/domain-error";
+import { createHarnessObservationError, getHarnessObservationDetails } from "../backends/harness-observation-errors";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { saveMeshHarnessConversation, requireMeshHarnessConversation, deleteMeshHarnessConversation } from "../persistence/mesh-harness-conversations";
 import type { EventStream } from "../utils/event-stream";
@@ -159,8 +160,15 @@ export class MeshHarnessGateway {
   }
 
   private async observe(host: Host, conversation: Conversation): Promise<void> {
+    let stage: "source" | "encode" | "validate" | "forward" = "source";
+    let lastEventType: HarnessEvent["type"] | undefined;
     try {
-      for (let event = await conversation.source.next(); event; event = await conversation.source.next()) {
+      while (true) {
+        stage = "source";
+        const event = await conversation.source.next();
+        if (!event) break;
+        lastEventType = event.type;
+        stage = "encode";
         const providerImageFile = event.type === "message.complete"
           ? matchingProviderImageFileReference(event)
           : undefined;
@@ -175,6 +183,7 @@ export class MeshHarnessGateway {
         const eventBytes = imageDataBytes > MAX_EVENT_BYTES
           ? MAX_EVENT_BYTES + 1
           : Buffer.byteLength(JSON.stringify(event));
+        stage = "validate";
         if (eventBytes > MAX_EVENT_BYTES) {
           if (event.type === "message.complete" && event.attachments?.length) {
             const {
@@ -188,8 +197,9 @@ export class MeshHarnessGateway {
             const textEventBytes = Buffer.byteLength(JSON.stringify(messageForForwarding));
             if (event.content.length > 0 || providerImageFile) {
               if (textEventBytes > MAX_EVENT_BYTES) {
-                throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
+                throw createHarnessObservationError("event_too_large", { eventBytes: textEventBytes, limitBytes: MAX_EVENT_BYTES });
               }
+              stage = "forward";
               for (const subscriber of conversation.subscribers) {
                 subscriber.push(messageForForwarding);
               }
@@ -214,22 +224,36 @@ export class MeshHarnessGateway {
             for (const subscriber of conversation.subscribers) subscriber.push(warning);
             continue;
           }
-          throw new DomainError("harness_event_gap", "The native event exceeds the stream limit.");
+          throw createHarnessObservationError("event_too_large", { eventBytes, limitBytes: MAX_EVENT_BYTES });
         }
         if (event.type === "permission.asked" || event.type === "question.asked") {
-          if (conversation.interactions.size >= 512) throw new DomainError("harness_input_capacity", "The native interaction limit was reached.");
+          if (conversation.interactions.size >= 512) throw new DomainError("harness_input_capacity", "The native interaction limit was reached.", {
+            details: { reason: "interaction_capacity_exceeded", pendingOperations: conversation.interactions.size, limitOperations: 512 },
+          });
           conversation.interactions.add(event.requestId);
         }
         if (event.type === "question.resolved") conversation.interactions.delete(event.requestId);
+        stage = "forward";
         for (const subscriber of conversation.subscribers) subscriber.push(eventForForwarding);
       }
       if (!host.controller.signal.aborted && !conversation.closing) throw new DomainError("harness_transport_closed", "The native event source closed.");
     } catch (error) {
       if (!host.controller.signal.aborted && !conversation.closing) {
         conversation.observationFailed = true;
-        const failure = error instanceof DomainError ? error : new DomainError("harness_event_gap", "Native observation is unavailable.", { cause: error });
+        const failure = error instanceof DomainError ? error : createHarnessObservationError(
+          stage === "source" ? "native_source_failed" : "unknown", {}, error,
+        );
         for (const subscriber of conversation.subscribers) subscriber.fail(failure);
-        log.warn("Native Mesh observation ended", { adapter: host.config.adapter, code: failure.code });
+        log[failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh observation ended", {
+          adapter: host.config.adapter,
+          leaseSessionId: host.id,
+          conversationId: conversation.binding.nativeId,
+          contextId: conversation.binding.contextId,
+          stage,
+          lastEventType,
+          code: failure.code,
+          ...getHarnessObservationDetails(failure),
+        });
         this.leases.closeSession(host.id);
       }
     } finally {
@@ -418,7 +442,7 @@ export class MeshHarnessGateway {
     if (!conversation) throw new DomainError("harness_session_not_owned", "The conversation is not owned by this Mesh lease.");
     if (conversation.observationFailed) throw new DomainError("harness_event_gap", "Refresh the owned native conversation after an observation gap.");
     if (conversation.subscribers.size >= MAX_SUBSCRIBERS) throw new DomainError("harness_input_capacity", "The native observation subscriber limit was reached.");
-    const producer = createEventStream<HarnessEvent>({ overflow: "fail", maxBufferSize: 256 });
+    const producer = createEventStream<HarnessEvent>({ overflow: "fail" });
     conversation.subscribers.add(producer);
     return { next: () => producer.stream.next(), close: () => {
       producer.stream.close(); conversation.subscribers.delete(producer);

@@ -38,7 +38,7 @@ export interface EventStream<T> {
 }
 
 /** Default maximum buffer size for event streams */
-const DEFAULT_MAX_BUFFER_SIZE = 10_000;
+const DEFAULT_MAX_BUFFER_SIZE = 32_768;
 
 /**
  * Options for creating an event stream.
@@ -49,7 +49,7 @@ export interface EventStreamOptions {
   /**
    * Maximum number of items to buffer before dropping oldest items.
    * When the buffer exceeds this limit, the oldest items are evicted
-   * to make room for new ones. Defaults to 10,000.
+   * to make room for new ones. Defaults to 32,768.
    * Values less than 1 are clamped to 1; non-integer values are floored.
    */
   maxBufferSize?: number;
@@ -63,6 +63,17 @@ type EventStreamTerminalState =
 type EventStreamState =
   | { status: "open" }
   | EventStreamTerminalState;
+
+export class EventStreamOverflowError extends Error {
+  constructor(
+    readonly streamId: string,
+    readonly queuedEvents: number,
+    readonly limitEvents: number,
+  ) {
+    super("Event stream buffer overflow");
+    this.name = "EventStreamOverflowError";
+  }
+}
 
 /**
  * Create an EventStream from a source that pushes events.
@@ -122,7 +133,15 @@ export function createEventStream<T>(options?: EventStreamOptions): {
       // Evict oldest items if buffer is full
       if (items.length >= maxBufferSize) {
         if (options?.overflow === "fail") {
-          fail(new Error("Event stream buffer overflow"));
+          const error = new EventStreamOverflowError(streamId, items.length, maxBufferSize);
+          log.warn("Event stream queue overflow", {
+            reason: "event_queue_overflow",
+            streamId,
+            queuedEvents: items.length,
+            limitEvents: maxBufferSize,
+            pendingWaiters: waiters.length,
+          });
+          fail(error);
           items.length = 0;
           return;
         }
@@ -156,13 +175,13 @@ export function createEventStream<T>(options?: EventStreamOptions): {
       log.trace("Fail ignored (stream already terminal)", { streamId, state: state.status });
       return;
     }
-    log.debug("Stream failing", { streamId, error: err.message, pendingWaiters });
+    log.debug("Stream failing", { streamId, overflow: err instanceof EventStreamOverflowError, pendingWaiters });
   }
 
   const stream: EventStream<T> = {
     async next(): Promise<T | null> {
       if (state.status === "failed") {
-        log.trace("Next: throwing stored error", { streamId, error: state.error.message });
+        log.trace("Next: throwing stored error", { streamId, overflow: state.error instanceof EventStreamOverflowError });
         throw state.error;
       }
 

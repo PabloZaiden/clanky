@@ -34,7 +34,7 @@ export const MESH_RELAY_SEND_HIGH_WATER_BYTES = 1_024 * 1_024;
 const DRAIN_POLL_INTERVAL_MS = 5;
 const FLUSH_TIMEOUT_MS = 30_000;
 /** Bound the frames buffered for a consumer that has not read them yet. */
-const MAX_QUEUED_ITEMS = 256;
+const MAX_QUEUED_ITEMS = 32_768;
 
 export type MeshRelayStreamItem =
   | { kind: "text"; text: string }
@@ -111,30 +111,40 @@ export class MeshRelayDataStream {
       pending.resolve(item);
       return;
     }
-    if (this.queue.length >= MAX_QUEUED_ITEMS && item.kind !== "closed") {
-      this.log.warn("Dropping Mesh relay stream frame past the queue limit", {
-        streamId: this.streamId,
-      });
-      this.close(1009, "Mesh relay stream queue overflow");
-      return;
-    }
     const itemBytes = item.kind === "text"
       ? utf8ByteLength(item.text)
       : item.kind === "binary"
         ? item.bytes.byteLength
         : 0;
+    if (this.queue.length >= MAX_QUEUED_ITEMS && item.kind !== "closed") {
+      this.failReceiveQueue("relay_receive_frame_limit", itemBytes);
+      return;
+    }
     if (
       item.kind !== "closed"
       && this.queuedBytes + itemBytes > MESH_RELAY_MAX_QUEUED_BYTES
     ) {
-      this.log.warn("Closing Mesh relay stream past the queued byte limit", {
-        streamId: this.streamId,
-      });
-      this.close(1009, "Mesh relay stream queue overflow");
+      this.failReceiveQueue("relay_receive_byte_limit", itemBytes);
       return;
     }
     this.queue.push(item);
     this.queuedBytes += itemBytes;
+  }
+
+  private failReceiveQueue(reason: "relay_receive_frame_limit" | "relay_receive_byte_limit", incomingBytes: number): void {
+    this.log.warn("Mesh relay receive queue overflow", {
+      reason,
+      requestId: this.requestId,
+      streamId: this.streamId,
+      queuedFrames: this.queue.length,
+      limitFrames: MAX_QUEUED_ITEMS,
+      queuedBytes: this.queuedBytes,
+      incomingBytes,
+      limitBytes: MESH_RELAY_MAX_QUEUED_BYTES,
+    });
+    const limit = reason === "relay_receive_frame_limit"
+      ? `${MAX_QUEUED_ITEMS}-frame` : `${MESH_RELAY_MAX_QUEUED_BYTES}-byte`;
+    this.close(1009, `Mesh relay receive queue exceeded its ${limit} limit`);
   }
 
   /** Observe closure without consuming a queued data frame. */
@@ -202,6 +212,13 @@ export class MeshRelayDataStream {
       ? utf8ByteLength(data)
       : data.byteLength;
     if (bytes > MESH_RELAY_MAX_STREAM_FRAME_BYTES) {
+      this.log.warn("Mesh relay frame exceeds the transport limit", {
+        reason: "relay_frame_too_large",
+        requestId: this.requestId,
+        streamId: this.streamId,
+        frameBytes: bytes,
+        limitBytes: MESH_RELAY_MAX_STREAM_FRAME_BYTES,
+      });
       throw new MeshRelayStreamError(
         "mesh_relay_frame_too_large",
         "The Mesh relay frame exceeds the transport limit.",
@@ -270,8 +287,11 @@ export class MeshRelayDataStream {
       this.socket.close(toMeshRelayCloseCode(code), toMeshRelayCloseReason(reason));
     } catch (error) {
       this.log.debug("Mesh relay stream close was rejected by the socket", {
+        reason: "relay_socket_close_failed",
+        requestId: this.requestId,
         streamId: this.streamId,
-        error: String(error),
+        closeCode: code,
+        errorType: error instanceof TypeError ? "TypeError" : "Error",
       });
     }
   }
@@ -282,7 +302,10 @@ export class MeshRelayDataStream {
     while (this.socket.readyState === 1 && this.socket.bufferedAmount > 0) {
       if (Date.now() > deadline) {
         this.log.warn("A Mesh relay stream did not flush before closing", {
+          reason: "relay_flush_timeout",
+          requestId: this.requestId,
           streamId: this.streamId,
+          queuedBytes: this.socket.bufferedAmount,
         });
         return;
       }

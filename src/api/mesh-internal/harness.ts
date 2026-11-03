@@ -76,6 +76,11 @@ export const meshHarnessRoutes = defineRoutes({
           subscription,
           ...(control ? { channel: "control" as const } : {}),
           protocolVersion: envelope.protocolVersion,
+          context: {
+            requestId: envelope.requestId,
+            leaseSessionId: envelope.sessionId,
+            ...("conversationId" in envelope ? { conversationId: envelope.conversationId } : {}),
+          },
           signal: req.signal,
           onObservationClosed: () => {
             if ("channel" in envelope) meshHarnessGateway.controlTransportClosed(envelope.sessionId);

@@ -13,7 +13,7 @@ interface PendingControl {
 
 /** A lease's reverse requests and forward replies, independent of provider startup. */
 export class MeshControlToolChannel {
-  private readonly producer = createEventStream<MeshHarnessControlEvent>({ overflow: "fail", maxBufferSize: 256 });
+  private readonly producer = createEventStream<MeshHarnessControlEvent>({ overflow: "fail" });
   private readonly pending = new Map<string, PendingControl>();
   private readonly cancelled = new Set<string>();
   private closed = false;

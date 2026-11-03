@@ -26,6 +26,12 @@ import { readMeshPayload, type MeshPayloadFields } from "../core/mesh-payload";
 import { MESH_HARNESS_CHANNEL, MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS } from "@/shared/mesh-execution";
 import { HarnessEventHub } from "./harness-event-hub";
 import { HarnessError } from "./harness-errors";
+import {
+  createHarnessObservationError,
+  getHarnessObservationDetails,
+  getHarnessObservationFailure,
+  readHarnessObservationDetails,
+} from "./harness-observation-errors";
 import { DomainError } from "../domain/domain-error";
 import type { EventStream } from "../utils/event-stream";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -263,8 +269,13 @@ export class MeshHarnessBackend implements Backend {
       this.controlRequests.get(event.requestId)?.controller.abort();
       return;
     }
-    if (this.controlRequests.has(event.requestId) || this.controlCalls.size >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS) {
-      throw new HarnessError("harness_event_gap", "The execution control request is duplicated or exceeds the lease capacity.");
+    if (this.controlRequests.has(event.requestId)) {
+      throw createHarnessObservationError("control_request_duplicate");
+    }
+    if (this.controlCalls.size >= MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS) {
+      throw createHarnessObservationError("control_capacity_exceeded", {
+        pendingOperations: this.controlCalls.size, limitOperations: MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS,
+      });
     }
     const controller = new AbortController();
     const requestSignal = AbortSignal.any([signal, controller.signal]);
@@ -306,7 +317,10 @@ export class MeshHarnessBackend implements Backend {
     const failure = error instanceof Error ? error : new HarnessError("harness_event_gap", "Native observation was lost.");
     this.controlFailure = failure;
     log[failure instanceof DomainError && failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh execution observation failed", {
-      adapter: this.options.adapter, errorType: failure.name, message: failure.message,
+      adapter: this.options.adapter,
+      workspaceId: this.options.workspaceId,
+      executionNodeId: this.options.executionNodeId,
+      ...getHarnessObservationDetails(failure),
     });
     for (const id of this.sessions.keys()) {
       this.observationFailures.set(id, failure);
@@ -320,7 +334,7 @@ export class MeshHarnessBackend implements Backend {
     // Never replay an input or tool call after observation loss.
     void this.client?.releaseSession().catch((releaseError: unknown) => {
       log.warn("Native Mesh lease release was not acknowledged; the lease will expire", {
-        errorType: releaseError instanceof Error ? releaseError.name : "unknown",
+        ...getHarnessObservationDetails(releaseError),
       });
     });
   }
@@ -331,29 +345,32 @@ export class MeshHarnessBackend implements Backend {
   ): Promise<void> {
     const connection = this.connection();
     const requestId = crypto.randomUUID();
-    const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/events", {
-      method: "POST", signal, headers: {
-        "content-type": "application/json", "x-clanky-mesh-protocol-version": String(connection.protocolVersion), "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
-      }, body: JSON.stringify({
-        protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId,
-        ...(id === undefined ? { channel: "control" } : { conversationId: id }),
-      }),
-    }).catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
-    await this.assertResponse(response);
-    if (!response.body) throw new HarnessError("harness_event_gap", "The native event stream is unavailable.");
-    const reader = response.body.getReader();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const decoder = new TextDecoder();
     let buffer = "";
     let sequence = 0;
     try {
+      const response = await requestMeshPeer(connection.route, "api/mesh/internal/harness/events", {
+        method: "POST", signal, headers: {
+          "content-type": "application/json", "x-clanky-mesh-protocol-version": String(connection.protocolVersion), "x-clanky-mesh-session-id": connection.sessionId, "x-clanky-mesh-request-id": requestId,
+        }, body: JSON.stringify({
+          protocolVersion: connection.protocolVersion, sessionId: connection.sessionId, sessionToken: connection.sessionToken, requestId,
+          ...(id === undefined ? { channel: "control" } : { conversationId: id }),
+        }),
+      }).catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
+      await this.assertResponse(response);
+      if (!response.body) throw createHarnessObservationError("event_frame_invalid");
+      reader = response.body.getReader();
       while (true) {
         const chunk = await reader.read().catch(async (error: unknown) => { throw await this.observationTransportError(error, connection.route, signal); });
         if (chunk.done) {
-          if (buffer.trim()) throw new HarnessError("harness_event_gap", "The native event stream ended with an incomplete frame.");
+          if (buffer.trim()) throw createHarnessObservationError("event_frame_incomplete", { sequence, frameBytes: Buffer.byteLength(buffer) });
           throw new HarnessError("harness_transport_closed", "The native event stream ended.");
         }
         buffer += decoder.decode(chunk.value, { stream: true });
-        if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw new HarnessError("harness_event_gap", "The native event stream exceeds the frame limit.");
+        if (Buffer.byteLength(buffer) > MAX_FRAME_BYTES) throw createHarnessObservationError("event_frame_too_large", {
+          sequence, frameBytes: Buffer.byteLength(buffer), limitBytes: MAX_FRAME_BYTES,
+        });
         let newline = buffer.indexOf("\n");
         while (newline >= 0) {
           const frameText = buffer.slice(0, newline);
@@ -366,26 +383,41 @@ export class MeshHarnessBackend implements Backend {
           try {
             frame = JSON.parse(frameText) as typeof frame;
           } catch (error) {
-            throw new HarnessError(
-              "harness_event_gap",
-              `The native Mesh event stream ${requestId} contains invalid JSON at sequence ${String(sequence)}.`,
-              { cause: error },
-            );
+            throw createHarnessObservationError("event_frame_invalid", { sequence }, error);
           }
-          if (frame.protocolVersion !== connection.protocolVersion || frame.sequence !== sequence++) throw new HarnessError("harness_event_gap", "The native event stream has a sequence gap.");
-          const payload = readMeshPayload(frame) as { type: string; event?: unknown };
+          if (!frame || typeof frame !== "object" || Array.isArray(frame)) {
+            throw createHarnessObservationError("event_frame_invalid", { sequence });
+          }
+          if (frame.protocolVersion !== connection.protocolVersion) throw createHarnessObservationError("event_frame_invalid", { sequence });
+          if (frame.sequence !== sequence) throw createHarnessObservationError("event_sequence_gap", {
+            expectedSequence: sequence,
+            ...(typeof frame.sequence === "number" && Number.isSafeInteger(frame.sequence) && frame.sequence >= 0
+              ? { actualSequence: frame.sequence } : {}),
+          });
+          sequence++;
+          const payload = readMeshPayload(frame);
+          if (!payload || typeof payload !== "object" || Array.isArray(payload) || !("type" in payload)) {
+            throw createHarnessObservationError("event_frame_invalid", { sequence: sequence - 1 });
+          }
           if (id === undefined && sequence === 1 && payload.type !== "ready") {
-            throw new HarnessError("harness_event_gap", "The execution control stream did not begin with readiness.");
+            throw createHarnessObservationError("event_frame_invalid", { sequence: sequence - 1 });
           }
           if (payload.type === "ready" && sequence === 1) ready();
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }
           else if (payload.type === "control" && id === undefined && control) {
-            control(MeshHarnessControlEventSchema.parse(payload.event));
+            const parsed = MeshHarnessControlEventSchema.safeParse("event" in payload ? payload.event : undefined);
+            if (!parsed.success) throw createHarnessObservationError("event_schema_invalid", { sequence: sequence - 1 }, parsed.error);
+            control(parsed.data);
           } else if (payload.type === "event" && id !== undefined) {
-            let event = MeshHarnessEventSchema.parse(payload.event);
+            const parsed = MeshHarnessEventSchema.safeParse("event" in payload ? payload.event : undefined);
+            if (!parsed.success) throw createHarnessObservationError("event_schema_invalid", { sequence: sequence - 1 }, parsed.error);
+            let event = parsed.data;
             if (event.type === "error" && event.scope.kind === "principal"
               && (event.code === "harness_event_gap" || event.code === "harness_transport_closed")) {
-              throw new HarnessError(event.code, event.message);
+              const failure = getHarnessObservationFailure(new HarnessError(event.code, event.message, {
+                details: readHarnessObservationDetails(event.details),
+              }));
+              throw new HarnessError(failure.code, failure.message, { details: failure.details });
             }
             if (event.type === "message.complete" && event.providerImageFile) {
               const { providerImageFile, ...message } = event;
@@ -415,23 +447,51 @@ export class MeshHarnessBackend implements Backend {
               }
             }
             if (event.type === "permission.asked" || event.type === "question.asked") {
-              if (this.interactions.size >= 512) throw new HarnessError("harness_event_gap", "The native interaction observation limit was reached.");
+              if (this.interactions.size >= 512) throw createHarnessObservationError("interaction_capacity_exceeded", {
+                pendingOperations: this.interactions.size, limitOperations: 512,
+              });
               this.interactions.set(event.requestId, id);
             }
             if (event.type === "question.resolved" && this.interactions.get(event.requestId) === id) {
               this.interactions.delete(event.requestId);
             }
             this.hub.publish(id, event);
-          } else throw new HarnessError("harness_event_gap", "The native event stream frame is invalid.");
+          } else throw createHarnessObservationError("event_frame_invalid", { sequence: sequence - 1 });
         }
       }
+    } catch (error) {
+      if (signal.aborted) throw error;
+      const safe = getHarnessObservationFailure(error);
+      const failure = error instanceof DomainError
+        && error.code !== "harness_event_gap" && error.code !== "harness_transport_closed" ? error
+        : new HarnessError(safe.code, safe.message, { details: safe.details, cause: error });
+      if (!signal.aborted) {
+        log[failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh event stream failed", {
+          adapter: this.options.adapter,
+          workspaceId: this.options.workspaceId,
+          executionNodeId: this.options.executionNodeId,
+          leaseSessionId: connection.sessionId,
+          requestId,
+          conversationId: id,
+          channel: id === undefined ? "control" : "conversation",
+          lastSequence: sequence - 1,
+          code: failure.code,
+          ...getHarnessObservationDetails(failure),
+        });
+      }
+      throw failure;
     } finally {
-      try {
-        await reader.cancel();
-      } catch (error) {
-        log.warn("Unable to cancel the closed native Mesh event reader", { error: String(error) });
-      } finally {
-        reader.releaseLock();
+      if (reader) {
+        try {
+          await reader.cancel();
+        } catch (error) {
+          log.warn("Unable to cancel the closed native Mesh event reader", {
+            requestId, leaseSessionId: connection.sessionId,
+            ...getHarnessObservationDetails(error),
+          });
+        } finally {
+          reader.releaseLock();
+        }
       }
     }
   }
@@ -467,7 +527,7 @@ export class MeshHarnessBackend implements Backend {
         "ConnectionRefused", "ConnectionClosed", "ECONNREFUSED", "ECONNRESET",
         "ETIMEDOUT", "ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH",
       ].includes(String(error.code))) return true;
-      log.warn("Unable to establish native Mesh peer reachability", { error: String(error) });
+      log.warn("Unable to establish native Mesh peer reachability", getHarnessObservationDetails(error));
       return false;
     }
     try {

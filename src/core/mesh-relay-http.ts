@@ -312,7 +312,10 @@ export async function serveMeshRelayHttpStream(
   } catch (error) {
     log.warn("The inbound Mesh relay HTTP stream failed", {
       path: url.pathname,
-      error: String(error),
+      streamId: stream.streamId,
+      requestId: stream.requestId,
+      errorType: error instanceof MeshRelayStreamError ? "MeshRelayStreamError" : "Error",
+      ...(error instanceof MeshRelayStreamError ? { status: error.status } : {}),
     });
     if (!stream.closed) {
       try {
@@ -323,7 +326,9 @@ export async function serveMeshRelayHttpStream(
         }));
       } catch (sendError) {
         log.debug("The Mesh relay error frame could not be sent", {
-          error: String(sendError),
+          streamId: stream.streamId,
+          requestId: stream.requestId,
+          errorType: sendError instanceof MeshRelayStreamError ? "MeshRelayStreamError" : "Error",
         });
       }
     }

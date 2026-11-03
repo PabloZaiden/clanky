@@ -207,7 +207,16 @@ acknowledgements when the receiver consumes them. Slow downloads therefore
 backpressure the worker instead of overflowing the relay receive queue. Files
 remain streamed; the existing queue limits are not file-size limits.
 
-This is an optional Mesh v7 extension. The initiator advertises
+Relay peers can buffer up to 32,768 received transport frames or 256 MiB per
+stream, whichever limit is reached first. Relay send buffers and local-broker
+delivery also allow 256 MiB per buffer before closing on overflow. These
+per-buffer allowances tolerate bursts; they do not reserve memory or cap total
+process usage, so concurrent streams can still exhaust memory. The 2 MiB
+maximum transport-frame size and the flow-control window remain unchanged.
+Update controller, worker and relay binaries to apply the larger capacities
+throughout a deployment; no wire-generation change is required.
+
+Response flow control is an optional Mesh v7 extension. The initiator advertises
 `x-clanky-mesh-response-flow: 1`; the peer confirms `responseFlowControl: 1`
 in the HTTP response metadata before either side uses `http.response.ack`
 frames. Acknowledgements are cumulative byte offsets at frame boundaries.
@@ -312,17 +321,38 @@ apply to child reads too; principal-history contracts are unchanged.
 Native event-response backpressure is not an observation gap. A full response
 queue pauses consumption; the 15-second heartbeat skips a keepalive when no
 response capacity is available instead of closing the native lease. Provider
-events retain their order and the separate 256-event subscriber queue remains
-bounded and fails explicitly on real overflow. Heartbeats do not accumulate
-while a consumer is paused.
+events retain their order; native event hubs and Mesh conversation/control
+subscriptions allow 32,768 queued events per subscriber and still fail
+explicitly on overflow. This event count is independent of the relay's
+transport-frame and byte limits. Heartbeats do not accumulate while a consumer
+is paused.
 
 Worker observation failures use the versioned error-event contract.
 The controller retains `harness_event_gap` for observation integrity failures
 and `harness_transport_closed` for disconnection rather than replacing them
-with a generic relay error. Unknown exception details remain private. Upgrade
-the affected worker for the heartbeat correction and both worker and controller
-for typed observation failure handling; no relay upgrade or wire-generation
-change is required.
+with a generic relay error. Known failures have specific safe messages and
+allowlisted `details.reason` metadata: event queue overflow, oversized events,
+native source/translation failures, missing tool starts, invalid frames/schema,
+sequence gaps, control/interaction capacity and transport closure. Queue and
+event-size messages include observed counts/bytes and limits when available.
+Unknown exceptions retain a generic recovery message; neither their arbitrary
+messages nor event/tool contents are forwarded as diagnostics.
+
+Failure logs are emitted at warn/error levels. Worker records include adapter,
+lease/conversation/context IDs, processing stage and last event type; event HTTP
+and controller records include request ID, channel and last sequence. Safe cause
+types are bounded to four entries. Relay failures distinguish receive-frame,
+receive-byte, send-buffer and local-delivery limits, recording occupancy,
+incoming bytes and capacity without payloads. Relay close audits include the
+relay request/stream IDs and close code; send failures also include the native
+request ID when it is a UUID, bridging native and relay correlation. Search
+these IDs across controller, worker and relay logs rather than treating a later
+disconnect as proof of the initiating failure.
+
+Upgrade both worker and controller for the complete diagnostic propagation,
+and the relay for its new failure metrics. This uses existing optional error
+details and requires no wire-generation change. It does not reconnect chats,
+replay inputs or automatically recover observation.
 
 Preserve the worker data directory during upgrades and service restarts. Do
 not copy a conversation binding to another user, workspace, controller, or
