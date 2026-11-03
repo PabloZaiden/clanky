@@ -243,22 +243,25 @@ retain their bounded timeouts. Cancellation, disconnection, authorization
 revocation or shutdown closes the owned stream and releases the pending wait.
 A failed transfer remains an error, not a successful partial file.
 
-Long downloads also renew their short-lived execution lease. Supporting workers
-advertise `executionSessionRenewal: 1` inside the versioned session-admission
+Active synchronous commands, Git/file RPC operations and downloads renew their
+short-lived execution lease. A command admitted near the lease deadline must
+not be terminated by that deadline while its own execution timeout remains.
+Supporting workers advertise `executionSessionRenewal: 1` inside the session-admission
 payload. Only after that negotiation, the controller posts
 `{ action: "renew", protocolVersion, sessionId, sessionToken, requestId }` to the
 existing `/api/mesh/internal/execution/session` route, with matching session
 and request identity headers. The worker revalidates the token, active controller
-grant, file-operation capability, execution channel and protocol before renewing
+grant, execution capability, execution channel and protocol before renewing
 the existing lease. The ordinary 45-second admission and 60-second maximum lease
-remain unchanged; active transfers renew before expiry instead of increasing
+remain unchanged; active operations renew before expiry instead of increasing
 these limits.
 
-The controller shares renewal across its active file streams and stops it when
-the last stream completes, fails or is cancelled, or the session closes. A
-terminal renewal failure aborts the affected streams explicitly. Older workers
-do not advertise support and receive no renewal operation; both controller and
-worker need this extension for transfers lasting beyond the original lease.
+The controller shares one renewal owner across its active RPCs and file streams
+and stops it when the last operation completes, fails or is cancelled, or the
+session closes. A terminal renewal failure aborts affected operations explicitly
+without replaying dispatched commands. Idle sessions are not kept alive.
+Older workers do not advertise support and receive no renewal operation; both controller and
+worker need this extension for operations lasting beyond the original lease.
 It uses an existing HTTP route, so the relay does not need an update.
 
 ## Choose a harness
