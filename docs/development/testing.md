@@ -1,7 +1,9 @@
 # Testing and validation
 
-Clanky's automated suite is a compact catalog of required product scenarios,
-not a history of bugs. Visual-only behavior is validated manually.
+Clanky's automated suite is a fast sanity check of a few common user workflows,
+not exhaustive feature coverage or a history of bugs. It must be painless to
+run; maximizing coverage is not a goal. Visual-only behavior is validated
+manually.
 
 ## Build and run
 
@@ -22,24 +24,37 @@ Useful narrower checks during development:
 ```bash
 bun run typecheck
 CLANKY_TEST_MAX_WORKERS=1 bun run test
+CLANKY_TEST_MAX_WORKERS=4 bun run test
 bun run test:mesh
 CLANKY_LOG_LEVEL=info bun run test:mesh
 ```
 
-The Linux suite requires `iproute2`, `openssh-client` (for Git), `dtach`, and
-`util-linux`. Automatic Devbox workspace scenarios require `flock`
-(`util-linux` on Linux, `brew install flock` on macOS).
-Install prerequisites before running the relevant journey.
+The suite requires Bun and Git, with no live provider credentials or
+fixture-only system-package installation. Mesh uses the native compiled binary
+on both Linux and macOS; it does not require Devbox or Homebrew packages.
 
-The voice-provider fixture requires OpenSSL and listens on an ephemeral HTTPS
-loopback port. Its certificate is trusted only by the isolated Clanky process;
-it needs no network aliases or elevated privileges.
+### Speed budget
+
+Target approximately **10 seconds** for `bun run test`; **30 seconds** is the
+initial upper budget on a Linux four-worker runner, not a reason to retain
+unnecessary work. Apply the same fast-sanity goal to `bun run test:mesh`, measured
+with the CI single-worker setting on Linux and macOS. Compare actual timings
+on the slower platform instead of increasing its timeouts.
+
+Measure tests separately from dependency installation, compilation, and queue
+time. A ten-second suite does not imply a ten-second complete CI job.
+Before retaining new coverage, measure its cost against the whole-suite budget.
+If the suite grows, simplify or replace less valuable coverage; do not move
+expensive journeys into another suite/job, add retries, or buy more concurrency
+to preserve exhaustive checks.
 
 ## Decide whether a scenario belongs
 
-Add or materially change E2E only for a considerable change to an observable
-user/integration workflow: lifecycle, authorization/isolation, persisted data
-and recovery, filesystem/Git/process effects, protocols/transports, or packaging.
+Add or materially change E2E only when a representative common user/integration
+workflow warrants inclusion in the small sanity gate. An important feature or
+observable behavior does not automatically need its own journey. Prefer one
+ordinary successful path with an observable result over matrices of roles,
+providers, transports, restarts, invalid inputs, and failure modes.
 An implementation change alone does not justify test churn.
 
 Before changing coverage, record:
@@ -47,12 +62,15 @@ Before changing coverage, record:
 1. The real-world user or integration workflow Clanky must support.
 2. The public boundary it traverses.
 3. The required observable result or external effect.
-4. Why it belongs in the compact suite and is not already covered.
+4. Why it is a common-path sanity check, not already covered or better checked
+   manually or with a disposable investigation.
+5. Its measured runtime cost and why the suite remains within the speed budget.
 
-Prefer a few broad, coherent journeys and extend an existing one when failures
-remain diagnosable. Apply the decision gate to **each action and assertion**:
-it must advance the workflow, establish a necessary precondition, verify a
-required outcome, or clean up resources.
+Prefer a few short, coherent journeys; do not let an existing journey become
+a catch-all to avoid adding a file. Apply the decision gate to **each action
+and assertion**: it must advance the common workflow, establish a necessary
+precondition, verify its required outcome, or clean up resources. Preserve
+basic authorization/isolation boundaries without testing every permutation.
 
 A bug report and approval to fix it do not independently approve a product
 scenario. Ask: **if the defect had never existed, would we still require this
@@ -95,8 +113,9 @@ or use an external network service. Clanky must discover and invoke them
 through production command resolution, adapters, stdio/RPC, HTTP, or Mesh,
 not injected backends or test-only production switches.
 
-Mocks may model streaming, tools, questions, permissions, failure, cancellation,
-reconnect, and session loss. Assert Clanky's public results and effects, not
+Fixtures model only what the retained sanity workflows need. Emit streaming
+protocol frames without artificial pacing; realistic wall-clock delays do not
+make a fixture more useful. Assert Clanky's public results and effects, not
 mock internals/counts. Other unavoidable third-party seams use the same
 external-process rule. Use real Git repositories/remotes and Clanky Mesh processes.
 
@@ -115,20 +134,12 @@ credentials, sockets, and subprocesses. Use `CLANKY_DISABLE_PASSKEY=true` for
 unattended scenarios except those verifying authentication boundaries.
 Never modify the developer's data or SSH keys, or contact an external host.
 
-URL-fetch journeys that must validate a public destination use a dedicated
-Linux network namespace with no external interfaces or default route. A
-globally routable test address may be assigned to loopback inside that
-namespace for a local HTTP fixture; run the fixture, compiled application,
-and E2E client in the same namespace. The runner uses an unprivileged user
-namespace where available; if the kernel disables those, it uses noninteractive
-sudo to create only the network namespace, then drops to the original test UID
-and GID before starting the E2E process. Keep production address validation
-unchanged and never send fixture traffic outside the namespace.
-
 Fixed delays are not synchronization. Wait for health, public state, frames,
 process completion, or filesystem/Git effects with a bounded named condition
-and last-observed-state diagnostics. Keep timers only where time itself is
-the contract; do not retry or lengthen sleeps to hide failures.
+and last-observed-state diagnostics. Do not retain sleeps that cross an old
+internal deadline or reproduce a past timeout. Timer-specific investigations
+belong in disposable reproductions, not the sanity gate; do not retry or
+lengthen sleeps to hide failures.
 For terminal commands, wait for the expected execution result, not a marker
 also present in echoed input.
 
@@ -139,10 +150,10 @@ also present in echoed input.
 | Mesh E2E operation (`MESH_OPERATION_TIMEOUT_MS`) | 20 seconds |
 | Whole journey, final slow-CI backstop | 120 seconds |
 
-The Mesh exception covers bootstrap, enrollment, HTTP/health, remote commands,
-and the external Devbox fixture. Keep existing
-lifecycle/polling, startup, large-image, and whole-journey budgets;
-the exception does not change production or non-Mesh timeouts.
+The Mesh exception covers bootstrap, enrollment, HTTP/health, and remote
+commands. These are failure bounds, not expected execution times or a reason
+to let the suite approach them. Keep existing lifecycle/polling, startup,
+and whole-journey backstops; do not change production timeouts to speed up tests.
 
 Use shared polling/timeout helpers in `tests/e2e/support/`. Preserve original
 errors and report relevant Clanky/provider logs (including before restarts),
@@ -151,9 +162,11 @@ method/path and causes, not bodies, credentials, or query parameters.
 Teardown awaits all cleanup and leaves no child processes, sockets, worktrees,
 or temporary directories.
 
-Derive concurrency from discovered E2E files and `CLANKY_TEST_MAX_WORKERS`.
-Do not maintain per-file runtime weights, arbitrary shard counts, or retries;
-serialize only for a documented resource/isolation constraint.
+Derive concurrency from discovered E2E files, available CPUs and
+`CLANKY_TEST_MAX_WORKERS`. Available workers take the next file instead of
+waiting for a fixed alphabetic shard. Do not maintain per-file runtime weights,
+arbitrary shard counts, or retries; serialize only for a documented
+resource/isolation constraint.
 
 Discover the current Git branch instead of assuming `main` or `master`.
 Keep fixture `HOME`, provider `PATH`, and shell initialization isolated from

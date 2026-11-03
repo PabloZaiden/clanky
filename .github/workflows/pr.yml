@@ -37,11 +37,6 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install E2E system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes iproute2 openssh-client dtach util-linux
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -75,10 +70,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Install automatic workspace fixture dependencies
-        if: runner.os == 'macOS'
-        run: brew install flock
 
       - name: Build native binary
         run: bun run build

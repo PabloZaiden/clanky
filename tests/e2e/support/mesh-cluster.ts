@@ -10,7 +10,6 @@ import { pollUntil } from "./polling";
 import { currentEnvironment } from "./process";
 import { getMeshTestTls } from "./mesh-tls";
 import {
-  LIFECYCLE_TIMEOUT_MS,
   MESH_OPERATION_TIMEOUT_MS,
   MESH_STARTUP_TIMEOUT_MS,
   operationSignal,
@@ -34,10 +33,9 @@ interface CapturedProcessOutput {
 }
 
 export interface ManagedMeshNode extends MeshHttpNode {
-  role: "controller" | "relay" | "worker";
+  role: "controller" | "worker";
   command: string[];
   child: ReturnType<typeof Bun.spawn>;
-  generation: number;
   environment: Record<string, string | undefined>;
   serveArguments: string[];
   output: CapturedProcessOutput;
@@ -57,7 +55,6 @@ export interface MeshEnrollmentResult {
   enrollment: {
     controllerFingerprint: string;
   };
-  workerJoinCommand: string;
 }
 
 export async function availablePort(): Promise<number> {
@@ -270,17 +267,15 @@ export async function startMeshNode(options: {
   instanceName?: string;
   timeoutMs?: number;
   environment?: Record<string, string | undefined>;
-  relayOnly?: boolean;
 }): Promise<ManagedMeshNode> {
   const { role, command } = options;
-  const relayOnly = role === "worker" && options.relayOnly === true;
   const dataDir = await mkdtemp(join(tmpdir(), `clanky-mesh-${role}-`));
   let node: ManagedMeshNode | undefined;
 
   try {
     const port = await availablePort();
     const tls = await getMeshTestTls();
-    const baseUrl = `${role === "worker" && !relayOnly ? "https" : "http"}://127.0.0.1:${String(port)}`;
+    const baseUrl = `${role === "worker" ? "https" : "http"}://127.0.0.1:${String(port)}`;
     const environment: Record<string, string | undefined> = currentEnvironment({
       ...options.environment,
       CLANKY_DATA_DIR: dataDir,
@@ -304,16 +299,12 @@ export async function startMeshNode(options: {
         ...command,
         "worker",
         "bootstrap",
-        ...(relayOnly
-          ? ["--relay-only"]
-          : [
-              "--host",
-              "127.0.0.1",
-              "--port",
-              String(port),
-              "--mesh-endpoint",
-              baseUrl,
-            ]),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--mesh-endpoint",
+        baseUrl,
         "--worker-directory",
         dataDir,
         "--instance-name",
@@ -334,9 +325,7 @@ export async function startMeshNode(options: {
         throw new Error(`Worker bootstrap failed (pid=${String(bootstrap.pid)}, exitCode=${String(bootstrap.exitCode)}, signalCode=${String(bootstrap.signalCode)}, timedOut=${String(bootstrap.exitedDueToTimeout)}, maxBuffer=${String(bootstrap.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - bootstrapStartedAt))}): ${output}`);
       }
       apiKey = parseBootstrapApiKey(bootstrap.stdout.toString());
-      if (!relayOnly) {
-        tlsCertificate = await readWorkerTlsCertificate(dataDir);
-      }
+      tlsCertificate = await readWorkerTlsCertificate(dataDir);
     }
 
     const serveArguments = [
@@ -347,7 +336,6 @@ export async function startMeshNode(options: {
             "true",
             "--worker-directory",
             dataDir,
-            ...(relayOnly ? ["--relay-only", "true"] : []),
           ]
         : []),
     ];
@@ -367,7 +355,6 @@ export async function startMeshNode(options: {
       serveArguments,
       child: started.child,
       output: started.output,
-      generation: 1,
     };
 
     await waitForNodeHealth(
@@ -394,92 +381,6 @@ export async function startMeshNode(options: {
     await removeMeshDataDirectory(dataDir);
     throw new Error(
       `Failed to start ${role} Mesh node${output ? `:\n${output}` : ""}`,
-      { cause: error },
-    );
-  }
-}
-
-export async function startMeshRelay(options: {
-  command: string[];
-  controllerFingerprint: string;
-  timeoutMs?: number;
-  environment?: Record<string, string | undefined>;
-}): Promise<ManagedMeshNode> {
-  const dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-relay-"));
-  let relay: ManagedMeshNode | undefined;
-
-  try {
-    const port = await availablePort();
-    const tls = await getMeshTestTls();
-    const baseUrl = `http://127.0.0.1:${String(port)}`;
-    const environment: Record<string, string | undefined> = {
-      ...process.env,
-      ...options.environment,
-      CLANKY_DATA_DIR: dataDir,
-      CLANKY_HOST: "127.0.0.1",
-      CLANKY_PORT: String(port),
-      CLANKY_PUBLIC_BASE_URL: baseUrl,
-      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
-      CLANKY_RELAY_CONTROLLER_FINGERPRINT: options.controllerFingerprint,
-      NODE_EXTRA_CA_CERTS: tls.certificatePath,
-      CLANKY_TRUST_PROXY: "true",
-      CLANKY_TRUST_PROXY_HEADERS: "proto,host",
-    };
-    const serveArguments = ["relay"];
-    const started = spawnNodeServer({
-      command: options.command,
-      environment,
-      serveArguments,
-    });
-    relay = {
-      role: "relay",
-      command: [...options.command],
-      baseUrl,
-      dataDir,
-      environment,
-      serveArguments,
-      child: started.child,
-      output: started.output,
-      generation: 1,
-    };
-    await waitForNodeHealth(
-      relay,
-      "relay to become healthy",
-      options.timeoutMs ?? MESH_STARTUP_TIMEOUT_MS,
-    );
-    await startTlsProxy(relay, port);
-    relay.baseUrl = relay.meshEndpoint!;
-    relay.tlsCertificate = tls.certificate;
-    return relay;
-  } catch (error) {
-    let output = "";
-    if (relay) {
-      await stopTlsProxy(relay);
-      output = await stopNodeServer(relay);
-    }
-    await removeMeshDataDirectory(dataDir);
-    throw new Error(
-      `Failed to start Mesh relay${output ? `:\n${output}` : ""}`,
-      { cause: error },
-    );
-  }
-}
-
-export async function restartMeshNode(
-  node: ManagedMeshNode,
-  timeoutMs: number = LIFECYCLE_TIMEOUT_MS,
-): Promise<void> {
-  await stopNodeServer(node);
-  const started = spawnNodeServer(node);
-  node.child = started.child;
-  node.output = started.output;
-  node.generation += 1;
-  try {
-    await waitForNodeHealth(node, `${node.role} restart to become healthy`, timeoutMs);
-  } catch (error) {
-    const output = await stopNodeServer(node);
-    throw new Error(
-      `Failed to restart ${node.role} Mesh node${output ? `:\n${output}` : ""}`,
       { cause: error },
     );
   }
@@ -584,96 +485,6 @@ export async function enrollMeshWorker(
       joinResult.stderr.toString().trim(),
     ].filter((value) => value.length > 0).join("\n");
     throw new Error(`Worker enrollment failed (pid=${String(joinResult.pid)}, exitCode=${String(joinResult.exitCode)}, signalCode=${String(joinResult.signalCode)}, timedOut=${String(joinResult.exitedDueToTimeout)}, maxBuffer=${String(joinResult.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - joinStartedAt))}): ${output}`);
-  }
-  return created.body;
-}
-
-export async function startJoinedMeshWorker(options: {
-  controller: MeshHttpNode;
-  command: string[];
-  environment?: Record<string, string | undefined>;
-}): Promise<ManagedMeshNode> {
-  const dataDir = await mkdtemp(join(tmpdir(), "clanky-mesh-outbound-worker-"));
-  let node: ManagedMeshNode | undefined;
-  try {
-    const port = await availablePort();
-    const tls = await getMeshTestTls();
-    const environment = currentEnvironment({
-      ...options.environment,
-      HOME: dataDir,
-      CLANKY_DATA_DIR: dataDir,
-      CLANKY_HOST: "127.0.0.1",
-      CLANKY_PORT: String(port),
-      NODE_EXTRA_CA_CERTS: tls.certificatePath,
-      CLANKY_LOG_LEVEL: options.environment?.["CLANKY_LOG_LEVEL"] ?? process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
-    });
-    delete environment["CLANKY_PUBLIC_BASE_URL"];
-    delete environment["CLANKY_DISABLE_PASSKEY"];
-    await enrollMeshWorker(options.controller, { command: options.command, environment });
-    const serveArguments = ["serve"];
-    const started = spawnNodeServer({ command: options.command, environment, serveArguments });
-    node = {
-      role: "worker", command: options.command, environment, serveArguments,
-      dataDir, baseUrl: `http://127.0.0.1:${String(port)}`,
-      child: started.child, output: started.output, generation: 1,
-    };
-    await waitForNodeHealth(node, "invitation-joined worker to become healthy", MESH_STARTUP_TIMEOUT_MS);
-    return node;
-  } catch (error) {
-    const diagnostics = node ? await stopNodeServer(node) : "";
-    await removeMeshDataDirectory(dataDir);
-    throw new Error(`Failed to start invitation-joined worker${diagnostics ? `:\n${diagnostics}` : ""}`, { cause: error });
-  }
-}
-
-export async function enrollRelayMeshWorker(
-  controller: MeshHttpNode,
-  relay: MeshHttpNode,
-  worker: ManagedMeshNode,
-  relayName?: string,
-): Promise<MeshEnrollmentResult> {
-  const created = await meshJsonRequest<MeshEnrollmentResult>(
-    controller,
-    "/api/mesh/enrollment-tokens",
-    {
-      method: "POST",
-      body: {
-        name: "e2e-relay-worker",
-        ttlSeconds: 900,
-        route: "relay",
-        ...(relayName ? { relayName } : {}),
-      },
-    },
-  );
-  if (created.status !== 201) {
-    throw new Error(
-      `Failed to create relay Mesh enrollment token: ${created.status} ${JSON.stringify(created.body)}`,
-    );
-  }
-  const fingerprint = created.body.enrollment?.controllerFingerprint;
-  if (
-    typeof created.body.token !== "string"
-    || typeof fingerprint !== "string"
-  ) {
-    throw new Error("Relay Mesh enrollment token response is incomplete");
-  }
-
-  const enrolled = await meshJsonRequest<{ success: boolean }>(
-    worker,
-    "/api/mesh/enroll",
-    {
-      method: "POST",
-      body: {
-        target: relay.baseUrl,
-        enrollmentToken: created.body.token,
-        expectedControllerFingerprint: fingerprint,
-      },
-    },
-  );
-  if (enrolled.status !== 200 || !enrolled.body.success) {
-    throw new Error(
-      `Failed to enroll relay Mesh worker: ${enrolled.status} ${JSON.stringify(enrolled.body)}`,
-    );
   }
   return created.body;
 }
