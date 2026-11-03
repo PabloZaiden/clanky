@@ -1,6 +1,7 @@
 import type { ChatConfig, ChatState } from "./chat";
 import type { StreamPosition } from "./stream-position";
 import type { PersistedMessage, TaskLogEntry } from "./task";
+import type { TranscriptMessage } from "./transcript-images";
 import {
   mergeToolCallDisplayData,
   type ToolCallDisplayData,
@@ -74,7 +75,7 @@ export interface ChatTranscriptStorageEntry {
 }
 
 export interface ChatTranscript {
-  messages: PersistedMessage[];
+  messages: TranscriptMessage[];
   logs: TaskLogEntry[];
   toolCalls: ToolCallDisplayData[];
   revision: string;
@@ -102,7 +103,7 @@ export interface TranscriptSnapshotMergeOptions {
 }
 
 export function isCountedAssistantResponse(
-  message: Pick<PersistedMessage, "attachments" | "content" | "role">,
+  message: Pick<TranscriptMessage, "attachments" | "content" | "role">,
 ): boolean {
   return message.role === "assistant"
     && (message.content.length > 0 || (message.attachments?.length ?? 0) > 0);
@@ -166,7 +167,7 @@ export function mergeTranscriptSnapshot(
   };
 }
 
-function countAssistantResponses(messages: PersistedMessage[]): number {
+function countAssistantResponses(messages: TranscriptMessage[]): number {
   return messages.reduce(
     (count, message) => count + (isCountedAssistantResponse(message) ? 1 : 0),
     0,

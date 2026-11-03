@@ -33,6 +33,8 @@ counterparts, including the logo/Home button, and remove the entire sidebar
 header row. The same bundled PNG logo is used on web and in the native bar.
 Native controls have no shared capsule/background; they keep the system's
 bottom-anchored placement and native interactions.
+Show/Hide sidebar and Settings have higher native visibility priority than the
+other toolbar controls, without changing their order or system-managed spacing.
 They invoke the same web callbacks; Swift does not implement their
 business logic. Indicators remain visible. Other layouts keep the web controls.
 The composer combines its ordinary bottom spacing with safe-area clearance

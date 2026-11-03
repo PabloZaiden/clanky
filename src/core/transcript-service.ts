@@ -15,6 +15,16 @@ import type {
 import type { TranscriptEntriesPage } from "../persistence/transcripts/types";
 import type { LiveTranscriptState } from "./transcript-stream-projection";
 
+export function withLiveToolCallRevision(tool: ToolCallRecord): ToolCallRecord {
+  const { id, name, status, timestamp, input, output, extras } = tool;
+  return {
+    ...tool,
+    detailRevision: createHash("sha256")
+      .update(JSON.stringify({ id, name, status, timestamp, input, output, extras }))
+      .digest("hex"),
+  };
+}
+
 export function includeLiveTranscript(
   persisted: ChatTranscript,
   live: LiveTranscriptState | undefined,
@@ -23,7 +33,19 @@ export function includeLiveTranscript(
     shouldIncludeLog?: (entry: TaskLogEntry) => boolean;
   },
 ): ChatTranscript {
-  if (!live || options.window.before) return persisted;
+  if (!live) return persisted;
+  const revision = `${persisted.revision}:${live.position.epoch}:${String(live.position.revision)}`;
+  if (options.window.before) {
+    const liveTools = new Map(live.toolCalls.map((tool) => [tool.id, tool]));
+    return {
+      ...persisted,
+      revision,
+      toolCalls: persisted.toolCalls.map((tool) => {
+        const current = liveTools.get(tool.id);
+        return current ? createToolCallSummary(withLiveToolCallRevision(current)) : tool;
+      }),
+    };
+  }
   const boundary = persisted.isPartial
     ? [...persisted.messages, ...persisted.logs, ...persisted.toolCalls].reduce<string | undefined>(
       (earliest, entry) => !earliest || entry.timestamp < earliest ? entry.timestamp : earliest,
@@ -38,7 +60,7 @@ export function includeLiveTranscript(
   );
   const toolCalls = mergeTranscriptIncomingRecords(
     [],
-    live.toolCalls.filter(inWindow).map((tool) => createToolCallSummary(tool)),
+    live.toolCalls.filter(inWindow).map((tool) => createToolCallSummary(withLiveToolCallRevision(tool))),
   );
   const loadedResponses = messages.filter(isCountedAssistantResponse).length;
   const totalResponses = live.messages.filter(isCountedAssistantResponse).length;
@@ -50,7 +72,7 @@ export function includeLiveTranscript(
     logs,
     toolCalls,
     position: live.position,
-    revision: `${persisted.revision}:${live.position.epoch}:${String(live.position.revision)}`,
+    revision,
     loadedResponses,
     totalResponses,
     totalEntries: live.messages.length + live.logs.length + live.toolCalls.length,
@@ -92,7 +114,8 @@ export function getTranscriptSnapshotEtag(
 ): string {
   const windowKey = window.full ? "full" : window.before ? "page" : window.since ? "range" : "latest";
   const stateRevision = createHash("sha256")
-    .update(JSON.stringify({ snapshotState, window }) ?? "undefined")
+    // Invalidate cached inline-image snapshots even when stored history is unchanged.
+    .update(JSON.stringify({ snapshotState, window, representation: "image-references-v1" }) ?? "undefined")
     .digest("hex")
     .slice(0, 16);
   return `${transcriptRevision}:state-${stateRevision}:${windowKey}`;

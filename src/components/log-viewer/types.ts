@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type {
-  MessageData,
+  TranscriptMessage,
   TaskLogEntry,
   ToolCallData,
   ToolCallDisplayData,
@@ -34,7 +34,7 @@ export interface TranscriptFileLinkContext {
 
 export interface ConversationViewerProps {
   /** Conversation messages to display. */
-  messages: MessageData[];
+  messages: TranscriptMessage[];
   /** Tool calls to display. ToolEntry infers the concrete tool kind from the raw payload shape. */
   toolCalls: ToolCallDisplayData[];
   /** Application logs to display */
@@ -77,7 +77,7 @@ export interface ConversationViewerProps {
  * Base type for a display entry before render metadata annotation.
  */
 export type EntryBase =
-  | { type: "message"; data: MessageData; timestamp: string }
+  | { type: "message"; data: TranscriptMessage; timestamp: string }
   | { type: "tool"; data: ToolCallDisplayData; timestamp: string }
   | { type: "tool-image"; data: ToolCallDisplayData; timestamp: string }
   | {

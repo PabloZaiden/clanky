@@ -1,24 +1,21 @@
-import type { MessageData, ToolCallData } from "./events";
+import type { TranscriptMessage } from "./transcript-images";
 import type { ChatTranscript } from "./chat-transcript";
 import type { TaskLogEntry } from "./task";
 import { isCountedAssistantResponse } from "./chat-transcript";
 import {
-  isToolCallSummary,
   mergeToolCallDisplayData,
-  upsertToolCallExtra,
   type ToolCallDisplayData,
-  type ToolCallExtra,
 } from "./tool-call";
 
 export type TranscriptStreamEvent =
   | {
       type: "transcript.message";
-      message: MessageData;
+      message: TranscriptMessage;
     }
   | {
       type: "transcript.message.delta";
       messageId: string;
-      role: MessageData["role"];
+      role: TranscriptMessage["role"];
       delta: string;
       baseLength: number;
       messageTimestamp: string;
@@ -26,11 +23,6 @@ export type TranscriptStreamEvent =
   | {
       type: "transcript.tool";
       tool: ToolCallDisplayData;
-    }
-  | {
-      type: "transcript.tool.extra";
-      toolId: string;
-      extra: ToolCallExtra;
     }
   | {
       type: "transcript.log";
@@ -129,7 +121,7 @@ export function applyTranscriptStreamEvent(
       if (existingContent.length !== event.baseLength) {
         return { transcript: current, gapDetected: true };
       }
-      const message: MessageData = {
+      const message: TranscriptMessage = {
         ...(existingIndex < 0 ? {} : current.messages[existingIndex]),
         id: event.messageId,
         role: event.role,
@@ -160,26 +152,6 @@ export function applyTranscriptStreamEvent(
           { toolCalls: result.records },
           result.added ? 1 : 0,
         ),
-        gapDetected: false,
-      };
-    }
-    case "transcript.tool.extra": {
-      const existingIndex = current.toolCalls.findIndex(
-        (tool) => tool.id === event.toolId,
-      );
-      const existing = current.toolCalls[existingIndex];
-      if (existingIndex < 0 || !existing || isToolCallSummary(existing)) {
-        return { transcript: current, gapDetected: false };
-      }
-      const tool: ToolCallData = {
-        ...existing,
-        extras: upsertToolCallExtra(existing.extras, event.extra),
-      };
-      const toolCalls = current.toolCalls.map((entry, index) => (
-        index === existingIndex ? tool : entry
-      ));
-      return {
-        transcript: withCollections(current, { toolCalls }),
         gapDetected: false,
       };
     }

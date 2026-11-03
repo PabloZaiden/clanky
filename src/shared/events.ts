@@ -19,7 +19,7 @@
 import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { ChatMetadata, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
-import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
+import type { ToolCallRecord } from "./tool-call";
 import type { StreamDeltaPosition } from "./stream-position";
 
 /**
@@ -98,7 +98,6 @@ export type TaskEvent = (
   | TaskMessageEvent
   | TaskMessageDeltaEvent
   | TaskToolCallEvent
-  | TaskToolCallExtraEvent
   | TaskLogEvent
   | TaskLogDeltaEvent
   | TaskGitCommitEvent
@@ -134,7 +133,6 @@ export type ChatEvent = (
   | ChatMessageEvent
   | ChatMessageDeltaEvent
   | ChatToolCallEvent
-  | ChatToolCallExtraEvent
   | ChatLogEvent
   | ChatLogDeltaEvent
   | ChatInterruptedEvent
@@ -156,7 +154,6 @@ export type AgentEvent = (
   | AgentRunMessageEvent
   | AgentRunMessageDeltaEvent
   | AgentRunToolCallEvent
-  | AgentRunToolCallExtraEvent
   | AgentRunLogEvent
   | AgentRunLogDeltaEvent
   | AgentRunSkippedEvent
@@ -209,15 +206,6 @@ export interface ChatToolCallEvent {
   chatId: string;
   scope: ChatConfig["scope"];
   tool: ToolCallData;
-  timestamp: string;
-}
-
-export interface ChatToolCallExtraEvent {
-  type: "chat.tool_call.extra";
-  chatId: string;
-  scope: ChatConfig["scope"];
-  toolId: string;
-  extra: ToolCallExtra;
   timestamp: string;
 }
 
@@ -332,15 +320,6 @@ export interface AgentRunToolCallEvent {
   agentId: string;
   agentRunId: string;
   tool: ToolCallData;
-  timestamp: string;
-}
-
-export interface AgentRunToolCallExtraEvent {
-  type: "agent.run.tool_call.extra";
-  agentId: string;
-  agentRunId: string;
-  toolId: string;
-  extra: ToolCallExtra;
   timestamp: string;
 }
 
@@ -524,23 +503,6 @@ export interface TaskToolCallEvent {
   iteration: number;
   /** The tool call data */
   tool: ToolCallData;
-  /** ISO 8601 timestamp */
-  timestamp: string;
-}
-
-/**
- * Emitted when a new persisted extra is attached to an existing tool call.
- */
-export interface TaskToolCallExtraEvent {
-  type: "task.tool_call.extra";
-  /** ID of the task */
-  taskId: string;
-  /** Current iteration number */
-  iteration: number;
-  /** Tool call ID that owns the extra */
-  toolId: string;
-  /** The attached extra payload */
-  extra: ToolCallExtra;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

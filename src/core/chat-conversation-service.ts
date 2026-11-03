@@ -1287,6 +1287,11 @@ export class ChatConversationService implements ChatConversationPort {
     chatId: string,
     messageId: string,
   ): Promise<MessageData | null> {
+    const message = await this.getMessage(chatId, messageId);
+    return message?.role === "assistant" ? message : null;
+  }
+
+  async getMessage(chatId: string, messageId: string): Promise<MessageData | null> {
     const chat = await this.state.getChatSummary(chatId);
     if (!chat) {
       return null;
@@ -1295,8 +1300,7 @@ export class ChatConversationService implements ChatConversationPort {
     const activeMessage = this.activeStreams.get(chatId)?.streamState?.chat.state.messages.find(
       (message) => message.id === messageId,
     );
-    const message = activeMessage ?? await this.state.getChatMessage(chatId, messageId);
-    return message?.role === "assistant" ? message : null;
+    return activeMessage ?? await this.state.getChatMessage(chatId, messageId);
   }
 
   private async startNativePrompt(options: ChatPromptStartOptions): Promise<Chat> {
@@ -2580,12 +2584,11 @@ export class ChatConversationService implements ChatConversationPort {
       streaming: true,
     });
     this.emitter.emit({
-      type: "chat.tool_call.extra",
+      type: "chat.tool_call",
       streamPosition,
       chatId: chat.config.id,
       scope: chat.config.scope,
-      toolId,
-      extra,
+      tool: updatedTool,
       timestamp,
     });
     return updated;

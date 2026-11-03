@@ -1215,16 +1215,16 @@ export class TaskEngine {
           return;
         }
 
-        this.persistToolCall({
+        const updatedTool = {
           ...currentTool,
           extras: upsertToolCallExtra(currentTool.extras, extra),
-        });
+        };
+        this.persistToolCall(updatedTool);
         this.emit({
-          type: "task.tool_call.extra",
+          type: "task.tool_call",
           taskId: this.config.id,
           iteration,
-          toolId: toolCall.id,
-          extra,
+          tool: updatedTool,
           timestamp: createTimestamp(),
         });
         await this.triggerPersistence();

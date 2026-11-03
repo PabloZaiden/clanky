@@ -4,7 +4,6 @@ import type {
   PersistedToolCall,
   TaskLogEntry,
   TranscriptEntryPayload,
-  ToolCallExtra,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -90,10 +89,6 @@ export class AgentRunStreamPersistence {
         break;
       case "chat.tool_call":
         this.upsertToolCall(event.tool);
-        shouldCheckpoint = true;
-        break;
-      case "chat.tool_call.extra":
-        this.upsertToolCallExtra(event.toolId, event.extra, event.timestamp);
         shouldCheckpoint = true;
         break;
       case "chat.error":
@@ -284,17 +279,6 @@ export class AgentRunStreamPersistence {
       ...this.run,
       toolCalls: this.transcript.toolCalls,
       updatedAt: tool.timestamp,
-    };
-  }
-
-  private upsertToolCallExtra(toolId: string, extra: ToolCallExtra, timestamp = new Date().toISOString()): void {
-    if (!this.transcript.upsertToolCallExtra(toolId, extra)) {
-      return;
-    }
-    this.run = {
-      ...this.run,
-      toolCalls: this.transcript.toolCalls,
-      updatedAt: timestamp,
     };
   }
 

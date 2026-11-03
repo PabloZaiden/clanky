@@ -160,6 +160,13 @@ execution-host/file context, not controller-local path guesses.
 Steer is a text-style action below queued input. Admission, native delivery,
 and model obedience remain separate concepts.
 
+Transcript images load when their entries enter the visible conversation.
+Keep image bytes out of snapshot/history/live-message projections and defer
+tool-preview detail reads until visible. Reuse authenticated resource helpers,
+retain loaded unchanged images across transcript updates, and preserve the
+existing click-to-enlarge interaction. Originals and provider uploads remain
+unchanged; see [Conversation attachments](../attachments.md).
+
 ## Forms, effects, and feedback
 
 Use public unsaved-change handling for composite settings drafts. Save failure

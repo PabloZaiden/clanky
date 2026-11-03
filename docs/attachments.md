@@ -74,6 +74,19 @@ filesystem navigation and symbolic-link rules remain unchanged.
 
 ## Persistence, downloads and deletion
 
+Conversation history carries image references rather than inline image bytes.
+Message images and tool previews load automatically when they enter the visible
+conversation, not when offscreen history is opened. Click a loaded image to
+enlarge it; a failed load remains visible with a retry action. The same behavior
+applies to chat, task, agent-run and saved subagent transcripts.
+
+Image reads use the conversation's normal authorization and saved originals,
+independently of execution-host working copies. Uploads and provider delivery
+still retain their original bytes; viewport loading does not resize or compress
+them.
+Loaded image bytes remain available for enlargement even after a remote
+resource ticket expires.
+
 Original bytes remain with the persisted input/history. Clicking a non-image
 file in the transcript downloads that original without rendering active HTML
 or SVG. An agent's edits to its working copy do not alter the download.

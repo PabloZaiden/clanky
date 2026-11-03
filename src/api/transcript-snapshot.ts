@@ -1,6 +1,21 @@
-import type { TranscriptSnapshotOptions } from "@/shared";
+import { createHash } from "node:crypto";
+import { getCanonicalMessageAttachmentMimeType, type MessageAttachment, type TranscriptSnapshotOptions } from "@/shared";
 import { isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse } from "./helpers";
+
+export function transcriptImageResponse(request: Request, image: MessageAttachment | null): Response {
+  if (!image) return errorResponse("not_found", "Image attachment not found", 404);
+  const etag = `"${createHash("sha256").update(image.data).digest("hex")}"`;
+  const headers = {
+    "Cache-Control": "private, no-cache",
+    "Content-Type": getCanonicalMessageAttachmentMimeType(image),
+    "X-Content-Type-Options": "nosniff",
+    ETag: etag,
+  };
+  return request.headers.get("If-None-Match") === etag
+    ? new Response(null, { status: 304, headers })
+    : new Response(Buffer.from(image.data, "base64"), { headers });
+}
 
 /**
  * Parse the paged transcript contract. An omitted option returns only the

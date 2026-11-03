@@ -236,6 +236,7 @@ export interface ChatConversationPort {
     signal?: AbortSignal,
   ): Promise<T>;
   getAssistantMessage(chatId: string, messageId: string): Promise<MessageData | null>;
+  getMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   recordSteeredMessage(chat: Chat, message: QueuedChatMessage, admission: HarnessInputAdmission): Promise<Chat>;
   dispatchMessage(
     chat: Chat,

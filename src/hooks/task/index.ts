@@ -12,7 +12,7 @@
 import type {
   Task,
   TaskEvent,
-  MessageData,
+  TranscriptMessage,
   TaskLogEntry,
   ToolCallData,
   ToolCallDisplayData,
@@ -53,7 +53,7 @@ export interface UseTaskResult {
   /** WebSocket connection status */
   connectionStatus: "connecting" | "open" | "closed" | "error";
   /** Messages from the current/recent iterations */
-  messages: MessageData[];
+  messages: TranscriptMessage[];
   /** Tool calls from the current/recent iterations */
   toolCalls: ToolCallDisplayData[];
   /** Application logs from the task engine */
@@ -198,7 +198,7 @@ export function useTask(taskId: string): UseTaskResult {
     error,
     notFound,
     connectionStatus,
-    messages: transcript.messages as MessageData[],
+    messages: transcript.messages,
     toolCalls: transcript.toolCalls as ToolCallDisplayData[],
     logs: transcript.logs,
     gitChangeCounter,

@@ -1,20 +1,19 @@
 import { memo, useEffect, useRef, useState } from "react";
 import {
   VOICE_MAX_TEXT_CHARS,
-  type MessageData,
+  type TranscriptMessage,
   type VoiceTranslationLanguage,
 } from "@/shared";
 import type { BadgeVariant } from "../common";
 import {
   getMessageAttachmentKind,
-  type MessageAttachment,
 } from "@/shared/message-attachments";
-import { ImageViewerModal } from "../ImageViewerModal";
 import { StatusBadge } from "../common";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
 import { FileAttachment } from "./file-attachment";
+import { ImageAttachment } from "./image-attachment";
 import { MessageBody } from "./message-body";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
@@ -24,7 +23,7 @@ import {
 } from "../../utils/promise-markers";
 
 interface MessageEntryProps {
-  data: MessageData;
+  data: TranscriptMessage;
   showTimestamp: boolean;
   showDate: boolean;
   spacingClass: string;
@@ -77,13 +76,6 @@ export const MessageEntry = memo(function MessageEntry({
   const contentWidthClassName = isUser
     ? "min-w-0 max-w-[min(88%,64rem)] space-y-2"
     : "min-w-0 w-full space-y-2";
-  const [selectedAttachment, setSelectedAttachment] = useState<MessageAttachment | null>(null);
-  const selectedImage = selectedAttachment && getMessageAttachmentKind(selectedAttachment) === "image" ? {
-    src: `data:${selectedAttachment.mimeType};base64,${selectedAttachment.data}`,
-    alt: selectedAttachment.filename,
-    title: selectedAttachment.filename,
-    description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
-  } : null;
   const sourceText = displayMessage.content;
   const [translation, setTranslation] = useState<{ source: string; text: string } | null>(null);
   const [translationRequest, setTranslationRequest] = useState<{
@@ -183,20 +175,8 @@ export const MessageEntry = memo(function MessageEntry({
           {msg.attachments && msg.attachments.length > 0 && (
             <div className={`flex flex-wrap gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
               {msg.attachments.map((attachment) => (
-                getMessageAttachmentKind(attachment) === "image" ? (
-                  <button
-                    key={attachment.id}
-                    type="button"
-                    onClick={() => setSelectedAttachment(attachment)}
-                    className="rounded-xl border border-gray-200 bg-white/80 p-1 text-left hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:border-white/10 dark:bg-black/20 dark:hover:border-white/20"
-                    aria-label={`View ${attachment.filename}`}
-                  >
-                    <img
-                      src={`data:${attachment.mimeType};base64,${attachment.data}`}
-                      alt={attachment.filename}
-                      className="h-20 w-20 rounded-lg object-cover"
-                    />
-                  </button>
+                "resourceUrl" in attachment || getMessageAttachmentKind(attachment) === "image" ? (
+                  <ImageAttachment key={attachment.id} attachment={attachment} />
                 ) : (
                   <FileAttachment key={attachment.id} attachment={attachment} />
                 )
@@ -263,7 +243,6 @@ export const MessageEntry = memo(function MessageEntry({
               )}
             </div>
           )}
-          <ImageViewerModal image={selectedImage} onClose={() => setSelectedAttachment(null)} />
         </div>
       </div>
     </div>
