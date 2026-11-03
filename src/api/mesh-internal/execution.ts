@@ -26,7 +26,7 @@ export const meshExecutionRoutes = defineRoutes({
   "/api/mesh/internal/execution/session": {
     auth: "public",
     sameOrigin: "never",
-    description: "Establish a signed Mesh CommandExecutor session or renew an authenticated file-transfer lease.",
+    description: "Establish a signed Mesh CommandExecutor session or renew its authenticated execution lease.",
     operations: {
       POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session admission." } },
       DELETE: { requestSchema: undefined, querySchema: undefined, automation: { policy: "excluded", reason: "Signed internal Mesh command-session teardown." } },
@@ -52,7 +52,6 @@ export const meshExecutionRoutes = defineRoutes({
             {
               expectedChannel: MESH_EXECUTION_CHANNEL,
               expectedProtocolVersion: parsed.data.protocolVersion,
-              requiredCapability: { id: "fileOperations" },
             },
           );
           return Response.json({
