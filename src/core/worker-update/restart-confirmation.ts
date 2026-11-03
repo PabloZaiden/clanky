@@ -3,7 +3,7 @@ import { DomainError } from "../../domain/domain-error";
 import { closeCommandExecutor, type CommandExecutor } from "../command-executor";
 import { meshManager } from "../mesh-manager";
 
-export const WORKER_RESTART_TIMEOUT_MS = 20_000;
+export const WORKER_RESTART_TIMEOUT_MS = 70_000;
 const RESTART_POLL_INTERVAL_MS = 1000;
 const RESTART_PROBE_TIMEOUT_MS = 10_000;
 const WorkerServiceStatusSchema = z.object({
@@ -158,7 +158,7 @@ export async function confirmWorkerRestart({
   }
   throw new DomainError(
     "worker_restart_confirmation_timeout",
-    "The worker did not return with an installed, running service within 20 seconds."
+    `The worker did not return with an installed, running service within ${WORKER_RESTART_TIMEOUT_MS / 1000} seconds.`
       + (lastError instanceof Error ? ` Last check: ${lastError.message}` : ""),
     { cause: lastError },
   );
