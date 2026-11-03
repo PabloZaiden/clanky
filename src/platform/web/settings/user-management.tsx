@@ -12,6 +12,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
   const [role, setRole] = useState<WebAppUserRole>("user");
   const [setupLink, setSetupLink] = useState<string>();
   const [userToDelete, setUserToDelete] = useState<WebAppUserSummary>();
+  const [userToReset, setUserToReset] = useState<WebAppUserSummary>();
   const [error, setError] = useState<string>();
   const {
     pending: setupLinkPending,
@@ -82,6 +83,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
         return;
       }
       setSetupLink(result.setupLink.url);
+      setUserToReset(undefined);
       await refreshUsers();
     } catch (err) {
       if (isSetupLinkMutationCurrent(operationToken)) {
@@ -135,7 +137,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
                   </select>
                 ) : <Badge variant="success">Owner</Badge>}
                 {user.role !== "owner" ? <>
-                  <Button disabled={setupLinkPending} onClick={() => void resetUser(user)}>Reset passkey</Button>
+                  <Button disabled={setupLinkPending} onClick={() => setUserToReset(user)}>Reset passkey</Button>
                   <Button disabled={setupLinkPending} tone="danger" onClick={() => setUserToDelete(user)}>Delete user</Button>
                 </> : null}
               </div>
@@ -143,6 +145,16 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
           ))}
         </div>
       ) : users !== undefined && !usersLoadError ? <EmptyState title="No users" /> : null}
+      <ConfirmDialog
+        open={Boolean(userToReset)}
+        title="Reset account access?"
+        message={userToReset ? `This removes "${userToReset.username}"'s passkey and API keys, revokes device sessions and signs them out. A new setup link will be created.` : ""}
+        confirmLabel="Reset account access"
+        danger
+        loading={setupLinkPending}
+        onCancel={() => setUserToReset(undefined)}
+        onConfirm={() => userToReset && void resetUser(userToReset)}
+      />
       <ConfirmDialog
         open={Boolean(userToDelete)}
         title="Delete user?"

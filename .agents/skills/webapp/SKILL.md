@@ -101,6 +101,7 @@ in app-owned adapters, not silently convert/reset them.
   theme or independently fetch hidden framework account configuration.
 - Select `configureWebAppPreferences({adapter,scope,themeStorageKey})`
   explicitly. Default is memory; `createBrowserPreferenceAdapter` is opt-in.
+  Denied browser-storage access reports a warning and falls back to memory.
   Preserve supported `webapp.theme` and client-scoped sidebar/Settings keys.
   Do not invent per-user keys when the app previously used a client namespace.
 - Call `initializeWebAppTheme()` after adapter selection, before rendering.

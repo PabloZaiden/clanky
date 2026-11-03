@@ -37,7 +37,7 @@ export interface WebSocketCliCommandOptions extends ResolveCliAuthOptions {
 }
 
 function websocketUrl(baseUrl: string, path: string): string {
-  const url = new URL(path, `${baseUrl.replace(/\/+$/, "")}/`);
+  const url = new URL(path.replace(/^\/+/, ""), `${baseUrl.replace(/\/+$/, "")}/`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }

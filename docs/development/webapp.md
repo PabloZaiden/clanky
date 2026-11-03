@@ -94,6 +94,8 @@ Account, logging, passkey, session, API-key, user, and server settings are
 Clanky-owned compositions. Keep their policy and data loading out of webapp.
 Use the public theme state, Settings layout and fields; do not restyle native
 selects or duplicate generic layout behavior.
+User-access resets require a destructive confirmation naming the account and
+its passkey, API-key and session revocation consequences.
 
 Settings have two zones with controls/actions vertically centered and
 right-aligned. Keep short fields compact, related fields together, and ordinary
