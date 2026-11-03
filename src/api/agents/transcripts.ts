@@ -4,11 +4,14 @@ import { workspaceOperation } from "../workspace-delegation";
  */
 
 import { defineRoutes } from "@/platform/server";
+import { executionAutomation } from "../execution-automation";
+import { getTranscriptImage } from "../../core/transcript-image-service";
+import { projectTranscriptImages } from "@/shared";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getAgentRunTranscriptSnapshot, getAgentRunTranscriptToolCall } from "../../core/agent-run-transcript-service";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";
 import { errorResponse, internalErrorResponse } from "../helpers";
-import { parseTranscriptSnapshotOptions, transcriptSnapshotErrorResponse } from "../transcript-snapshot";
+import { parseTranscriptSnapshotOptions, transcriptSnapshotErrorResponse, transcriptImageResponse } from "../transcript-snapshot";
 import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readConversationPage } from "../../core/conversation-read-service";
 import { readScope } from "../../client-sdk/collaboration/resource-read";
@@ -68,7 +71,10 @@ export const transcriptRoutes = defineRoutes({
             headers: transcriptResponseHeaders(revision),
           });
         }
-        return Response.json(snapshot, {
+        return Response.json({
+          ...snapshot,
+          transcript: projectTranscriptImages(snapshot.transcript, `/api/agent-runs/${encodeURIComponent(ctx.params["id"]!)}`),
+        }, {
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
@@ -81,6 +87,23 @@ export const transcriptRoutes = defineRoutes({
           message: "Failed to load agent-run snapshot",
           status: 500,
         });
+      }
+    },
+  },
+
+  "/api/agent-runs/:id/messages/:messageId/attachments/:attachmentId": {
+    delegation: workspaceOperation("agent-run"),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read one original image attachment from an owned agent run.",
+    operations: { GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }) } },
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        return transcriptImageResponse(req, await getTranscriptImage(
+          { kind: "agent-run", id: ctx.params["id"]! }, ctx.params["messageId"]!, ctx.params["attachmentId"]!,
+        ));
+      } catch (error) {
+        return internalErrorResponse(error, { error: "image_failed", message: "Failed to load image attachment", status: 500 });
       }
     },
   },

@@ -51,7 +51,13 @@ export async function getSavedSubagentTool(context: SubagentContext, id: string,
 export async function getSavedSubagentAssistantMessage(
   context: SubagentContext, id: string, messageId: string,
 ): Promise<PersistedMessage | null> {
-  if (!await parentExists(context) || !getSubagentForContext(context, id)) return null;
-  const message = subagentTranscriptStore.getMessageForUser(id, requireResourcePersistenceUserId("subagent", id), messageId);
+  const message = await getSavedSubagentMessage(context, id, messageId);
   return message?.role === "assistant" ? message : null;
+}
+
+export async function getSavedSubagentMessage(
+  context: SubagentContext, id: string, messageId: string,
+): Promise<PersistedMessage | null> {
+  if (!await parentExists(context) || !getSubagentForContext(context, id)) return null;
+  return subagentTranscriptStore.getMessageForUser(id, requireResourcePersistenceUserId("subagent", id), messageId);
 }

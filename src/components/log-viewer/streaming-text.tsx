@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Element, Root, RootContent } from "hast";
-import type { MessageData } from "@/shared";
+import type { TranscriptMessage } from "@/shared";
 import { getStreamingTextStart } from "../../lib/streaming-text";
 import { MAX_REVEAL_WORDS, StreamingTextAnimations } from "./streaming-text-animations";
 
@@ -69,7 +69,7 @@ export function useStreamingTextReveal({
   markdown,
   enabled,
 }: {
-  message: MessageData;
+  message: TranscriptMessage;
   content: string;
   markdown: boolean;
   enabled: boolean;

@@ -1,15 +1,15 @@
-import type { MessageData } from "@/shared";
+import type { TranscriptMessage } from "@/shared";
 
 interface StreamingTextArrival {
   from: number;
   receivedAt: number;
 }
 
-const arrivals = new WeakMap<MessageData, StreamingTextArrival>();
+const arrivals = new WeakMap<TranscriptMessage, StreamingTextArrival>();
 
 export function markStreamingText(
-  message: MessageData,
-  previous: MessageData | undefined,
+  message: TranscriptMessage,
+  previous: TranscriptMessage | undefined,
   baseLength: number,
 ): void {
   if (message.role !== "assistant" || document.visibilityState === "hidden") return;
@@ -21,7 +21,7 @@ export function markStreamingText(
   });
 }
 
-export function getStreamingTextStart(message: MessageData): number | undefined {
+export function getStreamingTextStart(message: TranscriptMessage): number | undefined {
   const arrival = arrivals.get(message);
   return arrival && performance.now() - arrival.receivedAt < 1_000
     ? arrival.from

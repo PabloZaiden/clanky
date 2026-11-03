@@ -209,6 +209,10 @@ export class ChatManager {
     return this.services.conversation.getAssistantMessage(chatId, messageId);
   }
 
+  async getMessage(chatId: string, messageId: string) {
+    return this.services.conversation.getMessage(chatId, messageId);
+  }
+
   async getChatSummary(chatId: string): Promise<Chat | null> {
     const chat = await this.services.state.getChatSummary(chatId);
     return chat ? this.services.conversation.withLiveActivity(chat) : null;
@@ -263,7 +267,9 @@ export class ChatManager {
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {
-    return this.services.state.getChatToolCall(chatId, toolCallId);
+    if (!await this.services.state.getChatSummary(chatId)) return null;
+    return this.services.conversation.getLiveTranscript(chatId)?.toolCalls.find((tool) => tool.id === toolCallId)
+      ?? this.services.state.getChatToolCall(chatId, toolCallId);
   }
 
   async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {

@@ -1,14 +1,11 @@
 import type {
-  AgentEvent,
-  ChatEvent,
-  TaskEvent,
+  TranscriptContentEvent,
   TranscriptStreamEvent,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
-import type { SubagentEvent } from "@/shared/subagent";
 
 export function toTranscriptStreamEvent(
-  event: AgentEvent | ChatEvent | TaskEvent | Extract<SubagentEvent, { type: "subagent.transcript" }>,
+  event: TranscriptContentEvent,
 ): TranscriptStreamEvent | null {
   switch (event.type) {
     case "subagent.transcript":
@@ -32,14 +29,6 @@ export function toTranscriptStreamEvent(
     case "agent.run.tool_call":
     case "task.tool_call":
       return { type: "transcript.tool", tool: event.tool };
-    case "chat.tool_call.extra":
-    case "agent.run.tool_call.extra":
-    case "task.tool_call.extra":
-      return {
-        type: "transcript.tool.extra",
-        toolId: event.toolId,
-        extra: event.extra,
-      };
     case "chat.log":
       return shouldIncludeConversationTranscriptLog(event.log)
         ? { type: "transcript.log", log: event.log }

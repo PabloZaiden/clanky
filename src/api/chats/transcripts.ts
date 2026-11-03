@@ -3,6 +3,8 @@ import { executionAutomation } from "../execution-automation";
 import { defineRoutes } from "@/platform/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
+import { getTranscriptImage } from "../../core/transcript-image-service";
+import { projectTranscriptImages } from "@/shared";
 import { TranscriptDownloadQuerySchema, TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";
 import { buildChatTranscriptHtml, buildChatTranscriptMarkdown } from "../../lib/chat-transcript-export";
@@ -10,6 +12,7 @@ import { errorResponse, internalErrorResponse } from "../helpers";
 import {
   parseTranscriptSnapshotOptions,
   transcriptSnapshotErrorResponse,
+  transcriptImageResponse,
 } from "../transcript-snapshot";
 import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readConversationPage } from "../../core/conversation-read-service";
@@ -74,7 +77,10 @@ export const chatsTranscriptRoutes = defineRoutes({
           });
         }
 
-        return Response.json(snapshot, {
+        return Response.json({
+          ...snapshot,
+          transcript: projectTranscriptImages(snapshot.transcript, `/api/chats/${encodeURIComponent(ctx.params["id"]!)}`),
+        }, {
           headers: transcriptResponseHeaders(revision),
         });
       } catch (error) {
@@ -91,6 +97,23 @@ export const chatsTranscriptRoutes = defineRoutes({
           message: "Failed to load chat snapshot",
           status: 500,
         }, undefined, "chats");
+      }
+    },
+  },
+
+  "/api/chats/:id/messages/:messageId/attachments/:attachmentId": {
+    delegation: workspaceOperation("chat"),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read one original image attachment from an owned chat.",
+    operations: { GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }) } },
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        return transcriptImageResponse(req, await getTranscriptImage(
+          { kind: "chat", id: ctx.params["id"]! }, ctx.params["messageId"]!, ctx.params["attachmentId"]!,
+        ));
+      } catch (error) {
+        return internalErrorResponse(error, { error: "image_failed", message: "Failed to load image attachment", status: 500 });
       }
     },
   },

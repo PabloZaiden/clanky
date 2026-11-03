@@ -54,5 +54,6 @@ export async function getAgentRunTranscriptToolCall(
   if (!agentRunTranscriptStore.getMeta(runId)) {
     throw new Error(`Agent run transcript metadata is unavailable: ${runId}`);
   }
-  return agentRunTranscriptStore.getToolCall(runId, toolCallId);
+  return agentRunner.getLiveTranscript(runId)?.toolCalls.find((tool) => tool.id === toolCallId)
+    ?? agentRunTranscriptStore.getToolCall(runId, toolCallId);
 }

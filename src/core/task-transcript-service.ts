@@ -92,5 +92,6 @@ export async function getTaskTranscriptToolCall(
   if (!taskTranscriptStore.getMeta(taskId)) {
     throw new Error(`Task transcript metadata is unavailable: ${taskId}`);
   }
-  return taskTranscriptStore.getToolCall(taskId, toolCallId);
+  return taskManager.getLiveTranscript(taskId)?.toolCalls.find((tool) => tool.id === toolCallId)
+    ?? taskTranscriptStore.getToolCall(taskId, toolCallId);
 }
