@@ -1,4 +1,5 @@
-import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey } from "@/platform/web/client-session";
+import { createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("newTaskPlanningPreferences");
 

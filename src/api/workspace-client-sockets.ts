@@ -2,7 +2,7 @@
  * Workspace-authorized adapters for relay realtime, terminal and preview streams.
  */
 import { createLogger, type RealtimeBus, type RealtimePublication } from "@pablozaiden/webapp/server";
-import { realtimeClientMessageSchema, type CurrentUser } from "@pablozaiden/webapp/contracts";
+import { realtimeClientMessageSchema, type CurrentUser } from "@/platform/contracts";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import type { CollaborationGuestGrant, CollaborationGuestAccess, CollaborationRevocation } from "@/shared/collaboration";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";

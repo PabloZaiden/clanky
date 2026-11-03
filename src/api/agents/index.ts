@@ -2,7 +2,7 @@
  * Scheduled-agent API route aggregation.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { crudRoutes } from "./crud";
 import { generationRoutes } from "./generation";
 import { runsRoutes, TEST_CODE_HEARTBEAT_INTERVAL_MS } from "./runs";

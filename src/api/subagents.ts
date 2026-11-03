@@ -1,4 +1,4 @@
-import { defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import { SubagentListQuerySchema } from "@/contracts/schemas/subagent";
 import { getSavedSubagentAssistantMessage, getSavedSubagents, getSavedSubagentSnapshot, getSavedSubagentTool } from "../core/subagent-service";

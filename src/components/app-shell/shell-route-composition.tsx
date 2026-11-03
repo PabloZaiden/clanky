@@ -1,13 +1,7 @@
 import { useEffect, type ReactNode } from "react";
-import {
-  ErrorState,
-  LoadingState,
-  Page,
-  useWebAppConfig,
-  type WebAppConfigState,
-  type WebAppRootProps,
-  type WebAppRoute,
-} from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { useWebAppConfig, type WebAppConfigState } from "@/platform/web/webapp-config";
+import { type WebAppRootProps } from "@/platform/web/root-types";
 import type {
   Agent,
   Chat,

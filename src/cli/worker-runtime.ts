@@ -1,13 +1,9 @@
 import { resolve } from "node:path";
-import {
-  readRuntimeConfig,
-  readWebAppConfig,
-  resolveAppDataDir,
-  type RuntimeEnvironment,
-} from "@pablozaiden/webapp/server";
+import { readRuntimeConfig } from "@/platform/server";
+import { readWebAppConfig, resolveAppDataDir, type RuntimeEnvironment } from "@pablozaiden/webapp/server";
 import {
   resolveServeOptionValues,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 
 export interface WorkerRuntimeConfiguration {

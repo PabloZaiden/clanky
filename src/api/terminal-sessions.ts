@@ -5,7 +5,7 @@
  * local and Mesh terminals.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { terminalSessionManager } from "../core/terminal-session-manager";
 import { domainErrorResponse, errorResponse } from "./helpers";

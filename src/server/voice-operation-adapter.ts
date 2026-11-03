@@ -2,11 +2,10 @@
  * Private request authorization and in-process framework dispatch for voice.
  */
 
-import type {
-  RouteCatalogEntry, RouteContext, WebAppServer,
-} from "@pablozaiden/webapp/server";
+import type { RouteCatalogEntry, RouteContext } from "@/platform/server";
+import type { WebAppServer } from "@/platform/server";
 import { getRequestOriginInfo, createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import type {
   OperationAuthority, OperationRequest, OperationResult,

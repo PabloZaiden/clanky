@@ -2,7 +2,7 @@
  * Resolves canonical workspace terminal sessions to local or Mesh adapters.
  */
 
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type {
   ExecutionHostBinding,
   ExecutionHostPlatform,

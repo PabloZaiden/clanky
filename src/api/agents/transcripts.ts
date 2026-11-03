@@ -3,7 +3,7 @@ import { workspaceOperation } from "../workspace-delegation";
  * Scheduled-agent transcript API routes.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getAgentRunTranscriptSnapshot, getAgentRunTranscriptToolCall } from "../../core/agent-run-transcript-service";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";

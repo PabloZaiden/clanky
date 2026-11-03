@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { MeshRelayPeerIdentity } from "@/shared/mesh-relay";
 import { MeshRelayPeerIdentitySchema } from "@/contracts/schemas/mesh-relay";
 import { DomainError } from "../domain/domain-error";

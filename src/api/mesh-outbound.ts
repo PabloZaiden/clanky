@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { MESH_RELAY_CONTROL_PATH, MESH_RELAY_STREAM_PATH } from "@/shared/mesh-relay";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
 import { controllerWorkerConnectionService } from "../core/controller-worker-connection-service";

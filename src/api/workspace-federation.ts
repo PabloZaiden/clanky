@@ -2,7 +2,8 @@
  * HTTP context and local preference policy around portable source federation.
  */
 
-import { createLogger, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
+import { type RouteDefinition, type RouteTable } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateChatRequestSchema } from "@/contracts/schemas";
 import { encodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { CollaborationFederationClient, type CollaborationForwardContext } from "../client-sdk/collaboration/federation";

@@ -15,7 +15,7 @@ import {
   type CliCommandResult,
   type WebAppCliCommandContext,
   type WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import type { ClankyCliContext } from "./mesh";
 import { systemdToken } from "./systemd";
 import {

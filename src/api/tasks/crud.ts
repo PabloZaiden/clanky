@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * Tasks CRUD routes — thin barrel re-exporting focused sub-modules.
  *

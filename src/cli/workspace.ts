@@ -5,12 +5,12 @@ import {
   type CliEnvironment,
   type DeviceCredentialsStore,
   type StoredDeviceCredentials,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import type {
   CliCommandResult,
   WebAppCliCommandContext,
   WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import { WorkspaceExecResponseSchema } from "@/contracts/schemas";
 import { retryFileUploadChunk, uploadFileInChunks } from "@/shared";
 import type { ClankyCliContext } from "./mesh";

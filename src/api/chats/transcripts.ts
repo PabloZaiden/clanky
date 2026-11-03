@@ -1,6 +1,7 @@
 import { workspaceOperation } from "../workspace-delegation";
 import { executionAutomation } from "../execution-automation";
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { chatManager } from "../../core/chat-manager";
 import { TranscriptDownloadQuerySchema, TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { getTranscriptSnapshotEtag } from "../../core/transcript-service";

@@ -15,7 +15,7 @@ import type {
   CliCommandResult,
   WebAppCliCommandContext,
   WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import { parseExecCommandArgs, runCliExecRequest } from "./exec-command";
 import {
   fetchCliApi,

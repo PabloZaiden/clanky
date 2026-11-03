@@ -1,4 +1,4 @@
-import type { RouteAutomationMetadata } from "@pablozaiden/webapp/server";
+import type { RouteAutomationMetadata } from "@/platform/server";
 import { z } from "zod";
 import {
   CONTROL_PRIVATE_HEADERS_MAX_BYTES, CONTROL_PRIVATE_JSON_MAX_BYTES, type ExecuteOperationInput,

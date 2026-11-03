@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import {
   listActiveWorkerRegistrations,
 } from "../persistence/mesh";

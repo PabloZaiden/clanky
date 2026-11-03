@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * CRUD route handlers for workspace entities.
  * Covers list, create, get, update, and delete operations.

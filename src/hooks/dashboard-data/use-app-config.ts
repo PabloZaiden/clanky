@@ -3,7 +3,8 @@
  */
 
 import { useState, useCallback } from "react";
-import { createLogger, useToast, type WebAppConfigState } from "@pablozaiden/webapp/web";
+import { createLogger, useToast } from "@pablozaiden/webapp/web";
+import { type WebAppConfigState } from "@/platform/web/webapp-config";
 import { apiRequest } from "../../lib/api-client";
 import { isBrowserCollaborationClient } from "@/client-sdk/browser-runtime";
 import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";

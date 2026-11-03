@@ -2,7 +2,7 @@
  * Deliberately public framework routes: peer controllers authenticate with
  * signed execution grants and short-lived, owned native leases over TLS.
  */
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { MeshHarnessEnvelopeSchema, MeshHarnessEventsRequestSchema } from "@/contracts/schemas/mesh-harness";
 import { meshHarnessGateway } from "../../core/mesh-harness-gateway";
 import { meshExecutionGateway } from "../../core/mesh-execution-gateway";

@@ -3,7 +3,8 @@
  * Default responses, authorization and execution remain owned by each route.
  */
 import { z } from "zod";
-import { createLogger, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
+import { type RouteDefinition, type RouteTable } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { CollectionReadOptionsSchema, ConversationReadOptionsSchema, OperationResponseOptionsSchema, ResourcePageSchema } from "@/contracts/schemas/resource-read";
 import { withResourceRepresentation } from "../client-sdk/collaboration/representations";
 import { isDomainError } from "../domain/domain-error";

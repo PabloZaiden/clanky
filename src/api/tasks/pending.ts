@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * Task pending prompt and follow-up routes.
  *

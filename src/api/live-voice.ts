@@ -2,7 +2,8 @@
  * Global user/tab-owned WebRTC voice lifecycle and private client responses.
  */
 
-import { createLogger, defineRoutes, type RouteContext } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   LiveVoiceSessionRequestSchema, LiveVoiceHeartbeatSchema, LiveVoiceCloseSchema,
   LiveVoiceConfirmationResponseSchema,

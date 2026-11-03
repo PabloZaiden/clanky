@@ -120,12 +120,11 @@ permissions, revocation and recovery semantics.
 ### Browser and CLI credentials
 
 Browser sessions use passkeys. CLI and automation clients can use device
-credentials or API keys. This document covers Clanky domain endpoints; the
-framework-owned authentication and health endpoints are listed separately
-where they affect integration.
+credentials or API keys. Clanky owns its account, credential and authorization
+endpoints; the shared server core supplies neutral health metadata.
 
-`clanky auth` uses the framework device flow, `clanky api` sends authenticated
-REST calls with selected framework credentials, `clanky ws` opens an
+`clanky auth` uses Clanky's device flow, `clanky api` sends authenticated
+REST calls with the selected CLI profile's credentials, `clanky ws` opens an
 authenticated JSON-lines websocket session against `/api/ws`, `clanky schema`
 exposes discoverability metadata for catalogued Clanky endpoints, and
 `clanky update` checks or installs published Clanky release binaries from
@@ -151,7 +150,7 @@ metadata. Public routes are exceptional and are identified explicitly in the
 route reference.
 
 API keys and device tokens with limited scopes may access only routes declaring
-those scopes. Private routes without scopes and framework account/key/settings
+those scopes. Private routes without scopes and account/key/settings
 management require `*`. Browser sessions retain their normal authorization.
 
 Internal native/deterministic control derives from the admitted execution,

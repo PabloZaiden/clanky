@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import { taskEventEmitter, chatEventEmitter, provisioningEventEmitter } from "./event-emitter";
 import { runWithCurrentUser } from "../context/user-context";
 import type { ClankyOperationService, OperationAuthority, OperationResult } from "./clanky-operation-service";

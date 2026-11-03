@@ -1,4 +1,6 @@
-import { createLogger, type RouteCatalogEntry, type WebAppServer } from "@pablozaiden/webapp/server";
+import { type RouteCatalogEntry } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
+import type { WebAppServer } from "@/platform/server";
 import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import { ControlOperationAuthority } from "../core/control-authority";
 import type { ControlAccess } from "../core/control-session-service";

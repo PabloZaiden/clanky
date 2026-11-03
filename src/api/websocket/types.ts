@@ -1,4 +1,4 @@
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { ExecutionHostKind } from "@/shared";
 import type { InteractiveTerminalConnection } from "../../core/terminal";
 import type { TerminalAttachmentHandle } from "../../core/terminal-attachment-registry";

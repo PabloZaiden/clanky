@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { TaskChatQuerySchema } from "../route-schemas";
 import { chatManager } from "../../core/chat-manager";
 import { taskManager } from "../../core/task-manager";

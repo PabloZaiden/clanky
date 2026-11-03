@@ -2,7 +2,7 @@
  * API for temporary, workspace-exclusive Mesh worker reservations.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import { CreateWorkspaceWorkerEnrollmentRequestSchema } from "@/contracts/schemas/mesh";
 import { meshManager } from "../core/mesh-manager";

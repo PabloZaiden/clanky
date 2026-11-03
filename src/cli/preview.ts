@@ -5,7 +5,7 @@ import {
   normalizeBaseUrl,
   refreshDeviceCredentials,
   resolveEnvironmentApiKeyAuth,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import type { CodePreviewOptions, PreviewBridgeClientMessage, PreviewBridgeReadyMessage, PreviewBridgeServerMessage } from "@/shared";
 import { PREVIEW_RESPONSE_WINDOW_BYTES, previewWebSocketCloseCode } from "@/shared/preview";
 import { getPreviewListenerTls } from "./preview-tls";

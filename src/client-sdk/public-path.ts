@@ -7,15 +7,15 @@ import {
   appSaveResource,
   appWebSocketConnection,
   appWebSocketUrl,
-  configureWebAppClient,
   getWebAppPublicBasePath,
   setWebAppPublicBasePath,
 } from "@pablozaiden/webapp/web";
+import { configureClankyClient } from "@/platform/web/api-client";
 
 export { appAbsoluteUrl, appDuplexConnection, appPath, appResourceUrl, appSaveResource, appWebSocketConnection, appWebSocketUrl };
 
-export function configureClientRuntime(options: Parameters<typeof configureWebAppClient>[0] = {}): void {
-  configureWebAppClient(options);
+export function configureClientRuntime(options: Parameters<typeof configureClankyClient>[0] = {}): void {
+  configureClankyClient(options);
 }
 
 export function setConfiguredPublicBasePath(basePath?: string | null): void {

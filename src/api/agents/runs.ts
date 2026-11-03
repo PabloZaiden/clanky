@@ -4,7 +4,8 @@ import { executionAutomation } from "../execution-automation";
  * Scheduled-agent run and deterministic code-test API routes.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { AgentRun, AgentRunStatus } from "@/shared/agent";
 import type { DeterministicAgentTestResult, DeterministicAgentTestStreamEvent } from "@/shared/deterministic-agent";
 import type { TaskLogEntry } from "@/shared/task";

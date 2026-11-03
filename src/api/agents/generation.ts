@@ -3,7 +3,8 @@ import { workspaceOperation } from "../workspace-delegation";
  * Scheduled-agent code generation API routes.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import type { Agent } from "@/shared/agent";
 import type { Chat } from "@/shared/chat";
 import type { Workspace } from "@/shared/workspace";

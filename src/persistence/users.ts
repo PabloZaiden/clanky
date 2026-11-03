@@ -1,4 +1,4 @@
-import type { CurrentUser, WebAppUserRole } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser, WebAppUserRole } from "@/platform/contracts";
 import { getDatabase } from "./database";
 
 export function toCurrentUser(row: { id: string; username: string; role: WebAppUserRole }): CurrentUser {

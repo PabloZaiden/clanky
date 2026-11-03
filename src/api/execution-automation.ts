@@ -1,4 +1,4 @@
-import type { RouteAutomationMetadata } from "@pablozaiden/webapp/server";
+import type { RouteAutomationMetadata } from "@/platform/server";
 
 export function executionAutomation(
   policy: "read" | "write" | "confirm", reason: string,

@@ -3,7 +3,8 @@ import { workspaceOperation } from "../workspace-delegation";
  * Scheduled-agent CRUD API routes.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateAgentRequestSchema, UpdateAgentRequestSchema } from "@/contracts/schemas";
 import { agentManager } from "../../core/agent-manager";
 import { isGitBackedWorkspace } from "../../core/workspace-capabilities";

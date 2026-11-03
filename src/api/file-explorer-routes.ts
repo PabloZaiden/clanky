@@ -8,7 +8,7 @@ import { executionAutomation } from "./execution-automation";
  * envelopes, streaming responses, and file-domain error mapping.
  */
 
-import { defineRoutes, type RouteContext, type RouteTable } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteContext, type RouteTable } from "@/platform/server";
 import {
   CancelFileExplorerUploadRequestSchema,
   CompleteFileExplorerUploadRequestSchema,

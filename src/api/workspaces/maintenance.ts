@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { workspaceOperation } from "../workspace-delegation";
 /**
  * Workspace maintenance routes for actions like pulling the default branch.
