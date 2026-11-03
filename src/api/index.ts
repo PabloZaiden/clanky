@@ -1,8 +1,7 @@
 /**
  * Central export for the API module.
  * 
- * Combines all API routes from individual modules into the webapp server's
- * native route table.
+ * Combines API modules into Clanky's authenticated route table.
  * 
  * Route Modules:
  * - tasks: Task CRUD, lifecycle, transcript, control, data, and review operations
@@ -21,7 +20,7 @@
  * @module api
  */
 
-import { defineRoutes, type RouteDefinition, type RouteTable } from "@pablozaiden/webapp/server";
+import { defineRoutes, type RouteDefinition, type RouteTable } from "@/platform/server";
 import { runWithCurrentUser } from "../context/user-context";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
@@ -53,7 +52,7 @@ import { controlRoutes } from "./control";
  * All API routes combined.
  * 
  * Raw WebSocket upgrades are handled separately in src/server.ts; the framework
- * realtime endpoint is also registered by the webapp server.
+ * realtime endpoint is registered by Clanky's account transport composition.
  */
 export const nativeApiRoutes = {
   ...tasksRoutes,

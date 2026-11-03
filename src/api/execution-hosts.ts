@@ -2,7 +2,8 @@
  * Transport-neutral execution-host discovery routes.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { z } from "zod";
 import { executionHostService } from "../core/execution-host-service";
 import { executionHostCommandService } from "../core/execution-host-command-service";

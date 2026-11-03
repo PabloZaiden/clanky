@@ -4,9 +4,13 @@
  */
 
 import { Database } from "bun:sqlite";
+import { existsSync } from "node:fs";
 import { mkdir, rm, unlink } from "fs/promises";
 import { join } from "path";
-import { createLogger, resolveAppDataDir } from "@pablozaiden/webapp/server";
+import { createLogger, ensurePrivateDirectory, securePrivateFile } from "@pablozaiden/webapp/server";
+import { resolveAppDataDir } from "@/platform/server/runtime-config";
+import type { ClankyAccountStore } from "@/platform/server/auth/store";
+import { createAccountStore } from "./accounts/sqlite-store";
 import { assertSchemaBaseline, runMigrations } from "./migrations";
 import { createBaseSchema } from "./base-schema";
 import { DatabaseNotInitializedError } from "./errors";
@@ -19,6 +23,31 @@ import {
 const log = createLogger("database");
 
 let db: Database | null = null;
+let accounts: ClankyAccountStore | undefined;
+
+function currentAccountStore(): ClankyAccountStore {
+  if (!accounts) throw new DatabaseNotInitializedError();
+  return accounts;
+}
+
+// Account services outlive an explicit full reset, while its database does not.
+const oauthStore = new Proxy({} as NonNullable<ClankyAccountStore["oauth"]>, {
+  get(_target, property) {
+    const oauth = currentAccountStore().oauth;
+    if (!oauth) throw new Error("OAuth persistence is unavailable");
+    return Reflect.get(oauth, property);
+  },
+});
+const accountStore = new Proxy({} as ClankyAccountStore, {
+  get(_target, property) {
+    return property === "oauth" ? oauthStore : Reflect.get(currentAccountStore(), property);
+  },
+});
+
+export function getAccountStore(): ClankyAccountStore {
+  currentAccountStore();
+  return accountStore;
+}
 
 export function getDataDir(): string {
   return resolveAppDataDir({
@@ -50,14 +79,18 @@ export async function initializeDatabase(): Promise<void> {
     clearChatMetadataCache(db);
     db.close();
     db = null;
+    accounts = undefined;
   }
 
   await mkdir(getDataDir(), { recursive: true });
+  ensurePrivateDirectory(getDataDir());
+  if (existsSync(dbPath)) securePrivateFile(dbPath);
 
   const nextDatabase = new Database(dbPath);
   db = nextDatabase;
 
   try {
+    securePrivateFile(dbPath);
     nextDatabase.run("PRAGMA busy_timeout = 5000");
     nextDatabase.run("PRAGMA foreign_keys = ON");
     nextDatabase.run("PRAGMA journal_mode = WAL");
@@ -65,12 +98,15 @@ export async function initializeDatabase(): Promise<void> {
     assertSchemaBaseline(nextDatabase);
     createBaseSchema(nextDatabase);
     runMigrations(nextDatabase);
+    accounts = createAccountStore(nextDatabase);
+    accounts.initialize();
     assertSchemaInventory(nextDatabase);
 
     log.info("Database initialized", { path: dbPath });
   } catch (error) {
     nextDatabase.close();
     db = null;
+    accounts = undefined;
     throw error;
   }
 }
@@ -83,6 +119,7 @@ export function closeDatabase(): void {
   clearChatMetadataCache(db);
   db.close();
   db = null;
+  accounts = undefined;
   log.info("Database connection closed");
 }
 
@@ -113,6 +150,7 @@ export function resetDatabase(): void {
 
   createBaseSchema(database);
   runMigrations(database);
+  getAccountStore().initialize();
   assertSchemaInventory(database);
   log.info("Database reset complete");
 }

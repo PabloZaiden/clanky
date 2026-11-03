@@ -2,7 +2,7 @@
  * Owner-only controller relay pairing routes.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import {
   ControllerRelayPairingStatusSchema,

@@ -1,4 +1,5 @@
-import { useCurrentUser, useLiveQuery } from "@pablozaiden/webapp/web";
+import { useCurrentUser } from "@/platform/web/webapp-config";
+import { useLiveQuery } from "@pablozaiden/webapp/web";
 import type { ControlRequestSummary } from "@/contracts/schemas/control";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";

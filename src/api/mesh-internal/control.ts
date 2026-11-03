@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { describeMeshWorkerGeneration } from "../../core/mesh-worker-generation";
 import { assertMeshRequestTransport, meshRequestProtocolVersions } from "../../core/mesh-transport-security";
 import {

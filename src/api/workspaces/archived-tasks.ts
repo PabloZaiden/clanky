@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * Route handler for purging archived tasks within a workspace.
  */

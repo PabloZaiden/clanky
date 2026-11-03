@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 /**
  * Tasks review routes - handle review comments after push or local acceptance.
  *

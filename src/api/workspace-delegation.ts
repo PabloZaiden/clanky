@@ -1,7 +1,7 @@
 /**
  * Shared reference locations declared by canonical workspace route definitions.
  */
-import type { RouteDelegationMetadata } from "@pablozaiden/webapp/server";
+import type { RouteDelegationMetadata } from "@/platform/server";
 import type { CollaborationResourceKind } from "@/shared/collaboration-reference";
 
 export function workspaceOperation(

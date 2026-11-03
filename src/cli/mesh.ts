@@ -3,8 +3,8 @@ import {
   type CliCommandResult,
   type WebAppCliCommandContext,
   type WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
-import type { RouteCatalogEntry } from "@pablozaiden/webapp/server";
+} from "@/platform/cli";
+import type { RouteCatalogEntry } from "@/platform/server";
 import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 
 export interface ClankyCliContext {

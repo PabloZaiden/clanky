@@ -1,5 +1,5 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { WorkspaceQuerySchema } from "../route-schemas";
 /**
  * Tasks data routes (diff, plan, status-file, check-planning-dir).

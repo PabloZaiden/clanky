@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey } from "@/platform/web/client-session";
+import { createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("usePrivateItemsPreference");
 const PRIVATE_ITEMS_STORAGE_KEY = "clanky.showPrivateItems";

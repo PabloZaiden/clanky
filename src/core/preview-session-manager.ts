@@ -2,7 +2,7 @@
  * Core manager for CLI-owned workspace and direct server preview sessions.
  */
 
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import {
   type ExecutionHostBinding,
   type ExecutionHostRef,

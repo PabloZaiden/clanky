@@ -3,7 +3,7 @@
  */
 
 import { CommandExecResultSchema } from "@/contracts/schemas";
-import type { CliCommandResult } from "@pablozaiden/webapp/cli";
+import type { CliCommandResult } from "@/platform/cli";
 import {
   fetchCliApi,
   readCliResponseBody,

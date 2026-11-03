@@ -1,4 +1,4 @@
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { MeshWorkerRegistration } from "@/shared/mesh";
 import type { WorkerUpdateJob, WorkerUpdateJobSnapshot, WorkerUpdateMode } from "@/shared/worker-update";

@@ -10,7 +10,7 @@ import {
   type CliEnvironment,
   type DeviceCredentialsStore,
   type StoredDeviceCredentials,
-} from "@pablozaiden/webapp/cli";
+} from "@/platform/cli";
 import { z } from "zod";
 
 export interface CliApiContext {

@@ -3,7 +3,8 @@ import { workspaceOperation } from "../workspace-delegation";
  * Explicit native steering and exact-conversation input recovery.
  */
 
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { domainErrorResponse, successResponse } from "../helpers";
 import type { TaskInputAdmissionResponse } from "@/contracts";

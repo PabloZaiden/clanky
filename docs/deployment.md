@@ -93,6 +93,12 @@ method does not prove human presence. See
 [authentication-method equivalence](development/architecture.md#authentication-method-equivalence).
 Treat API keys, worker keys, and persisted application data as secrets.
 
+Accounts, credential storage, OAuth, CLI authorization, and their administrative
+pages are Clanky-owned. Webapp supplies the application frame and transports,
+with optional passkey/session helpers; it does not initialize an account
+database. Password login is not enabled. Upgrades retain Clanky's existing
+account identifiers, signing material, credential files, and supported sessions.
+
 Keep these development-only overrides unset in a public deployment:
 
 - `CLANKY_DISABLE_PASSKEY` bypasses passkey enforcement.
@@ -148,7 +154,7 @@ description/execution; it cannot broaden a workspace grant. A catalog that
 cannot fit reports an explicit error, never a partial index.
 
 General control can read `GET /api/health` to obtain the connected instance's
-health and running application version, plus public framework configuration and
+health and running application version, plus public application configuration and
 authorized operational settings. This diagnoses the instance owning the control
 connection, not an arbitrary production URL or the browser's loaded frontend
 version. Account administration is catalogued, while private authentication

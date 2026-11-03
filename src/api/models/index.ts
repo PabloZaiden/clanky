@@ -14,7 +14,7 @@ import { preferencesRoutes } from "./preferences-routes";
  * All models and preferences routes combined.
  * Can be spread into the main API routes object.
  */
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 
 export const modelsAndPreferencesRoutes = defineRoutes({
   ...modelsRoutes,

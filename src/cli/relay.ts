@@ -1,8 +1,8 @@
 import type {
   CliCommandResult,
   WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
-import { readRuntimeConfig } from "@pablozaiden/webapp/server";
+} from "@/platform/cli";
+import { readRuntimeConfig } from "@/platform/server";
 import { startRelayServer } from "../core/mesh-relay-server";
 import type { ClankyCliContext } from "./mesh";
 

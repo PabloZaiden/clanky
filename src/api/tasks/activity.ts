@@ -1,5 +1,6 @@
 import { workspaceOperation } from "../workspace-delegation";
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { taskManager } from "../../core/task-manager";
 import { domainErrorResponse, errorResponse, successResponse } from "../helpers";
 import { isDomainError } from "../../domain/domain-error";

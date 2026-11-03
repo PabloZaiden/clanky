@@ -86,7 +86,7 @@ import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { requireMatchingHarnessBindings } from "../backends/harness-binding";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../context/user-context";
 
 const log = createLogger("chat-conversation-service");

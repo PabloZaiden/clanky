@@ -571,7 +571,7 @@ call-bound capabilities; they are not model tools.
 
 All call routes require authentication and normal same-origin mutation policy.
 Operations reuse the originating authorization, with an immutable role/scope
-ceiling, and pass through the framework's authenticated request pipeline.
+ceiling, and pass through Clanky's authenticated request pipeline.
 Provider session IDs are not accepted as authority. Old chat-local Live
 endpoints are removed rather than aliased.
 

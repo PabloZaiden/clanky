@@ -5,7 +5,7 @@
 import type { Server } from "bun";
 import { homedir } from "node:os";
 import { CLANKY_WEB_OPTIONS } from "./web-client-options";
-import { createWebAppServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, sqliteWebAppStore, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
+import { createClankyPlatformServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@/platform/server";
 import { apiRoutes } from "./api";
 import {
   meshControllerInternalRoutes,
@@ -13,7 +13,7 @@ import {
 } from "./api/mesh-internal";
 import { authorizedRawWebSocketUpgrade } from "./api/raw-websocket-upgrade";
 import { websocketHandlers } from "./api/websocket";
-import { getDataDir, initializeDatabase } from "./persistence/database";
+import { getAccountStore, initializeDatabase } from "./persistence/database";
 import { harnessSecretFiles } from "./core/harness-secret-files";
 import { agentNotificationService } from "./core/agent-notification-service";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
@@ -612,14 +612,13 @@ export async function getWebAppServer(
     });
     log.info("Mesh worker execution configured");
   }
-  const dataDir = getDataDir();
   if (meshWorker && process.env["CLANKY_DISABLE_PASSKEY"] === "true") {
     throw new Error("Mesh-worker mode cannot be combined with CLANKY_DISABLE_PASSKEY");
   }
   if (meshWorker) {
     log.info("Creating Mesh worker application server");
   }
-  const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
+  const store = getAccountStore();
   if (!meshWorker && !Bun.isStandaloneExecutable) {
     const { writeClientOperationCatalog } = await import("./client-operation-catalog");
     await writeClientOperationCatalog();
@@ -632,7 +631,7 @@ export async function getWebAppServer(
   const controlServer = meshWorker ? undefined : new ControlServer({
     store, getBaseUrl: () => controlBaseUrl,
   });
-  app = createWebAppServer<ClankyRealtimeEvent>({
+  app = createClankyPlatformServer<ClankyRealtimeEvent>({
     appName: "Clanky",
     envPrefix: "CLANKY",
     appDirectoryName: ".clanky",

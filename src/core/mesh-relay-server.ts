@@ -11,13 +11,11 @@ import {
   createLogger,
   createWebAppServer,
   defineRoutes,
-  memoryWebAppStore,
-  readRuntimeConfig,
-  webAppConfigPath,
-  type RuntimeConfig,
+  notFound,
   type WebAppServer,
   type WebAppWebSocketData,
 } from "@pablozaiden/webapp/server";
+import { readRuntimeConfig, webAppConfigPath, type RuntimeConfig } from "@/platform/server/runtime-config";
 import {
   MESH_RELAY_CONTROL_PATH,
   MESH_RELAY_DESCRIPTOR_PATH,
@@ -424,13 +422,7 @@ export async function createRelayServer(
       runtimeConfig,
       web: false,
       version: options.version ?? CLANKY_VERSION,
-      store: memoryWebAppStore(),
-      auth: {
-        passkeys: false,
-        apiKeys: false,
-        deviceAuth: false,
-      },
-      requestFilter: relayRequestFilter,
+      request: req => relayRequestFilter(req) ? undefined : notFound(),
       routes,
       websockets: {
         [RELAY_WEBSOCKET_HANDLER]: createRelayWebSocketHandler(broker),

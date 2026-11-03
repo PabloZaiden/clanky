@@ -1,10 +1,5 @@
-import type {
-  SidebarAction,
-  SidebarNode,
-  SidebarNodeSnapshot,
-  SidebarTab,
-  WebAppRootProps,
-} from "@pablozaiden/webapp/web";
+import type { SidebarAction, SidebarNode, SidebarNodeSnapshot, SidebarTab } from "@pablozaiden/webapp/web";
+import type { WebAppRootProps } from "@/platform/web/root-types";
 import {
   ActivityIcon,
   BellIcon,

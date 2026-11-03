@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolveAppDataDir, type RuntimeEnvironment } from "@pablozaiden/webapp/server";
-import type { WebAppCliCommandContext, CliCommandResult } from "@pablozaiden/webapp/cli";
+import type { WebAppCliCommandContext, CliCommandResult } from "@/platform/cli";
 import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { isAgentSettings } from "@/shared/settings";
 import { DomainError } from "../domain/domain-error";

@@ -2,7 +2,7 @@
  * Validated device preferences for a browser collaboration profile.
  */
 
-import { clientScopedStorageKey } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey } from "@/platform/web/client-session";
 import type { z } from "zod";
 import { DomainError } from "../domain/domain-error";
 import {

@@ -1,5 +1,6 @@
 import type { ServerWebSocket } from "bun";
-import { createLogger, defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   WORKSPACE_DIRECT_PATH, WorkspaceDirectOpenSchema,
 } from "@/contracts/schemas/mesh-client";

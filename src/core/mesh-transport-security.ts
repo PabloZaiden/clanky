@@ -1,7 +1,8 @@
 /**
  * Actual transport security, including authenticated in-process relay streams.
  */
-import { getRequestOriginInfo, readRuntimeConfig, type RuntimeConfig } from "@pablozaiden/webapp/server";
+import { readRuntimeConfig, type RuntimeConfig } from "@/platform/server";
+import { getRequestOriginInfo } from "@pablozaiden/webapp/server";
 import { isSupportedMeshProtocolVersion, MESH_SUPPORTED_PROTOCOL_VERSIONS, type MeshProtocolVersion } from "@/shared/mesh-protocol";
 import { DomainError } from "../domain/domain-error";
 

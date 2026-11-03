@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import { createWebAppCli } from "@pablozaiden/webapp/cli";
-import { createRouteCatalog } from "@pablozaiden/webapp/server";
+import { createClankyCommandRuntime } from "@/platform/cli";
+import { createRouteCatalog } from "@/platform/server";
 import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
 import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
@@ -10,7 +10,7 @@ import { createWorkerCommand } from "./worker";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 import { createRelayCommand } from "./relay";
 import { parseCodeCommandArgs } from "./code";
-import type { WebAppCliCommandContext } from "@pablozaiden/webapp/cli";
+import type { WebAppCliCommandContext } from "@/platform/cli";
 import type { PreviewCommandOptions } from "./preview";
 import { readConfiguredWorkerChannel } from "./worker-channel";
 
@@ -57,7 +57,7 @@ export function createClankyCli() {
         err: (message) => context.stderr.write(`${message}\n`),
       }),
     });
-  return createWebAppCli<ClankyCliContext>({
+  return createClankyCommandRuntime<ClankyCliContext>({
     appName: "Clanky",
     commandName: "clanky",
     envPrefix: "CLANKY",

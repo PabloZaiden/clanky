@@ -2,7 +2,7 @@
  * Controller and worker Mesh management routes.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { executionAutomation } from "./execution-automation";
 import {
   CreateMeshEnrollmentTokenRequestSchema,

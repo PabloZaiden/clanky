@@ -1,4 +1,5 @@
-import type { WebAppRootProps, WebAppRoute } from "@pablozaiden/webapp/web";
+import type { WebAppRootProps } from "@/platform/web/root-types";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";

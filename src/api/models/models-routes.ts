@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { ModelVariantsQuerySchema, WorkspaceQuerySchema } from "../route-schemas";
 /**
  * Models listing API routes.

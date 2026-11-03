@@ -6,7 +6,7 @@
  * resource ownership to its Mesh manager or gateway.
  */
 
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { meshAcpRoutes } from "./acp";
 import { meshControlRoutes } from "./control";
 import { meshExecutionRoutes } from "./execution";

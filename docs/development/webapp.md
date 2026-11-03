@@ -9,10 +9,22 @@ documented in the [Apple app guide](../apple-apps.md), not the framework skill.
 
 ## Framework ownership
 
-Use public framework primitives for auth/passkeys, API keys, device sessions,
-same-origin checks, shell/sidebar, routing, settings, realtime, health, and
-server lifecycle. Do not recreate them in Clanky or add app-local CSS/DOM
-workarounds for generic framework behavior.
+Use public framework primitives for shell/sidebar, routing, settings layout,
+realtime, origin protections, assets, health, and server lifecycle. Do not
+recreate them in Clanky or add app-local CSS/DOM workarounds for generic
+framework behavior.
+
+Clanky owns account identity and roles, permissions, credential persistence,
+API keys, device sessions, OAuth, account/administration screens, CLI, and
+remote-client authorization. Connect those services to the framework's explicit
+request, transport, session, and preference interfaces. Passkey verification
+uses the optional framework ceremony helpers. Clanky retains its existing signed
+browser-session protocol to preserve active sessions; password support is not
+enabled. Do not add Clanky policies or storage to webapp.
+
+All persistence is selected explicitly, including browser preferences.
+Clanky's adapters preserve its existing database and credential/preference
+namespaces. A framework composition without an adapter remains memory-only.
 
 Use `WebAppRoute` as the canonical client route model and framework navigation
 helpers. Do not add app-owned route unions, hash parsers/serializers, conversion
@@ -25,8 +37,9 @@ documented header APIs; use public `useTheme()` for JavaScript theme state and
 CSS variants when JavaScript is unnecessary. Dark is the no-preference default,
 not an override of saved Light/System choices.
 
-Use framework client log-level state and adapt it to Clanky's logger. Do not
-fetch configuration from an app-local initializer or maintain duplicate state.
+Use Clanky's shared account/configuration and effective log-level state.
+Configure the framework through that integration; do not fetch parallel copies
+of account configuration or maintain a second preference state.
 Application state uses [framework realtime](architecture.md#application-realtime),
 not app-owned raw WebSocket subscriptions.
 
@@ -77,9 +90,12 @@ operations in danger presentation with framework confirmation. Custom `render`
 is an escape hatch only when the row model cannot represent the setting; add
 a nearby comment explaining the limitation.
 
-Keep generic theme, logging, passkeys, sessions, API keys, users, and server
-settings framework-owned. App sections contain only Clanky-specific settings.
-Use the public Settings layout and fields; do not restyle native selects.
+Account, logging, passkey, session, API-key, user, and server settings are
+Clanky-owned compositions. Keep their policy and data loading out of webapp.
+Use the public theme state, Settings layout and fields; do not restyle native
+selects or duplicate generic layout behavior.
+User-access resets require a destructive confirmation naming the account and
+its passkey, API-key and session revocation consequences.
 
 Settings have two zones with controls/actions vertically centered and
 right-aligned. Keep short fields compact, related fields together, and ordinary
@@ -156,7 +172,7 @@ and managed-directory confirmation. Use framework checkbox layout on mobile.
 Global Settings remembers its category per app/client server; explicit links
 win and unavailable categories fall back to General.
 
-Control authorization uses framework `control-request` and `control-consent`
+Control authorization uses Clanky's `control-request` and `control-consent`
 routes. Request pages show the frozen action, expiry and canonical result;
 approval uses a separate confirmation.
 **Settings → Agents & integrations → Approvals** places the per-user approval
@@ -174,7 +190,7 @@ background refresh rather than hiding it or showing initial loading again.
 Approval summaries carry effective target privacy and use the shared private-row
 reveal behavior, including inherited workspace/host privacy. The collection is
 loaded for authenticated controller account clients, independent of API-key or
-passkey session provenance. Use the framework's current user and client
+passkey session provenance. Use Clanky's current user and client
 capabilities for availability, not passkey configuration or authentication
 flags. See [authentication-method equivalence](architecture.md#authentication-method-equivalence).
 Clients without controller capabilities see an unavailable Settings collection
@@ -185,7 +201,7 @@ Never pass that query through request-path logging. Scoped service credentials
 live under Settings → Agents & integrations; newly issued tokens are shown
 once and are not retained after the dialog closes. Authorized OAuth integrations
 are listed there separately, with their selected access, scope and expiry.
-Human revocation uses the framework grant-management API; no OAuth credentials
+Human revocation uses Clanky's grant-management API; no OAuth credentials
 are displayed or copied into Clanky settings.
 
 Separate lifecycle/realtime state, transcript/display state, and composer/form

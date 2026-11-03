@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { WebAppConfigState, WebAppRoute } from "@pablozaiden/webapp/web";
+import type { WebAppConfigState } from "@/platform/web/webapp-config";
+import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import {
   useAgents,
   useChats,

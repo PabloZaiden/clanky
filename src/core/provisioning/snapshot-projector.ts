@@ -1,4 +1,4 @@
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type {
   ProvisioningJobSnapshot,
 } from "@/shared";

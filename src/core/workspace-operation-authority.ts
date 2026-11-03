@@ -1,7 +1,7 @@
 /**
  * Binds canonical operation references to one granted workspace before dispatch.
  */
-import type { DelegatedOperation } from "@pablozaiden/webapp/server";
+import type { DelegatedOperation } from "@/platform/server";
 import type { CollaborationGuestGrant, WorkspaceAccessAuthority } from "@/shared/collaboration";
 import { DomainError } from "../domain/domain-error";
 import { findResourceWorkspace, workspaceUsesExecutionHost } from "../persistence/workspace-resource-index";

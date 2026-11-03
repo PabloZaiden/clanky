@@ -3,16 +3,8 @@
  */
 
 import { z } from "zod";
-import {
-  buildCompiledRoutePath,
-  compileRoutePatterns,
-  findRouteCatalogEntry,
-  resolveRouteOperation,
-  routeSchemaToJsonSchema,
-  type HttpMethod,
-  type RouteCatalogEntry,
-  type RouteAutomationMetadata,
-} from "@pablozaiden/webapp/server";
+import { findRouteCatalogEntry, resolveRouteOperation, type RouteCatalogEntry, type RouteAutomationMetadata } from "@/platform/server";
+import { buildCompiledRoutePath, compileRoutePatterns, routeSchemaToJsonSchema, type HttpMethod } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
 import { contentReadPage, readBytes, readRevision, DEFAULT_READ_BYTES } from "../client-sdk/collaboration/resource-read";
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";

@@ -1,6 +1,7 @@
 import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schemas/model";
 import type { CheapModelSelection, ModelConfig } from "@/shared";
-import { clientScopedStorageKey, createLogger } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey } from "@/platform/web/client-session";
+import { createLogger } from "@pablozaiden/webapp/web";
 
 const log = createLogger("modelSelectionPreferences");
 

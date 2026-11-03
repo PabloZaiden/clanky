@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { workspaceOperation } from "./workspace-delegation";
 import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
 /**

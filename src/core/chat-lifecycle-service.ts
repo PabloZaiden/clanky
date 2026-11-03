@@ -42,7 +42,7 @@ import type {
   CreateChatOptions,
   CreateExecutionHostChatOptions,
 } from "./chat-service-contracts";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
 import {

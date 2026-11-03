@@ -1,4 +1,4 @@
-import { defineRoutes } from "@pablozaiden/webapp/server";
+import { defineRoutes } from "@/platform/server";
 import { provisioningManager } from "../core/provisioning-manager";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateProvisioningJobRequestSchema } from "@/contracts/schemas";

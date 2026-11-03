@@ -1,18 +1,12 @@
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
-import {
-  createLogger,
-  createManagedApiKey,
-  listManagedApiKeys,
-  revokeManagedApiKey,
-  readWebAppConfig,
-  webAppConfigPath,
-} from "@pablozaiden/webapp/server";
+import { createManagedApiKey, listManagedApiKeys, revokeManagedApiKey } from "@/platform/server";
+import { createLogger, readWebAppConfig, webAppConfigPath } from "@pablozaiden/webapp/server";
 import type {
   CliCommandResult,
   WebAppCliCommandDefinition,
-} from "@pablozaiden/webapp/cli";
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+} from "@/platform/cli";
+import type { CurrentUser } from "@/platform/contracts";
 import { MESH_INSTANCE_NAME_MAX_LENGTH } from "@/shared/mesh";
 import { getDataDir } from "../persistence/database";
 import {

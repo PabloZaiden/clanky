@@ -1,10 +1,5 @@
-import type {
-  ActionMenuItem,
-  SidebarNode,
-  WebAppRootProps,
-  WebAppRoute,
-  SidebarAction as FrameworkSidebarAction,
-} from "@pablozaiden/webapp/web";
+import type { ActionMenuItem, SidebarNode, WebAppRoute, SidebarAction as FrameworkSidebarAction } from "@pablozaiden/webapp/web";
+import type { WebAppRootProps } from "@/platform/web/root-types";
 import type { ReactNode } from "react";
 import type { UseChatTrashResult } from "../../hooks/useChatTrash";
 import type { ChatTrashActions } from "./use-chat-trash-actions";

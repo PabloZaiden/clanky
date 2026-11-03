@@ -1,13 +1,10 @@
 /**
  * Application grants and resource isolation, independent of credential transport.
  */
-import type { CurrentUser } from "@pablozaiden/webapp/contracts";
+import type { CurrentUser } from "@/platform/contracts";
 import type { ControlGrantSelection } from "@/contracts/schemas/control";
-import {
-  findRouteCatalogEntry, resolveRouteOperation,
-  type HttpMethod, type RouteCatalogEntry,
-  type RouteAutomationMetadata,
-} from "@pablozaiden/webapp/server";
+import { findRouteCatalogEntry, resolveRouteOperation, type RouteCatalogEntry, type RouteAutomationMetadata } from "@/platform/server";
+import { type HttpMethod } from "@pablozaiden/webapp/server";
 import {
   CLANKY_CONTROL_SCOPE, CLANKY_CONTROL_GENERAL_SCOPE,
   controlWorkspaceScope, type ManagedContextIdentity,
