@@ -18,8 +18,9 @@ Clanky owns account identity and roles, permissions, credential persistence,
 API keys, device sessions, OAuth, account/administration screens, CLI, and
 remote-client authorization. Connect those services to the framework's explicit
 request, transport, session, and preference interfaces. Passkey verification
-and browser sessions use the optional framework auth helpers; password support
-is not enabled by Clanky. Do not add Clanky policies or storage to webapp.
+uses the optional framework ceremony helpers. Clanky retains its existing signed
+browser-session protocol to preserve active sessions; password support is not
+enabled. Do not add Clanky policies or storage to webapp.
 
 All persistence is selected explicitly, including browser preferences.
 Clanky's adapters preserve its existing database and credential/preference
