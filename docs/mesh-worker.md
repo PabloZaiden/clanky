@@ -891,6 +891,9 @@ An existing loop that is recovering or shutting down is not an immediate startup
 failure. A failure to become running within that budget remains visible and
 points to the worker log; repeatedly crashing binaries are not reported as
 healthy merely because their loop exists.
+If an intentional-stop marker remains while its owned loop is still alive,
+an explicit start completes that stop before starting a replacement. It does
+not clear the marker while the old loop owns the lock or start a second loop.
 
 Inside the worker's execution environment, `clanky worker service status`,
 `restart`, `stop`, and `start` control this loop instead of systemd. For direct
