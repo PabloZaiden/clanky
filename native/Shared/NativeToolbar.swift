@@ -243,10 +243,16 @@ struct NativeToolbarContent: View {
                 .ignoresSafeArea()
                 .toolbar {
                     if toolbar.canPresent, let snapshot = toolbar.snapshot {
-                        ToolbarItemGroup(placement: .bottomBar) {
-                            ForEach(snapshot.sidebar) { item in
+                        ForEach(snapshot.sidebar) { item in
+                            ToolbarItem(placement: .bottomBar) {
                                 toolbarButton(item, scope: snapshot.scope)
                             }
+                            .visibilityPriority(
+                                item.id == "sidebar:toggle" || item.id == "sidebar:settings" ? .high : .automatic
+                            )
+                            .sharedBackgroundVisibility(.hidden)
+                        }
+                        ToolbarItemGroup(placement: .bottomBar) {
                             ForEach(snapshot.primary) { item in
                                 toolbarButton(item, scope: snapshot.scope)
                             }
