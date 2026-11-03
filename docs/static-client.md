@@ -185,7 +185,9 @@ HTTP requests use bearer authorization without third-party cookies. Realtime
 and raw terminal connections use short-lived, single-use socket tickets.
 Protected downloads and video use short-lived target-bound resource tickets;
 video previews renew them before expiry for workspace, local and remote
-execution targets. Images are fetched with authorization. Long-lived
+execution targets. Images use authenticated requests or target-bound resource
+URLs; those URLs load with anonymous CORS, without third-party cookies or
+relaxing private resource-policy headers. Long-lived
 access/refresh tokens are not put into resource or login URLs. Revoking a device
 session removes its API and resource access.
 

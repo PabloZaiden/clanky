@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.0
+version: 0.6.1
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -93,6 +93,10 @@ in app-owned adapters, not silently convert/reset them.
 - Configure only needed request/connect/resourceUrl/saveResource/runtime hooks.
   Resource hooks receive `kind:"resource"|"websocket"`. Dispose capability/blob
   handles on stale completion, replacement and unmount.
+- `ResourceImage` loads transport-provided URLs with anonymous CORS by default.
+  Authorize private HTTP image endpoints and permit the client origin through
+  CORS; do not make resources public or relax resource-policy headers to embed
+  them. Explicit `crossOrigin` options and direct blob/data sources are preserved.
 - Runtime supplies stable snapshots `{scope,generation,ready,error?,logLevel,
   logLevelFromEnv?}`. Scope is a cache namespace, not identity authority.
   Advance generation on identity, credential and endpoint changes. Gate private
