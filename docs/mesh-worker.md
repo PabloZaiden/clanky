@@ -745,7 +745,9 @@ transport failures without including private addresses or credentials.
 Updating a workspace worker uses
 Mesh directly: it does not contact the provisioning host,
 rerun provisioning, or restart the container. Restart response
-and recovery checks share a 20-second deadline. Service-status commands have a
+and recovery checks share a 70-second total deadline, including service shutdown
+and startup. This accommodates the Linux service's existing 30-second shutdown
+allowance without changing its stop policy. Service-status commands have a
 10-second timeout. During recovery, each health-and-status probe is capped at
 10 seconds or the remaining shared deadline, whichever is shorter.
 Restart runs as a host-owned
