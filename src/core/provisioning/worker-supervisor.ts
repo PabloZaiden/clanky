@@ -15,6 +15,9 @@ log_file=${shellQuote(paths.containerLog)}
 pid_file=${shellQuote(paths.containerPid)}
 supervisor_pid_file="$root/supervisor.pid"
 stop_file="$root/stopped"
+max_restart_delay=30
+start_timeout=$((max_restart_delay + 10))
+command -v flock >/dev/null || { echo "The workspace worker loop requires flock (util-linux)." >&2; exit 1; }
 
 alive() {
   [ -s "$1" ] || return 1
@@ -26,9 +29,28 @@ alive() {
   case "$pid" in ""|*[!0-9]*|0|1) return 1 ;; esac
   kill -0 "$pid" 2>/dev/null || return 1
   if [ -r "/proc/$pid/cmdline" ]; then
-    command_line=$(tr '\\000' ' ' <"/proc/$pid/cmdline")
+    if ! command_line=$(tr '\\000' ' ' <"/proc/$pid/cmdline"); then
+      kill -0 "$pid" 2>/dev/null || return 1
+      echo "Cannot inspect worker process $pid." >&2
+      exit 1
+    fi
     case "$command_line" in *"$2"*) ;; *) return 1 ;; esac
   fi
+}
+
+loop_locked() {
+  if flock -n "$root/supervisor.lock" true; then
+    return 1
+  else
+    lock_status=$?
+  fi
+  if [ "$lock_status" -eq 1 ]; then return 0; fi
+  echo "Cannot inspect the workspace worker loop lock." >&2
+  exit 1
+}
+
+loop_alive() {
+  alive "$supervisor_pid_file" "$script run " && loop_locked
 }
 
 terminate() {
@@ -41,7 +63,7 @@ terminate() {
 }
 
 running() {
-  [ ! -e "$stop_file" ] && alive "$supervisor_pid_file" "$script" && alive "$pid_file" "$binary"
+  [ ! -e "$stop_file" ] && loop_alive && alive "$pid_file" "$binary"
 }
 
 stop_child() {
@@ -73,15 +95,15 @@ case "\${1:-start}" in
     ;;
   stop)
     : >"$stop_file"
-    if alive "$supervisor_pid_file" "$script"; then
+    if loop_alive; then
       supervisor_pid=$pid
       terminate "$supervisor_pid"
       attempts=0
-      while alive "$supervisor_pid_file" "$script" && [ "$attempts" -lt 100 ]; do
+      while loop_alive && [ "$attempts" -lt 100 ]; do
         sleep 0.1
         attempts=$((attempts + 1))
       done
-      if alive "$supervisor_pid_file" "$script"; then
+      if loop_alive; then
         echo "The workspace worker loop did not stop within 10 seconds." >&2
         exit 1
       fi
@@ -92,31 +114,35 @@ case "\${1:-start}" in
     printf '{"operation":"stop","supervisor":"workspace-loop"}\\n'
     ;;
   start)
-    command -v flock >/dev/null || { echo "The workspace worker loop requires flock (util-linux)." >&2; exit 1; }
-    if running; then exit 0; fi
-    if alive "$supervisor_pid_file" "$script"; then
-      echo "The workspace worker loop is still starting or stopping." >&2
-      exit 1
-    fi
-    if alive "$pid_file" "$binary"; then
-      echo "A workspace worker is still running without its loop. Run supervisor.sh stop before starting it again." >&2
-      exit 1
-    fi
-    rm -f "$stop_file"
-    nohup sh "$script" run </dev/null >>"$log_file" 2>&1 &
-    attempts=0
+    start_deadline=$(($(date +%s) + start_timeout))
+    launched=false
     until running; do
-      attempts=$((attempts + 1))
-      if [ "$attempts" -ge 100 ]; then
-        echo "The workspace worker loop did not start; check $log_file." >&2
+      if [ "$(date +%s)" -ge "$start_deadline" ]; then
+        echo "The workspace worker loop did not become running within $start_timeout seconds; check $log_file." >&2
         exit 1
+      fi
+      if [ "$launched" = false ] && ! loop_locked; then
+        if alive "$pid_file" "$binary"; then
+          echo "A workspace worker is still running without its loop. Run supervisor.sh stop before starting it again." >&2
+          exit 1
+        fi
+        rm -f "$stop_file"
+        nohup sh "$script" run </dev/null >>"$log_file" 2>&1 &
+        launched=true
       fi
       sleep 0.1
     done
     ;;
   run)
     exec 9>"$root/supervisor.lock"
-    flock -n 9 || exit 0
+    if flock -n 9; then
+      :
+    else
+      lock_status=$?
+      if [ "$lock_status" -eq 1 ]; then exit 0; fi
+      echo "Cannot acquire the workspace worker loop lock." >&2
+      exit 1
+    fi
     printf '%s\\n' "$$" >"$supervisor_pid_file"
     stopping=false
     child=""
@@ -154,7 +180,7 @@ case "\${1:-start}" in
         remaining=$((remaining - 1))
       done
       restart_delay=$((restart_delay * 2))
-      if [ "$restart_delay" -gt 30 ]; then restart_delay=30; fi
+      if [ "$restart_delay" -gt "$max_restart_delay" ]; then restart_delay=$max_restart_delay; fi
     done
     ;;
   *)

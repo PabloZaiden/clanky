@@ -729,6 +729,16 @@ for prereleases retain `--pre-release` in Default mode.
 If updating or saving the channel fails, the restart is skipped. The installed
 binary must support `worker channel stable|latest` to save a forced default;
 unsupported versions fail visibly rather than silently using another channel.
+Maintenance commands are dispatched only once and remain worker-owned if their
+progress connection is lost. A transient progress-request failure retries the
+read using the still-valid execution session; it does not renegotiate the
+worker generation unless the session is invalid, expired, or its execution
+context has changed.
+If observation cannot be recovered, the job reports **Outcome unconfirmed**
+without cancelling or rerunning the update or channel change. The restart is
+skipped unless update and channel configuration have confirmed success.
+Connection diagnostics distinguish timeouts, HTTP rejections, and recognized
+transport failures without including private addresses or credentials.
 Updating a workspace worker uses
 Mesh directly: it does not contact the provisioning host,
 rerun provisioning, or restart the container. Restart response
@@ -762,8 +772,16 @@ startup migration of existing Devboxes. Unmanaged or unreachable workers report
 an individual job failure rather than preventing other workers from updating.
 Automatic workspaces without an enrolled Mesh worker are not update targets.
 Use the workspace's individual **Restart** or **Rebuild** action for container
-maintenance, not for routine Clanky updates. The bulk restart API remains
-available for explicit provisioning lifecycle operations.
+maintenance; both also install the current Clanky release of its selected
+channel. **Update all** updates workers without container maintenance. The bulk
+restart API remains available for explicit provisioning lifecycle operations.
+
+Binary updates do not replace an automatic workspace's generated launcher or
+supervisor scripts. To refresh those scripts in an existing Devbox after
+upgrading the controller, use the workspace's **Restart** action in Clanky.
+It publishes the current startup assets before starting the environment; a full
+rebuild is not required just to refresh them. A raw Docker restart does not
+publish new assets.
 
 Use **Dismiss all** in the Dashboard's **Worker updates** panel to remove
 terminal jobs and their logs after confirmation, even while other updates are
@@ -812,9 +830,11 @@ not automatically converted to native adapters.
 Maintenance jobs distinguish connection failure before dispatch, returned
 command failure, confirmed interruption, and an unconfirmed remote outcome.
 If a restart/rebuild response is lost, Clanky verifies read-only Devbox status
-and the existing worker/backend connection instead of resending the command.
-Successful verification confirms recovery; failed verification leaves the
-outcome unconfirmed. A controller restart likewise does not prove that remote
+and worker/backend connectivity instead of resending the command. Automatic
+workers also require installation evidence for that operation and fresh signed
+health reporting the full installed build version; an old healthy worker alone
+cannot confirm recovery. Missing evidence leaves the outcome unconfirmed.
+A controller restart likewise does not prove that remote
 execution stopped or authorize replay. Server `arise` jobs remain unconfirmed
 when their result is lost because host reachability alone cannot prove that
 the server update completed.
@@ -837,15 +857,23 @@ this file. Older stable/prerelease launcher selections remain readable until
 explicitly replaced.
 
 Stable/latest bootstrap uses the shared GitHub installer and required SHA-256
-checksums, with no cross-channel fallback. Ordinary starts reuse the installed
-binary; use **Update all** for subsequent updates.
+checksums, with no cross-channel fallback. Every Clanky-managed **Restart** or
+**Rebuild** resolves and installs the current release of the effective channel,
+even when the cached binary already has that channel. Installation happens once
+in the Devbox startup hook, before the worker loop is started; configuration
+refresh then restarts that installed binary without downloading it again.
+Successful maintenance requires fresh signed worker health matching the full
+resolved binary version, not just its semantic-version prefix. Resolution,
+download or checksum failures fail maintenance without falling back to the old
+binary. Worker data, enrollment, runtime and the selected channel are preserved.
 
 ### Worker process loop
 
 New automatic worker workspaces use a persistent shell loop in
-`.devbox/clanky-worker/supervisor.sh`. The launcher installs Clanky when missing
-or when its selected release channel changes, then starts the loop in the
-background. The loop runs the binary, waits for it to exit, and executes the
+`.devbox/clanky-worker/supervisor.sh`. Ordinary launcher calls install Clanky
+when missing or when its selected release channel changes; the maintenance
+startup hook explicitly updates it first. The launcher then starts the loop in
+the background. The loop runs the binary, waits for it to exit, and executes the
 same path again. Installation and runtime package setup are outside the loop;
 restarting the worker after an update does not download or reinstall anything.
 
@@ -856,6 +884,13 @@ retrying until explicitly stopped. It waits one second between normal launches;
 repeated launches lasting less than five seconds increase that delay
 exponentially up to 30 seconds rather than spinning. A run lasting at least five
 seconds resets the delay.
+
+An explicit start waits up to 40 seconds for a running worker, covering the
+loop's maximum 30-second restart delay plus the usual 10-second startup budget.
+An existing loop that is recovering or shutting down is not an immediate startup
+failure. A failure to become running within that budget remains visible and
+points to the worker log; repeatedly crashing binaries are not reported as
+healthy merely because their loop exists.
 
 Inside the worker's execution environment, `clanky worker service status`,
 `restart`, `stop`, and `start` control this loop instead of systemd. For direct
@@ -877,6 +912,9 @@ errors. Provisioning cleanup stops the loop, and removing
 the dedicated worker's last controller grant records a permanent stop before the
 worker awaits its command cleanup and normal server shutdown, so retiring a
 workspace cannot resurrect its runtime or leave its commands running.
+Process checks distinguish the loop's `run` invocation from control commands
+and confirm that its kernel lock is held, so persisted PIDs reused after a
+container restart do not by themselves identify a live loop.
 If the loop exits unexpectedly while its worker remains alive, startup refuses
 to replace that worker. Run the supervisor's `stop` command before starting
 the launcher again.

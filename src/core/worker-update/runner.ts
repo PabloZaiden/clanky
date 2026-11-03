@@ -300,6 +300,7 @@ export class WorkerUpdateJobRunner {
       timeout: null,
       maxOutputBytes: MAX_COMMAND_OUTPUT_BYTES,
       longRunning: true,
+      preserveOnDisconnect: true,
       logFailures: false,
       onExecutionState: (execution) => {
         const job = getJob();

@@ -3,6 +3,24 @@ import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
 import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
 import { assertMeshTransportSecurity } from "./mesh-transport-security";
+import { isMeshRelayResponseInterrupted, MeshRelayStreamError } from "./mesh-relay-errors";
+
+export function describeMeshTransportFailure(error: unknown): string {
+  if (error instanceof MeshRelayStreamError) {
+    if (isMeshRelayResponseInterrupted(error)) return `Mesh stream interrupted (${error.code}).`;
+    if (error.status === 503) return "The Mesh route is temporarily unavailable.";
+    return "The Mesh transport could not complete the exchange.";
+  }
+  if (error instanceof Error && "code" in error && [
+    "ConnectionRefused", "ConnectionClosed", "ECONNREFUSED", "ECONNRESET",
+    "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
+    "CERT_HAS_EXPIRED", "CERT_NOT_YET_VALID", "ERR_TLS_CERT_ALTNAME_INVALID",
+    "DEPTH_ZERO_SELF_SIGNED_CERT", "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  ].includes(String(error.code))) {
+    return `Transport error: ${String(error.code)}.`;
+  }
+  return "The transport failed before the response completed.";
+}
 
 function assertMeshPeerTransport(route: MeshPeerRoute): void {
   assertMeshTransportSecurity(7, new URL(route.kind === "direct" ? route.endpoint : route.relayUrl).protocol === "https:");

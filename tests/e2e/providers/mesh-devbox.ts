@@ -2,7 +2,7 @@
  * External Devbox command peer backed by real compiled Mesh worker processes.
  */
 
-import { chmod, copyFile, mkdir } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { MESH_OPERATION_TIMEOUT_MS } from "../support/timeouts";
 import { renderExternalWorkerUpdateBinary } from "../support/provider";
@@ -11,12 +11,13 @@ const args = process.argv.slice(2);
 const root = join(process.cwd(), ".devbox", "clanky-worker");
 const portFile = join(root, "devbox-port");
 const marker = join(root, "devbox-running");
+const startupFile = join(root, "devbox-startup-command");
 const serviceUrl = process.env["CLANKY_E2E_DEVBOX_SERVICE"]!;
 
-async function service(operation: string): Promise<void> {
-  const response = await fetch(`${serviceUrl}/${operation}`, {
+async function service(command: string[]): Promise<void> {
+  const response = await fetch(`${serviceUrl}/start`, {
     method: "POST",
-    body: JSON.stringify({ directory: process.cwd() }),
+    body: JSON.stringify({ directory: process.cwd(), command }),
     signal: AbortSignal.timeout(MESH_OPERATION_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(await response.text());
@@ -52,6 +53,19 @@ if (args[0] === "--help") {
   await copyFile(copilot, join(nativeBin, "copilot"));
   await chmod(join(nativeBin, "copilot"), 0o755);
   await Bun.write(marker, "running");
+  if (args.includes("--no-startup-command")) {
+    await rm(startupFile, { force: true });
+  } else {
+    const startupIndex = args.indexOf("--startup-command");
+    if (startupIndex >= 0) {
+      const startup = args[startupIndex + 1];
+      if (!startup) throw new Error("--startup-command requires a command.");
+      await Bun.write(startupFile, startup);
+    }
+  }
+  if (await Bun.file(startupFile).exists()) {
+    await service(["sh", "-c", await Bun.file(startupFile).text()]);
+  }
   console.log(`Devbox ${args[0]} completed`);
 } else if (args[0] === "status") {
   const port = Number(await Bun.file(portFile).text());
@@ -63,7 +77,7 @@ if (args[0] === "--help") {
 } else if (args[0] === "exec" && args[1] === "--") {
   const command = args.slice(2);
   if (command[0] === "sh" && command[1] === join(root, "launcher.sh")) {
-    await service("start");
+    await service(command);
   } else {
     const child = Bun.spawn(command, {
       cwd: process.cwd(), env: {
