@@ -1,8 +1,4 @@
-/**
- * Real Git fixtures used by black-box application journeys.
- */
-
-import { chmod, mkdir } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { requireCommand } from "./process";
 
@@ -33,10 +29,6 @@ export async function createGitFixture(rootDirectory: string): Promise<GitFixtur
   return { repositoryDirectory, remoteDirectory, branch };
 }
 
-export async function readGitFile(fixture: GitFixture, relativePath: string): Promise<string> {
-  return await Bun.file(join(fixture.repositoryDirectory, relativePath)).text();
-}
-
 export async function gitStatus(fixture: GitFixture): Promise<string> {
   return await git(fixture.repositoryDirectory, ["status", "--short"]);
 }
@@ -47,125 +39,4 @@ export async function readGitBranchFile(
   relativePath: string,
 ): Promise<string> {
   return await git(fixture.repositoryDirectory, ["show", `${branch}:${relativePath}`]);
-}
-
-export async function commitAndPushFile(
-  fixture: GitFixture,
-  relativePath: string,
-  content: string,
-): Promise<void> {
-  await Bun.write(join(fixture.repositoryDirectory, relativePath), content);
-  await git(fixture.repositoryDirectory, ["add", relativePath]);
-  await git(fixture.repositoryDirectory, ["commit", "-m", `Update ${relativePath}`]);
-  await git(fixture.repositoryDirectory, ["push", "origin", fixture.branch]);
-}
-
-export async function createRemoteBranchWithoutTrackingRef(
-  fixture: GitFixture,
-  branchName: string,
-  relativePath: string,
-  content: string,
-): Promise<string> {
-  await git(fixture.repositoryDirectory, ["branch", branchName, fixture.branch]);
-  await git(fixture.repositoryDirectory, ["checkout", branchName]);
-  await Bun.write(join(fixture.repositoryDirectory, relativePath), content);
-  await git(fixture.repositoryDirectory, ["add", relativePath]);
-  await git(fixture.repositoryDirectory, ["commit", "-m", `Create ${branchName}`]);
-  const remoteCommit = await git(fixture.repositoryDirectory, ["rev-parse", "HEAD"]);
-  await git(fixture.repositoryDirectory, ["push", "origin", branchName]);
-  await git(fixture.repositoryDirectory, ["checkout", fixture.branch]);
-  await git(fixture.repositoryDirectory, ["branch", "--force", branchName, fixture.branch]);
-  await git(fixture.repositoryDirectory, [
-    "update-ref",
-    "-d",
-    `refs/remotes/origin/${branchName}`,
-  ]);
-  return remoteCommit;
-}
-
-export async function readGitCommit(
-  fixture: GitFixture,
-  ref: string,
-): Promise<string> {
-  return await git(fixture.repositoryDirectory, ["rev-parse", `${ref}^{commit}`]);
-}
-
-export async function configureGitHubRemote(
-  fixture: GitFixture,
-): Promise<void> {
-  const transportPath = join(
-    fixture.repositoryDirectory,
-    "..",
-    "github-ssh-transport",
-  );
-  const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-  await Bun.write(
-    transportPath,
-    [
-      "#!/bin/sh",
-      "command=",
-      "for argument in \"$@\"; do command=$argument; done",
-      "case \"$command\" in",
-      `  "git-upload-pack 'e2e/clanky-fixture.git'") exec git-upload-pack ${quote(fixture.remoteDirectory)} ;;`,
-      `  "git-receive-pack 'e2e/clanky-fixture.git'") exec git-receive-pack ${quote(fixture.remoteDirectory)} ;;`,
-      "esac",
-      "echo \"Unsupported GitHub Git transport command: $command\" >&2",
-      "exit 2",
-      "",
-    ].join("\n"),
-  );
-  await chmod(transportPath, 0o700);
-  await git(fixture.repositoryDirectory, [
-    "config",
-    "core.sshCommand",
-    transportPath,
-  ]);
-  await git(fixture.repositoryDirectory, [
-    "config",
-    "ssh.variant",
-    "ssh",
-  ]);
-  await git(fixture.repositoryDirectory, [
-    "remote",
-    "set-url",
-    "origin",
-    "git@github.com:e2e/clanky-fixture.git",
-  ]);
-}
-
-export async function restoreLocalRemote(
-  fixture: GitFixture,
-): Promise<void> {
-  await git(fixture.repositoryDirectory, [
-    "remote",
-    "set-url",
-    "origin",
-    fixture.remoteDirectory,
-  ]);
-  await git(fixture.repositoryDirectory, [
-    "config",
-    "--unset",
-    "core.sshCommand",
-  ]);
-  await git(fixture.repositoryDirectory, [
-    "config",
-    "--unset",
-    "ssh.variant",
-  ]);
-}
-
-export async function readRemoteBranchFile(
-  fixture: GitFixture,
-  branch: string,
-  relativePath: string,
-): Promise<string> {
-  const remoteBranch = branch.startsWith("origin/")
-    ? branch.slice("origin/".length)
-    : branch;
-  return await git(fixture.repositoryDirectory, [
-    "--git-dir",
-    fixture.remoteDirectory,
-    "show",
-    `${remoteBranch}:${relativePath}`,
-  ]);
 }
