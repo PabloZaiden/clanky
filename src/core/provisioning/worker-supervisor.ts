@@ -116,10 +116,15 @@ case "\${1:-start}" in
   start)
     start_deadline=$(($(date +%s) + start_timeout))
     launched=false
+    stop_requested=false
     until running; do
       if [ "$(date +%s)" -ge "$start_deadline" ]; then
         echo "The workspace worker loop did not become running within $start_timeout seconds; check $log_file." >&2
         exit 1
+      fi
+      if [ "$stop_requested" = false ] && [ -e "$stop_file" ] && loop_alive; then
+        terminate "$pid"
+        stop_requested=true
       fi
       if [ "$launched" = false ] && ! loop_locked; then
         if alive "$pid_file" "$binary"; then

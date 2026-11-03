@@ -167,7 +167,7 @@ async function runTestFiles(
   ];
   const environment: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
+    if (value !== undefined && !name.startsWith("CLANKY_WORKER_")) {
       environment[name] = value;
     }
   }
