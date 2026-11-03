@@ -8,10 +8,8 @@ import {
 import {
   applyTranscriptStreamEvent,
   mergeTranscriptSnapshot,
-  type AgentEvent,
-  type ChatEvent,
   type ChatTranscript,
-  type TaskEvent,
+  type TranscriptContentEvent,
   type ToolCallData,
   type TranscriptSnapshotOptions,
 } from "@/shared";
@@ -20,7 +18,6 @@ import { isAbortError, SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecy
 import { markStreamingText } from "../lib/streaming-text";
 import { toTranscriptStreamEvent } from "./transcript-event-adapter";
 import { useTranscriptToolDetails } from "./useTranscriptToolDetails";
-import type { SubagentEvent } from "@/shared/subagent";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -68,7 +65,7 @@ export interface UseTranscriptResourceResult<TResource> {
   realtimeStatus: "connecting" | "open" | "closed";
 }
 
-type ContentEvent = TaskEvent | ChatEvent | AgentEvent | Extract<SubagentEvent, { type: "subagent.transcript" }>;
+type ContentEvent = TranscriptContentEvent;
 
 const STREAMS = {
   task: { resource: "tasks", target: "taskId" },
@@ -76,7 +73,7 @@ const STREAMS = {
   "agent.run": { resource: "agent-runs", target: "agentRunId" },
   subagent: { resource: "subagents", target: "subagentId" },
 } as const;
-const CONTENT_SUFFIXES = ["message", "message.delta", "log", "log.delta", "tool_call", "tool_call.extra"];
+const CONTENT_SUFFIXES = ["message", "message.delta", "log", "log.delta", "tool_call"];
 
 export function createEmptyTranscript(): ChatTranscript {
   return {

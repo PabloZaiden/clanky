@@ -6,6 +6,7 @@ import { ImageViewerModal } from "../ImageViewerModal";
 import { ToolEntry } from "./tool-entry";
 import type { ConversationViewerProps } from "./types";
 import { formatTime } from "./utils";
+import { useViewportVisibility } from "./use-viewport-visibility";
 
 interface ToolImageEntryProps {
   data: ToolCallDisplayData;
@@ -26,6 +27,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
   toolPathDisplayRoot,
   onLoadToolDetails,
 }: ToolImageEntryProps) {
+  const { ref, visible } = useViewportVisibility<HTMLDivElement>();
   const [details, setDetails] = useState<ToolCallData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -39,7 +41,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
     : details?.id === tool.id && !isToolCallDetailsStale(tool, details) ? details : null;
 
   useEffect(() => {
-    if (!isSummary) {
+    if (!isSummary || !visible) {
       return;
     }
     const controller = new AbortController();
@@ -64,7 +66,7 @@ export const ToolImageEntry = memo(function ToolImageEntry({
       }
     })();
     return () => controller.abort();
-  }, [detailRevision, hasImagePreview, hasInput, hasOutput, isSummary, onLoadToolDetails, retry, status, toolId]);
+  }, [detailRevision, hasImagePreview, hasInput, hasOutput, isSummary, onLoadToolDetails, retry, status, toolId, visible]);
 
   if (activeTool && !hasToolCallImagePreview(activeTool)) {
     return (
@@ -81,13 +83,13 @@ export const ToolImageEntry = memo(function ToolImageEntry({
   }
 
   return (
-    <div className={`group ${spacingClass}`.trim()} data-entry-type="tool-image" data-message-role="assistant">
+    <div ref={ref} className={`group ${spacingClass}`.trim()} data-entry-type="tool-image" data-message-role="assistant">
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
           {formatTime(timestamp, showDate)}
         </time>
       )}
-      <div className="min-w-0 w-full space-y-3">
+      <div className={`min-w-0 w-full space-y-3 ${!activeTool ? "min-h-24" : ""}`.trim()}>
         {activeTool?.extras?.filter((extra) => extra.type === "image_preview" && extra.image.data.length > 0).map((extra) => (
           <figure key={`${extra.id}-${retry}`} className="w-fit max-w-full space-y-2">
             <button
@@ -117,7 +119,9 @@ export const ToolImageEntry = memo(function ToolImageEntry({
             }}>Retry</Button>
           </div>
         ) : !activeTool && (
-          <div className="text-base text-gray-500 dark:text-gray-400" role="status">Loading image preview...</div>
+          <div className="text-base text-gray-500 dark:text-gray-400" role={visible ? "status" : undefined}>
+            {visible ? "Loading image preview..." : "Image preview"}
+          </div>
         )}
       </div>
       <ImageViewerModal

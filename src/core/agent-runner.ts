@@ -418,17 +418,6 @@ export class AgentRunner {
           });
           return;
         }
-        if (event.type === "chat.tool_call.extra") {
-          agentEventEmitter.emit({
-            streamPosition,
-            type: "agent.run.tool_call.extra",
-            agentId: agent.config.id,
-            agentRunId: currentRun.id,
-            toolId: event.toolId,
-            extra: event.extra,
-            timestamp: event.timestamp,
-          });
-        }
       });
       currentRun = {
         ...currentRun,

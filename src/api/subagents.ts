@@ -8,6 +8,9 @@ import { domainErrorResponse, errorResponse } from "./helpers";
 import { TranscriptSnapshotQuerySchema } from "./route-schemas";
 import { parseTranscriptSnapshotOptions, transcriptSnapshotErrorResponse } from "./transcript-snapshot";
 import { assistantMessageSpeechResponse } from "./voice";
+import { getTranscriptImage } from "../core/transcript-image-service";
+import { projectTranscriptImages } from "@/shared";
+import { transcriptImageResponse } from "./transcript-snapshot";
 
 export function createSubagentRoutes(kind: "chat" | "task") {
   const base = `/api/${kind === "chat" ? "chats" : "tasks"}/:id/subagents`;
@@ -50,7 +53,27 @@ export function createSubagentRoutes(kind: "chat" | "task") {
           const revision = getTranscriptSnapshotEtag(snapshot.transcript.revision, snapshot.subagent, options);
           const headers = { "Cache-Control": "private, no-cache", ETag: `"${revision}"` };
           return req.headers.get("If-None-Match") === `"${revision}"`
-            ? new Response(null, { status: 304, headers }) : Response.json(snapshot, { headers });
+            ? new Response(null, { status: 304, headers }) : Response.json({
+              ...snapshot,
+              transcript: projectTranscriptImages(snapshot.transcript,
+                `/api/${kind === "chat" ? "chats" : "tasks"}/${encodeURIComponent(ctx.params["id"]!)}/subagents/${encodeURIComponent(ctx.params["subagentId"]!)}`),
+            }, { headers });
+        } catch (error) { return failure(error); }
+      },
+    },
+    [`${base}/:subagentId/messages/:messageId/attachments/:attachmentId`]: {
+      ...common,
+      description: "Read one original image attachment from an owned saved subagent.",
+      operations: { GET: {
+        requestSchema: undefined, querySchema: undefined,
+        automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }),
+      } },
+      async GET(req: Request, ctx: RouteContext) {
+        try {
+          return transcriptImageResponse(req, await getTranscriptImage(
+            { kind: "subagent", id: ctx.params["subagentId"]!, parent: context(ctx) },
+            ctx.params["messageId"]!, ctx.params["attachmentId"]!,
+          ));
         } catch (error) { return failure(error); }
       },
     },

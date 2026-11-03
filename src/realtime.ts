@@ -20,11 +20,12 @@ import {
   type ClankyRealtimeEvent, type RetainedChatEvent,
 } from "@/shared/realtime";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
-import { createToolCallSummary, serializeExecutionHostRef } from "@/shared";
+import { createToolCallSummary, projectTranscriptMessage, serializeExecutionHostRef } from "@/shared";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import type { SubagentEvent } from "@/shared/subagent";
 import { sanitizeProvisioningEvent } from "./lib/sensitive-data";
+import { withLiveToolCallRevision } from "./core/transcript-service";
 import type {
   RealtimeBus,
   RealtimeAction,
@@ -195,7 +196,16 @@ export function publishClankyDomainEvent(
       });
       return;
     case "subagent.transcript":
-      publishStream(publisher, owner, event, { subagentId: event.subagentId, chatId: event.chatId, taskId: event.taskId });
+      publishStream(publisher, owner, {
+        ...event,
+        event: event.event.type === "transcript.message" ? {
+          ...event.event,
+          message: projectTranscriptMessage(
+            event.event.message,
+            `/api/${event.chatId ? "chats" : "tasks"}/${encodeURIComponent(event.chatId ?? event.taskId!)}/subagents/${encodeURIComponent(event.subagentId)}`,
+          ),
+        } : event.event,
+      }, { subagentId: event.subagentId, chatId: event.chatId, taskId: event.taskId });
       return;
     case "harness.changed":
       publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
@@ -220,7 +230,10 @@ export function publishClankyDomainEvent(
       if (event.message.role === "user") {
         publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       }
-      publishStream(publisher, owner, event, { taskId: event.taskId });
+      publishStream(publisher, owner, {
+        ...event,
+        message: projectTranscriptMessage(event.message, `/api/tasks/${encodeURIComponent(event.taskId)}`),
+      }, { taskId: event.taskId });
       return;
     case "task.message.delta":
     case "task.log":
@@ -233,14 +246,10 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         { taskId: event.taskId },
       );
-      return;
-    case "task.tool_call.extra":
-      // Extras can contain image bytes; expanded rows fetch them from the detail route.
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
       return;
     case "task.iteration.start":
     case "task.iteration.end":
@@ -289,18 +298,16 @@ export function publishClankyDomainEvent(
         publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       }
       publishChatActivity(publisher, owner, event);
-      publishStream(publisher, owner, event, { chatId: event.chatId });
+      publishStream(publisher, owner, {
+        ...event,
+        message: projectTranscriptMessage(event.message, `/api/chats/${encodeURIComponent(event.chatId)}`),
+      }, { chatId: event.chatId });
       return;
     case "chat.message.delta":
     case "chat.log":
     case "chat.log.delta":
       publishChatActivity(publisher, owner, event);
       publishStream(publisher, owner, event, { chatId: event.chatId });
-      return;
-    case "chat.tool_call.extra":
-      // Tool-call summaries are enough for the live transcript. The complete
-      // extra, which can contain image bytes, is fetched from the detail route.
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;
     case "chat.tool_call":
       publishChatActivity(publisher, owner, event);
@@ -309,7 +316,7 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         { chatId: event.chatId },
       );
@@ -341,6 +348,11 @@ export function publishClankyDomainEvent(
       publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId, undefined, { workspaceId: event.workspaceId });
       return;
     case "agent.run.message":
+      publishStream(publisher, owner, {
+        ...event,
+        message: projectTranscriptMessage(event.message, `/api/agent-runs/${encodeURIComponent(event.agentRunId)}`),
+      }, { agentId: event.agentId, agentRunId: event.agentRunId });
+      return;
     case "agent.run.message.delta":
     case "agent.run.log":
     case "agent.run.log.delta":
@@ -355,22 +367,12 @@ export function publishClankyDomainEvent(
         owner,
         {
           ...event,
-          tool: createToolCallSummary(event.tool),
+          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         {
           agentId: event.agentId,
           agentRunId: event.agentRunId,
         },
-      );
-      return;
-    case "agent.run.tool_call.extra":
-      // Extras can contain image bytes; expanded rows fetch them from the detail route.
-      publishChanged(
-        publisher,
-        owner,
-        CLANKY_REALTIME_RESOURCES.agentRuns,
-        event.agentRunId,
-        event.agentId,
       );
       return;
     case "agent.run.scheduled":

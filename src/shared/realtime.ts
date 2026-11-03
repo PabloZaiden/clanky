@@ -10,6 +10,8 @@ import type { LiveVoiceActivityEvent } from "./live-voice";
 import type { CollaborationResourceKind } from "./collaboration-reference";
 import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "./prompt-templates";
 import type { SubagentEvent } from "./subagent";
+import type { TranscriptMessage } from "./transcript-images";
+import type { MessageData } from "./events";
 
 export const CLANKY_REALTIME_RESOURCES = {
   workspaces: "workspaces",
@@ -35,31 +37,38 @@ export const CLANKY_REALTIME_RESOURCES = {
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];
 
-type RetainedTaskEvent = Extract<TaskEvent, {
+type BrowserTranscriptEvent<T> = T extends { message: MessageData }
+  ? Omit<T, "message"> & { message: TranscriptMessage }
+  : T;
+
+type RetainedTaskEvent = BrowserTranscriptEvent<Extract<TaskEvent, {
   type:
-    | "task.message" | "task.message.delta" | "task.tool_call" | "task.tool_call.extra"
+    | "task.message" | "task.message.delta" | "task.tool_call"
     | "task.log" | "task.log.delta" | "task.iteration.start" | "task.iteration.end" | "task.git.commit";
-}>;
+}>>;
 
-export type RetainedChatEvent = Extract<ChatEvent, {
+export type RetainedChatEvent = BrowserTranscriptEvent<Extract<ChatEvent, {
   type:
-    | "chat.message" | "chat.message.delta" | "chat.tool_call" | "chat.tool_call.extra"
+    | "chat.message" | "chat.message.delta" | "chat.tool_call"
     | "chat.log" | "chat.log.delta";
-}>;
+}>>;
 
-type RetainedAgentEvent = Extract<AgentEvent, {
+type RetainedAgentEvent = BrowserTranscriptEvent<Extract<AgentEvent, {
   type:
-    | "agent.run.message" | "agent.run.message.delta" | "agent.run.tool_call" | "agent.run.tool_call.extra"
+    | "agent.run.message" | "agent.run.message.delta" | "agent.run.tool_call"
     | "agent.run.log" | "agent.run.log.delta";
-}>;
+}>>;
 
 type RetainedProvisioningEvent = Extract<ProvisioningEvent, {
   type: "provisioning.step" | "provisioning.updated" | "provisioning.output";
 }>;
 
+export type TranscriptContentEvent =
+  | RetainedTaskEvent | RetainedChatEvent | RetainedAgentEvent
+  | Extract<SubagentEvent, { type: "subagent.transcript" }>;
+
 export type ClankyStreamEvent =
-  | RetainedTaskEvent | RetainedChatEvent | RetainedAgentEvent | RetainedProvisioningEvent
-  | Extract<SubagentEvent, { type: "subagent.transcript" }>
+  | TranscriptContentEvent | RetainedProvisioningEvent
   | ControlUiActionEvent | LiveVoiceActivityEvent;
 
 export type ClankyRealtimeEvent = ResourceRealtimeEvent | ClankyStreamEvent;
@@ -79,10 +88,10 @@ export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, Collabor
 
 const WORKSPACE_STREAM_TYPES = new Set<string>([
   "subagent.transcript",
-  "task.message", "task.message.delta", "task.tool_call", "task.tool_call.extra",
+  "task.message", "task.message.delta", "task.tool_call",
   "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
-  "chat.message", "chat.message.delta", "chat.tool_call", "chat.tool_call.extra", "chat.log", "chat.log.delta",
-  "agent.run.message", "agent.run.message.delta", "agent.run.tool_call", "agent.run.tool_call.extra",
+  "chat.message", "chat.message.delta", "chat.tool_call", "chat.log", "chat.log.delta",
+  "agent.run.message", "agent.run.message.delta", "agent.run.tool_call",
   "agent.run.log", "agent.run.log.delta",
 ]);
 

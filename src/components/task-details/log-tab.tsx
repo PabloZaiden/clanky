@@ -1,5 +1,5 @@
 import type {
-  MessageData,
+  TranscriptMessage,
   TaskLogEntry,
   ToolCallData,
   ToolCallDisplayData,
@@ -8,7 +8,7 @@ import { ConversationViewer } from "../log-viewer";
 import type { TranscriptFileLinkContext } from "../log-viewer";
 
 interface LogTabProps {
-  messages: MessageData[];
+  messages: TranscriptMessage[];
   toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
   markdownEnabled: boolean;

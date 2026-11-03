@@ -1,5 +1,8 @@
 import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@/platform/server";
+import { executionAutomation } from "../execution-automation";
+import { getTranscriptImage } from "../../core/transcript-image-service";
+import { projectTranscriptImages } from "@/shared";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import {
@@ -12,6 +15,7 @@ import {
 import {
   parseTranscriptSnapshotOptions,
   transcriptSnapshotErrorResponse,
+  transcriptImageResponse,
 } from "../transcript-snapshot";
 import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readConversationPage } from "../../core/conversation-read-service";
@@ -72,7 +76,10 @@ export const tasksTranscriptRoutes = defineRoutes({
             headers: transcriptResponseHeaders(revision),
           });
         }
-        return Response.json(snapshot, { headers: transcriptResponseHeaders(revision) });
+        return Response.json({
+          ...snapshot,
+          transcript: projectTranscriptImages(snapshot.transcript, `/api/tasks/${encodeURIComponent(ctx.params["id"]!)}`),
+        }, { headers: transcriptResponseHeaders(revision) });
       } catch (error) {
         const snapshotError = transcriptSnapshotErrorResponse(error);
         if (snapshotError) {
@@ -83,6 +90,23 @@ export const tasksTranscriptRoutes = defineRoutes({
           message: "Failed to load task snapshot",
           status: 500,
         });
+      }
+    },
+  },
+
+  "/api/tasks/:id/messages/:messageId/attachments/:attachmentId": {
+    delegation: workspaceOperation("task"),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Read one original image attachment from an owned task.",
+    operations: { GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }) } },
+    async GET(req: Request, ctx): Promise<Response> {
+      try {
+        return transcriptImageResponse(req, await getTranscriptImage(
+          { kind: "task", id: ctx.params["id"]! }, ctx.params["messageId"]!, ctx.params["attachmentId"]!,
+        ));
+      } catch (error) {
+        return internalErrorResponse(error, { error: "image_failed", message: "Failed to load image attachment", status: 500 });
       }
     },
   },

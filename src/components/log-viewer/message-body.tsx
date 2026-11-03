@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import type { MessageData } from "@/shared";
+import type { TranscriptMessage } from "@/shared";
 import { Button } from "../common";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { useStreamingTextReveal } from "./streaming-text";
@@ -26,7 +26,7 @@ export function MessageBody({
   fileLinkContext,
   onBeforeExpand,
 }: {
-  message: MessageData;
+  message: TranscriptMessage;
   content: string;
   markdownEnabled: boolean;
   revealEnabled: boolean;

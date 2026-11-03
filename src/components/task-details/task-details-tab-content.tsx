@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { TabPanel, TabPanels } from "@pablozaiden/webapp/web";
-import type { MessageData, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
+import type { TranscriptMessage, Task, TaskLogEntry, ToolCallData, ToolCallDisplayData } from "@/shared";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
 import type { UseTaskContentResult } from "./use-task-content";
@@ -31,7 +31,7 @@ interface TaskDetailsTabContentProps {
   markdownEnabled: boolean;
 
   // Log tab raw data
-  messages: MessageData[];
+  messages: TranscriptMessage[];
   toolCalls: ToolCallDisplayData[];
   logs: TaskLogEntry[];
   onLoadToolDetails: (toolCallId: string) => Promise<ToolCallData | null>;
