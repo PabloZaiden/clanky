@@ -94,6 +94,7 @@ export class CopilotEventTranslator {
             type: "error",
             code: "harness_event_gap",
             message: "A native tool completed without its observed start.",
+            details: { reason: "tool_start_missing" },
           })];
         }
         const output = event.data.result ?? event.data.error;

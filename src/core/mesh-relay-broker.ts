@@ -84,6 +84,7 @@ interface RelayAuditEvent {
 
 interface RelayStreamAudit {
   streamId: string;
+  requestId: string;
   initiatorNodeId: string;
   targetNodeId: string;
   kind: MeshRelayStreamKind;
@@ -94,6 +95,7 @@ interface RelayStreamAudit {
   bytesToReceiver: number;
   durationMs: number;
   outcome: string;
+  closeCode: number;
   errorCode?: string;
   occurredAt?: string;
 }
@@ -139,6 +141,7 @@ function logRelayStreamAudit(stream: RelayStreamAudit): void {
     eventType: "stream.close",
     occurredAt: stream.occurredAt ?? new Date().toISOString(),
     streamId: stream.streamId,
+    requestId: stream.requestId,
     initiatorNodeId: stream.initiatorNodeId,
     targetNodeId: stream.targetNodeId,
     kind: stream.kind,
@@ -149,6 +152,7 @@ function logRelayStreamAudit(stream: RelayStreamAudit): void {
     bytesToReceiver: stream.bytesToReceiver,
     durationMs: stream.durationMs,
     outcome: stream.outcome,
+    closeCode: stream.closeCode,
     ...(stream.errorCode ? { errorCode: stream.errorCode } : {}),
   };
   if (stream.outcome === "completed" || stream.outcome === "cancelled") {
@@ -1610,6 +1614,7 @@ export class MeshRelayBroker {
     }
     const bytes = dataBytes(message);
     if (bytes > RELAY_MAX_DATA_FRAME_BYTES) {
+      this.logStreamFailure(stream, "relay_frame_too_large", { frameBytes: bytes, limitBytes: RELAY_MAX_DATA_FRAME_BYTES });
       this.closeStream(stream.id, 1009, "Relay data frame exceeds the size limit");
       return;
     }
@@ -1628,17 +1633,36 @@ export class MeshRelayBroker {
     message: string | Uint8Array,
   ): void {
     const bytes = dataBytes(message);
+    const queuedBytes = socket.getBufferedAmount();
     if (
-      socket.getBufferedAmount() > RELAY_MAX_QUEUED_BYTES
-      || socket.getBufferedAmount() + bytes > RELAY_MAX_QUEUED_BYTES
+      queuedBytes > RELAY_MAX_QUEUED_BYTES
+      || queuedBytes + bytes > RELAY_MAX_QUEUED_BYTES
     ) {
+      this.logStreamFailure(stream, "relay_send_byte_limit", {
+        queuedBytes, incomingBytes: bytes, limitBytes: RELAY_MAX_QUEUED_BYTES,
+        destination: socket === stream.initiatorSocket ? "initiator" : "receiver",
+      });
       this.closeStream(stream.id, 1013, "Relay stream backpressure limit exceeded");
       return;
     }
     const status = socket.send(message);
     if (status === 0) {
+      this.logStreamFailure(stream, "relay_send_failed", { queuedBytes: socket.getBufferedAmount(), incomingBytes: bytes });
       this.closeStream(stream.id, 1011, "Relay stream send failed");
     }
+  }
+
+  private logStreamFailure(stream: RelayLiveStream, reason: string, details: Record<string, number | string>): void {
+    const nativeRequestId = stream.request.headers["x-clanky-mesh-request-id"];
+    log.warn("Mesh relay stream failed", {
+      streamId: stream.id,
+      requestId: stream.request.requestId,
+      ...(nativeRequestId && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(nativeRequestId) ? { nativeRequestId } : {}),
+      initiatorNodeId: stream.initiatorNodeId,
+      targetNodeId: stream.receiverNodeId,
+      reason,
+      ...details,
+    });
   }
 
   private setStreamStatus(
@@ -1684,6 +1708,7 @@ export class MeshRelayBroker {
     const audit = streamAuditResult(code);
     logRelayStreamAudit({
       streamId: stream.id,
+      requestId: stream.request.requestId,
       initiatorNodeId: stream.initiatorNodeId,
       targetNodeId: stream.receiverNodeId,
       kind: stream.request.kind,
@@ -1694,6 +1719,7 @@ export class MeshRelayBroker {
       bytesToReceiver: stream.bytesToReceiver,
       durationMs: Math.max(0, Date.now() - stream.startedAt),
       outcome: audit.outcome,
+      closeCode: code,
       ...(audit.errorCode ? { errorCode: audit.errorCode } : {}),
     });
   }
@@ -1716,6 +1742,7 @@ export class MeshRelayBroker {
     const audit = streamAuditResult(code);
     logRelayStreamAudit({
       streamId: ticket.streamId,
+      requestId: ticket.request.requestId,
       initiatorNodeId: ticket.initiatorNodeId,
       targetNodeId: ticket.receiverNodeId,
       kind: ticket.request.kind,
@@ -1727,6 +1754,7 @@ export class MeshRelayBroker {
       outcome: audit.outcome === "completed" || audit.outcome === "disconnected"
         ? "not_connected"
         : audit.outcome,
+      closeCode: code,
       errorCode: code === 4410
         ? "relay_ticket_expired"
         : audit.errorCode ?? "relay_stream_not_connected",
@@ -1821,10 +1849,19 @@ export class MeshRelayBroker {
     frame: MeshRelayServerControlFrame,
   ): void {
     const serialized = JSON.stringify(frame);
+    const incomingBytes = encodedBytes(serialized);
+    const queuedBytes = connection.socket.getBufferedAmount();
     if (
-      connection.socket.getBufferedAmount() + encodedBytes(serialized)
+      queuedBytes + incomingBytes
       > RELAY_MAX_QUEUED_BYTES
     ) {
+      log.warn("Mesh relay control send buffer overflow", {
+        reason: "relay_control_send_byte_limit",
+        connectionId: connection.id,
+        queuedBytes,
+        incomingBytes,
+        limitBytes: RELAY_MAX_QUEUED_BYTES,
+      });
       this.closeControl(
         connection.id,
         CONTROL_CLOSE_CAPACITY,
