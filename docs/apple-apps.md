@@ -43,6 +43,8 @@ menu views observe the published state directly, so loading indicators and
 enabled states do not retain their initial values. Route changes recreate the
 controls without reloading the WebView. Callbacks from previous routes and
 actions that are removed, disabled or busy remain rejected.
+Busy actions show a disabled hourglass in their existing slot, not a native
+progress view that can introduce a second toolbar across the bottom.
 Indicators remain visible. Other layouts keep the web controls.
 The composer combines its ordinary bottom spacing with safe-area clearance
 using the greater of the two, not their sum.

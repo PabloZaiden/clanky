@@ -287,7 +287,7 @@ private struct NativeToolbarButton: View {
                 toolbar.activate(id, scope: scope)
             } label: {
                 if item.busy {
-                    ProgressView()
+                    Label(item.label, systemImage: "hourglass").labelStyle(.iconOnly)
                 } else if let url = item.imageURL, let image = toolbar.images[url] {
                     Image(uiImage: image)
                         .renderingMode(.original)
@@ -301,6 +301,7 @@ private struct NativeToolbarButton: View {
                 }
             }
             .accessibilityLabel(item.label)
+            .accessibilityValue(item.busy ? "In progress" : "")
             .help(item.label)
             .disabled(item.disabled || item.busy)
             .tint(item.destructive ? .red : item.active ? .accentColor : .primary)
