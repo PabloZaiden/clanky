@@ -30,12 +30,14 @@ unrelated notes. Keep it private to the user and identify which repository or
 host each note applies to. All checkouts and worktrees using the same user home
 share this one file; do not keep separate worktree copies.
 
-Keep entries concise and factual: selected hosts, local paths, network addresses
-and signing identifiers. General workflows, commands and policies belong in
-the appropriate shared guide, even when a local incident exposed the need to
-clarify them. Personal notes supply the local values for those guides; they do
-not replace them or serve as task logs. Remove obsolete observations and
-duplicated procedures rather than accumulating incident history.
+Personal guidance and private configuration contain parameters only: selected
+hosts, paths, network addresses and signing identifiers. No commands, procedures,
+embedded scripts or task history belong there. Implement repeatable build,
+signing, transfer and deployment processes as versioned repository scripts;
+shared guides document their entrypoints, prerequisites and safety policies,
+not a second hand-maintained implementation. Scripts must accept private values
+as parameters rather than hard-coding them or depending on files from a previous
+chat. Remove obsolete observations and duplicated procedures.
 
 Never commit or publish the file, copy private details into tracked files, or
 link to private notes from shared documentation. Keep tracked guides, examples

@@ -344,15 +344,14 @@ For a physical build, archive `dist/apple/ios-linux/xtool/Clanky.app` with a
 distinct device-artifact name. Keep source patches and other local-only metadata
 private; transfer only the intended app archive and its checksum.
 
-For registered Clanky hosts, use the authenticated file explorer with execution
-host targets: download the archive from the source host's artifact directory and
-upload it into the destination host's artifact directory. Select each directory
-explicitly; the source cache above is outside the workspace checkout. Enable
-hidden-file visibility when browsing `.cache/`. This browser-owned binary
-transfer is separate from native command execution; raw upload/WebDAV protocols
-are not JSON control operations. Do not invent a JSON binary-upload workaround
-or an API-credential bridge. A different transfer transport requires its own
-approval.
+For registered Clanky hosts, use authenticated native binary-file operations:
+`bodyFile` supplies streamed raw archive bytes and `responseFile` receives
+downloads on the originating execution host. See the canonical
+[native file transport](control-chats.md#what-the-agent-can-do). The private
+OTA tooling below generates the exact transfer and execution requests; discover
+their live schemas before executing them. The file explorer remains an option
+for human transfers. Do not encode binaries in JSON, extract CLI credentials
+or invent an API-key bridge. A different transport requires its own approval.
 
 Verify against the trusted source digest before extraction on the Mac. Use a
 fresh destination instead of partially overwriting an old bundle:
@@ -544,6 +543,95 @@ network discovery must be resolved before claiming deployment. Free-account
 expiry and app/device limits still apply. In the installed app, connect to the
 existing Clanky API's reachable HTTPS address, not the build Mac's loopback
 address.
+
+## Scripted private iOS OTA builds
+
+The complete repeatable implementation is
+[`scripts/ios-ota.py`](../scripts/ios-ota.py), exposed as `bun run ios:ota`.
+It uses Python 3.9+ standard library plus the existing Linux build tools and
+macOS signing tools. Only this standalone driver, parameter JSON and built
+artifacts go to the Mac, never the application checkout or Bun dependencies.
+Keep environment values in a private parameter file outside the repository,
+using [`ios-ota.example.json`](../scripts/ios-ota.example.json) as the shape.
+The [personal guidance](development.md#local-only-information) supplies its
+location. It contains values only, not commands or copies of this implementation.
+
+The driver owns version selection, validation, archive hashing, exact
+Ad Hoc identity/profile/device checks, signing, IPA layout, HTTPS/bootstrap
+hosting, trust-profile and installer generation, atomic publication, rollback
+and full trusted-download verification. The existing app identity, profile,
+signing key and trusted root are reused. It supports integer native build
+numbers from 1 through 9999; the next number exceeds both the source project's
+number and the currently published number. No project edit or GitHub release
+is needed for a distribution-only build increment.
+
+From a clean source revision, choose a fresh direct child of the configured
+Linux `artifactDirectory` as `RUN`. These are script entrypoints, not commands
+to reconstruct on the signing host:
+
+```bash
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage preflight
+bun run ios:ota prepare --config "$PARAMETERS" --work "$RUN"
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage sign
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage publish
+bun run ios:ota verify --config "$PARAMETERS" --work "$RUN"
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage cleanup
+bun run ios:ota cleanup --config "$PARAMETERS" --work "$RUN" --confirm cleanup
+```
+
+Each `requests` invocation produces an ordered `steps` array and a
+`describeBeforeExecution` operation list. An authorized native agent describes
+those operations and submits the generated inputs unchanged, stopping on
+failure, pending confirmation or uncertain outcome. Complete each stage's
+transfers/execution/receipt download before running the next entrypoint.
+The native tools provide authority, confirmations and transport; the scripts
+provide all build/deployment logic. No model-generated remote signing code,
+extra CLI credentials or new control transport is required.
+
+`preflight` verifies the selected Mac's signing material and live installer.
+`prepare` runs the required application build/E2E and physical-device xtool
+build entirely on Linux, stages the incremented bundle metadata and records
+the exact clean revision and transfer digest. `sign` verifies the current
+publication has not changed and signs that artifact on macOS. `publish`
+preserves immutable previous releases and selects one complete new release
+with a single atomic pointer replacement; manifest links pin the exact IPA,
+so clients cannot mix generations. `verify` pins the configured root digest
+before trusting it, downloads the whole signed IPA over verified HTTPS and
+compares its bytes, bundle metadata, manifest and installer link.
+`verified.json` contains the installation URL, not a claim that the phone
+installed it. Open that URL in Safari on the private network/VPN and install
+over the existing app without uninstalling or clearing its data.
+
+### Explicit installer administration
+
+These are separate, confirmed stages of the same script, not side effects of
+an ordinary build:
+
+| `requests --stage` | Effect |
+| --- | --- |
+| `setup` | Install/reuse the managed Mac-user HTTPS service, retaining the pinned CA and importing an existing legacy installer without changing its IPA. Required when preflight says `needsSetup`. |
+| `setup --initialize-ca` | First setup only: create a 10-year private root and one-year HTTPS leaf. Requires an empty TLS directory and null root fingerprint. Pin the returned fingerprint in private parameters and start a fresh run before building. |
+| `renew-tls` | Renew the one-year HTTPS leaf with the existing Mac-local CA key and restart only this installer service. Does not replace the trust root. |
+| `rollback` | Restore the previous immutable release from this run, refusing a stale rollback if another publication has since become current. |
+| `status` | Inspect current publication, service and run files after an interruption. Never automatically replay an uncertain mutation. |
+| `reconcile` | Recover a missing publication receipt or validate an existing remote receipt for download, only when the current immutable release exactly matches this run's signed artifact/revision. Does not publish or replay anything. |
+| `stop` | Stop the configured installer service, retaining certificates and published data. |
+
+Setup records its previous launch configuration and restores it if startup
+fails. It requires the existing provisioning identity/profile; obtaining Apple
+accounts, licensed SDKs or keychain permission remains an explicit OS/user
+gate, not something a script fabricates or bypasses. New trust requires
+installing the public certificate profile and enabling full trust on iOS;
+clicking through a Safari warning is insufficient for OTA installation.
+Private keys remain outside served files on the Mac. Ordinary updates never
+rotate certificates, change signing identity, install on the phone or deploy
+the Clanky API server. Inspect expiry/signing errors rather than creating
+replacement material without approval.
+
+Run directories retain parameter snapshots and JSON receipts for inspection.
+Cleanup removes only known temporary build/sign/download files, never the run
+root, published releases, rollback data, CA or signing material. No part of this
+workflow depends on another chat's session directory or one-off scripts.
 
 ## Connections and web behavior
 

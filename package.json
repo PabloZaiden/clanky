@@ -18,6 +18,7 @@
     "build:apple:ios": "bun scripts/build-apple.ts ios",
     "build:apple:ios:linux": "bun scripts/build-apple.ts ios-linux",
     "build:apple:ios:simulator:linux": "bun scripts/build-apple.ts ios-simulator-linux",
+    "ios:ota": "python3 scripts/ios-ota.py",
     "generate:macos-signing-cert": "bun scripts/generate-macos-signing-cert.ts",
     "release": "bun scripts/release.ts",
     "release:metadata": "bun scripts/release-metadata.ts",
