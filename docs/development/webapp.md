@@ -215,6 +215,8 @@ once and are not retained after the dialog closes. Authorized OAuth integrations
 are listed there separately, with their selected access, scope and expiry.
 Human revocation uses Clanky's grant-management API; no OAuth credentials
 are displayed or copied into Clanky settings.
+Listing and revoking owned integrations also works with a full-scope native
+device session or API key; it does not require a separate browser cookie.
 
 Separate lifecycle/realtime state, transcript/display state, and composer/form
 state in large interactive views. Effects must be abortable, guard stale reads,

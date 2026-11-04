@@ -71,7 +71,7 @@ export function createClankyPlatformServer<TEvent = unknown>(
     config, store, passkeysEnabled, apiKeysEnabled, deviceAuthEnabled, realtimePath: wsPath,
   });
   if (input.auth?.oauth && !passkeysEnabled) throw new Error("OAuth consent requires browser authentication");
-  const oauth = input.auth?.oauth ? createOAuthService(input.auth.oauth, store, config) : undefined;
+  const oauth = input.auth?.oauth ? createOAuthService(input.auth.oauth, store, config, authentication) : undefined;
   const endpoints = createAccountEndpointHandler({
     config, store, authentication, version, wsPath, passkeysEnabled, apiKeysEnabled, deviceAuthEnabled,
     webMode: input.web === false ? "disabled" : input.web?.mode === "auth" ? "auth" : "app",
