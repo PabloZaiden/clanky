@@ -893,20 +893,32 @@ def serve(config):
                     except (BrokenPipeError, ConnectionResetError) as error:
                         self.log_error("Client disconnected: %s", error)
 
+    class Server(http.server.ThreadingHTTPServer):
+        def finish_request(self, request, client_address):
+            if self.tls_context is None:
+                request.settimeout(30)
+                super().finish_request(request, client_address)
+            else:
+                request.settimeout(10)
+                with self.tls_context.wrap_socket(request, server_side=True) as connection:
+                    connection.settimeout(30)
+                    super().finish_request(connection, client_address)
+
     servers = []
     try:
         for key, bootstrap in [("bootstrapURL", True), ("installerURL", False)]:
             url = urllib.parse.urlsplit(config[key])
-            server = http.server.ThreadingHTTPServer(
+            server = Server(
                 (config["bindAddress"], url.port or (80 if bootstrap else 443)), Handler,
             )
             server.bootstrap = bootstrap
+            server.tls_context = None
             servers.append(server)
             if not bootstrap:
                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 context.minimum_version = ssl.TLSVersion.TLSv1_2
                 context.load_cert_chain(tls / "server-chain.pem", tls / "server.key")
-                server.socket = context.wrap_socket(server.socket, server_side=True)
+                server.tls_context = context
         stop = threading.Event()
         for signum in [signal.SIGTERM, signal.SIGINT]:
             signal.signal(signum, lambda *_: stop.set())
@@ -944,7 +956,7 @@ def requests(config, work, stage, initialize=False):
         steps.append({
             "operationId": "POST /api/execution-hosts/:kind/:id/exec",
             "parameters": parameters,
-            "query": [{"name": "view", "value": "compact"}, {"name": "maxBytes", "value": "4096"}],
+            "query": [],
             "bodyJson": json.dumps({"command": command, "args": arguments, "timeoutMs": 60000}),
             "confirmationDescription": description,
         })
@@ -975,7 +987,9 @@ def requests(config, work, stage, initialize=False):
         upload("Clanky.tar.gz")
         upload("build.json")
     suffix = "-" + uuid.uuid4().hex[:8] if stage == "status" else ""
-    receipt = {"sign": "signed", "publish": "publication", "reconcile": "publication"}.get(stage, stage) + suffix + ".json"
+    receipt = {
+        "sign": "signed", "publish": "publication", "reconcile": "publication", "rollback": "rolled-back",
+    }.get(stage, stage) + suffix + ".json"
     command = [
         str(remote / "ios-ota.py"), stage, "--config", str(remote / "parameters.json"),
         "--work", str(remote), "--receipt", str(remote / receipt),
@@ -1094,7 +1108,12 @@ def main():
     if args.command in ["setup", "renew-tls", "publish", "rollback", "cleanup", "stop"]:
         require(args.confirm == args.command, "Explicit --confirm " + args.command + " required")
     if args.receipt:
-        require(args.receipt.parent == work and not args.receipt.exists(), "Receipt already exists; inspect state instead of replaying")
+        require(args.receipt.parent == work, "Receipt must belong to this run")
+        require(
+            not args.receipt.exists()
+            or args.command == "reconcile" and args.receipt == work / "publication.json",
+            "Receipt already exists; inspect state instead of replaying",
+        )
     if args.command == "requests":
         require(args.stage, "--stage required")
         result = requests(config, work, args.stage, args.initialize_ca)
