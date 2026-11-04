@@ -614,6 +614,7 @@ an ordinary build:
 | `renew-tls` | Renew the one-year HTTPS leaf with the existing Mac-local CA key and restart only this installer service. Does not replace the trust root. |
 | `rollback` | Restore the previous immutable release from this run, refusing a stale rollback if another publication has since become current. |
 | `status` | Inspect current publication, service and run files after an interruption. Never automatically replay an uncertain mutation. |
+| `reconcile` | Recover a missing publication receipt only when the current immutable release exactly matches this run's signed artifact/revision. Does not publish or replay anything. |
 | `stop` | Stop the configured installer service, retaining certificates and published data. |
 
 Setup records its previous launch configuration and restores it if startup

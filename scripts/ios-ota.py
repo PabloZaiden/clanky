@@ -155,7 +155,7 @@ def version(value):
 def paths(config):
     service = Path(config["serviceDirectory"])
     require(not service.is_symlink(), "Service directory must not be a symlink")
-    return service, service / "public", service / "tls"
+    return service, absolute(str(service / "public"), "public directory"), absolute(str(service / "tls"), "TLS directory")
 
 
 def bundle_info(ipa):
@@ -184,7 +184,7 @@ def artifact(ipa):
 def release_path(config, identifier):
     require(isinstance(identifier, str) and RELEASE.fullmatch(identifier), "Invalid release identifier")
     service, _, _ = paths(config)
-    path = service / "releases" / identifier
+    path = absolute(str(service / "releases" / identifier), "release directory")
     require(not path.is_symlink(), "Release directory is a symlink")
     return path
 
@@ -279,12 +279,22 @@ def check_tls(config):
     return expected.lower()
 
 
-def service_running(config):
+def service_state(config):
     result = subprocess.run(
         ["launchctl", "print", "gui/" + str(os.getuid()) + "/" + config["serviceLabel"]],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
-    return result.returncode == 0 and b"state = running" in result.stdout
+    if result.returncode:
+        require(b"Could not find service" in result.stderr,
+                "Unable to inspect LaunchAgent: " + result.stderr.decode(errors="replace")[-500:])
+        return None
+    match = re.search(rb"\bstate = ([^\n]+)", result.stdout)
+    require(match is not None, "LaunchAgent returned no state")
+    return match.group(1).decode().strip()
+
+
+def service_running(config):
+    return service_state(config) == "running"
 
 
 def preflight(config):
@@ -303,6 +313,9 @@ def preflight(config):
         "current": selected["artifact"] if selected else None,
         "rootCertificateSHA256": fingerprint,
         "needsSetup": not (service / "ios-ota.py").exists()
+        or digest(service / "ios-ota.py") != digest(SCRIPT)
+        or not (service / "parameters.json").exists()
+        or config_at(service / "parameters.json") != config
         or selected is not None and selected["release"] is None,
         "serviceRunning": service_running(config),
         "signingVerified": True,
@@ -499,6 +512,10 @@ def publish(config, work):
     require(sys.platform == "darwin", "Publication requires macOS")
     service, _, _ = paths(config)
     require((service / "ios-ota.py").is_file() and service_running(config), "Run explicit setup before publishing")
+    require(
+        digest(service / "ios-ota.py") == digest(SCRIPT)
+        and config_at(service / "parameters.json") == config, "Installer driver/parameters changed; run explicit setup",
+    )
     check_tls(config)
     profile_at(config)
     signed = read_json(work / "signed.json")
@@ -515,11 +532,34 @@ def publish(config, work):
             config, work.name, work / "Clanky.ipa", signed["build"]["sourceRevision"],
         )
         write_json(service / "current.json", record, replace=True)
-        result = {
-            **record, "previous": previous, "rootCertificateSHA256": config["rootCertificateSHA256"],
-            "installerURL": config["installerURL"] + "/?build=" + record["artifact"]["bundleVersion"],
-        }
+        result = publication_result(config, record, previous)
         write_json(work / "publication.json", result)
+    return result
+
+
+def publication_result(config, record, previous):
+    return {
+        **record, "previous": previous, "rootCertificateSHA256": config["rootCertificateSHA256"],
+        "installerURL": config["installerURL"] + "/?build=" + record["artifact"]["bundleVersion"],
+    }
+
+
+def reconcile(config, work):
+    signed = read_json(work / "signed.json")
+    require(signed["build"]["configurationSHA256"] == configuration_digest(config), "Parameters changed")
+    selected = current(config)
+    require(
+        selected is not None and selected["release"] == work.name
+        and selected["artifact"] == signed["artifact"]
+        and selected["sourceRevision"] == signed["build"]["sourceRevision"],
+        "This run is not the current published build; inspect status instead",
+    )
+    result = publication_result(config, selected, read_json(work / "rollback.json")["current"])
+    receipt = work / "publication.json"
+    if receipt.exists():
+        require(read_json(receipt) == result, "Existing publication receipt disagrees")
+    else:
+        write_json(receipt, result)
     return result
 
 
@@ -624,15 +664,19 @@ def launch_agent(config):
     }
 
 
-def await_service(config):
+def await_service(config, health=True):
     _, _, tls = paths(config)
     context = ssl.create_default_context(cafile=str(tls / "root-ca.pem"))
     deadline = time.monotonic() + 10
     last_error = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(config["installerURL"] + "/health", context=context, timeout=1) as response:
-                require(read_json_response(response)["service"] == config["serviceLabel"], "Unexpected OTA service")
+            endpoint = "/health" if health else "/"
+            with urllib.request.urlopen(config["installerURL"] + endpoint, context=context, timeout=1) as response:
+                if health:
+                    require(read_json_response(response)["service"] == config["serviceLabel"], "Unexpected OTA service")
+                else:
+                    require(response.status == 200, "Restored installer did not respond")
                 return
         except (OSError, ValueError, RuntimeError) as error:
             last_error = error
@@ -675,8 +719,8 @@ def setup(config, work, initialize=False):
             shutil.copyfile(service / name, backup / name)
     if previous:
         write_bytes(backup / "launch-agent.plist", previous)
-    running = service_running(config)
-    if running:
+    loaded = service_state(config) is not None
+    if loaded:
         run("launchctl", "bootout", "gui/" + str(os.getuid()), agent_path)
     try:
         write_bytes(service / "ios-ota.py", SCRIPT.read_bytes(), replace=True)
@@ -686,15 +730,18 @@ def setup(config, work, initialize=False):
         await_service(config)
     except Exception as error:
         # Restore the previous launch configuration, never the trusted root.
-        if service_running(config):
+        if service_state(config) is not None:
             run("launchctl", "bootout", "gui/" + str(os.getuid()), agent_path)
         for name in ["ios-ota.py", "parameters.json"]:
             if (backup / name).exists():
                 shutil.copyfile(backup / name, service / name)
         if previous:
             write_bytes(agent_path, previous, replace=True)
-            if running:
+            if loaded:
                 run("launchctl", "bootstrap", "gui/" + str(os.getuid()), agent_path)
+                previous_parameters = backup / "parameters.json"
+                restored = config_at(previous_parameters) if previous_parameters.exists() else config
+                await_service(restored, health=False)
         else:
             agent_path.unlink()
         raise RuntimeError("Setup failed; previous launch configuration restored: " + str(error)) from error
@@ -727,7 +774,7 @@ def stop_service(config):
         plistlib.loads(agent_path.read_bytes()).get("WorkingDirectory") == config["serviceDirectory"],
         "LaunchAgent does not belong to this installer",
     )
-    if service_running(config):
+    if service_state(config) is not None:
         run("launchctl", "bootout", "gui/" + str(os.getuid()), agent_path)
     return {"serviceStopped": True, "certificatesAndPublishedDataRetained": True}
 
@@ -928,7 +975,7 @@ def requests(config, work, stage, initialize=False):
         upload("Clanky.tar.gz")
         upload("build.json")
     suffix = "-" + uuid.uuid4().hex[:8] if stage == "status" else ""
-    receipt = {"sign": "signed", "publish": "publication"}.get(stage, stage) + suffix + ".json"
+    receipt = {"sign": "signed", "publish": "publication", "reconcile": "publication"}.get(stage, stage) + suffix + ".json"
     command = [
         str(remote / "ios-ota.py"), stage, "--config", str(remote / "parameters.json"),
         "--work", str(remote), "--receipt", str(remote / receipt),
@@ -1024,11 +1071,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=[
         "requests", "prepare", "preflight", "setup", "renew-tls", "serve", "sign",
-        "publish", "rollback", "verify", "cleanup", "status", "stop",
+        "publish", "rollback", "verify", "cleanup", "status", "stop", "reconcile",
     ])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--work", type=Path)
-    parser.add_argument("--stage", choices=["preflight", "setup", "renew-tls", "sign", "publish", "rollback", "cleanup", "status", "stop"])
+    parser.add_argument("--stage", choices=["preflight", "setup", "renew-tls", "sign", "publish", "rollback", "cleanup", "status", "stop", "reconcile"])
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--initialize-ca", action="store_true")
     parser.add_argument("--confirm")
@@ -1067,6 +1114,8 @@ def main():
         result = publish(config, work)
     elif args.command == "rollback":
         result = rollback(config, work)
+    elif args.command == "reconcile":
+        result = reconcile(config, work)
     elif args.command == "verify":
         result = verify(config, work)
     elif args.command == "cleanup":
