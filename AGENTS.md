@@ -21,6 +21,8 @@ for unrelated work.
 
 ## Scope and autonomy
 
+- Follow the [repository language policy](docs/development.md#repository-language)
+  for all repository-authored text.
 - Prefer the simplest change that meets the agreed goals; follow existing
   patterns and preserve unrelated work. Do not add speculative abstractions,
   coordination, or compatibility layers. Compatibility needs explicit approval
