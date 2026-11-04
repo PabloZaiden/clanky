@@ -33,6 +33,11 @@ for unrelated work.
   Follow the [coverage decision gate](docs/development/testing.md#decide-whether-a-scenario-belongs).
 - Discover APIs and helpers from their definitions and callers instead of
   duplicating them or maintaining prose catalogs.
+- Keep personal guidance limited to concise, verified environment details:
+  selected hosts, local paths, addresses and signing identifiers. Put reusable
+  procedures and policies in the shared guides, not personal notes; do not use
+  those notes as task history or a substitute for reading the relevant guide.
+  Follow [local-only information](docs/development.md#local-only-information).
 - Follow [authentication-method equivalence](docs/development/architecture.md#authentication-method-equivalence):
   never infer human presence or extra privileges from API-key/passkey provenance.
 
@@ -74,5 +79,6 @@ link to them rather than copying them back into this file.
 | UI, settings, routing, or webapp integration | [UI and webapp development](docs/development/webapp.md) |
 | Breaking Mesh protocol changes | [Protocol evolution](docs/mesh-worker.md#protocol-evolution) |
 | Deployment, authentication configuration, production access, or reset | [Deployment and configuration](docs/deployment.md) |
+| Apple app builds, signing, simulation, or device deployment | [Apple apps](docs/apple-apps.md) |
 | Dependencies, PRs, or releases | [Development](docs/development.md) |
 | fframes video creation or review | [Video skill](.agents/skills/fframes-video/SKILL.md) |

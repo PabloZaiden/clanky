@@ -30,6 +30,13 @@ unrelated notes. Keep it private to the user and identify which repository or
 host each note applies to. All checkouts and worktrees using the same user home
 share this one file; do not keep separate worktree copies.
 
+Keep entries concise and factual: selected hosts, local paths, network addresses
+and signing identifiers. General workflows, commands and policies belong in
+the appropriate shared guide, even when a local incident exposed the need to
+clarify them. Personal notes supply the local values for those guides; they do
+not replace them or serve as task logs. Remove obsolete observations and
+duplicated procedures rather than accumulating incident history.
+
 Never commit or publish the file, copy private details into tracked files, or
 link to private notes from shared documentation. Keep tracked guides, examples
 and configuration reusable, using placeholders instead of personal values.
@@ -50,6 +57,7 @@ Read the guide relevant to the change, not every guide for every task.
 | UI, settings, routing, framework ownership, or upstream webapp changes | [UI and webapp development](development/webapp.md) |
 | Breaking Mesh wire changes | [Protocol evolution](mesh-worker.md#protocol-evolution) |
 | Docker, proxy, authentication, production access, or database reset | [Deployment and configuration](deployment.md) |
+| Apple app builds, signing, simulation, or device deployment | [Apple apps](apple-apps.md) |
 | Provider selection and runtime behavior | [Harness adapters](harnesses.md) |
 
 Keep documentation about behavior, constraints, and their rationale. Types,
