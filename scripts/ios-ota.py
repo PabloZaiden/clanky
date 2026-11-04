@@ -1035,7 +1035,8 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     config = config_at(args.config)
-    os.environ["DEVELOPER_DIR"] = config["developerDirectory"]
+    if sys.platform == "darwin":
+        os.environ["DEVELOPER_DIR"] = config["developerDirectory"]
     os.environ["COPYFILE_DISABLE"] = "1"
     if args.command == "serve":
         serve(config)
