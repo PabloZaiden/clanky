@@ -3,10 +3,13 @@
  */
 import { createLogger, type RealtimeBus } from "@pablozaiden/webapp/server";
 import type { RealtimeInterest } from "@/platform/contracts";
+import type { RouteTable } from "@/platform/server";
 import type { ClankyRealtimeEvent } from "@/shared/realtime";
 import { workspaceConnections, type WorkspaceConnectionRuntime } from "../core/workspace-connections";
 import { CollaborationRealtimeSource } from "../client-sdk/collaboration/realtime";
 import { qualifyCollaborationPublication } from "../client-sdk/collaboration/realtime-policy";
+import { createWorkspaceUrlQualifier } from "../client-sdk/collaboration/routing";
+import { projectCollaborationOperations } from "./collaboration-operation-metadata";
 
 const log = createLogger("api:workspace-realtime-source");
 
@@ -14,13 +17,19 @@ class WorkspaceRealtimeSource {
   readonly finished: Promise<void>;
   private readonly upstream: CollaborationRealtimeSource;
 
-  constructor(realtime: RealtimeBus<ClankyRealtimeEvent>, runtime: WorkspaceConnectionRuntime) {
+  constructor(
+    realtime: RealtimeBus<ClankyRealtimeEvent>,
+    runtime: WorkspaceConnectionRuntime,
+    qualifyUrl: ReturnType<typeof createWorkspaceUrlQualifier>,
+  ) {
     let upstream: CollaborationRealtimeSource | undefined;
     let interests: readonly RealtimeInterest[] = [];
     const source = realtime.attachSource({
       userId: runtime.scope,
       authorize: (publication) => upstream?.authorize(publication) ?? false,
-      transform: (publication) => qualifyCollaborationPublication(runtime.connection.id, publication),
+      transform: (publication) => qualifyCollaborationPublication(
+        runtime.connection.id, publication, (path) => qualifyUrl(runtime.connection.id, path),
+      ),
     });
     let stopObserving: () => void;
     try {
@@ -62,11 +71,13 @@ class WorkspaceRealtimeSource {
 
 class WorkspaceRealtimeSources {
   private realtime?: RealtimeBus<ClankyRealtimeEvent>;
+  private qualifyUrl?: ReturnType<typeof createWorkspaceUrlQualifier>;
   private readonly sources = new Map<string, { runtime: WorkspaceConnectionRuntime; source: WorkspaceRealtimeSource }>();
   private readonly pending = new Set<Promise<void>>();
 
-  configure(realtime: RealtimeBus<ClankyRealtimeEvent>): void {
+  configure(realtime: RealtimeBus<ClankyRealtimeEvent>, routes: RouteTable): void {
     this.realtime = realtime;
+    this.qualifyUrl = createWorkspaceUrlQualifier(projectCollaborationOperations(routes));
   }
 
   update(runtime: WorkspaceConnectionRuntime): void {
@@ -79,8 +90,8 @@ class WorkspaceRealtimeSources {
     }
     if (previous?.runtime === runtime) return;
     previous?.source.close();
-    if (!this.realtime) throw new Error("Workspace realtime sources are not configured.");
-    const source = new WorkspaceRealtimeSource(this.realtime, runtime);
+    if (!this.realtime || !this.qualifyUrl) throw new Error("Workspace realtime sources are not configured.");
+    const source = new WorkspaceRealtimeSource(this.realtime, runtime, this.qualifyUrl);
     this.sources.set(runtime.connection.id, { runtime, source });
     const pending = source.finished.catch((error: unknown) => {
       log.error("Workspace realtime maintenance failed", { error: String(error) });

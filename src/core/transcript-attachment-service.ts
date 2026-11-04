@@ -1,4 +1,4 @@
-import { getMessageAttachmentKind, type MessageAttachment, type PersistedMessage } from "@/shared";
+import type { MessageAttachment, PersistedMessage } from "@/shared";
 import type { SubagentContext } from "@/shared/subagent";
 import { loadTaskSummary } from "../persistence/tasks";
 import { loadAgentRunSummary } from "../persistence/agents";
@@ -10,11 +10,11 @@ import { taskManager } from "./task";
 import { agentRunner } from "./agent-runner";
 import { getSavedSubagentMessage } from "./subagent-service";
 
-type TranscriptImageContext =
+type TranscriptAttachmentContext =
   | { kind: "chat" | "task" | "agent-run"; id: string }
   | { kind: "subagent"; id: string; parent: SubagentContext };
 
-async function getImageMessage(context: TranscriptImageContext, messageId: string): Promise<PersistedMessage | null> {
+async function getAttachmentMessage(context: TranscriptAttachmentContext, messageId: string): Promise<PersistedMessage | null> {
   switch (context.kind) {
     case "chat":
       return chatManager.getMessage(context.id, messageId);
@@ -31,12 +31,11 @@ async function getImageMessage(context: TranscriptImageContext, messageId: strin
   }
 }
 
-export async function getTranscriptImage(
-  context: TranscriptImageContext,
+export async function getTranscriptAttachment(
+  context: TranscriptAttachmentContext,
   messageId: string,
   attachmentId: string,
 ): Promise<MessageAttachment | null> {
-  const message = await getImageMessage(context, messageId);
-  const attachment = message?.attachments?.find((image) => image.id === attachmentId);
-  return attachment && getMessageAttachmentKind(attachment) === "image" ? attachment : null;
+  const message = await getAttachmentMessage(context, messageId);
+  return message?.attachments?.find((attachment) => attachment.id === attachmentId) ?? null;
 }

@@ -1,20 +1,28 @@
 import { createHash } from "node:crypto";
-import { getCanonicalMessageAttachmentMimeType, type MessageAttachment, type TranscriptSnapshotOptions } from "@/shared";
+import { getCanonicalMessageAttachmentMimeType, getMessageAttachmentKind, type MessageAttachment, type TranscriptSnapshotOptions } from "@/shared";
 import { isDomainError } from "../domain/domain-error";
 import { domainErrorResponse, errorResponse } from "./helpers";
+import { createFileDownloadResponse } from "./file-download-response";
 
-export function transcriptImageResponse(request: Request, image: MessageAttachment | null): Response {
-  if (!image) return errorResponse("not_found", "Image attachment not found", 404);
-  const etag = `"${createHash("sha256").update(image.data).digest("hex")}"`;
+export function transcriptAttachmentResponse(request: Request, attachment: MessageAttachment | null): Response {
+  if (!attachment) return errorResponse("not_found", "Attachment not found", 404);
+  if (getMessageAttachmentKind(attachment) === "file") {
+    const bytes = Buffer.from(attachment.data, "base64");
+    if (bytes.byteLength !== attachment.size) throw new Error("The saved attachment is incomplete.");
+    return createFileDownloadResponse(bytes, "application/octet-stream", { name: attachment.filename }, {
+      contentLength: bytes.byteLength,
+    });
+  }
+  const etag = `"${createHash("sha256").update(attachment.data).digest("hex")}"`;
   const headers = {
     "Cache-Control": "private, no-cache",
-    "Content-Type": getCanonicalMessageAttachmentMimeType(image),
+    "Content-Type": getCanonicalMessageAttachmentMimeType(attachment),
     "X-Content-Type-Options": "nosniff",
     ETag: etag,
   };
   return request.headers.get("If-None-Match") === etag
     ? new Response(null, { status: 304, headers })
-    : new Response(Buffer.from(image.data, "base64"), { headers });
+    : new Response(Buffer.from(attachment.data, "base64"), { headers });
 }
 
 /**

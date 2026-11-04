@@ -1,4 +1,4 @@
-import type { TranscriptMessage } from "./transcript-images";
+import type { TranscriptMessage } from "./transcript-attachments";
 import type { ChatTranscript } from "./chat-transcript";
 import type { TaskLogEntry } from "./task";
 import { isCountedAssistantResponse } from "./chat-transcript";

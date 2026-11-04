@@ -8,11 +8,13 @@ import {
 } from "@pablozaiden/webapp/contracts";
 import type { RealtimeSource, RealtimeSubscriber, RealtimeStatus } from "@pablozaiden/webapp/web";
 import type { ClankyRealtimeEvent } from "@/shared/realtime";
+import type { CollaborationRouteOperation } from "@/shared/collaboration-operation";
 import { DomainError } from "../../domain/domain-error";
 import type { CollaborationClientEngine, CollaborationClientRuntime } from "./engine";
 import type { CollaborationClientLogger } from "./types";
 import { CollaborationRealtimeSource } from "./realtime";
 import { collaborationRemoteInterest, qualifyCollaborationPublication } from "./realtime-policy";
+import { createWorkspaceUrlQualifier } from "./routing";
 
 interface Subscription extends RealtimeSubscriber<unknown> {
   activation: number;
@@ -26,12 +28,16 @@ export class BrowserCollaborationRealtime {
   private readonly subscribers = new Set<Subscription>();
   private readonly sources = new Map<string, { runtime: CollaborationClientRuntime; source: CollaborationRealtimeSource }>();
   private readonly pending = new Set<Promise<void>>();
+  private readonly qualifyUrl;
   private disposed = false;
 
   constructor(
     private readonly engine: CollaborationClientEngine,
+    operations: readonly CollaborationRouteOperation[],
     private readonly log: CollaborationClientLogger = console,
-  ) {}
+  ) {
+    this.qualifyUrl = createWorkspaceUrlQualifier(operations);
+  }
 
   createSource(): RealtimeSource {
     const leases = new Set<() => void>();
@@ -171,7 +177,7 @@ export class BrowserCollaborationRealtime {
   }
 
   private publish(connectionId: string, original: RealtimePublication<ClankyRealtimeEvent>): void {
-    const publication = qualifyCollaborationPublication(connectionId, original);
+    const publication = qualifyCollaborationPublication(connectionId, original, (path) => this.qualifyUrl(connectionId, path));
     if (!publication) return;
     for (const subscriber of this.subscribers) {
       if (!this.sources.get(connectionId)?.source.acknowledged(subscriber.interest)

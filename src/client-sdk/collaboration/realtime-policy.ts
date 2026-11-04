@@ -51,6 +51,7 @@ export function collaborationRemoteInterest(interest: RealtimeInterest, connecti
 export function qualifyCollaborationPublication(
   connectionId: string,
   publication: RealtimePublication,
+  qualifyUrl: (path: string) => string,
 ): RealtimePublication<ClankyRealtimeEvent> | undefined {
   if (!isWorkspaceRealtimeEvent(publication.event)) return undefined;
   const qualify = (resourceKind: string, resourceId: string): string => encodeCollaborationResourceReference({
@@ -63,7 +64,7 @@ export function qualifyCollaborationPublication(
   }
   delete target["membershipId"];
   const event = qualifyWorkspaceResponse(publication.event, {
-    resource: fields["id"] ?? "workspace", qualify, qualifyUrl: (path) => path,
+    resource: fields["id"] ?? "workspace", qualify, qualifyUrl,
   });
   if (!isWorkspaceRealtimeEvent(event)) return undefined;
   if ("resource" in event) {

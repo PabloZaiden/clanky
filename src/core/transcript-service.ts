@@ -114,8 +114,8 @@ export function getTranscriptSnapshotEtag(
 ): string {
   const windowKey = window.full ? "full" : window.before ? "page" : window.since ? "range" : "latest";
   const stateRevision = createHash("sha256")
-    // Invalidate cached inline-image snapshots even when stored history is unchanged.
-    .update(JSON.stringify({ snapshotState, window, representation: "image-references-v1" }) ?? "undefined")
+    // Invalidate cached inline attachments even when stored history is unchanged.
+    .update(JSON.stringify({ snapshotState, window, representation: "attachment-references-v2" }) ?? "undefined")
     .digest("hex")
     .slice(0, 16);
   return `${transcriptRevision}:state-${stateRevision}:${windowKey}`;

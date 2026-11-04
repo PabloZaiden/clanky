@@ -29,13 +29,14 @@ Missing/empty MIME defaults to `application/octet-stream`. Empty non-image
 files are accepted. Browser file chips download the saved original, not a
 potentially edited execution-host copy.
 
-Transcript snapshots and live message events replace image `data` with
+Transcript snapshots and live message events replace attachment `data` with
 `resourceUrl`, retaining `id`, `filename`, `mimeType` and `size`. Read that
-authenticated URL to retrieve the original image bytes. It points to
+authenticated URL to retrieve the original bytes. It points to
 `messages/:messageId/attachments/:attachmentId` under the conversation's API
-base, including saved subagents. Non-image attachments retain their existing
-inline download representation. Image reads support private ETag revalidation
-and do not require the execution-host file to exist.
+base, including saved subagents. Non-image files are fetched only on download,
+with attachment disposition and `application/octet-stream`, never rendered
+inline. Image reads support private ETag revalidation. Neither read requires
+the execution-host file to exist, and transcript pagination is unchanged.
 
 ## Chat Trash
 
@@ -246,8 +247,8 @@ requires a new baseline; do not compare opaque epochs or use ETags as live
 cursors. Reconnection does not replay transient commands.
 Image-preview additions use ordinary versioned tool-call updates with lightweight
 summaries; original image bytes remain behind the lazy detail/image reads.
-Snapshot ETags distinguish the image-reference representation, so an upgrade
-does not reuse cached snapshots containing inline image bytes.
+Snapshot ETags distinguish the attachment-reference representation, so an upgrade
+does not reuse cached snapshots containing inline attachment bytes.
 Live tool summaries and lazy details share a content revision, including tools
 in older pages; those pages retain their historical window and are not new
 live baselines.
@@ -985,7 +986,7 @@ not expose authentication or raw transport protocols; see
 | Method(s) | Path | Description |
 |-----------|------|-------------|
 | GET, DELETE | `/api/agent-runs/:id` | Read or delete an agent run. |
-| GET | `/api/agent-runs/:id/messages/:messageId/attachments/:attachmentId` | Read one original image attachment from an owned agent run. |
+| GET | `/api/agent-runs/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned agent run. |
 | GET | `/api/agent-runs/:id/snapshot` | Read an agent-run transcript snapshot, paged by non-empty assistant responses (page size 100). |
 | GET | `/api/agent-runs/:id/tool-calls/:toolCallId` | Read one complete agent-run tool-call payload. |
 | GET, POST | `/api/agents` | List or create scheduled agents. |
@@ -1010,7 +1011,7 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
-| GET | `/api/chats/:id/messages/:messageId/attachments/:attachmentId` | Read one original image attachment from an owned chat. |
+| GET | `/api/chats/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned chat. |
 | POST | `/api/chats/:id/messages/:messageId/speech` | Generate a spoken summary for an existing assistant message in an owned chat; no request body. |
 | POST | `/api/chats/:id/permissions/:requestId` | Approve or deny a pending chat permission request. |
 | POST | `/api/chats/:id/questions/:requestId` | Answer a native question owned by the current chat conversation. |
@@ -1108,7 +1109,7 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/tasks/:id/follow-up` | Send a follow-up message to a task. |
 | POST | `/api/tasks/:id/manual-complete` | Promote a stopped or failed task to completed. |
 | POST | `/api/tasks/:id/mark-merged` | Mark a task as merged after an external merge. |
-| GET | `/api/tasks/:id/messages/:messageId/attachments/:attachmentId` | Read one original image attachment from an owned task. |
+| GET | `/api/tasks/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned task. |
 | POST, DELETE | `/api/tasks/:id/pending` | Apply pending values through the interrupt-first path, or clear them. |
 | PUT, DELETE | `/api/tasks/:id/pending-prompt` | Set the pending prompt used for the next task iteration. |
 | POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Admit the queued input into the current native execution. |

@@ -10,7 +10,7 @@ import type { LiveVoiceActivityEvent } from "./live-voice";
 import type { CollaborationResourceKind } from "./collaboration-reference";
 import { PROMPT_TEMPLATES_REALTIME_RESOURCE } from "./prompt-templates";
 import type { SubagentEvent } from "./subagent";
-import type { TranscriptMessage } from "./transcript-images";
+import type { TranscriptMessage } from "./transcript-attachments";
 import type { MessageData } from "./events";
 
 export const CLANKY_REALTIME_RESOURCES = {

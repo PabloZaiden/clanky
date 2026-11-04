@@ -6,7 +6,7 @@ import type { WorkspaceFileEntry } from "@/shared";
 import type { ByteRange } from "@/shared";
 
 function sanitizeAttachmentFileName(fileName: string): string {
-  return fileName.replace(/["\r\n]/g, "_") || "download";
+  return fileName.replace(/[^\x20-\x7E]|["\\]/g, "_") || "download";
 }
 
 function sanitizeInlineFileName(fileName: string, fallback: string): string {
@@ -21,7 +21,7 @@ function encodeAttachmentFileName(fileName: string): string {
 
 function createFileDownloadHeaders(
   contentType: string,
-  file: WorkspaceFileEntry,
+  file: Pick<WorkspaceFileEntry, "name">,
   options?: { contentLength?: number },
 ): Headers {
   const safeFileName = sanitizeAttachmentFileName(file.name);
@@ -43,7 +43,7 @@ function createFileDownloadHeaders(
 export function createFileDownloadResponse(
   body: BodyInit,
   contentType: string,
-  file: WorkspaceFileEntry,
+  file: Pick<WorkspaceFileEntry, "name">,
   options?: { contentLength?: number },
 ): Response {
   const headers = createFileDownloadHeaders(contentType, file, options);

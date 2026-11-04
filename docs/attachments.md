@@ -74,16 +74,21 @@ filesystem navigation and symbolic-link rules remain unchanged.
 
 ## Persistence, downloads and deletion
 
-Conversation history carries image references rather than inline image bytes.
+Conversation history carries attachment references rather than inline bytes.
+Non-image files are fetched only when downloaded, so opening a chat does not
+transfer its videos, documents or archives. Snapshots, older history and live
+messages share this behavior without changing transcript pagination.
 Message images and tool previews load automatically when they enter the visible
 conversation, not when offscreen history is opened. Click a loaded image to
 enlarge it; a failed load remains visible with a retry action. The same behavior
 applies to chat, task, agent-run and saved subagent transcripts.
 
-Image reads use the conversation's normal authorization and saved originals,
+Attachment reads use the conversation's normal authorization and saved originals,
 independently of execution-host working copies. Uploads and provider delivery
 still retain their original bytes; viewport loading does not resize or compress
 them.
+Shared-workspace snapshots and live messages qualify attachment URLs with the
+source connection, including saved subagents, so reads reach the owner controller.
 Loaded image bytes remain available for enlargement even after a remote
 resource ticket expires.
 
