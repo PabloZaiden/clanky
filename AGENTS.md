@@ -35,8 +35,10 @@ for unrelated work.
   duplicating them or maintaining prose catalogs.
 - Keep personal guidance limited to concise, verified environment details:
   selected hosts, local paths, addresses and signing identifiers. Put reusable
-  procedures and policies in the shared guides, not personal notes; do not use
-  those notes as task history or a substitute for reading the relevant guide.
+  processes in versioned repository scripts, with entrypoints and policies in
+  shared guides. Personal guidance/configuration contains parameters only:
+  no commands, procedures, embedded scripts or task history. A new execution
+  must not depend on a previous chat's files to build, sign or deploy.
   Follow [local-only information](docs/development.md#local-only-information).
 - Follow [authentication-method equivalence](docs/development/architecture.md#authentication-method-equivalence):
   never infer human presence or extra privileges from API-key/passkey provenance.

@@ -1,0 +1,19 @@
+{
+  "executionHostKind": "mesh",
+  "executionHostId": "<registered-host-id>",
+  "artifactDirectory": "/absolute/private/linux/artifacts",
+  "remoteDirectory": "/absolute/private/mac/artifacts",
+  "developerDirectory": "/absolute/Xcode.app/Contents/Developer",
+  "signingIdentity": "<40-hex-Apple-Distribution-fingerprint>",
+  "provisioningProfile": "/absolute/phone-adhoc.mobileprovision",
+  "bundleIdentifier": "com.example.app",
+  "teamIdentifier": "<Apple-team-id>",
+  "deviceIds": ["<authorized-device-udid>"],
+  "serviceDirectory": "/absolute/private/mac/installer",
+  "serviceLabel": "com.example.private-ios-installer",
+  "bindAddress": "<Mac-LAN-IP>",
+  "installerURL": "https://<Mac-LAN-IP>:8443",
+  "bootstrapURL": "http://<Mac-LAN-IP>:8080",
+  "rootCertificateName": "Private iOS installer root",
+  "rootCertificateSHA256": "<64-hex-existing-root-fingerprint-or-null-for-initial-setup>"
+}
