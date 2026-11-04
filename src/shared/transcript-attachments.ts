@@ -1,12 +1,12 @@
 import type { ChatTranscript } from "./chat-transcript";
 import type { PersistedMessage } from "./task";
-import { getMessageAttachmentKind, type MessageAttachment } from "./message-attachments";
+import type { MessageAttachment } from "./message-attachments";
 
-export interface TranscriptImageReference extends Omit<MessageAttachment, "data"> {
+export interface TranscriptAttachmentReference extends Omit<MessageAttachment, "data"> {
   resourceUrl: string;
 }
 
-export type TranscriptAttachment = MessageAttachment | TranscriptImageReference;
+export type TranscriptAttachment = MessageAttachment | TranscriptAttachmentReference;
 
 export interface TranscriptMessage extends Omit<PersistedMessage, "attachments"> {
   attachments?: TranscriptAttachment[];
@@ -17,7 +17,7 @@ export function projectTranscriptMessage(message: TranscriptMessage, baseUrl: st
   return {
     ...message,
     attachments: message.attachments.map((attachment) => {
-      if (!("data" in attachment) || getMessageAttachmentKind(attachment) !== "image") return attachment;
+      if (!("data" in attachment)) return attachment;
       const { data: _data, ...metadata } = attachment;
       return {
         ...metadata,
@@ -27,7 +27,7 @@ export function projectTranscriptMessage(message: TranscriptMessage, baseUrl: st
   };
 }
 
-export function projectTranscriptImages(transcript: ChatTranscript, baseUrl: string): ChatTranscript {
+export function projectTranscriptAttachments(transcript: ChatTranscript, baseUrl: string): ChatTranscript {
   return {
     ...transcript,
     messages: transcript.messages.map((message) => projectTranscriptMessage(message, baseUrl)),

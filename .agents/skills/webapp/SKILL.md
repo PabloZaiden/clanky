@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.2
+version: 0.6.3
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -56,6 +56,11 @@ catalog. Use immutable dependency pins with synchronized manifests/lockfiles.
   memory without consumer flow control. Named `websockets` entries select
   callbacks, not listener options; preserve framework dispatch, realtime delivery
   limits and transport cleanup.
+- Enable negotiated textual HTTP gzip with `server.compression:true`; it is
+  opt-in and shares the framework response path for assets and app hooks.
+  Preserve cache/Vary/weak-ETag revalidation. Downloads, ranges, encoded bodies,
+  binary media and SSE remain uncompressed; use `Cache-Control:no-transform`
+  for other sensitive or latency-critical streams. See the server guide.
 - Routes default private and fail closed without an app identity. Explicit
   public intent and realtime `access:"public"` are for deliberately public apps.
   Generic `policy` is opaque app data, not a second framework policy registry.

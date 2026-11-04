@@ -638,6 +638,7 @@ export async function getWebAppServer(
     web: meshWorker ? false : { ...CLANKY_WEB_OPTIONS, mode: apiOnly ? "auth" : "app" },
     ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
     server: {
+      compression: true,
       ...(workerTls ? { tls: workerTls } : {}),
       websocket: { backpressureLimit: 0, closeOnBackpressureLimit: false },
     },

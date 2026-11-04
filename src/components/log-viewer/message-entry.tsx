@@ -175,7 +175,7 @@ export const MessageEntry = memo(function MessageEntry({
           {msg.attachments && msg.attachments.length > 0 && (
             <div className={`flex flex-wrap gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
               {msg.attachments.map((attachment) => (
-                "resourceUrl" in attachment || getMessageAttachmentKind(attachment) === "image" ? (
+                getMessageAttachmentKind(attachment) === "image" ? (
                   <ImageAttachment key={attachment.id} attachment={attachment} />
                 ) : (
                   <FileAttachment key={attachment.id} attachment={attachment} />

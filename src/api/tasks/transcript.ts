@@ -1,8 +1,8 @@
 import { workspaceOperation } from "../workspace-delegation";
 import { defineRoutes } from "@/platform/server";
 import { executionAutomation } from "../execution-automation";
-import { getTranscriptImage } from "../../core/transcript-image-service";
-import { projectTranscriptImages } from "@/shared";
+import { getTranscriptAttachment } from "../../core/transcript-attachment-service";
+import { projectTranscriptAttachments } from "@/shared";
 import { TranscriptSnapshotQuerySchema } from "../route-schemas";
 import { errorResponse, internalErrorResponse } from "../helpers";
 import {
@@ -15,7 +15,7 @@ import {
 import {
   parseTranscriptSnapshotOptions,
   transcriptSnapshotErrorResponse,
-  transcriptImageResponse,
+  transcriptAttachmentResponse,
 } from "../transcript-snapshot";
 import { ConversationReadOptionsSchema } from "@/contracts/schemas/resource-read";
 import { readConversationPage } from "../../core/conversation-read-service";
@@ -78,7 +78,7 @@ export const tasksTranscriptRoutes = defineRoutes({
         }
         return Response.json({
           ...snapshot,
-          transcript: projectTranscriptImages(snapshot.transcript, `/api/tasks/${encodeURIComponent(ctx.params["id"]!)}`),
+          transcript: projectTranscriptAttachments(snapshot.transcript, `/api/tasks/${encodeURIComponent(ctx.params["id"]!)}`),
         }, { headers: transcriptResponseHeaders(revision) });
       } catch (error) {
         const snapshotError = transcriptSnapshotErrorResponse(error);
@@ -98,15 +98,15 @@ export const tasksTranscriptRoutes = defineRoutes({
     delegation: workspaceOperation("task"),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read one original image attachment from an owned task.",
-    operations: { GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Image attachments require file delivery.", { responseFormat: "file" }) } },
+    description: "Read one original attachment from an owned task; non-image files download without rendering.",
+    operations: { GET: { requestSchema: undefined, querySchema: undefined, automation: executionAutomation("read", "Attachments require file delivery.", { responseFormat: "file" }) } },
     async GET(req: Request, ctx): Promise<Response> {
       try {
-        return transcriptImageResponse(req, await getTranscriptImage(
+        return transcriptAttachmentResponse(req, await getTranscriptAttachment(
           { kind: "task", id: ctx.params["id"]! }, ctx.params["messageId"]!, ctx.params["attachmentId"]!,
         ));
       } catch (error) {
-        return internalErrorResponse(error, { error: "image_failed", message: "Failed to load image attachment", status: 500 });
+        return internalErrorResponse(error, { error: "attachment_failed", message: "Failed to load attachment", status: 500 });
       }
     },
   },

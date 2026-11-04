@@ -62,6 +62,19 @@ Do not expose the container directly to an untrusted network with those
 defaults. It enables `CLANKY_TRUST_PROXY=true`, trusts `proto,host,prefix`
 headers, and uses the `first` chain policy.
 
+### HTTP compression
+
+Clanky enables the shared server's negotiated gzip for textual GET responses
+of at least 1 KiB, including transcript JSON and compiled web assets. Clients
+without gzip support receive the same uncompressed content. Existing inputs,
+messages and transcript pagination are unchanged.
+
+The server preserves `Vary` and cache revalidation; gzip uses weak ETags.
+Downloads, ranges, binary media, already encoded responses and event streams
+are excluded. Reverse proxies must preserve `Content-Encoding` and `Vary`
+and avoid recompressing encoded bodies. See the shared
+[server compression policy](https://github.com/PabloZaiden/webapp/blob/a29224815fc6d0ec9da9cbe48de46c7085187e09/docs/server.md#http-compression).
+
 ## Configuration
 
 The most common server settings are environment variables:

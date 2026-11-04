@@ -1,7 +1,7 @@
 import type { ChatConfig, ChatState } from "./chat";
 import type { StreamPosition } from "./stream-position";
 import type { PersistedMessage, TaskLogEntry } from "./task";
-import type { TranscriptMessage } from "./transcript-images";
+import type { TranscriptMessage } from "./transcript-attachments";
 import {
   mergeToolCallDisplayData,
   type ToolCallDisplayData,
