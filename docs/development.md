@@ -4,6 +4,13 @@ Clanky is a Bun application with an embedded server, React UI, CLI, and
 standalone build. This is the entry point for contributors; technical policies
 have one canonical guide rather than copies in `AGENTS.md`.
 
+## Repository language
+
+Use English for all repository-authored source, comments, documentation and
+user-facing text, including generated pages and operation confirmations.
+Preserve user-provided content, private parameter values and intentional
+language support.
+
 ## Set up a source checkout
 
 ```bash

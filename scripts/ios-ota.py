@@ -448,28 +448,28 @@ def page_bytes(config, record):
         details = 'Version {0}, build {1}.'.format(
             html.escape(metadata["marketingVersion"]), html.escape(metadata["bundleVersion"]),
         )
-        button = '<a class="install" href="' + html.escape(install, quote=True) + '">Instalar Clanky</a>'
+        button = '<a class="install" href="' + html.escape(install, quote=True) + '">Install Clanky</a>'
     else:
         details, button = "No build published yet.", ""
-    return ("""<!doctype html><html lang="es"><meta charset="utf-8">
+    return ("""<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Instalar Clanky</title><style>
+<title>Install Clanky</title><style>
 :root{color-scheme:light dark;font:17px/1.6 system-ui}
 body{max-width:620px;margin:32px auto;padding:0 20px}
 a,code{overflow-wrap:anywhere}.install{display:inline-block;padding:12px;border:1px solid;border-radius:8px}
-</style><h1>Instalar Clanky</h1>
-<p>Abri esta pagina con Safari, conectado a la red privada o VPN.</p>
+</style><h1>Install Clanky</h1>
+<p>Open this page in Safari while connected to the private network or VPN.</p>
 <p><strong>""" + details + """</strong></p><p>""" + button + """</p>
-<p>Instala sobre la app existente, sin desinstalarla. Si ya confias en el
-certificado, no necesitas instalarlo otra vez.</p>
-<details><summary>Configurar confianza por primera vez</summary>
-<p><a href="/clanky-ota.mobileconfig">Descargar perfil de confianza</a>.
-Instalalo desde Ajustes &gt; General &gt; VPN y gestion de dispositivos.
-Luego activa confianza total en Ajustes &gt; General &gt; Informacion &gt;
-Ajustes de confianza de certificados para <strong>"""
+<p>Install over the existing app without uninstalling it. If you already trust
+the certificate, you do not need to install it again.</p>
+<details><summary>Set up trust for the first time</summary>
+<p><a href="/clanky-ota.mobileconfig">Download trust profile</a>.
+Install it from Settings &gt; General &gt; VPN &amp; Device Management.
+Then enable full trust in Settings &gt; General &gt; About &gt;
+Certificate Trust Settings for <strong>"""
             + html.escape(config["rootCertificateName"]) + """</strong>.</p>
-<p><a href=\"""" + html.escape(base, quote=True) + """/\">Abrir instalador HTTPS</a>.</p>
-<p>SHA-256 de la raiz: <code>""" + html.escape(config["rootCertificateSHA256"] or "")
+<p><a href=\"""" + html.escape(base, quote=True) + """/\">Open HTTPS installer</a>.</p>
+<p>Root SHA-256: <code>""" + html.escape(config["rootCertificateSHA256"] or "")
             + """</code>.</p></details></html>""").encode()
 
 
@@ -969,17 +969,17 @@ def requests(config, work, stage, initialize=False):
                 "path": str(work / name),
                 "contentType": "application/gzip" if name.endswith(".gz") else "application/octet-stream",
             }, "headersFile": {"path": str(work / "create-only.json")},
-            "confirmationDescription": "Transferir " + name + " al host de firma sin sobrescribir archivos.",
+            "confirmationDescription": "Transfer " + name + " to the signing host without overwriting files.",
         })
 
     if stage == "preflight":
         execute(
             "/bin/mkdir", ["-p", "-m", "700", config["remoteDirectory"]],
-            "Preparar el directorio privado de artefactos en el host seleccionado.",
+            "Prepare the private artifact directory on the selected host.",
         )
         execute(
             "/bin/mkdir", ["-m", "700", str(remote)],
-            "Crear un directorio nuevo para esta ejecucion, sin reutilizar otro.",
+            "Create a new directory for this run without reusing an existing one.",
         )
         upload("ios-ota.py")
         upload("parameters.json")
@@ -1001,7 +1001,7 @@ def requests(config, work, stage, initialize=False):
         command.append("--initialize-ca")
     execute(
         "/usr/bin/python3", command,
-        "Ejecutar la etapa " + stage + " del instalador iOS en el host seleccionado.",
+        "Run the " + stage + " stage of the iOS installer on the selected host.",
     )
     steps.append({
         "operationId": "GET /api/execution-hosts/:kind/:id/files/filesystem/content",
