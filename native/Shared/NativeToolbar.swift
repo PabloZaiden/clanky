@@ -206,10 +206,16 @@ final class NativeToolbar: NSObject, ObservableObject, WKScriptMessageHandlerWit
         }
     }
 
-    func activate(_ item: NativeToolbarItem, scope: String) {
+    func item(_ id: String, scope: String) -> NativeToolbarItem? {
         guard supported, let snapshot, snapshot.scope == scope,
-              (snapshot.sidebar + snapshot.primary + snapshot.menu).contains(item),
-              !item.disabled, !item.busy, let webView else {
+              let item = (snapshot.sidebar + snapshot.primary + snapshot.menu).first(where: { $0.id == id }) else {
+            return nil
+        }
+        return item
+    }
+
+    func activate(_ id: String, scope: String) {
+        guard let item = item(id, scope: scope), !item.disabled, !item.busy, let webView else {
             onError?("This toolbar action is no longer available.")
             return
         }
@@ -243,35 +249,23 @@ struct NativeToolbarContent: View {
                 .ignoresSafeArea()
                 .toolbar {
                     if toolbar.canPresent, let snapshot = toolbar.snapshot {
-                        ForEach(snapshot.sidebar) { item in
-                            ToolbarItem(placement: .bottomBar) {
-                                toolbarButton(item, scope: snapshot.scope)
-                            }
-                            .visibilityPriority(
-                                item.id == "sidebar:toggle" || item.id == "sidebar:settings" ? .high : .automatic
-                            )
-                            .sharedBackgroundVisibility(.hidden)
-                        }
-                        ToolbarItemGroup(placement: .bottomBar) {
-                            ForEach(snapshot.primary) { item in
-                                toolbarButton(item, scope: snapshot.scope)
-                            }
-                            if !snapshot.menu.isEmpty {
-                                Menu {
-                                    ForEach(snapshot.menu) { item in
-                                        Button(item.label, role: item.destructive ? .destructive : nil) {
-                                            toolbar.activate(item, scope: snapshot.scope)
-                                        }
-                                        .disabled(item.disabled || item.busy)
-                                    }
-                                } label: {
-                                    Image(systemName: "ellipsis")
+                        ForEach([snapshot.scope], id: \.self) { scope in
+                            ForEach(snapshot.sidebar) { item in
+                                ToolbarItem(placement: .bottomBar) {
+                                    NativeToolbarButton(toolbar: toolbar, id: item.id, scope: scope)
                                 }
-                                .accessibilityLabel("Page actions")
-                                .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
+                                .visibilityPriority(
+                                    item.id == "sidebar:toggle" || item.id == "sidebar:settings" ? .high : .automatic
+                                )
+                                .sharedBackgroundVisibility(.hidden)
+                            }
+                            if !snapshot.primary.isEmpty || !snapshot.menu.isEmpty {
+                                ToolbarItemGroup(placement: .bottomBar) {
+                                    NativeToolbarPageActions(toolbar: toolbar, scope: scope)
+                                }
+                                .sharedBackgroundVisibility(.hidden)
                             }
                         }
-                        .sharedBackgroundVisibility(.hidden)
                     }
                 }
                 .toolbarVisibility(.hidden, for: .navigationBar)
@@ -279,29 +273,67 @@ struct NativeToolbarContent: View {
         }
         .preferredColorScheme(colorScheme)
     }
+}
 
-    private func toolbarButton(_ item: NativeToolbarItem, scope: String) -> some View {
-        Button(role: item.destructive ? .destructive : nil) {
-            toolbar.activate(item, scope: scope)
-        } label: {
-            if item.busy {
-                ProgressView()
-            } else if let url = item.imageURL, let image = toolbar.images[url] {
-                Image(uiImage: image)
-                    .renderingMode(.original)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 28, height: 28)
-            } else if let symbol = item.systemImage {
-                Label(item.label, systemImage: symbol).labelStyle(.iconOnly)
-            } else {
-                Text(item.label)
+@available(iOS 27.1, *)
+private struct NativeToolbarButton: View {
+    @ObservedObject var toolbar: NativeToolbar
+    let id: String
+    let scope: String
+
+    var body: some View {
+        if let item = toolbar.item(id, scope: scope) {
+            Button(role: item.destructive ? .destructive : nil) {
+                toolbar.activate(id, scope: scope)
+            } label: {
+                if item.busy {
+                    Label(item.label, systemImage: "hourglass").labelStyle(.iconOnly)
+                } else if let url = item.imageURL, let image = toolbar.images[url] {
+                    Image(uiImage: image)
+                        .renderingMode(.original)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                } else if let symbol = item.systemImage {
+                    Label(item.label, systemImage: symbol).labelStyle(.iconOnly)
+                } else {
+                    Text(item.label)
+                }
+            }
+            .accessibilityLabel(item.label)
+            .accessibilityValue(item.busy ? "In progress" : "")
+            .help(item.label)
+            .disabled(item.disabled || item.busy)
+            .tint(item.destructive ? .red : item.active ? .accentColor : .primary)
+        }
+    }
+}
+
+@available(iOS 27.1, *)
+private struct NativeToolbarPageActions: View {
+    @ObservedObject var toolbar: NativeToolbar
+    let scope: String
+
+    var body: some View {
+        if let snapshot = toolbar.snapshot, snapshot.scope == scope {
+            ForEach(snapshot.primary) { item in
+                NativeToolbarButton(toolbar: toolbar, id: item.id, scope: scope)
+            }
+            if !snapshot.menu.isEmpty {
+                Menu {
+                    ForEach(snapshot.menu) { item in
+                        Button(item.label, role: item.destructive ? .destructive : nil) {
+                            toolbar.activate(item.id, scope: scope)
+                        }
+                        .disabled(item.disabled || item.busy)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Page actions")
+                .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
             }
         }
-        .accessibilityLabel(item.label)
-        .help(item.label)
-        .disabled(item.disabled || item.busy)
-        .tint(item.destructive ? .red : item.active ? .accentColor : .primary)
     }
 }
 #endif

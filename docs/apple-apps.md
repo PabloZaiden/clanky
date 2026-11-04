@@ -35,8 +35,17 @@ Native controls have no shared capsule/background; they keep the system's
 bottom-anchored placement and native interactions.
 Show/Hide sidebar and Settings have higher native visibility priority than the
 other toolbar controls, without changing their order or system-managed spacing.
+Pages without actions leave no empty toolbar group reserving space.
 They invoke the same web callbacks; Swift does not implement their
-business logic. Indicators remain visible. Other layouts keep the web controls.
+business logic. Native actions use the current published state, so changing a
+label or active state does not invalidate a visible control. Native button and
+menu views observe the published state directly, so loading indicators and
+enabled states do not retain their initial values. Route changes recreate the
+controls without reloading the WebView. Callbacks from previous routes and
+actions that are removed, disabled or busy remain rejected.
+Busy actions show a disabled hourglass in their existing slot, not a native
+progress view that can introduce a second toolbar across the bottom.
+Indicators remain visible. Other layouts keep the web controls.
 The composer combines its ordinary bottom spacing with safe-area clearance
 using the greater of the two, not their sum.
 
@@ -188,6 +197,14 @@ and reuses its shared Swift sources, Debug iOS settings, permissions and icon
 artwork; generated SwiftPM/xtool configuration and build output stay under
 `dist/apple/`. The executable records the installed SDK version separately from
 the minimum iOS version, preserving iOS's linked-SDK behavior.
+
+Keep application builds and repository validation on Linux for this workflow.
+Transfer only the complete built app and its checksum to the Mac for simulation,
+visual checks, signing, packaging and installation. The signing Mac does not
+need a Clanky checkout, Bun or application dependencies; their absence is
+expected, not a reason to relocate compilation or install the build toolchain
+there. Choose the separate native Xcode development workflow explicitly rather
+than silently switching to it.
 
 The default Ubuntu 24.04 devcontainer installs Swift 6.4.2, xtool 1.24.0 and
 their Linux build dependencies for amd64 or arm64. Existing containers can run
@@ -435,12 +452,11 @@ state that limitation instead of claiming the layout passed.
 
 Keep the chosen simulator and install later builds on that same device to
 preserve its app data. A physical iPhone cannot install this simulator artifact.
-Run application builds and the repository suite on Linux; use the Mac for
-simulator runtime and visual checks, then native signing when the account,
-certificate and provisioning requirements below are met. A private-NAT VM
-does not automatically discover a real iPhone on the host's Wi-Fi: use a
-reachable paired Mac for network deployment rather than assuming simulation
-or signing establishes physical-device connectivity.
+Native signing still requires the account, certificate and provisioning
+requirements below. A private-NAT VM does not automatically discover a real
+iPhone on the host's Wi-Fi: use a reachable paired Mac for network deployment
+rather than assuming simulation or signing establishes physical-device
+connectivity.
 
 For wireless installation:
 

@@ -5,6 +5,10 @@ import { jsonResponse, methodNotAllowed, parseJson, requestBodyErrorResponse } f
 import { randomToken, secureEqual, sha256 } from "./crypto";
 import { getPasskeySessionUser } from "./passkeys";
 import { getRequestOriginInfo } from "@pablozaiden/webapp/server";
+import type { Authentication } from "../authentication";
+import { scopesFromBearer } from "../authentication";
+import { checkSameOrigin } from "../same-origin";
+import { assertScopes } from "./api-keys";
 import type { UserRecord, ClankyAccountStore } from "./store";
 import { AuthError } from "./types";
 import { toCurrentUser } from "./users";
@@ -50,7 +54,7 @@ function redirectResponse(location: string): Response {
   });
 }
 
-export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountStore, runtime: RuntimeConfig): OAuthService & {
+export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountStore, runtime: RuntimeConfig, authentication: Authentication): OAuthService & {
   handleRequest(request: Request): Promise<Response | undefined>;
   routePaths: readonly string[];
   consentPath: string;
@@ -405,8 +409,14 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
     });
   }
 
-  function grants(request: Request): Response {
-    const user = browserUser(request, request.method === "DELETE");
+  async function grants(request: Request): Promise<Response> {
+    const auth = await authentication.authorize(request, true);
+    if (auth instanceof Response) return auth;
+    if (auth.kind === "api-key") assertScopes(auth.scopes, []);
+    if (auth.kind === "bearer") assertScopes(scopesFromBearer(auth.claims), []);
+    const user = authentication.requireUser(auth);
+    const originError = checkSameOrigin(request, runtime, auth);
+    if (originError) return originError;
     return store!.transaction(() => {
       const sessions = store!.listSessions(user.id).filter(session => validSession(session, Date.now()));
       if (request.method === "DELETE") {
@@ -483,7 +493,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
           return request.method === "POST" ? await consentDecision(request) : methodNotAllowed(["GET", "POST"]);
         case "/token": return request.method === "POST" ? await token(request) : methodNotAllowed(["POST"]);
         case "/revoke": return request.method === "POST" ? await revoke(request) : methodNotAllowed(["POST"]);
-        case "/grants": return ["GET", "DELETE"].includes(request.method) ? grants(request) : methodNotAllowed(["GET", "DELETE"]);
+        case "/grants": return ["GET", "DELETE"].includes(request.method) ? await grants(request) : methodNotAllowed(["GET", "DELETE"]);
         default: return protocolResponse({ error: "not_found" }, 404);
       }
     } catch (error) {
