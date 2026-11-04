@@ -757,7 +757,7 @@ export async function getWebAppServer(
     const appServer = app;
     configureWorkspaceClientGateway(appServer);
     workspaceClientSockets.configure(appServer.realtime);
-    workspaceRealtimeSources.configure(appServer.realtime);
+    workspaceRealtimeSources.configure(appServer.realtime, apiRoutes);
     workspaceClientController.configure({
       revokeTransports: async (event) => await workspaceClientSockets.revoke(event),
       changed: (userId) => appServer.realtime.publishChanged("workspace-collaboration", { target: { userId } }),

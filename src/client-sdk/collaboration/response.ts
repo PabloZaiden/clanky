@@ -53,6 +53,40 @@ function qualifyHostBinding(
   return result;
 }
 
+function qualifyMessageAttachments(value: unknown, context: WorkspaceSourceResponseContext): unknown {
+  if (!isReadRecord(value) || !Array.isArray(value["attachments"])) return value;
+  return {
+    ...value,
+    attachments: value["attachments"].map((attachment: unknown) =>
+      isReadRecord(attachment) && typeof attachment["resourceUrl"] === "string"
+        ? { ...attachment, resourceUrl: context.qualifyUrl(attachment["resourceUrl"]) } : attachment),
+  };
+}
+
+function qualifyTranscriptReferences(
+  value: Record<string, unknown>,
+  context: WorkspaceSourceResponseContext,
+): Record<string, unknown> {
+  const result = { ...value };
+  if (result["message"] !== undefined) {
+    result["message"] = qualifyMessageAttachments(result["message"], context);
+  }
+  if (isReadRecord(result["transcript"]) && Array.isArray(result["transcript"]["messages"])) {
+    result["transcript"] = {
+      ...result["transcript"],
+      messages: result["transcript"]["messages"].map((message: unknown) => qualifyMessageAttachments(message, context)),
+    };
+  }
+  if (result["type"] === "subagent.transcript" && isReadRecord(result["event"])
+    && result["event"]["type"] === "transcript.message") {
+    result["event"] = {
+      ...result["event"],
+      message: qualifyMessageAttachments(result["event"]["message"], context),
+    };
+  }
+  return result;
+}
+
 function qualifyEntity(
   value: Record<string, unknown>,
   resource: CollaborationResourceKind,
@@ -108,7 +142,7 @@ function qualifyEntityReferences(
   for (const field of ["downloadUrl", "iconUrl", "attachmentUrl"]) {
     if (typeof result[field] === "string") result[field] = context.qualifyUrl(result[field]);
   }
-  return result;
+  return qualifyTranscriptReferences(result, context);
 }
 
 const ENTITY_SLOTS = {
@@ -168,5 +202,5 @@ export function qualifyWorkspaceResponse(
       typeof id === "string" ? context.qualify("agent-run", id) : id
     ));
   }
-  return result;
+  return qualifyTranscriptReferences(result, context);
 }

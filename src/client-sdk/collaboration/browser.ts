@@ -74,7 +74,7 @@ export class BrowserCollaborationClient implements WebAppExternalClient {
       runtimeChanged: (runtime) => this.realtime.update(runtime),
       runtimeStopped: (id) => this.realtime.remove(id),
     });
-    this.realtime = new BrowserCollaborationRealtime(this.engine, log);
+    this.realtime = new BrowserCollaborationRealtime(this.engine, operations, log);
     this.federation = new CollaborationFederationClient({
       operations, connections: this.engine, logger: log, representationScope: store.scope,
     });

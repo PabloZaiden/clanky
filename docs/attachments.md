@@ -87,6 +87,8 @@ Attachment reads use the conversation's normal authorization and saved originals
 independently of execution-host working copies. Uploads and provider delivery
 still retain their original bytes; viewport loading does not resize or compress
 them.
+Shared-workspace snapshots and live messages qualify attachment URLs with the
+source connection, including saved subagents, so reads reach the owner controller.
 Loaded image bytes remain available for enlargement even after a remote
 resource ticket expires.
 
