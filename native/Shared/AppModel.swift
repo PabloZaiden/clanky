@@ -285,6 +285,9 @@ final class BrowserModel: ObservableObject {
     private var assetLoadID = UUID()
     private var failedAssetPage: URL?
     private var assetNavigationRetried = false
+    // A navigation waiting for the local UI; kept until it is submitted so
+    // deactivation does not drop it.
+    private var pendingAssetAction: ((WKWebView) -> Void)?
 
     init(origin: URL, ensureAssets: @escaping @MainActor () async throws -> Void) {
         self.origin = origin
@@ -334,8 +337,9 @@ final class BrowserModel: ObservableObject {
     }
 
     func loadIfNeeded() {
-        if let failedAssetPage, active, assetLoad == nil {
-            load(failedAssetPage)
+        if let page = failedAssetPage, active, assetLoad == nil {
+            failedAssetPage = nil
+            load(page)
             return
         }
         guard webView.navigationDelegate != nil, webView.url == nil,
@@ -351,6 +355,7 @@ final class BrowserModel: ObservableObject {
         active = phase == .active
         if phase == .background { automaticRecoveryUsed = false }
         if active {
+            if let pendingAssetAction, assetLoad == nil { withAssetsReady(pendingAssetAction) }
             if needsRecovery && !recovering { recoverIfAllowed() }
             if recovering {
                 loadIfNeeded()
@@ -391,6 +396,7 @@ final class BrowserModel: ObservableObject {
         assetLoad?.cancel()
         assetLoadID = UUID()
         assetLoad = nil
+        pendingAssetAction = nil
         pauseRecovery()
         recoveryRemaining = .seconds(30)
         closePopup()
@@ -474,6 +480,8 @@ final class BrowserModel: ObservableObject {
     func navigationFailed(_ message: String) {
         pauseRecovery()
         recovering = false
+        failedAssetPage = nil
+        pendingAssetAction = nil
         NSLog("Clanky page navigation failed: %@", message)
         error = message
     }
@@ -507,6 +515,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func withAssetsReady(_ action: @escaping (WKWebView) -> Void) {
+        pendingAssetAction = action
         guard active else { return }
         assetLoad?.cancel()
         let id = UUID()
@@ -521,6 +530,7 @@ final class BrowserModel: ObservableObject {
                 try await self.ensureAssets()
                 try Task.checkCancellation()
                 guard self.active, view === self.webView, view.navigationDelegate != nil else { return }
+                self.pendingAssetAction = nil
                 action(view)
             } catch is CancellationError {
                 return
