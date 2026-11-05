@@ -248,7 +248,6 @@ struct NativeToolbarContent: View {
     var body: some View {
         NavigationStack {
             WebView(browser: browser)
-                .id(ObjectIdentifier(browser.webView))
                 .ignoresSafeArea()
                 .toolbar {
                     if toolbar.canPresent, let snapshot = toolbar.snapshot {

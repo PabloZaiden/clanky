@@ -97,6 +97,9 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(selectedPort, forKey: "assetServerPort")
             error = nil
             self.origin = origin
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone { NativeDiagnostics.record("app-started") }
+            #endif
         } catch {
             await assets?.stop()
             assets = nil
@@ -111,6 +114,7 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 guard let self, self.assetID == id else { return }
                 NSLog("Clanky local UI listener stopped: %@", failure.localizedDescription)
+                NativeDiagnostics.record("local-server-stopped")
                 self.recoverAssetsIfActive()
             }
         }
@@ -211,6 +215,7 @@ final class AppModel: ObservableObject {
                 try Task.checkCancellation()
                 self.error = nil
                 NSLog("Clanky local UI listener recovered at its saved origin.")
+                NativeDiagnostics.record("local-server-restarted")
             } catch {
                 await server.stop()
                 if self.assets === server { self.assets = nil }
@@ -265,21 +270,14 @@ final class BrowserModel: ObservableObject {
     #else
     private static let connectionModes = ["api", "collaboration"]
     #endif
-    @Published private(set) var webView: WKWebView
+    let webView: WKWebView
     let origin: URL
     #if os(iOS)
     let nativeToolbar: NativeToolbar
     #endif
     @Published var error: String?
     @Published var popup: BrowserPopup?
-    private var lastPage: URL?
     private var active = false
-    private var needsRecovery = false
-    private var recovering = false
-    private var automaticRecoveryUsed = false
-    private var recoveryTimeout: Task<Void, Never>?
-    private var recoveryRemaining = Duration.seconds(30)
-    private var recoveryStarted: ContinuousClock.Instant?
     private let ensureAssets: @MainActor () async throws -> Void
     private var assetLoad: Task<Void, Never>?
     private var assetLoadID = UUID()
@@ -295,11 +293,11 @@ final class BrowserModel: ObservableObject {
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
-        webView = Self.makeWebView()
+        webView = Self.makeWebView(origin: origin)
         connectNativeToolbar()
     }
 
-    private static func makeWebView() -> WKWebView {
+    private static func makeWebView(origin: URL) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -311,9 +309,11 @@ final class BrowserModel: ObservableObject {
         configuration.allowsInlineMediaPlayback = true
         if UIDevice.current.userInterfaceIdiom == .phone {
             configuration.userContentController.addUserScript(WKUserScript(
-                source: "window.clankySessionDiagnosticsEnabled = true;",
+                source: "window.clankySessionDiagnosticsEnabled = true;\n" + NativeDiagnostics.storageProbe,
                 injectionTime: .atDocumentStart, forMainFrameOnly: true
             ))
+            configuration.userContentController.addScriptMessageHandler(
+                NativeDiagnostics(origin: origin), contentWorld: .page, name: NativeDiagnostics.handlerName)
         }
         #endif
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -344,25 +344,14 @@ final class BrowserModel: ObservableObject {
         }
         guard webView.navigationDelegate != nil, webView.url == nil,
               assetLoad == nil, active else { return }
-        if recovering, let lastPage {
-            load(lastPage)
-        } else {
-            home()
-        }
+        home()
     }
 
     func setScenePhase(_ phase: ScenePhase) {
         active = phase == .active
-        if phase == .background { automaticRecoveryUsed = false }
         if active {
             if let pendingAssetAction, assetLoad == nil { withAssetsReady(pendingAssetAction) }
-            if needsRecovery && !recovering { recoverIfAllowed() }
-            if recovering {
-                loadIfNeeded()
-                watchRecovery()
-            }
         } else {
-            pauseRecovery()
             assetLoad?.cancel()
             assetLoadID = UUID()
             assetLoad = nil
@@ -372,87 +361,15 @@ final class BrowserModel: ObservableObject {
 
     func contentProcessTerminated() {
         NSLog("Clanky web content process terminated.")
-        if let url = webView.url { rememberConnection(url) }
-        pauseRecovery()
-        recovering = false
-        needsRecovery = true
+        NativeDiagnostics.record("web-content-terminated")
         closePopup()
         #if os(iOS)
         nativeToolbar.clear()
         #endif
-        if active { recoverIfAllowed() }
-    }
-
-    private func recoverIfAllowed() {
-        guard !automaticRecoveryUsed else {
-            error = "Clanky stopped responding. Try again to reconnect."
-            return
-        }
-        automaticRecoveryUsed = true
-        replaceWebView()
-    }
-
-    private func replaceWebView() {
-        assetLoad?.cancel()
-        assetLoadID = UUID()
-        assetLoad = nil
-        pendingAssetAction = nil
-        pauseRecovery()
-        recoveryRemaining = .seconds(30)
-        closePopup()
-        #if os(iOS)
-        nativeToolbar.clear()
-        #endif
-        webView.stopLoading()
-        error = nil
-        needsRecovery = true
-        recovering = true
-        // The new coordinator attaches its delegates before restoring the page.
-        webView = Self.makeWebView()
-        connectNativeToolbar()
-    }
-
-    private func watchRecovery() {
-        guard active, recovering, webView.navigationDelegate != nil,
-              recoveryTimeout == nil else { return }
-        guard recoveryRemaining > .zero else {
-            navigationFailed("Clanky could not reconnect. Try again.")
-            webView.stopLoading()
-            return
-        }
-        recoveryStarted = .now
-        let remaining = recoveryRemaining
-        let view = webView
-        recoveryTimeout = Task { [weak self, weak view] in
-            do {
-                try await Task.sleep(for: remaining)
-                guard !Task.isCancelled, let self, let view, view === self.webView,
-                      self.active, self.recovering else { return }
-                self.navigationFailed("Clanky could not reconnect. Try again.")
-                view.stopLoading()
-            } catch is CancellationError {
-                return
-            } catch {
-                guard let self, let view, view === self.webView, self.recovering else { return }
-                self.navigationFailed("Unable to wait for page recovery: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func pauseRecovery() {
-        if let recoveryStarted {
-            recoveryRemaining = max(.zero, recoveryRemaining - recoveryStarted.duration(to: .now))
-        }
-        recoveryStarted = nil
-        recoveryTimeout?.cancel()
-        recoveryTimeout = nil
+        error = "Clanky stopped responding. Try again to reconnect."
     }
 
     func navigationFinished() {
-        pauseRecovery()
-        if recovering { error = nil }
-        recovering = false
-        needsRecovery = false
         failedAssetPage = nil
         assetNavigationRetried = false
     }
@@ -467,7 +384,6 @@ final class BrowserModel: ObservableObject {
            let url, url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port,
            !assetNavigationRetried {
             NSLog("Clanky local page load was interrupted; checking the UI listener.")
-            pauseRecovery()
             assetNavigationRetried = true
             failedAssetPage = url
             error = nil
@@ -478,8 +394,6 @@ final class BrowserModel: ObservableObject {
     }
 
     func navigationFailed(_ message: String) {
-        pauseRecovery()
-        recovering = false
         failedAssetPage = nil
         pendingAssetAction = nil
         NSLog("Clanky page navigation failed: %@", message)
@@ -510,7 +424,6 @@ final class BrowserModel: ObservableObject {
     func load(_ url: URL) {
         withAssetsReady { view in
             view.load(URLRequest(url: url, timeoutInterval: 30))
-            if self.recovering { self.watchRecovery() }
         }
     }
 
@@ -545,7 +458,6 @@ final class BrowserModel: ObservableObject {
         guard url.scheme == origin.scheme,
               url.host == origin.host,
               url.port == origin.port else { return }
-        lastPage = url
         if url.path.isEmpty || url.path == "/" || url.path == "/index.html" {
             UserDefaults.standard.removeObject(forKey: Self.connectionKey)
         } else if let mode = url.pathComponents.dropFirst().first,
@@ -557,10 +469,7 @@ final class BrowserModel: ObservableObject {
     func reload() {
         error = nil
         assetNavigationRetried = false
-        if needsRecovery {
-            automaticRecoveryUsed = true
-            replaceWebView()
-        } else if webView.url == nil {
+        if webView.url == nil {
             home()
         } else {
             withAssetsReady { $0.reload() }
