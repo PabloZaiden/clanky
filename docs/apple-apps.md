@@ -715,6 +715,12 @@ Connectivity hints are not proof of server reachability, and diagnostic events
 do not change authentication validity, renewal, or credential-removal policy.
 Other clients do not record or display this history.
 
+The same section also lists **App events** from a native iPhone history kept
+outside WebKit storage, so it survives when website data is lost. It retains at
+most twenty timestamped events: app start, web content termination, local server
+stop/restart, and web storage found empty. Empty storage is detected with a
+local marker written on first load; reporting it changes no behavior.
+
 Credentials remain in the existing web client's persistent storage; invitation
 private keys retain their existing nonextractable Web Crypto storage. As with
 the browser client, trusted application JavaScript can access its own sessions.
@@ -740,19 +746,9 @@ confirmed save to Files/Downloads. Platform storage/export limits still apply.
 
 There is no background execution, background transfer or offline synchronization.
 On iPhone/iPad, keep the app in the foreground for active transfers; suspension
-may interrupt connections. If WebKit terminates the main page, the shell replaces
-its WebView when the scene is active, deferring replacement while inactive or
-backgrounded. It restores the current local page when available and reuses the
-installation's origin and persistent web storage. Open popups are dismissed;
-unsaved in-memory state and active transfers cannot be restored.
-Automatic replacement is limited to one attempt per foreground period. Another
-termination or a failed recovery leaves an explicit error; **Try Again** creates
-a fresh WebView instead of reloading the terminated one. Recovery navigation
-starts only while active and after its native delegates attach. Its thirty-second
-active-scene budget pauses, rather than resets, while the scene is inactive.
-Healthy pages are not reloaded merely because the app returns to the foreground.
-This is page recovery, not a guarantee
-of uninterrupted remote connections or automatic replay of operations.
+may interrupt connections. If WebKit terminates the main page, the shell shows
+an error; **Try Again** reloads the same WebView. There is no automatic page
+recovery or WebView replacement.
 
 ### Frontend updates on iPhone and iPad
 

@@ -9,14 +9,17 @@ import { SettingsFieldRow } from "@pablozaiden/webapp/web";
 import { ThemeProvider } from "@pablozaiden/webapp/web";
 import { getClientConnectionPickerUrl } from "./api-client";
 import {
-  clientSessionDiagnosticsEnabled, readClientSessionDiagnostics,
+  clientSessionDiagnosticsEnabled, readClientSessionDiagnostics, readNativeDiagnostics,
 } from "./client-session-diagnostics";
 
 function SessionDiagnostics() {
   const [diagnostics, setDiagnostics] = useState(readClientSessionDiagnostics);
+  const [native, setNative] = useState<Awaited<ReturnType<typeof readNativeDiagnostics>>>({ events: [] });
   return (
     <details onToggle={event => {
-      if (event.currentTarget.open) setDiagnostics(readClientSessionDiagnostics());
+      if (!event.currentTarget.open) return;
+      setDiagnostics(readClientSessionDiagnostics());
+      void readNativeDiagnostics().then(setNative);
     }}>
       <summary>Session diagnostics</summary>
       {diagnostics.error ? <p className="wapp-error" role="alert">{diagnostics.error.message}</p> : null}
@@ -25,6 +28,11 @@ function SessionDiagnostics() {
         {event.status ? ` (HTTP ${event.status})` : ""}
         {event.reason ? `, ${event.reason}` : ""}
         {`, ${event.visibility}, network hint: ${event.online ? "online" : "offline"}`}
+      </p>)}
+      {native.error || native.events.length > 0 ? <p>App events</p> : null}
+      {native.error ? <p className="wapp-error" role="alert">{native.error.message}</p> : null}
+      {native.events.map((event, index) => <p key={`native-${index}`}>
+        {new Date(event.at).toLocaleString()}: {event.event}
       </p>)}
     </details>
   );

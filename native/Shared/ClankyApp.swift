@@ -145,12 +145,10 @@ private struct BrowserSession: View {
             NativeToolbarContent(browser: browser, toolbar: browser.nativeToolbar)
         } else {
             WebView(browser: browser)
-                .id(ObjectIdentifier(browser.webView))
                 .ignoresSafeArea()
         }
         #else
         WebView(browser: browser)
-            .id(ObjectIdentifier(browser.webView))
         #endif
     }
 }

@@ -85,3 +85,30 @@ export function startClientSessionDiagnostics(): void {
   window.addEventListener("online", () => { recordClientSessionDiagnostic("online"); });
   window.addEventListener("offline", () => { recordClientSessionDiagnostic("offline"); });
 }
+
+const nativeEventSchema = z.object({
+  at: z.number().finite(),
+  event: z.enum([
+    "app-started", "web-content-terminated", "local-server-stopped",
+    "local-server-restarted", "web-storage-empty", "web-storage-unavailable",
+  ]),
+}).strip();
+const nativeHistorySchema = z.array(nativeEventSchema).max(20);
+type NativeDiagnosticEvent = z.infer<typeof nativeEventSchema>;
+
+interface NativeDiagnosticsBridge {
+  postMessage(message: { type: "read" }): Promise<unknown>;
+}
+
+export async function readNativeDiagnostics(): Promise<{ events: NativeDiagnosticEvent[]; error?: Error }> {
+  const bridge = (window as { webkit?: { messageHandlers?: { clankyNativeDiagnostics?: NativeDiagnosticsBridge } } })
+    .webkit?.messageHandlers?.clankyNativeDiagnostics;
+  if (!clientSessionDiagnosticsEnabled() || !bridge) return { events: [] };
+  try {
+    const parsed = nativeHistorySchema.safeParse(await bridge.postMessage({ type: "read" }));
+    if (parsed.success) return { events: parsed.data };
+    return { events: [], error: new Error("Native diagnostics are invalid.") };
+  } catch {
+    return { events: [], error: new Error("Unable to read native diagnostics.") };
+  }
+}
