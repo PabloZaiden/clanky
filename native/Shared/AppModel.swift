@@ -293,11 +293,11 @@ final class BrowserModel: ObservableObject {
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
-        webView = Self.makeWebView()
+        webView = Self.makeWebView(origin: origin)
         connectNativeToolbar()
     }
 
-    private static func makeWebView() -> WKWebView {
+    private static func makeWebView(origin: URL) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -313,7 +313,7 @@ final class BrowserModel: ObservableObject {
                 injectionTime: .atDocumentStart, forMainFrameOnly: true
             ))
             configuration.userContentController.addScriptMessageHandler(
-                NativeDiagnostics.shared, contentWorld: .page, name: NativeDiagnostics.handlerName)
+                NativeDiagnostics(origin: origin), contentWorld: .page, name: NativeDiagnostics.handlerName)
         }
         #endif
         let webView = WKWebView(frame: .zero, configuration: configuration)

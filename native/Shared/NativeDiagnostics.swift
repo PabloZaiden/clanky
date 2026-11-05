@@ -5,7 +5,10 @@ import WebKit
 /// when the page's local storage is lost.
 @MainActor
 final class NativeDiagnostics: NSObject, WKScriptMessageHandlerWithReply {
-    static let shared = NativeDiagnostics()
+    private let origin: URL
+
+    init(origin: URL) { self.origin = origin }
+
     static let handlerName = "clankyNativeDiagnostics"
     private static let historyKey = "nativeDiagnostics"
     private static let markerSeenKey = "webStorageMarkerSeen"
@@ -34,8 +37,10 @@ final class NativeDiagnostics: NSObject, WKScriptMessageHandlerWithReply {
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage,
                                replyHandler: @escaping (Any?, String?) -> Void) {
+        let caller = message.frameInfo.securityOrigin
         guard message.frameInfo.isMainFrame,
-              message.frameInfo.securityOrigin.host == "127.0.0.1",
+              caller.protocol == origin.scheme, caller.host == origin.host,
+              caller.port == origin.port,
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else {
             replyHandler(nil, "Invalid native diagnostics request.")
