@@ -200,7 +200,7 @@ struct ControllerCommands: Commands {
     }
 
     private func connect(_ browser: BrowserModel) {
-        browser.webView.load(URLRequest(url: browser.origin.appendingPathComponent("local/")))
+        browser.load(browser.origin.appendingPathComponent("local/"))
     }
 }
 
@@ -213,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await model.controller.stop()
             let stopped = !model.controller.hasProcess
-            if stopped { model.stopAssets() }
+            if stopped { await model.stopAssets() }
             sender.reply(toApplicationShouldTerminate: stopped)
             if !stopped, sender.windows.allSatisfy({ !$0.isVisible }) {
                 let alert = NSAlert()

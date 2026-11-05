@@ -8,6 +8,27 @@ import {
 import { SettingsFieldRow } from "@pablozaiden/webapp/web";
 import { ThemeProvider } from "@pablozaiden/webapp/web";
 import { getClientConnectionPickerUrl } from "./api-client";
+import {
+  clientSessionDiagnosticsEnabled, readClientSessionDiagnostics,
+} from "./client-session-diagnostics";
+
+function SessionDiagnostics() {
+  const [diagnostics, setDiagnostics] = useState(readClientSessionDiagnostics);
+  return (
+    <details onToggle={event => {
+      if (event.currentTarget.open) setDiagnostics(readClientSessionDiagnostics());
+    }}>
+      <summary>Session diagnostics</summary>
+      {diagnostics.error ? <p className="wapp-error" role="alert">{diagnostics.error.message}</p> : null}
+      {diagnostics.events.map((event, index) => <p key={index}>
+        {new Date(event.at).toLocaleString()}: {event.event}
+        {event.status ? ` (HTTP ${event.status})` : ""}
+        {event.reason ? `, ${event.reason}` : ""}
+        {`, ${event.visibility}, network hint: ${event.online ? "online" : "offline"}`}
+      </p>)}
+    </details>
+  );
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -95,6 +116,7 @@ export function RemoteClientBoundary({ children }: { children: ReactNode }) {
           <p role="status">Waiting for authorization…</p>
         </> : null}
         {error || session.error ? <p className="wapp-error" role="alert">{error ?? session.error?.message}</p> : null}
+        {session.ready && clientSessionDiagnosticsEnabled() ? <SessionDiagnostics /> : null}
       </Dialog>
     </main></ThemeProvider>
   );

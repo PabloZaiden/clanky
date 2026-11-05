@@ -8,6 +8,13 @@ final class AppModel: ObservableObject {
     @Published private(set) var origin: URL?
     @Published var error: String?
     private var assets: AssetServer?
+    private var assetRoot: URL?
+    private var assetID = UUID()
+    private var assetRecovery: Task<Void, Error>?
+    private var recoveryID = UUID()
+    private var assetRecoveryAttempts = 0
+    private var lastAssetRecovery: ContinuousClock.Instant?
+    private var activeScenes: Set<UUID> = []
     #if os(iOS)
     @Published private(set) var startupMessage = "Opening Clanky..."
     @Published private(set) var updateOffer: FrontendUpdateOffer?
@@ -22,6 +29,11 @@ final class AppModel: ObservableObject {
     #endif
 
     func start() async {
+        if origin != nil {
+            allowAssetRetry()
+            recoverAssetsIfActive()
+            return
+        }
         guard assets == nil, !starting else { return }
         starting = true
         defer { starting = false }
@@ -76,28 +88,140 @@ final class AppModel: ObservableObject {
                 }
             }
             #endif
-            let failureHandler: @Sendable (Error) -> Void = { [weak self] failure in
-                Task { @MainActor in
-                    self?.stopAssets()
-                    self?.error = "The bundled UI server stopped: \(failure.localizedDescription)"
-                }
-            }
-            #if os(macOS)
-            let server = AssetServer(root: root, port: port, localAPI: LocalController.endpoint, onFailure: failureHandler)
-            #else
-            let server = AssetServer(root: root, port: port, onFailure: failureHandler)
-            #endif
+            assetRoot = root
+            let server = makeAssetServer(root: root, port: port)
             assets = server
             let origin = try await server.start()
+            guard assets === server else { throw CancellationError() }
             guard let selectedPort = origin.port else { throw NWError.posix(.EADDRNOTAVAIL) }
             UserDefaults.standard.set(selectedPort, forKey: "assetServerPort")
             error = nil
             self.origin = origin
         } catch {
-            assets?.stop()
+            await assets?.stop()
             assets = nil
             self.error = "Unable to open the bundled UI: \(error.localizedDescription)"
         }
+    }
+
+    private func makeAssetServer(root: URL, port: UInt16?) -> AssetServer {
+        let id = UUID()
+        assetID = id
+        let failureHandler: @Sendable (Error) -> Void = { [weak self] failure in
+            Task { @MainActor in
+                guard let self, self.assetID == id else { return }
+                NSLog("Clanky local UI listener stopped: %@", failure.localizedDescription)
+                self.recoverAssetsIfActive()
+            }
+        }
+        #if os(macOS)
+        return AssetServer(root: root, port: port, localAPI: LocalController.endpoint, onFailure: failureHandler)
+        #else
+        return AssetServer(root: root, port: port, onFailure: failureHandler)
+        #endif
+    }
+
+    func setScenePhase(_ phase: ScenePhase, for scene: UUID) {
+        if phase == .active {
+            activeScenes.insert(scene)
+            recoverAssetsIfActive()
+        } else {
+            activeScenes.remove(scene)
+            if activeScenes.isEmpty {
+                assetRecovery?.cancel()
+                if phase == .background {
+                    assetRecoveryAttempts = 0
+                    lastAssetRecovery = nil
+                }
+            }
+        }
+    }
+
+    func allowAssetRetry() {
+        assetRecoveryAttempts = 0
+        lastAssetRecovery = nil
+        error = nil
+    }
+
+    private func recoverAssetsIfActive() {
+        guard origin != nil, !activeScenes.isEmpty else { return }
+        Task { @MainActor in
+            do {
+                try await ensureAssets()
+            } catch is CancellationError {
+                return
+            } catch {
+                NSLog("Clanky local UI recovery failed: %@", error.localizedDescription)
+                self.error = "Unable to restore the local UI: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func ensureAssets() async throws {
+        if let assetRecovery {
+            if !assetRecovery.isCancelled {
+                try await assetRecovery.value
+                return
+            }
+            let id = recoveryID
+            _ = await assetRecovery.result
+            if recoveryID == id { self.assetRecovery = nil }
+            try Task.checkCancellation()
+            try await ensureAssets()
+            return
+        }
+        let id = UUID()
+        recoveryID = id
+        let recovery = Task { @MainActor in
+            guard let origin = self.origin, let root = self.assetRoot,
+                  let port = origin.port.flatMap(UInt16.init(exactly:)) else {
+                throw NWError.posix(.ENOTCONN)
+            }
+            do {
+                guard let server = self.assets else { throw NWError.posix(.ENOTCONN) }
+                try await server.checkHealth(at: origin)
+                try Task.checkCancellation()
+                self.error = nil
+                return
+            } catch {
+                try Task.checkCancellation()
+                NSLog("Clanky local UI health check failed: %@", error.localizedDescription)
+            }
+            guard !self.activeScenes.isEmpty else { throw CancellationError() }
+            if let last = self.lastAssetRecovery, last.duration(to: .now) >= .seconds(10) {
+                self.assetRecoveryAttempts = 0
+            }
+            guard self.assetRecoveryAttempts < 2 else {
+                throw NSError(domain: "Clanky", code: 7, userInfo: [
+                    NSLocalizedDescriptionKey: "The local UI could not stay available. Retry to reconnect."
+                ])
+            }
+            self.assetID = UUID()
+            await self.assets?.stop()
+            try Task.checkCancellation()
+            self.assetRecoveryAttempts += 1
+            self.lastAssetRecovery = .now
+            let server = self.makeAssetServer(root: root, port: port)
+            self.assets = server
+            do {
+                let restored = try await server.start()
+                try Task.checkCancellation()
+                guard self.recoveryID == id, restored == origin else { throw CancellationError() }
+                try await server.checkHealth(at: origin)
+                try Task.checkCancellation()
+                self.error = nil
+                NSLog("Clanky local UI listener recovered at its saved origin.")
+            } catch {
+                await server.stop()
+                if self.assets === server { self.assets = nil }
+                throw error
+            }
+        }
+        assetRecovery = recovery
+        defer {
+            if recoveryID == id { assetRecovery = nil }
+        }
+        try await recovery.value
     }
 
     #if os(iOS)
@@ -116,10 +240,14 @@ final class AppModel: ObservableObject {
     }
     #endif
 
-    func stopAssets() {
-        assets?.stop()
+    func stopAssets() async {
+        assetRecovery?.cancel()
+        recoveryID = UUID()
+        assetID = UUID()
+        let server = assets
         assets = nil
         origin = nil
+        await server?.stop()
     }
 }
 
@@ -152,9 +280,18 @@ final class BrowserModel: ObservableObject {
     private var recoveryTimeout: Task<Void, Never>?
     private var recoveryRemaining = Duration.seconds(30)
     private var recoveryStarted: ContinuousClock.Instant?
+    private let ensureAssets: @MainActor () async throws -> Void
+    private var assetLoad: Task<Void, Never>?
+    private var assetLoadID = UUID()
+    private var failedAssetPage: URL?
+    private var assetNavigationRetried = false
+    // A navigation waiting for the local UI; kept until it is submitted so
+    // deactivation does not drop it.
+    private var pendingAssetAction: ((WKWebView) -> Void)?
 
-    init(origin: URL) {
+    init(origin: URL, ensureAssets: @escaping @MainActor () async throws -> Void) {
         self.origin = origin
+        self.ensureAssets = ensureAssets
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
@@ -172,6 +309,12 @@ final class BrowserModel: ObservableObject {
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "window.clankySessionDiagnosticsEnabled = true;",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true
+            ))
+        }
         #endif
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
@@ -194,20 +337,25 @@ final class BrowserModel: ObservableObject {
     }
 
     func loadIfNeeded() {
+        if let page = failedAssetPage, active, assetLoad == nil {
+            failedAssetPage = nil
+            load(page)
+            return
+        }
         guard webView.navigationDelegate != nil, webView.url == nil,
-              !recovering || active else { return }
+              assetLoad == nil, active else { return }
         if recovering, let lastPage {
-            webView.load(URLRequest(url: lastPage, timeoutInterval: 30))
+            load(lastPage)
         } else {
             home()
         }
-        if recovering { watchRecovery() }
     }
 
     func setScenePhase(_ phase: ScenePhase) {
         active = phase == .active
         if phase == .background { automaticRecoveryUsed = false }
         if active {
+            if let pendingAssetAction, assetLoad == nil { withAssetsReady(pendingAssetAction) }
             if needsRecovery && !recovering { recoverIfAllowed() }
             if recovering {
                 loadIfNeeded()
@@ -215,7 +363,11 @@ final class BrowserModel: ObservableObject {
             }
         } else {
             pauseRecovery()
+            assetLoad?.cancel()
+            assetLoadID = UUID()
+            assetLoad = nil
         }
+        if active { loadIfNeeded() }
     }
 
     func contentProcessTerminated() {
@@ -241,6 +393,10 @@ final class BrowserModel: ObservableObject {
     }
 
     private func replaceWebView() {
+        assetLoad?.cancel()
+        assetLoadID = UUID()
+        assetLoad = nil
+        pendingAssetAction = nil
         pauseRecovery()
         recoveryRemaining = .seconds(30)
         closePopup()
@@ -297,11 +453,35 @@ final class BrowserModel: ObservableObject {
         if recovering { error = nil }
         recovering = false
         needsRecovery = false
+        failedAssetPage = nil
+        assetNavigationRetried = false
+    }
+
+    func navigationFailed(_ failure: Error) {
+        let native = failure as NSError
+        let url = native.userInfo[NSURLErrorFailingURLErrorKey] as? URL
+            ?? webView.url
+        if native.domain == NSURLErrorDomain,
+           [NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost,
+            NSURLErrorTimedOut, NSURLErrorNotConnectedToInternet].contains(native.code),
+           let url, url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port,
+           !assetNavigationRetried {
+            NSLog("Clanky local page load was interrupted; checking the UI listener.")
+            pauseRecovery()
+            assetNavigationRetried = true
+            failedAssetPage = url
+            error = nil
+            loadIfNeeded()
+            return
+        }
+        navigationFailed("Unable to load the page: \(failure.localizedDescription)")
     }
 
     func navigationFailed(_ message: String) {
         pauseRecovery()
         recovering = false
+        failedAssetPage = nil
+        pendingAssetAction = nil
         NSLog("Clanky page navigation failed: %@", message)
         error = message
     }
@@ -324,7 +504,41 @@ final class BrowserModel: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: Self.connectionKey)
             }
         }
-        webView.load(URLRequest(url: url))
+        load(url)
+    }
+
+    func load(_ url: URL) {
+        withAssetsReady { view in
+            view.load(URLRequest(url: url, timeoutInterval: 30))
+            if self.recovering { self.watchRecovery() }
+        }
+    }
+
+    private func withAssetsReady(_ action: @escaping (WKWebView) -> Void) {
+        pendingAssetAction = action
+        guard active else { return }
+        assetLoad?.cancel()
+        let id = UUID()
+        assetLoadID = id
+        let view = webView
+        assetLoad = Task { @MainActor [weak self, weak view] in
+            guard let self, let view else { return }
+            defer {
+                if self.assetLoadID == id { self.assetLoad = nil }
+            }
+            do {
+                try await self.ensureAssets()
+                try Task.checkCancellation()
+                guard self.active, view === self.webView, view.navigationDelegate != nil else { return }
+                self.pendingAssetAction = nil
+                action(view)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard view === self.webView, self.active, !Task.isCancelled else { return }
+                self.navigationFailed("Unable to restore the local UI: \(error.localizedDescription)")
+            }
+        }
     }
 
     func rememberConnection(_ url: URL) {
@@ -342,13 +556,14 @@ final class BrowserModel: ObservableObject {
 
     func reload() {
         error = nil
+        assetNavigationRetried = false
         if needsRecovery {
             automaticRecoveryUsed = true
             replaceWebView()
         } else if webView.url == nil {
             home()
         } else {
-            webView.reload()
+            withAssetsReady { $0.reload() }
         }
     }
 }

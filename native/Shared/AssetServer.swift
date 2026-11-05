@@ -11,6 +11,7 @@ final class AssetServer: @unchecked Sendable {
     private var listener: NWListener?
     private var boundPort: UInt16?
     private var connections: [UUID: NWConnection] = [:]
+    private let healthToken = UUID().uuidString
     // Set before start; all listener/connection state is confined to queue.
     let onFailure: @Sendable (Error) -> Void
 
@@ -41,20 +42,29 @@ final class AssetServer: @unchecked Sendable {
             var started = false
             var finished = false
             var retired = false
+            let timeout = DispatchWorkItem {
+                guard !finished else { return }
+                finished = true
+                retired = true
+                listener.cancel()
+                continuation.resume(throwing: NWError.posix(.ETIMEDOUT))
+            }
+            queue.asyncAfter(deadline: .now() + 3, execute: timeout)
             listener.stateUpdateHandler = { state in
                 guard !retired else { return }
                 switch state {
                 case .ready where !finished:
-                    guard let port = self.listener?.port?.rawValue, port != 0 else {
+                    timeout.cancel()
+                    guard let port = listener.port?.rawValue, port != 0 else {
                         finished = true
-                        self.listener?.cancel()
+                        listener.cancel()
                         continuation.resume(throwing: NWError.posix(.EADDRNOTAVAIL))
                         return
                     }
                     // Keep the optional controller's port available even before it starts.
                     if self.localAPI?.port == Int(port) {
                         retired = true
-                        self.listener?.cancel()
+                        listener.cancel()
                         self.listener = nil
                         if self.requestedPort == nil, attempt < 7 {
                             self.listen(attempt: attempt + 1, continuation: continuation)
@@ -68,7 +78,9 @@ final class AssetServer: @unchecked Sendable {
                     finished = true
                     continuation.resume(returning: URL(string: "http://127.0.0.1:\(port)/")!)
                 case .failed(let error), .waiting(let error):
-                    self.listener?.cancel()
+                    timeout.cancel()
+                    retired = true
+                    listener.cancel()
                     if !finished {
                         finished = true
                         continuation.resume(throwing: error)
@@ -76,8 +88,12 @@ final class AssetServer: @unchecked Sendable {
                         self.onFailure(error)
                     }
                 case .cancelled where !finished:
+                    timeout.cancel()
                     finished = true
                     continuation.resume(throwing: CancellationError())
+                case .cancelled where started:
+                    retired = true
+                    self.onFailure(CancellationError())
                 default:
                     break
                 }
@@ -89,13 +105,55 @@ final class AssetServer: @unchecked Sendable {
         }
     }
 
-    func stop() {
-        queue.async {
-            self.listener?.cancel()
-            self.listener = nil
-            self.boundPort = nil
-            for connection in self.connections.values { connection.cancel() }
-            self.connections.removeAll()
+    func stop() async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                let listener = self.listener
+                self.listener = nil
+                self.boundPort = nil
+                for connection in self.connections.values { connection.cancel() }
+                self.connections.removeAll()
+                guard let listener else {
+                    continuation.resume()
+                    return
+                }
+                listener.newConnectionHandler = nil
+                if listener.state == .cancelled {
+                    listener.stateUpdateHandler = nil
+                    continuation.resume()
+                    return
+                }
+                listener.stateUpdateHandler = { state in
+                    if case .cancelled = state {
+                        listener.stateUpdateHandler = nil
+                        continuation.resume()
+                    }
+                }
+                listener.cancel()
+            }
+        }
+    }
+
+    func checkHealth(at origin: URL) async throws {
+        let listening = await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.listener?.state == .ready)
+            }
+        }
+        guard listening else { throw NWError.posix(.ENOTCONN) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 1
+        configuration.timeoutIntervalForResource = 2
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let request = URLRequest(url: origin.appendingPathComponent(".clanky-health"),
+                                 cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 1)
+        let (data, response) = try await session.data(for: request)
+        guard response.url == request.url, (response as? HTTPURLResponse)?.statusCode == 200,
+              data == Data(healthToken.utf8) else {
+            throw NSError(domain: "Clanky", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "The local UI listener did not answer its health check."
+            ])
         }
     }
 
@@ -158,6 +216,11 @@ final class AssetServer: @unchecked Sendable {
         }
         var relative = String(path.dropFirst())
         if relative.hasSuffix("/") || relative.isEmpty { relative += "index.html" }
+        if relative == ".clanky-health" {
+            send(connection, id: id, status: "200 OK", body: Data(healthToken.utf8),
+                 head: request[0] == "HEAD", timeout: timeout)
+            return
+        }
         do {
             let body: Data
             let type: String
