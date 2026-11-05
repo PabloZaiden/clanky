@@ -687,6 +687,34 @@ the app does not attach to that process or silently choose a different origin.
 Separate saved installations initialized at different times can still encounter
 such a collision; a persisted port is not a permanent operating-system reservation.
 
+The shell checks the listener through an uncached, instance-specific local HTTP
+response when a scene becomes active and before native page loads or reloads.
+A stopped listener is restarted automatically at the same origin using the same
+frontend snapshot, without discarding the current WebView or asking for retry
+during successful recovery. An interrupted local navigation is retried once
+after checking readiness; already loaded healthy pages are not reloaded.
+Listener failures recover immediately while a scene is active and otherwise
+wait for foreground activation. Concurrent windows share one recovery operation.
+Startup and HTTP checks have bounded waits. Two rapid restarts exhaust automatic
+recovery; a later independent failure gets a fresh allowance after ten seconds
+without a restart, without requiring the app to be backgrounded. Exhausted
+recovery or an occupied saved port produces an explicit error; manual retry also
+resets that allowance.
+This does not replay remote API operations or recover a lost authenticated
+session, and it does not provide background execution.
+
+The iPhone sign-in screen includes local session diagnostics for intermittent
+sign-outs. It retains at most ten structured restoration, renewal, removal,
+foreground/background, and connectivity-hint events, with timestamps and
+HTTP status categories. The history stays on the phone and contains no
+credentials, authorization codes, API addresses, request/response bodies, or
+user content. Expand **Session diagnostics** to inspect it after sign-in returns.
+The last recorded credential-removal cause survives subsequent connectivity
+events until a session is restored or the user signs out/changes servers.
+Connectivity hints are not proof of server reachability, and diagnostic events
+do not change authentication validity, renewal, or credential-removal policy.
+Other clients do not record or display this history.
+
 Credentials remain in the existing web client's persistent storage; invitation
 private keys retain their existing nonextractable Web Crypto storage. As with
 the browser client, trusted application JavaScript can access its own sessions.

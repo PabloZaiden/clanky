@@ -62,11 +62,13 @@ export function ComposerActionsMenu({
           role="group"
           id={menuId}
           placement="top-start"
-          focusSelector="button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"
+          // Focus the panel body rather than its first control: focusing a
+          // select opens the native picker on iOS.
+          focusSelector="[data-composer-actions-body]"
           restoreFocusOnClose
           className="clanky-composer-panel max-h-[min(24rem,calc(100vh-1rem))] w-[min(20rem,calc(100vw-1rem))] overflow-y-auto rounded-lg p-3"
         >
-          <div className="space-y-3">
+          <div data-composer-actions-body tabIndex={-1} className="space-y-3 outline-none">
             {children}
           </div>
         </FloatingPanel>

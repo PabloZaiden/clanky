@@ -306,7 +306,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
               (error as NSError).code != NSURLErrorCancelled else { return }
         let message = "Unable to load the page: \(error.localizedDescription)"
         if webView === browser.webView {
-            browser.navigationFailed(message)
+            browser.navigationFailed(error)
         } else {
             browser.error = message
         }

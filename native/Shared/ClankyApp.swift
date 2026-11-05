@@ -40,7 +40,7 @@ struct BrowserWindow: View {
     var body: some View {
         Group {
             if let origin = app.origin {
-                BrowserSession(origin: origin)
+                BrowserSession(origin: origin, app: app)
             } else if let error = app.error {
                 ContentUnavailableView {
                     Label("Unable to start Clanky", systemImage: "exclamationmark.triangle")
@@ -93,29 +93,45 @@ struct BrowserWindow: View {
 }
 
 private struct BrowserSession: View {
+    @EnvironmentObject private var app: AppModel
     @Environment(\.scenePhase) private var scenePhase
+    @State private var sceneID = UUID()
     @StateObject private var browser: BrowserModel
 
-    init(origin: URL) {
-        _browser = StateObject(wrappedValue: BrowserModel(origin: origin))
+    init(origin: URL, app: AppModel) {
+        _browser = StateObject(wrappedValue: BrowserModel(origin: origin, ensureAssets: {
+            try await app.ensureAssets()
+        }))
     }
 
     var body: some View {
         browserContent
-        .onAppear { browser.setScenePhase(scenePhase) }
-        .onChange(of: scenePhase) { _, phase in browser.setScenePhase(phase) }
-        .onDisappear { browser.setScenePhase(.inactive) }
+        .onAppear {
+            app.setScenePhase(scenePhase, for: sceneID)
+            browser.setScenePhase(scenePhase)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            app.setScenePhase(phase, for: sceneID)
+            browser.setScenePhase(phase)
+        }
+        .onDisappear {
+            app.setScenePhase(.inactive, for: sceneID)
+            browser.setScenePhase(.inactive)
+        }
         .sheet(item: $browser.popup) { popup in
             PopupContent(webView: popup.webView)
         }
         .alert("Clanky", isPresented: Binding(
-            get: { browser.error != nil },
-            set: { if !$0 { browser.error = nil } }
+            get: { browser.error != nil || app.error != nil },
+            set: { if !$0 { browser.error = nil; app.error = nil } }
         )) {
-            Button("Try Again", action: browser.reload)
-            Button("OK", role: .cancel) { browser.error = nil }
+            Button("Try Again") {
+                app.allowAssetRetry()
+                browser.reload()
+            }
+            Button("OK", role: .cancel) { browser.error = nil; app.error = nil }
         } message: {
-            Text(browser.error ?? "")
+            Text(browser.error ?? app.error ?? "")
         }
         #if os(macOS)
         .focusedSceneObject(browser)

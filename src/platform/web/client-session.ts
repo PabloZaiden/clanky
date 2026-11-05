@@ -4,6 +4,7 @@ import {
   type WebAppClientCredentials, type WebAppClientCredentialStore,
 } from "./client-credentials";
 import { readStorage, writeStorage } from "./storage";
+import { recordClientSessionDiagnostic, startClientSessionDiagnostics } from "./client-session-diagnostics";
 
 export interface WebAppRemoteClientOptions {
   credentialStore?: WebAppClientCredentialStore;
@@ -47,6 +48,7 @@ export function normalizeClientEndpoint(value: string): string {
 }
 
 export function configureRemoteClient(defaultEndpoint?: string, options: WebAppRemoteClientOptions = {}): void {
+  startClientSessionDiagnostics();
   if (options.credentialStore) {
     if (hydration) throw new Error("Configure native credential storage before rendering the application.");
     store = options.credentialStore;
@@ -113,8 +115,10 @@ export async function initializeClientSession(): Promise<void> {
       const saved = endpoint ? await readClientCredentials(store, endpoint) : undefined;
       if (state.generation !== generation) return;
       credentials = saved;
+      recordClientSessionDiagnostic(saved ? "restored" : "credentials-missing");
       update({ ready: true, authenticated: saved !== undefined, error: undefined });
     } catch (error) {
+      recordClientSessionDiagnostic("restore-failed", { reason: "storage-error" });
       if (state.generation === generation) update({
         ready: true, error: error instanceof Error ? error : new Error(String(error)),
       });
@@ -129,6 +133,7 @@ export async function selectClientEndpoint(endpoint: string): Promise<void> {
   if (previous) await withClientCredentialLock(previous, async () => { await store.remove(previous); });
   const result = writeStorage(clientStorageKey("endpoint"), normalized);
   if (!result.ok) throw result.error;
+  recordClientSessionDiagnostic("server-changed");
   login?.abort();
   // A fresh JavaScript context also retires application-owned caches and pending work.
   window.location.reload();
@@ -166,6 +171,7 @@ export async function loginClient(onVerification: (info: { url: string; code: st
         throw new Error("The selected server changed during authorization.");
       }
       credentials = next;
+      recordClientSessionDiagnostic("signed-in");
       update({ authenticated: true, generation: generation + 1, error: undefined });
     }, controller.signal);
   } finally {
@@ -183,6 +189,7 @@ export async function logoutClient(): Promise<void> {
     if (endpoint) await withClientCredentialLock(endpoint, async () => {
       previous = await readClientCredentials(store, endpoint) ?? previous;
       await store.remove(endpoint);
+      recordClientSessionDiagnostic("signed-out");
     });
     if (previous) await revokeClientCredentials(previous);
     window.location.reload();
@@ -208,6 +215,7 @@ export async function clientAccessToken(rejectedToken?: string): Promise<string>
 }
 
 async function refreshSession(previous: WebAppClientCredentials): Promise<string> {
+  recordClientSessionDiagnostic("refresh-started");
   const generation = state.generation;
   const renew = async () => {
     const saved = await readClientCredentials(store, previous.baseUrl);
@@ -225,16 +233,28 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
       throw new Error("The selected server changed while saving authorization.");
     }
     credentials = next;
+    recordClientSessionDiagnostic("refresh-succeeded");
     return next.accessToken;
   };
   try {
     return await withClientCredentialLock(previous.baseUrl, renew);
   } catch (error) {
+    const diagnostic = error instanceof ClientAuthorizationError
+      ? error.code === "session_changed"
+        ? { reason: "session-changed" as const }
+        : { status: error.status, reason: "authorization-rejected" as const }
+      : { reason: error instanceof TypeError || error instanceof DOMException
+        && ["AbortError", "TimeoutError", "NetworkError"].includes(error.name)
+        ? "request-error" as const : "unexpected-error" as const };
+    recordClientSessionDiagnostic("refresh-failed", diagnostic);
     if (state.generation === generation && error instanceof ClientAuthorizationError
       && [400, 401].includes(error.status)) {
       await withClientCredentialLock(previous.baseUrl, async () => {
         const saved = await readClientCredentials(store, previous.baseUrl);
-        if (saved?.clientId === previous.clientId) await store.remove(previous.baseUrl);
+        if (saved?.clientId === previous.clientId) {
+          await store.remove(previous.baseUrl);
+          recordClientSessionDiagnostic("credentials-removed", diagnostic);
+        }
       });
       invalidateClientSession();
     }
