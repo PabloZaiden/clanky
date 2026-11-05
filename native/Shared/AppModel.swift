@@ -197,7 +197,7 @@ final class AppModel: ObservableObject {
             }
             guard self.assetRecoveryAttempts < 2 else {
                 throw NSError(domain: "Clanky", code: 7, userInfo: [
-                    NSLocalizedDescriptionKey: "The local UI could not stay available. Retry to reconnect."
+                    NSLocalizedDescriptionKey: "The local UI could not stay available. Clanky retries when you return to the app."
                 ])
             }
             self.assetID = UUID()
@@ -286,6 +286,9 @@ final class BrowserModel: ObservableObject {
     // A navigation waiting for the local UI; kept until it is submitted so
     // deactivation does not drop it.
     private var pendingAssetAction: ((WKWebView) -> Void)?
+    // Set when the page must be reloaded without user action, e.g. after
+    // WebKit terminated it or a local load failed; retried on activation.
+    private var needsReload = false
 
     init(origin: URL, ensureAssets: @escaping @MainActor () async throws -> Void) {
         self.origin = origin
@@ -350,7 +353,11 @@ final class BrowserModel: ObservableObject {
     func setScenePhase(_ phase: ScenePhase) {
         active = phase == .active
         if active {
-            if let pendingAssetAction, assetLoad == nil { withAssetsReady(pendingAssetAction) }
+            if needsReload, assetLoad == nil {
+                reloadAutomatically()
+            } else if let pendingAssetAction, assetLoad == nil {
+                withAssetsReady(pendingAssetAction)
+            }
         } else {
             assetLoad?.cancel()
             assetLoadID = UUID()
@@ -366,10 +373,21 @@ final class BrowserModel: ObservableObject {
         #if os(iOS)
         nativeToolbar.clear()
         #endif
-        error = "Clanky stopped responding. Try again to reconnect."
+        error = nil
+        needsReload = true
+        if active { reloadAutomatically() }
+    }
+
+    private func reloadAutomatically() {
+        if webView.url == nil {
+            home()
+        } else {
+            withAssetsReady { $0.reload() }
+        }
     }
 
     func navigationFinished() {
+        needsReload = false
         failedAssetPage = nil
         assetNavigationRetried = false
     }
@@ -396,6 +414,7 @@ final class BrowserModel: ObservableObject {
     func navigationFailed(_ message: String) {
         failedAssetPage = nil
         pendingAssetAction = nil
+        needsReload = true
         NSLog("Clanky page navigation failed: %@", message)
         error = message
     }
@@ -463,16 +482,6 @@ final class BrowserModel: ObservableObject {
         } else if let mode = url.pathComponents.dropFirst().first,
                   Self.connectionModes.contains(mode) {
             UserDefaults.standard.set(mode, forKey: Self.connectionKey)
-        }
-    }
-
-    func reload() {
-        error = nil
-        assetNavigationRetried = false
-        if webView.url == nil {
-            home()
-        } else {
-            withAssetsReady { $0.reload() }
         }
     }
 }
