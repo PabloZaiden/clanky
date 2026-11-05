@@ -137,19 +137,30 @@ final class BrowserModel: ObservableObject {
     #else
     private static let connectionModes = ["api", "collaboration"]
     #endif
-    let webView: WKWebView
+    @Published private(set) var webView: WKWebView
     let origin: URL
     #if os(iOS)
     let nativeToolbar: NativeToolbar
     #endif
     @Published var error: String?
     @Published var popup: BrowserPopup?
+    private var lastPage: URL?
+    private var active = false
+    private var needsRecovery = false
+    private var recovering = false
+    private var automaticRecoveryUsed = false
+    private var recoveryTimeout: Task<Void, Never>?
 
     init(origin: URL) {
         self.origin = origin
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
+        webView = Self.makeWebView()
+        connectNativeToolbar()
+    }
+
+    private static func makeWebView() -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -159,15 +170,127 @@ final class BrowserModel: ObservableObject {
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
-        nativeToolbar.install(in: configuration.userContentController)
         #endif
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         #if os(iOS)
         // The shared web UI owns safe areas; WebKit owns keyboard avoidance.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        nativeToolbar.connect(to: webView) { [weak self] message in self?.error = message }
         #endif
+        return webView
+    }
+
+    private func connectNativeToolbar() {
+        #if os(iOS)
+        let view = webView
+        nativeToolbar.install(in: view.configuration.userContentController)
+        nativeToolbar.connect(to: view) { [weak self, weak view] message in
+            guard let self, let view, view === self.webView else { return }
+            self.error = message
+        }
+        #endif
+    }
+
+    func loadIfNeeded() {
+        guard webView.url == nil else { return }
+        if recovering, let lastPage {
+            webView.load(URLRequest(url: lastPage, timeoutInterval: 30))
+        } else {
+            home()
+        }
+        if recovering { watchRecovery() }
+    }
+
+    func setScenePhase(_ phase: ScenePhase) {
+        active = phase == .active
+        if phase == .background { automaticRecoveryUsed = false }
+        if active {
+            if needsRecovery && !recovering { recoverIfAllowed() }
+            if recovering { watchRecovery() }
+        } else {
+            recoveryTimeout?.cancel()
+            recoveryTimeout = nil
+        }
+    }
+
+    func contentProcessTerminated() {
+        NSLog("Clanky web content process terminated.")
+        if let url = webView.url { rememberConnection(url) }
+        recoveryTimeout?.cancel()
+        recoveryTimeout = nil
+        recovering = false
+        needsRecovery = true
+        closePopup()
+        #if os(iOS)
+        nativeToolbar.clear()
+        #endif
+        if active { recoverIfAllowed() }
+    }
+
+    private func recoverIfAllowed() {
+        guard !automaticRecoveryUsed else {
+            error = "Clanky stopped responding. Try again to reconnect."
+            return
+        }
+        automaticRecoveryUsed = true
+        replaceWebView()
+    }
+
+    private func replaceWebView() {
+        recoveryTimeout?.cancel()
+        recoveryTimeout = nil
+        closePopup()
+        #if os(iOS)
+        nativeToolbar.clear()
+        #endif
+        webView.stopLoading()
+        error = nil
+        needsRecovery = true
+        recovering = true
+        // The new coordinator attaches its delegates before restoring the page.
+        webView = Self.makeWebView()
+        connectNativeToolbar()
+    }
+
+    private func watchRecovery() {
+        guard active, recovering else { return }
+        recoveryTimeout?.cancel()
+        let view = webView
+        recoveryTimeout = Task { [weak self, weak view] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+                guard let self, let view, view === self.webView, self.recovering else { return }
+                self.navigationFailed("Clanky could not reconnect. Try again.")
+                view.stopLoading()
+            } catch is CancellationError {
+                return
+            } catch {
+                self?.navigationFailed("Unable to wait for page recovery: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func navigationFinished() {
+        recoveryTimeout?.cancel()
+        recoveryTimeout = nil
+        if recovering { error = nil }
+        recovering = false
+        needsRecovery = false
+    }
+
+    func navigationFailed(_ message: String) {
+        recoveryTimeout?.cancel()
+        recoveryTimeout = nil
+        recovering = false
+        NSLog("Clanky page navigation failed: %@", message)
+        error = message
+    }
+
+    private func closePopup() {
+        popup?.webView.stopLoading()
+        popup?.webView.navigationDelegate = nil
+        popup?.webView.uiDelegate = nil
+        popup = nil
     }
 
     func home() {
@@ -188,6 +311,7 @@ final class BrowserModel: ObservableObject {
         guard url.scheme == origin.scheme,
               url.host == origin.host,
               url.port == origin.port else { return }
+        lastPage = url
         if url.path.isEmpty || url.path == "/" || url.path == "/index.html" {
             UserDefaults.standard.removeObject(forKey: Self.connectionKey)
         } else if let mode = url.pathComponents.dropFirst().first,
@@ -198,6 +322,13 @@ final class BrowserModel: ObservableObject {
 
     func reload() {
         error = nil
-        if webView.url == nil { home() } else { webView.reload() }
+        if needsRecovery {
+            automaticRecoveryUsed = true
+            replaceWebView()
+        } else if webView.url == nil {
+            home()
+        } else {
+            webView.reload()
+        }
     }
 }

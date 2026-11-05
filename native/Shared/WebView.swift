@@ -121,6 +121,7 @@ final class WebContentView: UIView {
 @MainActor
 final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
     private let browser: BrowserModel
+    private let webView: WKWebView
     private var downloads: [ObjectIdentifier: WKDownload] = [:]
     private var requestedNames: [ObjectIdentifier: String] = [:]
     private struct Transfer {
@@ -132,33 +133,46 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
     private var transfers: [ObjectIdentifier: Transfer] = [:]
     private var stopped = false
 
-    init(browser: BrowserModel) { self.browser = browser }
+    init(browser: BrowserModel) {
+        self.browser = browser
+        webView = browser.webView
+    }
 
     func attach() -> WKWebView {
         stopped = false
-        browser.webView.navigationDelegate = self
-        browser.webView.uiDelegate = self
-        browser.webView.configuration.userContentController.addScriptMessageHandler(
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.configuration.userContentController.addScriptMessageHandler(
             self, contentWorld: .page, name: "clankyDownloads")
-        return browser.webView
+        Task { @MainActor [weak self] in
+            guard let self, !self.stopped, self.webView === self.browser.webView else { return }
+            self.browser.loadIfNeeded()
+        }
+        return webView
     }
 
     func stop() {
         stopped = true
-        #if os(iOS)
-        browser.nativeToolbar.clear()
-        #endif
-        browser.webView.stopLoading()
-        browser.webView.navigationDelegate = nil
-        browser.webView.uiDelegate = nil
-        browser.webView.configuration.userContentController.removeScriptMessageHandler(
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(
             forName: "clankyDownloads", contentWorld: .page)
-        if let popup = browser.popup?.webView {
-            popup.stopLoading()
-            popup.navigationDelegate = nil
-            popup.uiDelegate = nil
+        #if os(iOS)
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: "webappToolbar", contentWorld: .page)
+        #endif
+        if webView === browser.webView {
+            #if os(iOS)
+            browser.nativeToolbar.clear()
+            #endif
+            if let popup = browser.popup?.webView {
+                popup.stopLoading()
+                popup.navigationDelegate = nil
+                popup.uiDelegate = nil
+            }
+            browser.popup = nil
         }
-        browser.popup = nil
         for (id, download) in downloads {
             let directory = transfers[id]?.directory
             download.cancel { _ in
@@ -201,6 +215,10 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard !stopped, self.webView === browser.webView else {
+            decisionHandler(.cancel)
+            return
+        }
         if action.shouldPerformDownload {
             decisionHandler(.download)
             return
@@ -227,6 +245,10 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
                  decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        guard !stopped, self.webView === browser.webView else {
+            decisionHandler(.cancel)
+            return
+        }
         let disposition = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
         decisionHandler(!response.canShowMIMEType || disposition?.lowercased().hasPrefix("attachment") == true
                         ? .download : .allow)
@@ -234,7 +256,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        guard action.targetFrame == nil else { return nil }
+        guard !stopped, self.webView === browser.webView, action.targetFrame == nil else { return nil }
         if let url = action.request.url, url.absoluteString != "about:blank" {
             openExternal(url)
             return nil
@@ -272,34 +294,49 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        reportNavigationError(error)
+        reportNavigationError(error, in: webView)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        reportNavigationError(error)
+        reportNavigationError(error, in: webView)
     }
 
-    private func reportNavigationError(_ error: Error) {
-        guard !stopped, (error as NSError).code != NSURLErrorCancelled else { return }
-        browser.error = "Unable to load the page: \(error.localizedDescription)"
+    private func reportNavigationError(_ error: Error, in webView: WKWebView) {
+        guard !stopped, self.webView === browser.webView,
+              (error as NSError).code != NSURLErrorCancelled else { return }
+        let message = "Unable to load the page: \(error.localizedDescription)"
+        if webView === browser.webView {
+            browser.navigationFailed(message)
+        } else {
+            browser.error = message
+        }
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        #if os(iOS)
-        browser.nativeToolbar.clear()
-        #endif
-        browser.error = "Clanky stopped responding. Try again to reconnect."
+        guard !stopped, self.webView === browser.webView else { return }
+        if webView === browser.webView {
+            browser.contentProcessTerminated()
+        } else if browser.popup?.webView === webView {
+            webViewDidClose(webView)
+            browser.error = "The popup stopped responding. Open it again to retry."
+        }
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        guard !stopped, webView === browser.webView else { return }
         #if os(iOS)
         browser.nativeToolbar.clear()
         #endif
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        guard webView === browser.webView, let url = webView.url else { return }
+        guard !stopped, webView === browser.webView, let url = webView.url else { return }
         browser.rememberConnection(url)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard !stopped, webView === browser.webView else { return }
+        browser.navigationFinished()
     }
 
     #if os(macOS)
