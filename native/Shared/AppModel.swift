@@ -353,10 +353,11 @@ final class BrowserModel: ObservableObject {
     func setScenePhase(_ phase: ScenePhase) {
         active = phase == .active
         if active {
-            if needsReload, assetLoad == nil {
-                reloadAutomatically()
-            } else if let pendingAssetAction, assetLoad == nil {
+            if let pendingAssetAction, assetLoad == nil {
+                error = nil
                 withAssetsReady(pendingAssetAction)
+            } else if needsReload, assetLoad == nil {
+                reloadAutomatically()
             }
         } else {
             assetLoad?.cancel()
@@ -379,6 +380,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func reloadAutomatically() {
+        error = nil
         if webView.url == nil {
             home()
         } else {
@@ -412,8 +414,8 @@ final class BrowserModel: ObservableObject {
     }
 
     func navigationFailed(_ message: String) {
+        // Keep any pending destination so activation resumes it.
         failedAssetPage = nil
-        pendingAssetAction = nil
         needsReload = true
         NSLog("Clanky page navigation failed: %@", message)
         error = message
