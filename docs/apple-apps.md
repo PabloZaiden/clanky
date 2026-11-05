@@ -720,8 +720,10 @@ unsaved in-memory state and active transfers cannot be restored.
 Automatic replacement is limited to one attempt per foreground period. Another
 termination or a failed recovery leaves an explicit error; **Try Again** creates
 a fresh WebView instead of reloading the terminated one. Recovery navigation
-has a thirty-second active-scene deadline. Healthy pages are not reloaded merely
-because the app returns to the foreground. This is page recovery, not a guarantee
+starts only while active and after its native delegates attach. Its thirty-second
+active-scene budget pauses, rather than resets, while the scene is inactive.
+Healthy pages are not reloaded merely because the app returns to the foreground.
+This is page recovery, not a guarantee
 of uninterrupted remote connections or automatic replay of operations.
 
 ### Frontend updates on iPhone and iPad

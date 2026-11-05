@@ -150,6 +150,8 @@ final class BrowserModel: ObservableObject {
     private var recovering = false
     private var automaticRecoveryUsed = false
     private var recoveryTimeout: Task<Void, Never>?
+    private var recoveryRemaining = Duration.seconds(30)
+    private var recoveryStarted: ContinuousClock.Instant?
 
     init(origin: URL) {
         self.origin = origin
@@ -192,7 +194,8 @@ final class BrowserModel: ObservableObject {
     }
 
     func loadIfNeeded() {
-        guard webView.url == nil else { return }
+        guard webView.navigationDelegate != nil, webView.url == nil,
+              !recovering || active else { return }
         if recovering, let lastPage {
             webView.load(URLRequest(url: lastPage, timeoutInterval: 30))
         } else {
@@ -206,18 +209,19 @@ final class BrowserModel: ObservableObject {
         if phase == .background { automaticRecoveryUsed = false }
         if active {
             if needsRecovery && !recovering { recoverIfAllowed() }
-            if recovering { watchRecovery() }
+            if recovering {
+                loadIfNeeded()
+                watchRecovery()
+            }
         } else {
-            recoveryTimeout?.cancel()
-            recoveryTimeout = nil
+            pauseRecovery()
         }
     }
 
     func contentProcessTerminated() {
         NSLog("Clanky web content process terminated.")
         if let url = webView.url { rememberConnection(url) }
-        recoveryTimeout?.cancel()
-        recoveryTimeout = nil
+        pauseRecovery()
         recovering = false
         needsRecovery = true
         closePopup()
@@ -237,8 +241,8 @@ final class BrowserModel: ObservableObject {
     }
 
     private func replaceWebView() {
-        recoveryTimeout?.cancel()
-        recoveryTimeout = nil
+        pauseRecovery()
+        recoveryRemaining = .seconds(30)
         closePopup()
         #if os(iOS)
         nativeToolbar.clear()
@@ -253,34 +257,50 @@ final class BrowserModel: ObservableObject {
     }
 
     private func watchRecovery() {
-        guard active, recovering else { return }
-        recoveryTimeout?.cancel()
+        guard active, recovering, webView.navigationDelegate != nil,
+              recoveryTimeout == nil else { return }
+        guard recoveryRemaining > .zero else {
+            navigationFailed("Clanky could not reconnect. Try again.")
+            webView.stopLoading()
+            return
+        }
+        recoveryStarted = .now
+        let remaining = recoveryRemaining
         let view = webView
         recoveryTimeout = Task { [weak self, weak view] in
             do {
-                try await Task.sleep(for: .seconds(30))
-                guard let self, let view, view === self.webView, self.recovering else { return }
+                try await Task.sleep(for: remaining)
+                guard !Task.isCancelled, let self, let view, view === self.webView,
+                      self.active, self.recovering else { return }
                 self.navigationFailed("Clanky could not reconnect. Try again.")
                 view.stopLoading()
             } catch is CancellationError {
                 return
             } catch {
-                self?.navigationFailed("Unable to wait for page recovery: \(error.localizedDescription)")
+                guard let self, let view, view === self.webView, self.recovering else { return }
+                self.navigationFailed("Unable to wait for page recovery: \(error.localizedDescription)")
             }
         }
     }
 
-    func navigationFinished() {
+    private func pauseRecovery() {
+        if let recoveryStarted {
+            recoveryRemaining = max(.zero, recoveryRemaining - recoveryStarted.duration(to: .now))
+        }
+        recoveryStarted = nil
         recoveryTimeout?.cancel()
         recoveryTimeout = nil
+    }
+
+    func navigationFinished() {
+        pauseRecovery()
         if recovering { error = nil }
         recovering = false
         needsRecovery = false
     }
 
     func navigationFailed(_ message: String) {
-        recoveryTimeout?.cancel()
-        recoveryTimeout = nil
+        pauseRecovery()
         recovering = false
         NSLog("Clanky page navigation failed: %@", message)
         error = message

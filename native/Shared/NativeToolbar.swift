@@ -107,12 +107,13 @@ final class NativeToolbar: NSObject, ObservableObject, WKScriptMessageHandlerWit
 
     private func notifyChange() {
         guard let webView, webView.url != nil, !webView.isLoading else { return }
+        let onError = onError
         webView.callAsyncJavaScript(
             "window.webappNativeToolbar?.availabilityChanged()",
             arguments: [:], in: nil, in: .page
-        ) { [weak self] result in
+        ) { result in
             if case .failure(let error) = result {
-                self?.onError?("Unable to update the native presentation: \(error.localizedDescription)")
+                onError?("Unable to update the native presentation: \(error.localizedDescription)")
             }
         }
     }
@@ -219,12 +220,13 @@ final class NativeToolbar: NSObject, ObservableObject, WKScriptMessageHandlerWit
             onError?("This toolbar action is no longer available.")
             return
         }
+        let onError = onError
         webView.callAsyncJavaScript(
             "return window.webappNativeToolbar.activate(scope, id)",
             arguments: ["scope": scope, "id": item.id], in: nil, in: .page
-        ) { [weak self] result in
+        ) { result in
             if case .failure(let error) = result {
-                self?.onError?("Unable to run the toolbar action: \(error.localizedDescription)")
+                onError?("Unable to run the toolbar action: \(error.localizedDescription)")
             }
         }
     }
