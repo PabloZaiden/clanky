@@ -93,6 +93,7 @@ struct BrowserWindow: View {
 }
 
 private struct BrowserSession: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var browser: BrowserModel
 
     init(origin: URL) {
@@ -101,9 +102,9 @@ private struct BrowserSession: View {
 
     var body: some View {
         browserContent
-        .onAppear {
-            if browser.webView.url == nil { browser.home() }
-        }
+        .onAppear { browser.setScenePhase(scenePhase) }
+        .onChange(of: scenePhase) { _, phase in browser.setScenePhase(phase) }
+        .onDisappear { browser.setScenePhase(.inactive) }
         .sheet(item: $browser.popup) { popup in
             PopupContent(webView: popup.webView)
         }
@@ -127,10 +128,13 @@ private struct BrowserSession: View {
         if #available(iOS 27.1, *) {
             NativeToolbarContent(browser: browser, toolbar: browser.nativeToolbar)
         } else {
-            WebView(browser: browser).ignoresSafeArea()
+            WebView(browser: browser)
+                .id(ObjectIdentifier(browser.webView))
+                .ignoresSafeArea()
         }
         #else
         WebView(browser: browser)
+            .id(ObjectIdentifier(browser.webView))
         #endif
     }
 }
