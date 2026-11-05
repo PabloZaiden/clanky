@@ -125,10 +125,6 @@ private struct BrowserSession: View {
             get: { browser.error != nil || app.error != nil },
             set: { if !$0 { browser.error = nil; app.error = nil } }
         )) {
-            Button("Try Again") {
-                app.allowAssetRetry()
-                browser.reload()
-            }
             Button("OK", role: .cancel) { browser.error = nil; app.error = nil }
         } message: {
             Text(browser.error ?? app.error ?? "")

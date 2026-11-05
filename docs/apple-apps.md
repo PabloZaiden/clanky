@@ -698,8 +698,8 @@ wait for foreground activation. Concurrent windows share one recovery operation.
 Startup and HTTP checks have bounded waits. Two rapid restarts exhaust automatic
 recovery; a later independent failure gets a fresh allowance after ten seconds
 without a restart, without requiring the app to be backgrounded. Exhausted
-recovery or an occupied saved port produces an explicit error; manual retry also
-resets that allowance.
+recovery or an occupied saved port shows an informational error; there is no
+manual retry. Failed local loads retry automatically on the next activation.
 This does not replay remote API operations or recover a lost authenticated
 session, and it does not provide background execution.
 
@@ -746,9 +746,9 @@ confirmed save to Files/Downloads. Platform storage/export limits still apply.
 
 There is no background execution, background transfer or offline synchronization.
 On iPhone/iPad, keep the app in the foreground for active transfers; suspension
-may interrupt connections. If WebKit terminates the main page, the shell shows
-an error; **Try Again** reloads the same WebView. There is no automatic page
-recovery or WebView replacement.
+may interrupt connections. If WebKit terminates the main page, the shell
+reloads the same WebView automatically after confirming the local server, or on
+the next activation if the app is inactive. The WebView is never replaced.
 
 ### Frontend updates on iPhone and iPad
 
