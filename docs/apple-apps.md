@@ -52,9 +52,46 @@ using the greater of the two, not their sum.
 The Xcode project requires Xcode 27.1+ and targets macOS 14+ and iOS/iPadOS 17+.
 Physical-device and Apple Silicon simulator iOS apps can also be cross-compiled
 on Linux with Swift 6.4+ and xtool 1.24.0, using an SDK prepared from Xcode 27.1.
+Apple Silicon macOS apps can use the same Linux tools and Darwin SDK.
 Build tools require Bun and the repository's dependencies; installed apps
 do not require Bun, Node, a frontend server installation or a preinstalled
 Clanky CLI.
+
+## CI builds for main and releases
+
+The [binary build workflow](../.github/workflows/binary-release.yml) also builds
+both Apple apps on main pushes and published releases, excluding the rolling
+`latest` release event. The Apple job uses GitHub's Apple Silicon `xcode-27`
+runner and selects its installed Xcode 27.1. That runner image is currently in
+preview; ordinary `macos-26` images do not provide the required iOS 27.1 SDK.
+The SDK stays on the runner: no private SDK archive, Apple login, provisioning
+profile or signing certificate is needed for this stage.
+
+The job runs `bun run build:apple:macos` and
+`bun run build:apple:ios:device`. The Mac bundle includes the standalone
+controller and shared web UI; the iOS bundle targets physical iPhones/iPads,
+not the simulator. Other CLI, server, Docker and release-publication jobs keep
+their existing behavior. The optional Linux cross-build commands below remain
+available independently of CI.
+
+Download `apple-app-macos-arm64` or `apple-app-ios-arm64` from the workflow run's
+Actions artifacts; they use the repository's artifact retention policy.
+Each contains a complete
+`Clanky-<platform>-arm64-unsigned.tar.gz`, its `.sha256` file and `build.json`
+with the exact source revision/ref, target and Xcode version. Verify and extract
+the archive without losing executable permissions:
+
+```bash
+shasum -a 256 -c Clanky-macos-arm64-unsigned.tar.gz.sha256
+tar -xzf Clanky-macos-arm64-unsigned.tar.gz
+```
+
+Use the corresponding `ios` filenames for the device app. These artifacts are
+inputs for later signing, not public release assets or installable iOS IPAs.
+The Mac build has only an ad-hoc signature, not Developer ID signing or
+notarization; the iOS build disables signing. CI does not import the existing
+CLI signing secrets into this job, notarize, publish to App Store/TestFlight,
+install apps or change the private signing host.
 
 ## Build for Mac
 
@@ -145,6 +182,82 @@ authentication and execution-host configuration described in
 [harness adapters](harnesses.md). Remote hosts retain their existing
 requirements. The app does not install agents, Git or Devbox.
 
+### Build on Linux; sign and package on a Mac
+
+With the same Swift/xtool tools and private Darwin SDK used by the
+[iOS Linux workflow](#compile-on-linux-simulate-or-sign-and-install-on-a-mac):
+
+```bash
+bun run build:apple:macos:linux
+```
+
+The output is `dist/apple/macos-linux/Clanky.app`, containing the arm64 Swift
+shell, bundled web UI, native icon and arm64 standalone controller. It targets
+macOS 14+ and Apple Silicon, not Intel or a universal app. Identity, versions,
+language mode and deployment target come from the authoritative Xcode settings.
+The installed app requires neither Bun nor a separate CLI installation.
+
+The Mac path uses `swiftc` with xtool's SDK, its explicit `ld64.lld` path and
+Apple's macOS Clang runtime. SwiftPM does not currently resolve the generated
+SDK's `macosx` platform, and selecting Swift's host linker instead of xtool's
+linker fails. Do not edit the installed SDK metadata or omit availability
+runtime checks to work around that. The xtool linker currently emits
+experimental-platform warnings for macOS; they remain visible. Successful
+compilation does not establish runtime compatibility.
+
+[`scripts/macos-app.py`](../scripts/macos-app.py), exposed as `bun run macos:app`,
+provides the artifact-only signing workflow. It requires Python 3.9+ standard
+library, the Linux build tools and the Mac's existing signing tools. Keep
+environment values in a private parameter JSON outside the checkout, using
+[`macos-app.example.json`](../scripts/macos-app.example.json) as its shape.
+Select an existing, currently usable code-signing identity; account setup,
+certificate creation and keychain permission remain explicit user/OS gates.
+This private workflow does not promise Developer ID distribution or notarization.
+
+From a clean source revision, choose a fresh direct child of the configured
+Linux `artifactDirectory` as `RUN`:
+
+```bash
+bun run macos:app requests --config "$PARAMETERS" --work "$RUN" --stage preflight
+bun run macos:app prepare --config "$PARAMETERS" --work "$RUN"
+bun run macos:app requests --config "$PARAMETERS" --work "$RUN" --stage sign
+bun run macos:app requests --config "$PARAMETERS" --work "$RUN" --stage download
+bun run macos:app verify --config "$PARAMETERS" --work "$RUN"
+```
+
+Each `requests` invocation generates an ordered `steps` array and the exact
+operations to describe before executing through the authenticated
+[native file transport](control-chats.md#what-the-agent-can-do). Complete every
+stage, including its receipt download, before proceeding. Stop on failure,
+pending confirmation or uncertain outcome; do not replay a mutation.
+`requests --stage status` generates a fresh inspection receipt after an
+interruption without repeating signing. Frozen parameters and driver bytes
+cannot change within a run.
+
+`preflight` verifies the selected Apple Silicon Mac and signing identity.
+`prepare` runs the application build, E2E and full macOS build entirely on Linux,
+then records the clean source revision, bundle/platform metadata and transfer
+digest. Only the standalone driver, private parameters, metadata and app archive
+go to the Mac, never Swift sources, a Clanky checkout or Bun dependencies.
+`sign` verifies the transferred app and signs the embedded controller before
+the outer bundle, verifies both identities and packages the complete app.
+`download` retrieves the ZIP in bounded byte ranges pinned to the signed
+archive's ETag, avoiding an unbounded Mesh read. `verify` assembles
+`Clanky-macos-arm64.zip`, checks its full digest, bundle metadata, executable
+permissions and both arm64 macOS binaries, then writes its `.sha256` file.
+No final ZIP is published locally until its complete digest and bundle pass.
+Receipts and artifacts remain in the private run
+directories; the driver does not install, launch or delete applications.
+
+Extract the complete ZIP and copy the app to the intended Mac location.
+Keep the same app identity and replace the whole bundle to preserve existing
+preferences and WebKit data; do not uninstall or modify the embedded controller
+in place. This workflow does not start the controller, change the iOS installer,
+create a download service, publish a release or implement automatic updates.
+Gatekeeper may still reject a privately signed, unnotarized download.
+`verified.json` confirms artifact delivery, not launch, UI behavior or notarization.
+Validate execution separately on a compatible Mac using isolated app data.
+
 ## iPhone and iPad development
 
 The iOS target contains only the client shell and web assets. It does not
@@ -188,6 +301,17 @@ The simulator and Mac app share the host's loopback network. Each installation
 chooses its own available asset port on first startup and keeps it afterward,
 so Mac and simulated clients can run together. Physical devices have their own
 loopback network.
+
+For an unsigned physical-device build on a Mac instead of the simulator:
+
+```bash
+bun run build:apple:ios:device
+```
+
+The output is `dist/apple/build/Build/Products/Debug-iphoneos/Clanky.app`.
+It targets arm64 iPhones/iPads and explicitly disables signing; it still needs
+the appropriate signing/provisioning and packaging before installation.
+The existing `build:apple:ios` simulator command is unchanged.
 
 ### Compile on Linux; simulate or sign and install on a Mac
 

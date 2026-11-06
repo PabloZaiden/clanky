@@ -39,6 +39,110 @@ jobs:
             echo "generate_checksums=$(bun scripts/release-metadata.ts installer-checksums)"
           } >> "$GITHUB_OUTPUT"
 
+  apple-apps:
+    name: Build Apple apps
+    needs: metadata
+    runs-on: xcode-27
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Verify Apple build tools
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" != arm64 ]]; then
+            echo "::error::Apple app builds require an Apple Silicon runner." >&2
+            exit 1
+          fi
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build macOS app and bundled controller
+        run: bun run build:apple:macos
+
+      - name: Build unsigned iOS device app
+        run: bun run build:apple:ios:device
+
+      - name: Archive Apple apps
+        run: |
+          set -euo pipefail
+          xcode_version="$(xcodebuild -version)"
+          for platform in macos ios; do
+            case "$platform" in
+              macos) product=Debug; sdk=MacOSX; executable=Contents/MacOS/Clanky; plist=Contents/Info.plist ;;
+              ios) product=Debug-iphoneos; sdk=iPhoneOS; executable=Clanky; plist=Info.plist ;;
+            esac
+            root="dist/apple/build/Build/Products/$product"
+            app="$root/Clanky.app"
+            if [[ ! -d "$app" ]]; then
+              echo "::error::Missing $platform app: $app" >&2
+              exit 1
+            fi
+            /usr/bin/lipo -verify_arch arm64 "$app/$executable"
+            actual_sdk="$(/usr/bin/plutil -extract CFBundleSupportedPlatforms.0 raw -o - "$app/$plist")"
+            if [[ "$actual_sdk" != "$sdk" ]]; then
+              echo "::error::Expected $sdk app, got $actual_sdk." >&2
+              exit 1
+            fi
+            if [[ "$platform" == macos ]]; then
+              /usr/bin/lipo -verify_arch arm64 "$app/Contents/Helpers/clanky"
+            fi
+            output="$RUNNER_TEMP/apple-apps/$platform"
+            mkdir -p "$output"
+            archive="Clanky-$platform-arm64-unsigned.tar.gz"
+            COPYFILE_DISABLE=1 tar -czf "$output/$archive" -C "$root" Clanky.app
+            (
+              cd "$output"
+              shasum -a 256 "$archive" > "$archive.sha256"
+            )
+            jq -n \
+              --arg revision "$GITHUB_SHA" \
+              --arg ref "$GITHUB_REF" \
+              --arg platform "$platform" \
+              --arg archive "$archive" \
+              --arg xcode "$xcode_version" \
+              '{sourceRevision: $revision, sourceRef: $ref, platform: $platform,
+                architecture: "arm64", configuration: "Debug", archive: $archive,
+                distributionSigned: false, notarized: false, xcode: $xcode}' \
+              > "$output/build.json"
+          done
+
+      - name: Upload macOS app build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apple-app-macos-arm64
+          path: ${{ runner.temp }}/apple-apps/macos/*
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload iOS device app build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: apple-app-ios-arm64
+          path: ${{ runner.temp }}/apple-apps/ios/*
+          if-no-files-found: error
+          compression-level: 0
+
   binaries:
     needs: metadata
     uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@b30e7af9e43cd41f8511d555e06ea60d066c4e9f
