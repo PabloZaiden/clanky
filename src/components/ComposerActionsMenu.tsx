@@ -8,7 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Button, FloatingPanel, OverflowIcon } from "@pablozaiden/webapp/web";
+import { Button, FloatingPanel } from "@pablozaiden/webapp/web";
+import { SlidersIcon } from "./common";
 
 const ComposerActionsMenuCloseContext = createContext<(() => void) | null>(null);
 
@@ -46,12 +47,13 @@ export function ComposerActionsMenu({
         disabled={disabled}
         className="wapp-action-menu-trigger wapp-action-menu-trigger-compact relative flex-shrink-0"
         aria-label={ariaLabel}
+        title={ariaLabel}
         aria-expanded={isOpen}
         aria-haspopup="true"
         aria-controls={isOpen ? menuId : undefined}
         data-testid="composer-actions-trigger"
       >
-        <OverflowIcon />
+        <SlidersIcon />
       </button>
       <ComposerActionsMenuCloseContext.Provider value={close}>
         <FloatingPanel
@@ -61,7 +63,7 @@ export function ComposerActionsMenu({
           ariaLabel={ariaLabel}
           role="group"
           id={menuId}
-          placement="top-start"
+          placement="top-end"
           // Focus the panel body rather than its first control: focusing a
           // select opens the native picker on iOS.
           focusSelector="[data-composer-actions-body]"
