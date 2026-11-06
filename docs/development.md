@@ -93,10 +93,17 @@ The optional [Apple app shell](apple-apps.md) packages the same frontend in
 Swift + WKWebView for macOS and iPhone/iPad. Use `bun run build:apple:macos`
 for a Mac `.app` including the existing standalone CLI/controller, or
 `bun run build:apple:ios` for the client-only iOS simulator app.
+`bun run build:apple:ios:device` builds the unsigned physical-device app on a Mac.
+The main/release workflow builds both Mac and iOS device apps on hosted Mac
+runners, saving app archives, checksums and source metadata as Actions artifacts;
+distribution signing and notarization are separate, deferred steps.
 `bun run build:apple:ios:linux` cross-compiles the physical-device app on Linux;
 `bun run build:apple:ios:simulator:linux` builds for Apple Silicon simulators.
-Both use Swift and xtool; simulation, signing and wireless installation can
-remain on a Mac without installing Clanky's source or dependencies there.
+`bun run build:apple:macos:linux` cross-compiles the Apple Silicon Mac app,
+including its controller; `bun run macos:app` stages private signing and packaging.
+These optional Linux builds use Swift and xtool; simulation, signing and wireless
+installation can remain on a Mac without installing Clanky's source or
+dependencies there.
 See the Apple guide for the SDK and device setup.
 
 Use the [testing guide](development/testing.md) for prerequisites, narrower

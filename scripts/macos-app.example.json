@@ -1,0 +1,9 @@
+{
+  "executionHostKind": "mesh",
+  "executionHostId": "<registered-Apple-Silicon-Mac-host-id>",
+  "artifactDirectory": "/absolute/private/linux/mac-app-artifacts",
+  "remoteDirectory": "/absolute/private/mac/mac-app-artifacts",
+  "developerDirectory": "/absolute/Xcode.app/Contents/Developer",
+  "signingIdentity": "<40-hex-existing-code-signing-identity-fingerprint>",
+  "bundleIdentifier": "com.clanky.app"
+}
