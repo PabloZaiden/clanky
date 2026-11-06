@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/25427c86-2b8b-41c0-a77f-4aad427dee93
 
 Local setup, three OpenCode chats, Code Explorer, and live Preview.
 
-https://github.com/user-attachments/assets/ae65e5db-8429-4d7e-9f40-ad4a2a2b323c
+https://github.com/user-attachments/assets/c5245a2d-0a66-4632-b437-a502e8629726
 
 ## Why Clanky
 
