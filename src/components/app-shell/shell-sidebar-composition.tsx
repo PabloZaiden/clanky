@@ -44,7 +44,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
     selectedChatActions: handlers.selectedChatActions,
     openHarnessActivity: handlers.openHarnessActivity,
     navigateWithinShell: handlers.navigateWithinShell,
-    markChatDone: handlers.markChatDone,
+    getChatLifecycleActions: handlers.getChatLifecycleActions,
     toggleChatPrivate: handlers.toggleChatPrivate,
     showPrivateItems: handlers.showPrivateItems,
   };
@@ -144,6 +144,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
         ? actions?.filter((action) => action.id !== "new-chat")
         : actions,
       contextActions: readOnly ? contextActions?.filter(isReadOnlyWorkspaceAction) : contextActions,
+      swipeActions: readOnly ? node.swipeActions?.filter(isReadOnlyWorkspaceAction) : node.swipeActions,
       ...(readOnly ? {
         action: undefined,
       } : {}),
