@@ -93,6 +93,8 @@ export function useShellActions({
   githubUsername,
   quickChatWorkspace,
 }: UseShellActionsOptions) {
+  const routeRef = useRef(route);
+  routeRef.current = route;
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -186,9 +188,6 @@ export function useShellActions({
     }
     return updated;
   }, [markChatDone, toast]);
-  const handleSidebarMarkChatDone = useCallback(async (chat: Chat): Promise<void> => {
-    await handleMarkChatDone(chat);
-  }, [handleMarkChatDone]);
   const createChatInCurrentDirectory = useCallback(async (
     sourceChat: Chat,
     directory: string,
@@ -237,7 +236,9 @@ export function useShellActions({
     onChatRenamed: () => refreshChats(),
     onChatDone: handleMarkChatDone,
     onDeleteChat: deleteChat,
-    onChatDeleted: () => navigateWithinShell({ view: "home" }),
+    onChatDeleted: (target) => {
+      if (routeRef.current["chatId"] === target.config.id) navigateWithinShell({ view: "home" });
+    },
     onActionError: (message) => toast.error(message),
   });
   const selectedChatActions = useMemo(() => chatActions.items, [chatActions.items]);
@@ -314,7 +315,7 @@ export function useShellActions({
     archivingWorkspaceIds,
     pullLatestWorkspaceChanges,
     toggleWorkspaceArchived,
-    handleSidebarMarkChatDone,
+    getChatLifecycleActions: chatActions.getLifecycleActions,
     toggleTaskPrivate,
     toggleChatPrivate,
     toggleAgentPrivate,

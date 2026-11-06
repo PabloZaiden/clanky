@@ -36,7 +36,7 @@ export interface ShellSidebarActionHandlers {
   onError: (message: string) => void;
   toggleTaskPrivate: (task: Task) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
-  markChatDone: (chat: Chat) => void | Promise<void>;
+  getChatLifecycleActions: (chat: Chat) => ActionMenuItem[];
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
   toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
   stopSidebarTask: (task: Task) => void | Promise<void>;
