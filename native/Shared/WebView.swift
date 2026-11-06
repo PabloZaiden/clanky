@@ -192,7 +192,8 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
               origin.protocol == browser.origin.scheme, origin.host == browser.origin.host,
               origin.port == browser.origin.port,
               let path = message.frameInfo.request.url?.path,
-              path.hasPrefix("/api/") || path.hasPrefix("/local/"),
+              path == "/api" || path.hasPrefix("/api/") ||
+                path == "/local" || path.hasPrefix("/local/"),
               let body = message.body as? [String: Any],
               let value = body["url"] as? String, let url = URL(string: value),
               let host = url.host, url.user == nil, url.password == nil, url.fragment == nil,

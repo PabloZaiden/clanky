@@ -733,9 +733,11 @@ External top-level links open in the system browser. File selection uses WebKit'
 native picker; downloads use the Mac save panel or iPhone/iPad export sheet.
 API resource downloads use the framework's explicit native-save handoff after
 the existing selected-server validation and ticket acquisition. The native host
-checks the calling local frontend document and allows HTTPS destinations or loopback
-HTTP without receiving API bearer credentials. Acceptance starts WebKit's
-download flow; it does not mean that a file has already been saved.
+checks the calling main-frame API or Mac local-controller frontend document,
+including its directory root, against the saved local origin. It allows HTTPS
+destinations or loopback HTTP without receiving API bearer credentials.
+Acceptance starts WebKit's download flow; it does not mean that a file has
+already been saved.
 Content popups such as **Open image in a new tab** appear in a closable in-app
 sheet. Authorization popups still hand their external URL to the system browser
 and dismiss the temporary sheet.
