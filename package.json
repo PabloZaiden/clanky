@@ -36,7 +36,7 @@
     "@modelcontextprotocol/server": "2.4.0",
     "@monaco-editor/react": "4.7.0",
     "@noble/hashes": "2.4.0",
-    "@opencode/client": "2.1.4",
+    "@opencode/client": "2.2.5",
     "@pablozaiden/installer": "github:PabloZaiden/installer#b30e7af9e43cd41f8511d555e06ea60d066c4e9f",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#a1e72d2f408cfc343b34a0d37c7bb09e64eab9d1",
     "@peculiar/x509": "2.2.0",
