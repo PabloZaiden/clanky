@@ -4,7 +4,6 @@ import type {
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { Chat } from "@/shared";
-import { isChatBusyStatus, isStandaloneChat } from "@/shared/chat";
 import type { PrivateEntity } from "../../lib/private-items";
 import {
   getPrivateHidden,
@@ -22,7 +21,7 @@ export interface ChatSidebarContext {
   selectedChatActions: ActionMenuItem[];
   navigateWithinShell: (route: WebAppRoute) => void;
   openHarnessActivity: (route: WebAppRoute) => void;
-  markChatDone: (chat: Chat) => void | Promise<void>;
+  getChatLifecycleActions: (chat: Chat) => ActionMenuItem[];
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
   showPrivateItems: boolean;
 }
@@ -44,14 +43,6 @@ export function getChatSidebarActions(
   context: ChatSidebarContext,
 ): ActionMenuItem[] {
   const chatId = chat.config.id;
-  const markDoneAction = !isStandaloneChat(chat) || chat.state.status === "done"
-    ? []
-    : [{
-        id: "mark-done",
-        label: "Mark as Done",
-        disabled: isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting",
-        onClick: () => void context.markChatDone(chat),
-      }];
   const baseActions = context.route.view === "chat" && context.selectedChat?.config.id === chatId
     ? context.selectedChatActions
     : sidebarActionItems([
@@ -64,8 +55,7 @@ export function getChatSidebarActions(
             chatId,
           }),
         },
-        ...markDoneAction,
-      ]);
+      ]).concat(context.getChatLifecycleActions(chat));
   return withPrivateToggleAction(
     [...harnessActivityActions({
       route: { view: "chat", chatId },
@@ -105,6 +95,7 @@ export function createChatSidebarNode(
     render,
     route: { view: "chat", chatId: chatNode.chat.config.id },
     actions,
+    swipeActions: privateHidden ? undefined : context.getChatLifecycleActions(chatNode.chat),
     pinnable: true,
     pinId: pinId ?? `${idPrefix}:${chatNode.chat.config.id}`,
   }, privateHidden, privateActions(actions, privateHidden, chatNode.chat.config.isPrivate === true));

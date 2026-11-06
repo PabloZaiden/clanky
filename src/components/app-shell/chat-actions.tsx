@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { ConfirmModal, Modal, getWebAppClientMode, useToast, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
@@ -15,13 +15,11 @@ interface ChatActionItemOptions {
   chat: Chat;
   hasCodeExplorerAction: boolean;
   sameDirectoryChatPending: boolean;
-  markDonePending: boolean;
+  lifecycleActions: ActionMenuItem[];
   onCreateSameDirectoryChat: () => void;
   onOpenCodeExplorer: () => void;
   onTranscript: () => void;
   onRename: () => void;
-  onMarkDone: () => void;
-  onDelete: () => void;
 }
 
 interface UseChatActionsOptions {
@@ -38,6 +36,7 @@ interface UseChatActionsOptions {
 
 interface ChatActionsController {
   items: ActionMenuItem[];
+  getLifecycleActions: (chat: Chat) => ActionMenuItem[];
   modals: ReactNode;
   isDeletePending: boolean;
 }
@@ -50,15 +49,12 @@ function buildChatActionItems({
   chat,
   hasCodeExplorerAction,
   sameDirectoryChatPending,
-  markDonePending,
+  lifecycleActions,
   onCreateSameDirectoryChat,
   onOpenCodeExplorer,
   onTranscript,
   onRename,
-  onMarkDone,
-  onDelete,
 }: ChatActionItemOptions): ActionMenuItem[] {
-  const isActive = isChatBusyStatus(chat.state.status) || chat.state.status === "reconnecting";
   const hasMessages = chat.state.hasMessages ?? chat.state.messages.length > 0;
   const hasTranscript = chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0);
   const canCreateSameDirectoryChat = Boolean(getCurrentChatDirectory(chat));
@@ -87,18 +83,7 @@ function buildChatActionItems({
       onAction: onTranscript,
       disabled: !hasTranscript,
     },
-    ...(isStandaloneChat(chat) && chat.state.status !== "done" ? [{
-      id: "mark-done",
-      label: markDonePending ? "Marking as Done..." : "Mark as Done",
-      onAction: onMarkDone,
-      disabled: isActive || markDonePending,
-    }] : []),
-    {
-      id: "delete",
-      label: "Delete",
-      onAction: onDelete,
-      destructive: true,
-    },
+    ...lifecycleActions,
   ];
 }
 
@@ -120,6 +105,8 @@ export function useChatActions({
   const [transcriptTarget, setTranscriptTarget] = useState<Chat | null>(null);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isMarkDonePending, setIsMarkDonePending] = useState(false);
+  const deletePendingRef = useRef(false);
+  const markDonePendingRef = useRef(false);
   const [isSameDirectoryChatPending, setIsSameDirectoryChatPending] = useState(false);
   const [isTranscriptPending, setIsTranscriptPending] = useState(false);
 
@@ -167,11 +154,12 @@ export function useChatActions({
   }
 
   async function confirmDeleteChat(): Promise<void> {
-    if (!deleteTarget || isDeletePending) {
+    if (!deleteTarget || deletePendingRef.current) {
       return;
     }
 
     const target = deleteTarget;
+    deletePendingRef.current = true;
     setIsDeletePending(true);
     try {
       const deleted = await onDeleteChat(target.config.id);
@@ -184,15 +172,18 @@ export function useChatActions({
     } catch (error) {
       onActionError(getErrorMessage(error));
     } finally {
+      deletePendingRef.current = false;
       setIsDeletePending(false);
     }
   }
 
-  async function markChatDone(target: Chat): Promise<void> {
-    if (isMarkDonePending || target.state.status === "done" || !isStandaloneChat(target)) {
+  const markChatDone = useCallback(async (target: Chat): Promise<void> => {
+    if (markDonePendingRef.current || target.state.status === "done" || !isStandaloneChat(target)
+      || isChatBusyStatus(target.state.status) || target.state.status === "reconnecting") {
       return;
     }
 
+    markDonePendingRef.current = true;
     setIsMarkDonePending(true);
     try {
       const updated = await onChatDone?.(target);
@@ -202,9 +193,28 @@ export function useChatActions({
     } catch (error) {
       onActionError(getErrorMessage(error));
     } finally {
+      markDonePendingRef.current = false;
       setIsMarkDonePending(false);
     }
-  }
+  }, [onChatDone, onActionError]);
+
+  const getLifecycleActions = useCallback((target: Chat): ActionMenuItem[] => [
+    ...(isStandaloneChat(target) && target.state.status !== "done" ? [{
+      id: "mark-done",
+      label: isMarkDonePending ? "Marking as Done..." : "Mark as Done",
+      onAction: () => void markChatDone(target),
+      disabled: isChatBusyStatus(target.state.status) || target.state.status === "reconnecting" || isMarkDonePending,
+    }] : []),
+    {
+      id: "delete",
+      label: "Delete",
+      onAction: () => {
+        if (!deletePendingRef.current) setDeleteTarget(target);
+      },
+      disabled: isDeletePending,
+      destructive: true,
+    },
+  ], [isMarkDonePending, isDeletePending, markChatDone]);
 
   async function createChatInCurrentDirectory(target: Chat): Promise<void> {
     if (isSameDirectoryChatPending) {
@@ -236,19 +246,17 @@ export function useChatActions({
       chat,
       hasCodeExplorerAction,
       sameDirectoryChatPending: isSameDirectoryChatPending,
-      markDonePending: isMarkDonePending,
+      lifecycleActions: getLifecycleActions(chat),
       onCreateSameDirectoryChat: () => void createChatInCurrentDirectory(chat),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat),
       onTranscript: () => setTranscriptTarget(chat),
       onRename: () => setRenameTarget(chat),
-      onMarkDone: () => void markChatDone(chat),
-      onDelete: () => setDeleteTarget(chat),
     });
   }, [
     chat,
     hasCodeExplorerAction,
     isSameDirectoryChatPending,
-    isMarkDonePending,
+    getLifecycleActions,
     onCreateChatInCurrentDirectory,
     onActionError,
     onChatDeleted,
@@ -266,7 +274,9 @@ export function useChatActions({
       />
       <ConfirmModal
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        onClose={() => {
+          if (!deletePendingRef.current) setDeleteTarget(null);
+        }}
         onConfirm={() => void confirmDeleteChat()}
         title="Delete chat?"
         message={deleteTarget && isStandaloneChat(deleteTarget)
@@ -308,5 +318,5 @@ export function useChatActions({
     </>
   );
 
-  return { items, modals, isDeletePending };
+  return { items, getLifecycleActions, modals, isDeletePending };
 }

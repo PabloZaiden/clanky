@@ -76,6 +76,16 @@ Do not add Clanky shell/header menus or hide a single fitting action behind
 ellipsis. Use framework dialogs and menus; they own Enter/Escape behavior,
 red/last destructive items, and compact status-dot sidebar badges.
 
+Chat sidebar entries also expose **Mark as Done** and **Delete** through
+framework `swipeActions`. Drag left to reveal the actions without selecting the
+chat or closing the mobile drawer. Active, workspace, execution-host, and pinned
+entries use the same target-aware lifecycle actions as the chat menu. Mark as
+Done remains unavailable for busy/reconnecting or nonstandalone chats and is
+absent after completion. Delete keeps the existing confirmation and Trash
+behavior; deleting another chat does not leave the current conversation.
+Obscured private entries and read-only workspaces expose no lifecycle swipe
+actions. Keep gesture mechanics in Webapp, not Clanky renderers or CSS.
+
 Declare primary header actions through semantic `HeaderPrimaryAction`
 descriptors. The framework moves them first into overflow on narrow screens
 while preserving native form validation/submission. Do not duplicate or clip
