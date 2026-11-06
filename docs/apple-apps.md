@@ -210,6 +210,9 @@ provides the artifact-only signing workflow. It requires Python 3.9+ standard
 library, the Linux build tools and the Mac's existing signing tools. Keep
 environment values in a private parameter JSON outside the checkout, using
 [`macos-app.example.json`](../scripts/macos-app.example.json) as its shape.
+All configured paths must be absolute and traversal-free; symlink checks run
+only on their owning host. The artifact directory belongs to Linux; the remote
+artifact directory and Xcode directory belong to the Mac.
 Select an existing, currently usable code-signing identity; account setup,
 certificate creation and keychain permission remain explicit user/OS gates.
 This private workflow does not promise Developer ID distribution or notarization.

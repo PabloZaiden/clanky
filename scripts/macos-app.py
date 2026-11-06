@@ -62,11 +62,12 @@ def write_json(path, value):
         target.write("\n")
 
 
-def absolute(value):
+def absolute(value, local=True):
     require(isinstance(value, str) and Path(value).is_absolute(), "Expected an absolute path")
     path = Path(value)
     require(".." not in path.parts and len(path.parts) > 2, "Unsafe artifact path")
-    require(not any(item.is_symlink() for item in [path, *path.parents]), "Symlink in artifact path")
+    if local:
+        require(not any(item.is_symlink() for item in [path, *path.parents]), "Symlink in artifact path")
     return path
 
 
@@ -75,7 +76,8 @@ def config_at(path):
     require(isinstance(config, dict) and set(config) == PARAMETERS, "Unexpected configuration fields")
     require(all(isinstance(value, str) and value.strip() for value in config.values()), "Missing parameter")
     for key in ["artifactDirectory", "remoteDirectory", "developerDirectory"]:
-        absolute(config[key])
+        host = "linux" if key == "artifactDirectory" else "darwin"
+        absolute(config[key], local=sys.platform == host)
     require(config["executionHostKind"] in ["local", "mesh"], "Invalid executionHostKind")
     require(re.fullmatch(r"[0-9A-Fa-f]{40}", config["signingIdentity"]), "Invalid signingIdentity")
     require(re.fullmatch(r"[A-Za-z0-9.-]+", config["bundleIdentifier"]), "Invalid bundleIdentifier")
