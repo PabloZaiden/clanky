@@ -564,3 +564,25 @@ export function SidebarIcon({ className = "", size = "h-4 w-4" }: IconProps) {
     </svg>
   );
 }
+
+export function SlidersIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 6h5m4 0h9M3 12h9m4 0h5M3 18h3m4 0h11"
+      />
+      <circle cx="10" cy="6" r="2" />
+      <circle cx="14" cy="12" r="2" />
+      <circle cx="8" cy="18" r="2" />
+    </svg>
+  );
+}

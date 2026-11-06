@@ -168,8 +168,22 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 </div>
               )}
               <div className="flex min-w-0 items-end gap-2 sm:gap-3">
+                <textarea
+                  ref={(node) => {
+                    composerTextareaRef.current = node;
+                    composerRef(node);
+                  }}
+                  id={messageInputId}
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  onPaste={handlePaste}
+                  disabled={controlsDisabled}
+                  rows={composerRows}
+                  className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
+                />
                 <ComposerActionsMenu
-                  ariaLabel="Message actions"
+                  ariaLabel="Conversation options"
                   disabled={controlsDisabled}
                 >
                   {props.tokenUsage !== undefined && (
@@ -238,20 +252,6 @@ export function ConversationComposer(props: ConversationComposerProps) {
                     />
                   </ComposerActionsMenuSection>
                 </ComposerActionsMenu>
-                <textarea
-                  ref={(node) => {
-                    composerTextareaRef.current = node;
-                    composerRef(node);
-                  }}
-                  id={messageInputId}
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  onKeyDown={handleComposerKeyDown}
-                  onPaste={handlePaste}
-                  disabled={controlsDisabled}
-                  rows={composerRows}
-                  className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
-                />
                 {active && !hasContent && props.onInterrupt ? (
                   <ComposerInterruptButton
                     onClick={() => void handleInterrupt()}

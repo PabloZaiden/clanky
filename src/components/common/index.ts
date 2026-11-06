@@ -53,6 +53,7 @@ export {
   SaveIcon,
   ServerIcon,
   SidebarIcon,
+  SlidersIcon,
   WrapTextIcon,
   type IconProps,
 } from "./Icons";

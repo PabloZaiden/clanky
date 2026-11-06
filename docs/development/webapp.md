@@ -160,6 +160,11 @@ execution-host/file context, not controller-local path guesses.
 Steer is a text-style action below queued input. Admission, native delivery,
 and model obedience remain separate concepts.
 
+Chat and task composers place the conversation-options control between the
+message textbox and the send/queue/interrupt button. Its sliders icon
+distinguishes conversation controls and information from sidebar navigation;
+the options panel opens above it, aligned to the right.
+
 Transcript images load when their entries enter the visible conversation;
 non-image files load only when downloaded. Keep attachment bytes out of
 snapshot/history/live-message projections and defer
