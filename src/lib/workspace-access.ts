@@ -27,7 +27,7 @@ export function isReadOnlyWorkspaceRoute(route: WebAppRoute, resources: Workspac
 }
 
 const READ_ONLY_ACTIONS = new Set([
-  "open-code-explorer", "open-scratchpad", "open-github", "open-pull-request",
+  "open-code-explorer", "open-pull-request",
   "export-agent", "harness-activity", "chat-harness-activity",
 ]);
 

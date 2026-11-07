@@ -76,13 +76,6 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
   };
   const workspaceContext = {
     navigateWithinShell: handlers.navigateWithinShell,
-    onError: handlers.onError,
-    toggleWorkspacePrivate: handlers.toggleWorkspacePrivate,
-    startAgentImport: handlers.startAgentImport,
-    pullLatestWorkspaceChanges: handlers.pullLatestWorkspaceChanges,
-    pullingLatestWorkspaceIds: handlers.pullingLatestWorkspaceIds,
-    toggleWorkspaceArchived: handlers.toggleWorkspaceArchived,
-    archivingWorkspaceIds: handlers.archivingWorkspaceIds,
     showPrivateItems: handlers.showPrivateItems,
   };
   const contexts: SidebarDomainBuilderContexts = {

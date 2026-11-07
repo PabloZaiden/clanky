@@ -38,20 +38,14 @@ export interface ShellSidebarActionHandlers {
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
   getChatLifecycleActions: (chat: Chat) => ActionMenuItem[];
   toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
-  toggleWorkspacePrivate: (workspace: Workspace) => void | Promise<void>;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
   openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
-  pullLatestWorkspaceChanges: (workspaceId: string) => void | Promise<void>;
-  pullingLatestWorkspaceIds: ReadonlySet<string>;
-  toggleWorkspaceArchived: (workspace: Workspace) => void | Promise<void>;
-  archivingWorkspaceIds: ReadonlySet<string>;
   setEditingAgentId: (agentId: string) => void;
   setDeleteAgentTarget: (agent: Agent) => void;
   setPurgeAgentTarget: (agent: Agent) => void;
   exportAgent: (agent: Agent) => void | Promise<void>;
-  startAgentImport: (workspaceId: string) => void;
   agents: Pick<UseAgentsResult, "pauseAgent" | "resumeAgent" | "interruptAgent" | "runAgent">;
   showPrivateItems: boolean;
 }

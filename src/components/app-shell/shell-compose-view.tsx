@@ -42,6 +42,7 @@ interface ComposeViewProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  startAgentImport: (workspaceId: string) => void;
   dashboardData: UseDashboardDataResult;
   agents: UseAgentsResult;
   workspaces: Workspace[];
@@ -118,6 +119,7 @@ export function ComposeView(props: ComposeViewProps) {
         defaultBranch={dashboardData.defaultBranch}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onCreateAgent={agents.createAgent}
+        onImportAgent={props.startAgentImport}
         onPrepareGenerateAgentCode={agents.prepareGenerateAgentCode}
         onGenerateAgentCode={agents.generateAgentCode}
         onTestAgentCode={agents.testAgentCode}

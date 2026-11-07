@@ -83,7 +83,7 @@ export function WorkspaceSettingsForm({
       setValidationError("Enter a workspace name.");
       return;
     }
-    if (model.settingsDirty && !model.runtimeValid) {
+    if (model.runtimeDirty && !model.runtimeValid) {
       setCategory("execution");
       setValidationError("Select an available execution host and supported runtime.");
       return;
@@ -96,10 +96,17 @@ export function WorkspaceSettingsForm({
     setSubmitting(true);
     try {
       if (model.settingsDirty) {
-        const success = await onSave(
-          submitted.name.trim(), submitted.settings, submitted.executionHost,
-          submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
-        );
+        const success = await onSave({
+          name: submitted.name.trim(),
+          archived: submitted.archived,
+          allowClankyContext: submitted.allowClankyContext,
+          allowWorktrees: submitted.allowWorktrees,
+          isPrivate: submitted.isPrivate,
+          ...(model.runtimeDirty ? {
+            serverSettings: submitted.settings,
+            ...(submitted.executionHost ? { executionHost: submitted.executionHost } : {}),
+          } : {}),
+        });
         if (!success) return;
         model.markSaved(submitted);
       }
@@ -129,7 +136,7 @@ export function WorkspaceSettingsForm({
       {validationError ? <ErrorState title="Check workspace settings" description={validationError} /> : null}
       {iconError ? <ErrorState title="Workspace icon update failed" description={iconError} /> : null}
       {refreshError ? <ErrorState title="Workspace icon saved" description={refreshError} /> : null}
-      <form id={formId} noValidate={!model.settingsDirty}
+      <form id={formId} noValidate={!model.runtimeDirty}
         onSubmit={(event) => void handleSubmit(event)} onInvalidCapture={showInvalidField}>
         <fieldset disabled={busy} className="min-w-0">
           <div hidden={category !== "general"} data-workspace-settings-category="general">

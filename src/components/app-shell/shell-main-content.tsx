@@ -117,6 +117,9 @@ export interface ShellMainContentProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  startAgentImport: (workspaceId: string) => void;
+  pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
+  pullingLatestWorkspaceIds: ReadonlySet<string>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -658,6 +661,9 @@ function renderMainContent(props: ShellMainContentProps) {
         agentsLoading={agents.loading}
         agentsError={agents.error}
         onNavigate={navigateWithinShell}
+        onPullLatestChanges={() => props.pullLatestWorkspaceChanges(selectedWorkspace.id)}
+        pullingLatestChanges={props.pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
+        onError={props.toast.error}
         showPrivateItems={showPrivateItems}
       />
     );
@@ -889,6 +895,7 @@ function renderMainContent(props: ShellMainContentProps) {
         setComposeActionState={props.setComposeActionState}
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
+        startAgentImport={props.startAgentImport}
         dashboardData={dashboardData}
         agents={agents}
         workspaces={workspaces.filter((workspace) => workspace.access !== "read")}

@@ -95,6 +95,14 @@ The workspace overview promotes **New Chat** to a primary header action when
 space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.
 
+Workspace menus group creation actions as **New Task** (Git workspaces only),
+**New Terminal**, **New Chat**, and **New Agent**. **Import Agent** belongs to
+the New Agent page and imports into its selected workspace. File-opening
+actions use the label **Code Explorer**. Scratchpad opens from its overview
+heading, not the workspace menu. Git-backed workspace overviews expose
+**Pull Latest Changes** and **Open in GitHub** as page buttons; pulling retains
+its busy state and requires work access.
+
 In the sidebar's **Workspaces** tab, each workspace directly lists chats,
 Git-backed tasks, and terminals together, including completed chats and
 historical tasks. **Agents** is a peer section containing agents from all
@@ -205,6 +213,11 @@ saving/saved/error status. Voice saves its settings together and validates each
 saved capability separately.
 
 Workspace Settings keeps one draft across General, Execution, and Maintenance.
+Workspace archiving and privacy are controlled only by the **Archived** and
+**Private** fields in General and are persisted with the same explicit Save.
+Metadata-only saves remain available when the configured execution runtime is
+unavailable. Validate execution only when its draft changes, and omit unchanged
+runtime fields from metadata updates.
 Save stays on the page; navigation uses the framework unsaved-change dialog.
 Native validation opens the invalid field's category before focus. Independent
 icon actions must not reset unrelated edits; keep the draft locked through
