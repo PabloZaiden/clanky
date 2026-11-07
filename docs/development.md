@@ -99,6 +99,9 @@ runners, saving app archives, checksums and source metadata as Actions artifacts
 and attaching versioned copies to the rolling `latest` and published versioned
 releases after the CLI publisher succeeds. Distribution signing and notarization
 are separate, deferred steps.
+Native Apple builds use Debug for main and Release for published versioned
+releases; manual native commands default to Debug and accept
+`--configuration Release`.
 The four Linux/macOS CLI binaries also compile on that Mac runner image using
 their existing Bun targets; main and versioned releases share this arrangement.
 `bun run build:apple:ios:linux` cross-compiles the physical-device app on Linux;
