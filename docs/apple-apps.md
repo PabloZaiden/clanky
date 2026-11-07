@@ -86,11 +86,24 @@ shasum -a 256 -c Clanky-macos-arm64-unsigned.tar.gz.sha256
 tar -xzf Clanky-macos-arm64-unsigned.tar.gz
 ```
 
-Use the corresponding `ios` filenames for the device app. These artifacts are
-inputs for later signing, not public release assets or installable iOS IPAs.
+Use the corresponding `ios` filenames for the device app. Once both Apple and
+CLI builds succeed, the same app archives are also attached to the rolling
+[`latest` prerelease](https://github.com/pablozaiden/clanky/releases/tag/latest)
+for main pushes and to the exact versioned release for published-release events.
+Each platform has three assets: `Clanky-v<version>-<platform>-arm64-unsigned.tar.gz`,
+its `.sha256` file and `Clanky-v<version>-<platform>-arm64-build.json`.
+Download the matching archive and checksum together and verify with
+`shasum -a 256 -c <archive>.sha256` before extraction. Metadata identifies the
+source revision, release version and archive filename. Main uses the CLI
+publisher's exact build version and skips superseded source commits; publication
+shares its lock so rolling cleanup preserves the current Apple assets.
+Existing Actions artifacts keep their original names. Historical releases are
+not backfilled.
+
+These bundles are inputs for later signing, not installable iOS IPAs.
 The Mac build has only an ad-hoc signature, not Developer ID signing or
 notarization; the iOS build disables signing. CI does not import the existing
-CLI signing secrets into this job, notarize, publish to App Store/TestFlight,
+CLI signing secrets into the Apple jobs, notarize, publish to App Store/TestFlight,
 install apps or change the private signing host.
 
 ## Build for Mac

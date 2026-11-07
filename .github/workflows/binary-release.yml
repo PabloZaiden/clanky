@@ -158,3 +158,106 @@ jobs:
       targets: ${{ needs.metadata.outputs.targets }}
       binaries: ${{ needs.metadata.outputs.binaries }}
       generate_checksums: ${{ needs.metadata.outputs.generate_checksums == 'true' }}
+
+  publish-apple-apps:
+    name: Publish Apple app assets
+    needs: [apple-apps, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: binary-release-${{ github.repository }}-${{ github.event_name == 'push' && 'latest' || 'stable' }}
+      cancel-in-progress: false
+      queue: max
+
+    steps:
+      - name: Download macOS app build
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: apple-app-macos-arm64
+          path: ${{ runner.temp }}/apple-release-inputs/macos
+
+      - name: Download iOS device app build
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: apple-app-ios-arm64
+          path: ${{ runner.temp }}/apple-release-inputs/ios
+
+      - name: Validate and publish Apple app assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && 'latest' || github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/apple-release-assets"
+          mkdir -p "$output"
+
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            default_branch="$(gh api "repos/$GH_REPO" --jq '.default_branch')"
+            head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
+            if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+              echo "::notice::Skipping superseded Apple main build $GITHUB_SHA."
+              exit 0
+            fi
+            gh release download latest --pattern release.json --dir "$output" --repo "$GH_REPO"
+            if ! version="$(jq -er --arg revision "$GITHUB_SHA" '
+              select(.schemaVersion == 1 and .channel == "latest" and .revision == $revision)
+              | .version | select(type == "string")
+            ' "$output/release.json")"; then
+              echo "::error::Published latest manifest does not match this source revision." >&2
+              exit 1
+            fi
+          else
+            version="${RELEASE_TAG#v}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid Apple release version: $version." >&2
+            exit 1
+          fi
+
+          assets=()
+          for platform in macos ios; do
+            input="$RUNNER_TEMP/apple-release-inputs/$platform"
+            archive="Clanky-$platform-arm64-unsigned.tar.gz"
+            if ! jq -e --arg revision "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
+              --arg platform "$platform" --arg archive "$archive" '
+              .sourceRevision == $revision and .sourceRef == $ref
+              and .platform == $platform and .architecture == "arm64"
+              and .configuration == "Debug" and .archive == $archive
+              and .distributionSigned == false and .notarized == false
+              and (.xcode | type == "string" and length > 0)
+            ' "$input/build.json" > /dev/null; then
+              echo "::error::Invalid $platform app metadata for $GITHUB_SHA." >&2
+              exit 1
+            fi
+            if ! (
+              cd "$input"
+              sha256sum "$archive" | diff - "$archive.sha256"
+            ); then
+              echo "::error::Invalid $platform app archive checksum." >&2
+              exit 1
+            fi
+
+            name="Clanky-v$version-$platform-arm64-unsigned.tar.gz"
+            metadata="Clanky-v$version-$platform-arm64-build.json"
+            cp "$input/$archive" "$output/$name"
+            (
+              cd "$output"
+              sha256sum "$name" > "$name.sha256"
+            )
+            jq --arg version "$version" --arg archive "$name" \
+              '. + {version: $version, archive: $archive}' "$input/build.json" \
+              > "$output/$metadata"
+            assets+=("$output/$name" "$output/$name.sha256" "$output/$metadata")
+          done
+
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
+            if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+              echo "::notice::Skipping superseded Apple main build $GITHUB_SHA."
+              exit 0
+            fi
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GH_REPO"
