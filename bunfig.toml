@@ -1,5 +1,6 @@
 [install]
 exact = true
+linker = "isolated"
 minimumReleaseAge = 259200 # 3 days in seconds — avoids freshly published malicious packages
 # Keep this minimal: only first-party packages that Clanky intentionally upgrades before
 # the global safety window elapses should bypass minimumReleaseAge.

@@ -99,6 +99,8 @@ runners, saving app archives, checksums and source metadata as Actions artifacts
 and attaching versioned copies to the rolling `latest` and published versioned
 releases after the CLI publisher succeeds. Distribution signing and notarization
 are separate, deferred steps.
+Release artifact downloads fail on a digest mismatch instead of publishing
+unverified assets.
 Native Apple builds use Debug for main and Release for published versioned
 releases; manual native commands default to Debug and accept
 `--configuration Release`.
@@ -124,6 +126,13 @@ together. Bun normally enforces the three-day minimum release age in
 `bunfig.toml`. An explicitly approved update to freshly published stable
 versions can use `--minimum-release-age 0` for that command only; keep the
 repository safeguard unchanged.
+
+Clanky uses Bun's isolated linker to share one instance of each dependency
+version, including stateful ASN.1 schema registries. Keep directly imported
+packages and required peers explicit rather than relying on hoisting.
+Keep Clanky's X509 major aligned with SimpleWebAuthn's supported major:
+different X509 majors register algorithms in the same process-global container
+and cannot safely coexist. Do not force an unsupported transitive major.
 
 Check GitHub-hosted packages against their latest stable release tags
 separately. Keep CI actions pinned to the corresponding release commit SHAs
