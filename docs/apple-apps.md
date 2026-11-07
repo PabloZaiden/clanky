@@ -733,6 +733,10 @@ compares its bytes, bundle metadata, manifest and installer link.
 `verified.json` contains the installation URL, not a claim that the phone
 installed it. Open that URL in Safari on the private network/VPN and install
 over the existing app without uninstalling or clearing its data.
+For ordinary private Ad Hoc deployment, finish with the configured installation
+page serving the verified build and return that page's URL. Signing alone or
+leaving a loose IPA is not a completed deployment. Stop at an unpublished
+signed artifact only when explicitly requested.
 
 ### Explicit installer administration
 
@@ -764,6 +768,46 @@ Run directories retain parameter snapshots and JSON receipts for inspection.
 Cleanup removes only known temporary build/sign/download files, never the run
 root, published releases, rollback data, CA or signing material. No part of this
 workflow depends on another chat's session directory or one-off scripts.
+
+### Deploy an existing CI build
+
+The unsigned `apple-app-ios-arm64` Actions artifact can replace local compilation.
+Download it into a private directory outside the checkout and select its exact
+expected source revision. After completing the ordinary `preflight` requests,
+prepare the downloaded artifact instead of rebuilding:
+
+```bash
+bun run ios:ota prepare --config "$PARAMETERS" --work "$RUN" \
+  --ci-artifact "$CI_ARTIFACT_DIRECTORY" --source-revision "$EXPECTED_REVISION"
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage sign
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage publish
+bun run ios:ota verify --config "$PARAMETERS" --work "$RUN"
+```
+
+Complete each generated request stage before continuing. Preparation verifies
+the CI source/target metadata, archive checksum and device bundle identity,
+retains the original provenance, and increments the native distribution build
+number using the existing publication baseline. It does not compile application
+sources. The signing stage still verifies the physical-device executable,
+provisioning profile, certificate and final signature on the Mac.
+If preflight reports `needsSetup`, obtain approval for the existing `setup`
+stage and complete it before publication. Updating the installer driver restarts
+only that service and retains its pinned trust root and previous release.
+
+When an unpublished signed IPA is explicitly requested, replace publication
+and trusted installer verification with:
+
+```bash
+bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage download
+bun run ios:ota verify --config "$PARAMETERS" --work "$RUN" --signed-only
+```
+
+`download` retrieves the signed IPA without publishing it. `--signed-only`
+checks its complete bytes and bundle metadata against the signing receipt and
+writes `verified-signed.json` with its private path. This leaves the existing
+installer and devices unchanged; ordinary publication remains a confirmed
+stage. Retain unpublished signing runs for subsequent deployment;
+the publication-only cleanup gates remain unchanged.
 
 ## Connections and web behavior
 
