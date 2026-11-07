@@ -99,6 +99,7 @@ export function WorkspaceSettingsForm({
         const success = await onSave(
           submitted.name.trim(), submitted.settings, submitted.executionHost,
           submitted.archived, submitted.allowClankyContext, submitted.allowWorktrees,
+          submitted.isPrivate,
         );
         if (!success) return;
         model.markSaved(submitted);

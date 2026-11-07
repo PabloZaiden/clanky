@@ -48,7 +48,7 @@ export function getChatSidebarActions(
     : sidebarActionItems([
         {
           id: "open-code-explorer",
-          label: "Open code explorer",
+          label: "Code Explorer",
           onClick: () => context.navigateWithinShell({
             view: "code-explorer",
             contentType: "chat",

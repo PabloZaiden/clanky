@@ -32,6 +32,7 @@ export interface UseWorkspaceServerSettingsResult {
     archived: boolean,
     allowClankyContext: boolean,
     allowWorktrees: boolean,
+    isPrivate: boolean,
   ) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
   testConnection: (

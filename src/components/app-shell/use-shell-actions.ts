@@ -40,7 +40,6 @@ interface UseShellActionsOptions {
   workspaceGroups: WorkspaceGroup[];
   purgeArchivedWorkspaceTasks: UseTasksResult["purgeArchivedWorkspaceTasks"];
   pullLatestChanges: UseWorkspacesResult["pullLatestChanges"];
-  updateWorkspace: UseWorkspacesResult["updateWorkspace"];
   createTask: UseTasksResult["createTask"];
   refreshTasks: UseTasksResult["refresh"];
   dashboardData: UseDashboardDataResult;
@@ -72,7 +71,6 @@ export function useShellActions({
   workspaceGroups,
   purgeArchivedWorkspaceTasks,
   pullLatestChanges,
-  updateWorkspace,
   createTask,
   refreshTasks,
   dashboardData,
@@ -96,9 +94,7 @@ export function useShellActions({
   const routeRef = useRef(route);
   routeRef.current = route;
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
-  const archivingWorkspaceIdsRef = useRef<Set<string>>(new Set());
   const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [archivingWorkspaceIds, setArchivingWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
   const { refreshBranchDataIfCurrent } = dashboardData;
 
   const workspaceCreate = useWorkspaceCreate({
@@ -146,31 +142,6 @@ export function useShellActions({
       setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
     }
   }, [pullLatestChanges, refreshBranchDataIfCurrent, toast]);
-
-  const toggleWorkspaceArchived = useCallback(async (workspace: Workspace): Promise<void> => {
-    if (archivingWorkspaceIdsRef.current.has(workspace.id)) {
-      return;
-    }
-
-    archivingWorkspaceIdsRef.current.add(workspace.id);
-    setArchivingWorkspaceIds(new Set(archivingWorkspaceIdsRef.current));
-
-    const nextArchivedState = workspace.archived !== true;
-    const archiveUpdateRequest = { archived: nextArchivedState };
-    try {
-      const updated = await updateWorkspace(workspace.id, archiveUpdateRequest);
-      if (!updated) {
-        toast.error(nextArchivedState ? "Failed to archive workspace" : "Failed to unarchive workspace");
-        return;
-      }
-      toast.success(nextArchivedState ? "Workspace archived." : "Workspace unarchived.");
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      archivingWorkspaceIdsRef.current.delete(workspace.id);
-      setArchivingWorkspaceIds(new Set(archivingWorkspaceIdsRef.current));
-    }
-  }, [toast, updateWorkspace]);
 
   const composeState = useComposeState({
     route,
@@ -276,13 +247,6 @@ export function useShellActions({
     }
   }, [agents, toast]);
 
-  const toggleWorkspacePrivate = useCallback(async (workspace: Workspace): Promise<void> => {
-    const updated = await updateWorkspace(workspace.id, { isPrivate: !workspace.isPrivate });
-    if (!updated) {
-      toast.error(workspace.isPrivate ? "Failed to unmark workspace as private" : "Failed to mark workspace as private");
-    }
-  }, [toast, updateWorkspace]);
-
   const toggleTerminalSessionPrivate = useCallback(async (session: TerminalSession): Promise<void> => {
     try {
       await updateTerminalSession(session.config.id, { isPrivate: !session.config.isPrivate });
@@ -312,14 +276,11 @@ export function useShellActions({
     selectedChatActions,
     dialogs,
     pullingLatestWorkspaceIds,
-    archivingWorkspaceIds,
     pullLatestWorkspaceChanges,
-    toggleWorkspaceArchived,
     getChatLifecycleActions: chatActions.getLifecycleActions,
     toggleTaskPrivate,
     toggleChatPrivate,
     toggleAgentPrivate,
-    toggleWorkspacePrivate,
     toggleTerminalSessionPrivate,
     stopSidebarTask,
   };

@@ -25,6 +25,9 @@ export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconC
       <SettingsFieldRow title="Archived" labelFor={`${formId}-archived`}
         content={<CheckboxField id={`${formId}-archived`} label="" aria-label="Archived workspace"
           checked={draft.archived} onChange={(event) => onChange({ archived: event.currentTarget.checked })} />} />
+      <SettingsFieldRow title="Private" labelFor={`${formId}-private`}
+        content={<CheckboxField id={`${formId}-private`} label="" aria-label="Private workspace"
+          checked={draft.isPrivate} onChange={(event) => onChange({ isPrivate: event.currentTarget.checked })} />} />
       <SettingsFieldRow title="General Clanky access" labelFor={`${formId}-cli-access`}
         content={<CheckboxField id={`${formId}-cli-access`} label="" aria-label="Allow general Clanky access"
           checked={draft.allowClankyContext} onChange={(event) => onChange({ allowClankyContext: event.currentTarget.checked })} />} />

@@ -69,6 +69,7 @@ function AgentForm({
   defaultBranch,
   onWorkspaceChange,
   onCreateAgent,
+  onImportAgent,
   onUpdateAgent,
   onPrepareGenerateAgentCode,
   onGenerateAgentCode,
@@ -96,6 +97,7 @@ function AgentForm({
     workspaceType?: Workspace["workspaceType"],
   ) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
+  onImportAgent?: (workspaceId: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
   onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
@@ -169,13 +171,27 @@ function AgentForm({
   const handleSubmit = useCallback((): void => {
     void form.submit(generation.code);
   }, [form.submit, generation.code]);
-  const headerActions = useMemo(() => [{
-    id: "save-agent",
-    label: mode === "edit" ? "Save" : "Create",
-    onAction: handleSubmit,
-    disabled: !canSubmit,
-    loading: form.isSubmitting,
-  }], [canSubmit, form.isSubmitting, handleSubmit, mode]);
+  const headerActions = useMemo(() => [
+    {
+      id: "save-agent",
+      label: mode === "edit" ? "Save" : "Create",
+      onAction: handleSubmit,
+      disabled: !canSubmit,
+      loading: form.isSubmitting,
+    },
+    ...(mode === "create" && onImportAgent ? [{
+      id: "import-agent",
+      label: "Import Agent",
+      onAction: () => {
+        if (form.selectedWorkspace) onImportAgent(form.selectedWorkspace.id);
+      },
+      disabled: !form.selectedWorkspace || form.selectedWorkspace.access === "read"
+        || form.isSubmitting || generation.isGeneratingCode || testing.isTestingCode,
+    }] : []),
+  ], [
+    canSubmit, form.isSubmitting, form.selectedWorkspace, generation.isGeneratingCode,
+    handleSubmit, mode, onImportAgent, testing.isTestingCode,
+  ]);
   const headerMenuActions = useMemo<ActionMenuItem[]>(() => [
     {
       id: "generate-code",
@@ -631,6 +647,7 @@ export function AgentComposer({
   defaultBranch,
   onWorkspaceChange,
   onCreateAgent,
+  onImportAgent,
   onPrepareGenerateAgentCode,
   onGenerateAgentCode,
   onTestAgentCode,
@@ -651,6 +668,7 @@ export function AgentComposer({
   defaultBranch: string;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onCreateAgent: UseAgentsResult["createAgent"];
+  onImportAgent: (workspaceId: string) => void;
   onPrepareGenerateAgentCode: UseAgentsResult["prepareGenerateAgentCode"];
   onGenerateAgentCode: UseAgentsResult["generateAgentCode"];
   onTestAgentCode: UseAgentsResult["testAgentCode"];
@@ -674,6 +692,7 @@ export function AgentComposer({
       defaultBranch={defaultBranch}
       onWorkspaceChange={onWorkspaceChange}
       onCreateAgent={onCreateAgent}
+      onImportAgent={onImportAgent}
       onUpdateAgent={async () => null}
       onPrepareGenerateAgentCode={onPrepareGenerateAgentCode}
       onGenerateAgentCode={onGenerateAgentCode}

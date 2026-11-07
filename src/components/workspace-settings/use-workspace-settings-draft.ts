@@ -6,6 +6,7 @@ import type { WorkspaceIconChange } from "./workspace-icon-actions";
 export interface WorkspaceSettingsDraft {
   name: string;
   archived: boolean;
+  isPrivate: boolean;
   allowClankyContext: boolean;
   allowWorktrees: boolean;
   settings: ServerSettings;
@@ -16,6 +17,7 @@ function readDraft(workspace: Workspace): WorkspaceSettingsDraft {
   return {
     name: workspace.name,
     archived: workspace.archived === true,
+    isPrivate: workspace.isPrivate === true,
     allowClankyContext: workspace.allowClankyContext === true,
     allowWorktrees: workspace.allowWorktrees !== false,
     settings: workspace.serverSettings,

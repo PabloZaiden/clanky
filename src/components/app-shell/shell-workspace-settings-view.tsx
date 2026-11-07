@@ -59,6 +59,7 @@ export function WorkspaceSettingsView({
               archived,
               allowClankyContext,
               allowWorktrees,
+              isPrivate,
             ) => {
               const success = await updateWorkspaceSettings(
                 name,
@@ -67,6 +68,7 @@ export function WorkspaceSettingsView({
                 archived,
                 allowClankyContext,
                 allowWorktrees,
+                isPrivate,
               );
               if (success) {
                 try {

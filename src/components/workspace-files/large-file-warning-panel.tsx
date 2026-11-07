@@ -48,7 +48,7 @@ export function LargeFileWarningPanel({
             disabled={downloading || opening}
             items={[{
               id: "open-code-explorer",
-              label: opening ? "Opening..." : "Open code explorer",
+              label: opening ? "Opening..." : "Code Explorer",
               disabled: downloading || opening,
               onAction: () => void onOpenInCodeExplorer(),
             }]}

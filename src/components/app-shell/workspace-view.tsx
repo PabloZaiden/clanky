@@ -5,6 +5,7 @@ import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions"
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
+  Button,
   StateText,
   getChatStatusBadgeVariant,
   formatStatusLabel,
@@ -20,6 +21,43 @@ import {
 import { WorkItemRow } from "./work-item-row";
 import { apiRequest } from "../../lib/api-client";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
+import { isWorkspaceReadOnly } from "@/shared/workspace";
+
+async function openWorkspaceGitHubUrl(
+  workspace: Workspace,
+  onError: (message: string) => void,
+): Promise<void> {
+  const persistedUrl = normalizeGitHubRepositoryUrl(workspace.repoUrl ?? "");
+  if (persistedUrl) {
+    window.open(persistedUrl, "_blank", "noopener,noreferrer");
+    return;
+  }
+
+  let fetchedUrl: string | null;
+  try {
+    const data = await apiRequest<{ githubUrl?: unknown }>(
+      `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
+      {
+        action: "Load GitHub repository URL",
+        fallbackMessage: "GitHub repository URL is not available for this workspace",
+      },
+    );
+    fetchedUrl = typeof data.githubUrl === "string"
+      ? normalizeGitHubRepositoryUrl(data.githubUrl)
+      : null;
+  } catch (error) {
+    onError(String(error));
+    return;
+  }
+
+  if (!fetchedUrl) {
+    onError("GitHub repository URL is not available for this workspace");
+    return;
+  }
+
+  window.open(fetchedUrl, "_blank", "noopener,noreferrer");
+}
 
 type WorkspaceScratchpadPreviewState =
   | { workspaceId: string; status: "loading" }
@@ -85,6 +123,9 @@ export function WorkspaceView({
   agentsLoading,
   agentsError,
   onNavigate,
+  onPullLatestChanges,
+  pullingLatestChanges,
+  onError,
   showPrivateItems = false,
 }: {
   workspace: Workspace;
@@ -95,6 +136,9 @@ export function WorkspaceView({
   agentsLoading: boolean;
   agentsError: string | null;
   onNavigate: (route: WebAppRoute) => void;
+  onPullLatestChanges: () => Promise<void>;
+  pullingLatestChanges: boolean;
+  onError: (message: string) => void;
   showPrivateItems?: boolean;
 }) {
   const scratchpadPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
@@ -146,6 +190,21 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
+      {workspace.workspaceType === "git" && !scratchpadPrivateHidden ? (
+        <div className="flex flex-wrap justify-end gap-2">
+          {!isWorkspaceReadOnly(workspace) ? (
+            <Button
+              onClick={() => void onPullLatestChanges()}
+              loading={pullingLatestChanges}
+            >
+              {pullingLatestChanges ? "Pulling Latest Changes..." : "Pull Latest Changes"}
+            </Button>
+          ) : null}
+          <Button onClick={() => void openWorkspaceGitHubUrl(workspace, onError)}>
+            Open in GitHub
+          </Button>
+        </div>
+      ) : null}
       <Panel data-testid="workspace-activity-card" title="Activity" className="border-0">
         <div>
           {hasActivity ? (

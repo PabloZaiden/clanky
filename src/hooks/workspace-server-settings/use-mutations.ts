@@ -91,6 +91,7 @@ export function useWorkspaceMutations(
     archived: boolean,
     allowClankyContext: boolean,
     allowWorktrees: boolean,
+    isPrivate: boolean,
   ): Promise<boolean> => {
     if (!workspaceId) {
       setError("No workspace selected");
@@ -111,6 +112,7 @@ export function useWorkspaceMutations(
           archived,
           allowClankyContext,
           allowWorktrees,
+          isPrivate,
         }),
         action: "Update workspace",
         fallbackMessage: "Failed to update workspace",

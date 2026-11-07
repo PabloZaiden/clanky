@@ -22,6 +22,7 @@ export interface WorkspaceSettingsFormProps {
     archived: boolean,
     allowClankyContext: boolean,
     allowWorktrees: boolean,
+    isPrivate: boolean,
   ) => Promise<boolean>;
   /** Refresh workspace surfaces after its icon changes */
   onWorkspaceIconChanged?: () => Promise<void>;
