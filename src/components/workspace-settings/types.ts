@@ -5,7 +5,7 @@
 import type { ServerSettings, ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ExecutionHostRef } from "@/shared";
-import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
+import type { DeleteWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 
 /** Props for the shell workspace settings form. */
@@ -15,15 +15,7 @@ export interface WorkspaceSettingsFormProps {
   /** Current connection status for the workspace */
   status: ConnectionStatus | null;
   /** Callback to save workspace settings */
-  onSave: (
-    name: string,
-    settings: ServerSettings,
-    executionHost: ExecutionHostRef | null,
-    archived: boolean,
-    allowClankyContext: boolean,
-    allowWorktrees: boolean,
-    isPrivate: boolean,
-  ) => Promise<boolean>;
+  onSave: (request: UpdateWorkspaceRequest) => Promise<boolean>;
   /** Refresh workspace surfaces after its icon changes */
   onWorkspaceIconChanged?: () => Promise<void>;
   /** Callback to test connection */

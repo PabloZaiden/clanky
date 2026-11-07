@@ -52,24 +52,8 @@ export function WorkspaceSettingsView({
             key={loadedWorkspace.id}
             workspace={loadedWorkspace}
             status={workspaceStatus}
-            onSave={async (
-              name,
-              settings,
-              executionHost,
-              archived,
-              allowClankyContext,
-              allowWorktrees,
-              isPrivate,
-            ) => {
-              const success = await updateWorkspaceSettings(
-                name,
-                settings,
-                executionHost,
-                archived,
-                allowClankyContext,
-                allowWorktrees,
-                isPrivate,
-              );
+            onSave={async (request) => {
+              const success = await updateWorkspaceSettings(request);
               if (success) {
                 try {
                   await refreshWorkspaces();

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { createLogger } from "@pablozaiden/webapp/web";
 import type { ServerSettings } from "@/shared/settings";
-import type { ExecutionHostRef } from "@/shared";
+import type { UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import { apiRequest } from "../../lib/api-client";
 
 export function useWorkspaceMutations(
@@ -85,13 +85,7 @@ export function useWorkspaceMutations(
   }, [workspaceId, fetchWorkspace, setError]);
 
   const updateWorkspace = useCallback(async (
-    name: string,
-    settings: ServerSettings,
-    executionHost: ExecutionHostRef | null,
-    archived: boolean,
-    allowClankyContext: boolean,
-    allowWorktrees: boolean,
-    isPrivate: boolean,
+    request: UpdateWorkspaceRequest,
   ): Promise<boolean> => {
     if (!workspaceId) {
       setError("No workspace selected");
@@ -105,15 +99,7 @@ export function useWorkspaceMutations(
       await apiRequest(`/api/workspaces/${workspaceId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          serverSettings: settings,
-          ...(executionHost ? { executionHost } : {}),
-          archived,
-          allowClankyContext,
-          allowWorktrees,
-          isPrivate,
-        }),
+        body: JSON.stringify(request),
         action: "Update workspace",
         fallbackMessage: "Failed to update workspace",
       });
@@ -121,8 +107,9 @@ export function useWorkspaceMutations(
       // Refresh workspace to get updated data from API (avoid stale data)
       await fetchWorkspace();
 
-      // Refresh status after settings change
-      await fetchStatus();
+      if (request.serverSettings !== undefined || request.executionHost !== undefined) {
+        await fetchStatus();
+      }
 
       return true;
     } catch (err) {

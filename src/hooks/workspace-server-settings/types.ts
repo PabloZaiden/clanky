@@ -2,6 +2,7 @@ import type { ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ConnectionStatus } from "@/shared/settings";
 import type { ExecutionHostRef } from "@/shared";
+import type { UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 
 export interface UseWorkspaceServerSettingsResult {
   /** Full workspace data (name, directory, serverSettings) - fetched fresh from API */
@@ -25,15 +26,7 @@ export interface UseWorkspaceServerSettingsResult {
   /** Update workspace name */
   updateName: (name: string) => Promise<boolean>;
   /** Update workspace settings fields */
-  updateWorkspace: (
-    name: string,
-    settings: ServerSettings,
-    executionHost: ExecutionHostRef | null,
-    archived: boolean,
-    allowClankyContext: boolean,
-    allowWorktrees: boolean,
-    isPrivate: boolean,
-  ) => Promise<boolean>;
+  updateWorkspace: (request: UpdateWorkspaceRequest) => Promise<boolean>;
   /** Test connection with provided settings (uses workspace's current settings if not provided) */
   testConnection: (
     settings: ServerSettings,

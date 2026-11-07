@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useUnsavedChanges } from "@pablozaiden/webapp/web";
 import type { Workspace, ServerSettings, ExecutionHostRef } from "@/shared";
+import { areServerSettingsEqual, executionHostRefsEqual } from "@/shared";
 import type { WorkspaceIconChange } from "./workspace-icon-actions";
 
 export interface WorkspaceSettingsDraft {
@@ -42,6 +43,10 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
   const [iconChange, setIconChange] = useState<WorkspaceIconChange | null>(null);
   const incoming = readDraft(workspace);
   const incomingKey = JSON.stringify(incoming);
+  const runtimeDirty = !areServerSettingsEqual(draft.settings, baseline.settings)
+    || (draft.executionHost && baseline.executionHost
+      ? !executionHostRefsEqual(draft.executionHost, baseline.executionHost)
+      : draft.executionHost !== baseline.executionHost);
   const settingsDirty = JSON.stringify(draft) !== JSON.stringify(baseline);
   const dirty = settingsDirty || iconChange !== null;
 
@@ -99,7 +104,7 @@ export function useWorkspaceSettingsDraft(workspace: Workspace) {
   }
 
   return {
-    draft, dirty, settingsDirty, seed, revision, runtimeValid, patch, updateRuntime, reset, markSaved,
+    draft, dirty, settingsDirty, runtimeDirty, seed, revision, runtimeValid, patch, updateRuntime, reset, markSaved,
     icon, iconChange, setIconChange, markIconSaved,
   };
 }

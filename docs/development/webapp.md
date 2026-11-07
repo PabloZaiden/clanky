@@ -215,6 +215,9 @@ saved capability separately.
 Workspace Settings keeps one draft across General, Execution, and Maintenance.
 Workspace archiving and privacy are controlled only by the **Archived** and
 **Private** fields in General and are persisted with the same explicit Save.
+Metadata-only saves remain available when the configured execution runtime is
+unavailable. Validate execution only when its draft changes, and omit unchanged
+runtime fields from metadata updates.
 Save stays on the page; navigation uses the framework unsaved-change dialog.
 Native validation opens the invalid field's category before focus. Independent
 icon actions must not reset unrelated edits; keep the draft locked through
