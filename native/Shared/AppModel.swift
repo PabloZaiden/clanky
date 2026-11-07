@@ -96,10 +96,11 @@ final class AppModel: ObservableObject {
             guard let selectedPort = origin.port else { throw NWError.posix(.EADDRNOTAVAIL) }
             UserDefaults.standard.set(selectedPort, forKey: "assetServerPort")
             error = nil
-            self.origin = origin
             #if os(macOS)
             await controller.startIfEnabled()
+            guard assets === server else { throw CancellationError() }
             #endif
+            self.origin = origin
             #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .phone { NativeDiagnostics.record("app-started") }
             #endif
@@ -292,9 +293,11 @@ final class BrowserModel: ObservableObject {
     // Set when the page must be reloaded without user action, e.g. after
     // WebKit terminated it or a local load failed; retried on activation.
     private var needsReload = false
+    private var initialURL: URL?
 
-    init(origin: URL, ensureAssets: @escaping @MainActor () async throws -> Void) {
+    init(origin: URL, initialURL: URL? = nil, ensureAssets: @escaping @MainActor () async throws -> Void) {
         self.origin = origin
+        self.initialURL = initialURL
         self.ensureAssets = ensureAssets
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
@@ -433,6 +436,10 @@ final class BrowserModel: ObservableObject {
 
     func home() {
         error = nil
+        if let initialURL {
+            load(initialURL)
+            return
+        }
         var url = origin
         if let mode = UserDefaults.standard.string(forKey: Self.connectionKey) {
             if Self.connectionModes.contains(mode) {
@@ -482,6 +489,7 @@ final class BrowserModel: ObservableObject {
         guard url.scheme == origin.scheme,
               url.host == origin.host,
               url.port == origin.port else { return }
+        initialURL = nil
         if url.path.isEmpty || url.path == "/" || url.path == "/index.html" {
             UserDefaults.standard.removeObject(forKey: Self.connectionKey)
         } else if let mode = url.pathComponents.dropFirst().first,

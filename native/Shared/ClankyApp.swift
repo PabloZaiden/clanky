@@ -99,7 +99,12 @@ private struct BrowserSession: View {
     @StateObject private var browser: BrowserModel
 
     init(origin: URL, app: AppModel) {
-        _browser = StateObject(wrappedValue: BrowserModel(origin: origin, ensureAssets: {
+        #if os(macOS)
+        let initialURL = app.controller.running ? origin.appendingPathComponent("local/") : nil
+        #else
+        let initialURL: URL? = nil
+        #endif
+        _browser = StateObject(wrappedValue: BrowserModel(origin: origin, initialURL: initialURL, ensureAssets: {
             try await app.ensureAssets()
         }))
     }
