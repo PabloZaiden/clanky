@@ -7,6 +7,7 @@ import SwiftUI
 final class LocalController: ObservableObject {
     static let port: UInt16 = 49372
     static let endpoint = URL(string: "http://localhost:\(port)")!
+    private static let launchPreference = "startLocalControllerOnLaunch"
     @Published private(set) var running = false
     @Published private(set) var busy = false
     @Published var error: String?
@@ -14,7 +15,19 @@ final class LocalController: ObservableObject {
     private var output: FileHandle?
     private var logURL: URL?
     private var stopRequested = false
+    private var restoredLaunchPreference = false
     var hasProcess: Bool { process != nil }
+
+    func startIfEnabled() async {
+        guard !restoredLaunchPreference else { return }
+        restoredLaunchPreference = true
+        guard let saved = UserDefaults.standard.object(forKey: Self.launchPreference) else { return }
+        guard let enabled = saved as? Bool else {
+            error = "The saved local controller launch preference is invalid."
+            return
+        }
+        if enabled { await start() }
+    }
 
     func start() async {
         guard process == nil, !busy else { return }
@@ -82,6 +95,7 @@ final class LocalController: ObservableObject {
                        let health = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                        health["ok"] as? Bool == true, child.isRunning {
                         running = true
+                        UserDefaults.standard.set(true, forKey: Self.launchPreference)
                         return
                     }
                     lastFailure = "Controller health check did not succeed."
@@ -99,7 +113,10 @@ final class LocalController: ObservableObject {
         }
     }
 
-    func stop() async {
+    func stop(disableAutomaticStart: Bool = false) async {
+        if disableAutomaticStart {
+            UserDefaults.standard.set(false, forKey: Self.launchPreference)
+        }
         guard let child = process else {
             closeOutput()
             return
@@ -183,7 +200,9 @@ struct ControllerCommands: Commands {
                         if let browser { connect(browser) }
                     }
                     .disabled(!controller.running)
-                    Button("Stop Local Controller") { Task { await controller.stop() } }
+                    Button("Stop Local Controller") {
+                        Task { await controller.stop(disableAutomaticStart: true) }
+                    }
                 } else {
                     Button("Start Local Controller") {
                         if let browser {

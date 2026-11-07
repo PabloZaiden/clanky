@@ -22,28 +22,28 @@
       "id": "linux-x64",
       "os": "linux",
       "architecture": "x64",
-      "runner": "ubuntu-latest",
+      "runner": "xcode-27",
       "bunTarget": "bun-linux-x64"
     },
     {
       "id": "linux-arm64",
       "os": "linux",
       "architecture": "arm64",
-      "runner": "ubuntu-latest",
+      "runner": "xcode-27",
       "bunTarget": "bun-linux-arm64"
     },
     {
       "id": "darwin-x64",
       "os": "darwin",
       "architecture": "x64",
-      "runner": "macos-latest",
+      "runner": "xcode-27",
       "bunTarget": "bun-darwin-x64"
     },
     {
       "id": "darwin-arm64",
       "os": "darwin",
       "architecture": "arm64",
-      "runner": "macos-latest",
+      "runner": "xcode-27",
       "bunTarget": "bun-darwin-arm64"
     }
   ],
