@@ -15,7 +15,6 @@ import {
   renderActiveWorkSidebarItem,
 } from "./shell-sidebar-utils";
 import {
-  buildAgentSidebarNodesByWorkspace,
   createWorkspaceSidebarNode,
   type WorkspaceSidebarBuilderContext,
 } from "./shell-sidebar-workspace";
@@ -35,7 +34,10 @@ import {
   buildServerSidebarNodes,
   type ServerSidebarContext,
 } from "./shell-sidebar-server";
-import type { AgentSidebarContext } from "./shell-sidebar-agent";
+import {
+  buildAgentSidebarNodes,
+  type AgentSidebarContext,
+} from "./shell-sidebar-agent";
 import type { WorkspaceSidebarContext } from "./shell-sidebar-workspace";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
@@ -151,7 +153,7 @@ export function buildSidebarDomainNodes({
     }, contexts.terminal);
   });
 
-  const agentNodesByWorkspace = buildAgentSidebarNodesByWorkspace(
+  const agentNodes = buildAgentSidebarNodes(
     agents,
     workspaces,
     contexts.agent,
@@ -161,7 +163,6 @@ export function buildSidebarDomainNodes({
     chat: contexts.chat,
     task: contexts.task,
     terminal: contexts.terminal,
-    agentNodesByWorkspace,
   };
   const workspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces
     .filter((workspaceNode) => workspaceNode.workspace.archived !== true)
@@ -200,6 +201,12 @@ export function buildSidebarDomainNodes({
       title: "Archived",
       children: archivedWorkspaceNodes,
     }] : []),
+    {
+      type: "section" as const,
+      id: "agents",
+      title: "Agents",
+      children: agentNodes,
+    },
     ...(capabilities.executionHosts ? [{
       type: "section" as const,
       id: "execution-hosts",

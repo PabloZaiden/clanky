@@ -380,15 +380,22 @@ export function buildActiveWorkSidebarItems(
 export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string {
   switch (item.kind) {
     case "task":
-      return item.taskNode.task.state.lastUserMessageAt ?? item.taskNode.task.config.createdAt;
+      return getWorkItemLastInteractionAt(item.taskNode.task);
     case "chat":
     case "execution-host-chat":
-      return item.chatNode.chat.state.lastUserMessageAt ?? item.chatNode.chat.config.createdAt;
+      return getWorkItemLastInteractionAt(item.chatNode.chat);
     case "terminal-session":
     case "execution-host-terminal":
-      return item.sessionNode.session.state.lastConnectedAt
-        ?? item.sessionNode.session.config.createdAt;
+      return getTerminalLastInteractionAt(item.sessionNode.session);
   }
+}
+
+export function getWorkItemLastInteractionAt(item: Chat | Task): string {
+  return item.state.lastUserMessageAt ?? item.config.createdAt;
+}
+
+export function getTerminalLastInteractionAt(session: TerminalSession): string {
+  return session.state.lastConnectedAt ?? session.config.createdAt;
 }
 
 export function buildChatHistorySidebarItems(

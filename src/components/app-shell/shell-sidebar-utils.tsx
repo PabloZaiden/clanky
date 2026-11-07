@@ -207,6 +207,15 @@ export function flattenSidebarNodes(nodes: SidebarNode[]): SidebarNode[] {
   ]);
 }
 
+export function sortSidebarNodesByActivity(
+  items: Array<{ node: SidebarNode; lastActivityAt: string }>,
+): SidebarNode[] {
+  return items.sort((left, right) => (
+    right.lastActivityAt.localeCompare(left.lastActivityAt)
+      || left.node.id.localeCompare(right.node.id)
+  )).map((item) => item.node);
+}
+
 export function sidebarNodeMatchesRoute(node: SidebarNode, route: WebAppRoute): boolean {
   if (!node.route || node.route.view !== route.view) {
     return false;

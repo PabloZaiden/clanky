@@ -1,11 +1,7 @@
 import type {
   ActionMenuItem,
-  SidebarNode,
 } from "@pablozaiden/webapp/web";
-import type {
-  Agent,
-  Workspace,
-} from "@/shared";
+import type { Workspace } from "@/shared";
 import { isRestartableAutomaticWorkspace } from "@/shared";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
@@ -14,18 +10,18 @@ import {
   getPrivateHidden,
   privateActions,
   privateSidebarPresentation,
+  renderActiveWorkSidebarItem,
   renderWorkspaceSidebarItem,
   sidebarActionItems,
+  sortSidebarNodesByActivity,
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import type { SearchableSidebarNode } from "./shell-sidebar-types";
-import type {
-  SidebarWorkspaceGroupNode,
-} from "./shell-types";
 import {
-  createAgentSidebarNode,
-  type AgentSidebarContext,
-} from "./shell-sidebar-agent";
+  getTerminalLastInteractionAt,
+  getWorkItemLastInteractionAt,
+  type SidebarWorkspaceGroupNode,
+} from "./shell-types";
 import {
   createChatSidebarNode,
   type ChatSidebarContext,
@@ -57,7 +53,6 @@ export interface WorkspaceSidebarBuilderContext {
   chat: ChatSidebarContext;
   task: TaskSidebarContext;
   terminal: TerminalSessionSidebarContext;
-  agentNodesByWorkspace: ReadonlyMap<string, SidebarNode[]>;
 }
 
 export async function openWorkspaceGitHubUrl(
@@ -93,22 +88,6 @@ export async function openWorkspaceGitHubUrl(
   }
 
   window.open(fetchedUrl, "_blank", "noopener,noreferrer");
-}
-
-export function buildAgentSidebarNodesByWorkspace(
-  agents: Agent[],
-  workspaces: Workspace[],
-  context: AgentSidebarContext,
-): ReadonlyMap<string, SidebarNode[]> {
-  const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const agentNodesByWorkspace = new Map<string, SidebarNode[]>();
-  for (const agent of agents) {
-    const workspaceAgents = agentNodesByWorkspace.get(agent.config.workspaceId) ?? [];
-    const workspace = workspaceById.get(agent.config.workspaceId) ?? null;
-    workspaceAgents.push(createAgentSidebarNode(agent, [workspace], context));
-    agentNodesByWorkspace.set(agent.config.workspaceId, workspaceAgents);
-  }
-  return agentNodesByWorkspace;
 }
 
 function getWorkspaceSidebarActions(
@@ -263,129 +242,68 @@ export function createWorkspaceSidebarNode(
     context.workspace.showPrivateItems,
   );
   const isGitBacked = workspaceNode.workspace.workspaceType === "git";
-  const children: SidebarNode[] = [
-    ...(isGitBacked ? [{
-      type: "section" as const,
-      id: `workspace:${workspaceId}:tasks`,
-      title: "Tasks",
-      action: {
-        id: "new-task",
-        title: "New task",
-        label: "New",
-        route: workspacePrivateHidden
-          ? undefined
-          : { view: "compose", kind: "task", scopeId: workspaceId },
-      },
-      children: [
-        ...workspaceNode.tasks.map((taskNode): SidebarNode =>
-          createTaskSidebarNode({
-            task: taskNode.task,
-            id: `task:${taskNode.task.config.id}`,
-            pinId: `task:${taskNode.task.config.id}`,
-            title: taskNode.title,
-            badge: taskNode.badge,
-            badgeVariant: taskNode.badgeVariant,
-            ancestors: [workspaceNode.workspace],
-          }, context.task)
+  const children = sortSidebarNodesByActivity([
+    ...(isGitBacked ? [...workspaceNode.tasks, ...workspaceNode.historyTasks].map((taskNode) => ({
+      lastActivityAt: getWorkItemLastInteractionAt(taskNode.task),
+      node: createTaskSidebarNode({
+        task: taskNode.task,
+        id: `task:${taskNode.task.config.id}`,
+        pinId: `task:${taskNode.task.config.id}`,
+        title: taskNode.title,
+        subtitle: workspaceNode.workspace.name,
+        badge: taskNode.badge,
+        badgeVariant: taskNode.badgeVariant,
+        badgeAppearance: "text",
+        itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem(
+          "Task",
+          getWorkItemLastInteractionAt(taskNode.task),
+          workspaceNode.workspace,
         ),
-        ...(workspaceNode.historyTasks.length > 0 ? [{
-          type: "section" as const,
-          id: `workspace:${workspaceId}:history`,
-          title: "History",
-          defaultCollapsed: true,
-          children: workspaceNode.historyTasks.map((taskNode): SidebarNode =>
-            createTaskSidebarNode({
-              task: taskNode.task,
-              id: `task:${taskNode.task.config.id}`,
-              pinId: `task:${taskNode.task.config.id}`,
-              title: taskNode.title,
-              badge: taskNode.badge,
-              badgeVariant: taskNode.badgeVariant,
-              ancestors: [workspaceNode.workspace],
-            }, context.task)
-          ),
-        }] : []),
-      ],
-    }] : []),
-    {
-      type: "section",
-      id: `workspace:${workspaceId}:chats`,
-      title: "Chats",
-      action: {
-        id: "new-chat",
-        title: "New chat",
-        label: "New",
-        route: workspacePrivateHidden
-          ? undefined
-          : { view: "compose", kind: "chat", scopeId: workspaceId },
-      },
-      children: [
-        ...workspaceNode.chats.map((chatNode) =>
-          createChatSidebarNode({
-            chatNode,
-            ancestors: [workspaceNode.workspace],
-            idPrefix: "chat",
-          }, context.chat)
+        ancestors: [workspaceNode.workspace],
+      }, context.task),
+    })) : []),
+    ...[...workspaceNode.chats, ...workspaceNode.historyChats].map((chatNode) => ({
+      lastActivityAt: getWorkItemLastInteractionAt(chatNode.chat),
+      node: createChatSidebarNode({
+        chatNode,
+        subtitle: workspaceNode.workspace.name,
+        ancestors: [workspaceNode.workspace],
+        idPrefix: "chat",
+        badgeAppearance: "text",
+        itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem(
+          "Chat",
+          getWorkItemLastInteractionAt(chatNode.chat),
+          workspaceNode.workspace,
         ),
-        ...(workspaceNode.historyChats.length > 0 ? [{
-          type: "section" as const,
-          id: `workspace:${workspaceId}:chat-history`,
-          title: "History",
-          defaultCollapsed: true,
-          children: workspaceNode.historyChats.map((chatNode) =>
-            createChatSidebarNode({
-              chatNode,
-              ancestors: [workspaceNode.workspace],
-              idPrefix: "chat",
-            }, context.chat)
-          ),
-        }] : []),
-      ],
-    },
-    {
-      type: "section",
-      id: `workspace:${workspaceId}:agents`,
-      title: "Agents",
-      action: {
-        id: "new-agent",
-        title: "New agent",
-        label: "New",
-        route: workspacePrivateHidden
-          ? undefined
-          : { view: "compose", kind: "agent", workspaceId },
-      },
-      children: context.agentNodesByWorkspace.get(workspaceId) ?? [],
-    },
-    {
-      type: "section",
-      id: `workspace:${workspaceId}:terminal-sessions`,
-      title: "Terminals",
-      action: {
-        id: "new-terminal-session",
-        title: "New terminal",
-        label: "New",
-        route: workspacePrivateHidden
-          ? undefined
-          : { view: "compose", kind: "terminal-session", workspaceId },
-      },
-      children: workspaceNode.terminalSessions.map((terminalNode): SidebarNode =>
-        createTerminalSessionSidebarNode({
-          session: terminalNode.session,
-          target: {
-            id: terminalNode.session.config.id,
-            name: terminalNode.session.config.name,
-          },
-          id: `terminal-session:${terminalNode.session.config.id}`,
-          title: terminalNode.title,
-          subtitle: terminalNode.subtitle,
-          badge: terminalNode.badge,
-          badgeVariant: terminalNode.badgeVariant,
-          ancestors: [workspaceNode.workspace],
-          pinId: `terminal-session:${terminalNode.session.config.id}`,
-        }, context.terminal)
-      ),
-    },
-  ];
+      }, context.chat),
+    })),
+    ...workspaceNode.terminalSessions.map((terminalNode) => ({
+      lastActivityAt: getTerminalLastInteractionAt(terminalNode.session),
+      node: createTerminalSessionSidebarNode({
+        session: terminalNode.session,
+        target: {
+          id: terminalNode.session.config.id,
+          name: terminalNode.session.config.name,
+        },
+        id: `terminal-session:${terminalNode.session.config.id}`,
+        title: terminalNode.title,
+        subtitle: workspaceNode.workspace.name,
+        badge: terminalNode.badge,
+        badgeVariant: terminalNode.badgeVariant,
+        badgeAppearance: "text",
+        itemLayout: "subtitle-above-title",
+        render: renderActiveWorkSidebarItem(
+          "Terminal",
+          getTerminalLastInteractionAt(terminalNode.session),
+          workspaceNode.workspace,
+        ),
+        ancestors: [workspaceNode.workspace],
+        pinId: `terminal-session:${terminalNode.session.config.id}`,
+      }, context.terminal),
+    })),
+  ]);
 
   const actions = getWorkspaceSidebarActions(workspaceNode, context.workspace);
   return privateSidebarPresentation({

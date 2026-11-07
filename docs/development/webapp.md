@@ -95,6 +95,20 @@ The workspace overview promotes **New Chat** to a primary header action when
 space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.
 
+In the sidebar's **Workspaces** tab, each workspace directly lists chats,
+Git-backed tasks, and terminals together, including completed chats and
+historical tasks. **Agents** is a peer section containing agents from all
+workspaces, with their workspace names and inherited privacy/access rules.
+In **Servers**, each server directly lists its workspaces, host chats, and host
+terminals together. Mixed lists sort by most recent interaction (chat/task user
+message or terminal connection, falling back to creation); server workspace
+entries use the workspace's last update. Chats, tasks, and terminals reuse
+Active's rich rows: workspace/host and textual status above the title, with
+relative interaction time and type/provider metadata below. Agents and
+workspace/server rows retain their own presentation.
+There are no type or History subsections and no subsection-level New buttons.
+Dashboard creation controls and entity context/header actions remain unchanged.
+
 Ordinary actions, including primary actions, are unboxed icons/clickable labels.
 Use public subtle/link/primary variants intentionally; reserve solid danger
 for irreversible confirmation. Update/restart is not deletion.
