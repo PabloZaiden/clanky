@@ -333,42 +333,85 @@ def work_at(config, work, remote=False):
     return work
 
 
-def prepare(config, work):
-    require(sys.platform.startswith("linux"), "Application compilation must run on Linux")
+def extract_app(archive_path, destination):
+    with tarfile.open(archive_path, "r:gz") as archive:
+        members = archive.getmembers()
+        require(members, "Empty app archive")
+        for member in members:
+            path = Path(member.name)
+            require(
+                not path.is_absolute() and ".." not in path.parts
+                and path.parts[0] == "Clanky.app" and (member.isfile() or member.isdir()),
+                "Unsafe archive member: " + member.name,
+            )
+        archive.extractall(destination, members=members)
+
+
+def prepare(config, work, ci_artifact=None, source_revision=None):
+    require(sys.platform.startswith("linux"), "Application preparation must run on Linux")
     repository = SCRIPT.parent.parent
     require((repository / "package.json").is_file(), "Run the repository-owned script")
-    require(not run("git", "status", "--porcelain", cwd=repository).strip(), "Source checkout must be clean")
-    revision = run("git", "rev-parse", "HEAD", cwd=repository).decode().strip()
     baseline = read_json(work / "preflight.json")
     require(baseline["configurationSHA256"] == configuration_digest(config), "Preflight configuration changed")
-    for command in [
-        ["bun", "run", "build"], ["bun", "run", "test"], ["bun", "run", "build:apple:ios:linux"],
-    ]:
-        run(*command, capture=False, cwd=repository)
-    source = repository / "dist/apple/ios-linux/xtool/Clanky.app"
+    payload = work / "Clanky.app"
+    require(not payload.exists(), "Build staging already exists; inspect before retrying")
+    provenance = None
+    if ci_artifact:
+        require(source_revision is not None and re.fullmatch(r"[0-9a-f]{40}", source_revision),
+                "CI input requires --source-revision with the exact expected revision")
+        metadata = read_json(ci_artifact / "build.json")
+        archive_name = "Clanky-ios-arm64-unsigned.tar.gz"
+        require(
+            metadata["sourceRevision"] == source_revision
+            and metadata["platform"] == "ios" and metadata["architecture"] == "arm64"
+            and metadata["archive"] == archive_name and metadata["distributionSigned"] is False,
+            "CI artifact source or target mismatch",
+        )
+        original = ci_artifact / archive_name
+        original_digest = digest(original)
+        checksum = (ci_artifact / (archive_name + ".sha256")).read_text().split()
+        require(checksum == [original_digest, archive_name], "CI archive checksum mismatch")
+        extract_app(original, work)
+        source = payload
+        revision = source_revision
+        provenance = {"metadata": metadata, "archiveSHA256": original_digest}
+        validation = "Verified prebuilt CI device artifact; no local application compilation"
+    else:
+        require(source_revision is None, "--source-revision requires --ci-artifact")
+        require(not run("git", "status", "--porcelain", cwd=repository).strip(), "Source checkout must be clean")
+        revision = run("git", "rev-parse", "HEAD", cwd=repository).decode().strip()
+        for command in [
+            ["bun", "run", "build"], ["bun", "run", "test"], ["bun", "run", "build:apple:ios:linux"],
+        ]:
+            run(*command, capture=False, cwd=repository)
+        source = repository / "dist/apple/ios-linux/xtool/Clanky.app"
+        validation = "bun run build && bun run test; Linux xtool physical-device build"
     info = plistlib.loads((source / "Info.plist").read_bytes())
+    require(info["CFBundleSupportedPlatforms"] == ["iPhoneOS"], "Not a physical-device app")
     require(info["CFBundleIdentifier"] == config["bundleIdentifier"], "Source app identity differs from configuration")
     previous = baseline["current"]
     next_build = max(version(info["CFBundleVersion"]), version(previous["bundleVersion"]) if previous else 0) + 1
     version(str(next_build))
-    payload = work / "Clanky.app"
-    require(not payload.exists(), "Build staging already exists; inspect before retrying")
-    shutil.copytree(source, payload)
+    if not ci_artifact:
+        shutil.copytree(source, payload)
     info["CFBundleVersion"] = str(next_build)
     write_bytes(payload / "Info.plist", plistlib.dumps(info), replace=True)
     archive_path = work / "Clanky.tar.gz"
     with archive_path.open("xb") as destination, tarfile.open(fileobj=destination, mode="w:gz") as archive:
         archive.add(payload, arcname="Clanky.app")
-    require(run("git", "rev-parse", "HEAD", cwd=repository).decode().strip() == revision,
-            "Source revision changed during build")
-    require(not run("git", "status", "--porcelain", cwd=repository).strip(), "Source changed during build")
+    if not ci_artifact:
+        require(run("git", "rev-parse", "HEAD", cwd=repository).decode().strip() == revision,
+                "Source revision changed during build")
+        require(not run("git", "status", "--porcelain", cwd=repository).strip(), "Source changed during build")
     record = {
         "sourceRevision": revision, "configurationSHA256": configuration_digest(config),
         "baseline": previous, "bundleIdentifier": info["CFBundleIdentifier"],
         "bundleVersion": str(next_build), "marketingVersion": info["CFBundleShortVersionString"],
         "archiveSHA256": digest(archive_path), "archiveBytes": archive_path.stat().st_size,
-        "validation": "bun run build && bun run test; Linux xtool physical-device build",
+        "validation": validation,
     }
+    if provenance:
+        record["ciArtifact"] = provenance
     write_json(work / "build.json", record)
     shutil.rmtree(payload)
     return record
@@ -390,17 +433,7 @@ def sign_app(config, work):
     require(digest(archive_path) == build["archiveSHA256"], "App transfer checksum mismatch")
     payload = work / "Payload"
     payload.mkdir()
-    with tarfile.open(archive_path, "r:gz") as archive:
-        members = archive.getmembers()
-        require(members, "Empty app archive")
-        for member in members:
-            path = Path(member.name)
-            require(
-                not path.is_absolute() and ".." not in path.parts
-                and path.parts[0] == "Clanky.app" and (member.isfile() or member.isdir()),
-                "Unsafe archive member: " + member.name,
-            )
-        archive.extractall(payload, members=members)
+    extract_app(archive_path, payload)
     app = payload / "Clanky.app"
     info = plistlib.loads((app / "Info.plist").read_bytes())
     for key, expected in [
@@ -952,6 +985,14 @@ def requests(config, work, stage, initialize=False):
     ]
     steps = []
 
+    if stage == "download":
+        steps.append({
+            "operationId": "GET /api/execution-hosts/:kind/:id/files/filesystem/content",
+            "parameters": parameters, "query": [{"name": "path", "value": str(remote / "Clanky.ipa")}],
+            "bodyJson": None, "responseFile": {"path": str(work / "Clanky.ipa")},
+            "confirmationDescription": None,
+        })
+
     def execute(command, arguments, description):
         steps.append({
             "operationId": "POST /api/execution-hosts/:kind/:id/exec",
@@ -999,15 +1040,16 @@ def requests(config, work, stage, initialize=False):
     if initialize:
         require(stage == "setup", "--initialize-ca is only for explicit setup")
         command.append("--initialize-ca")
-    execute(
-        "/usr/bin/python3", command,
-        "Run the " + stage + " stage of the iOS installer on the selected host.",
-    )
-    steps.append({
-        "operationId": "GET /api/execution-hosts/:kind/:id/files/filesystem/content",
-        "parameters": parameters, "query": [{"name": "path", "value": str(remote / receipt)}],
-        "bodyJson": None, "responseFile": {"path": str(work / receipt)}, "confirmationDescription": None,
-    })
+    if stage != "download":
+        execute(
+            "/usr/bin/python3", command,
+            "Run the " + stage + " stage of the iOS installer on the selected host.",
+        )
+        steps.append({
+            "operationId": "GET /api/execution-hosts/:kind/:id/files/filesystem/content",
+            "parameters": parameters, "query": [{"name": "path", "value": str(remote / receipt)}],
+            "bodyJson": None, "responseFile": {"path": str(work / receipt)}, "confirmationDescription": None,
+        })
     result = {
         "stage": stage, "describeBeforeExecution": sorted({step["operationId"] for step in steps}),
         "stopOnPendingOrUnknown": True, "steps": steps,
@@ -1016,9 +1058,32 @@ def requests(config, work, stage, initialize=False):
     return result
 
 
-def verify(config, work):
-    published = read_json(work / "publication.json")
+def verify(config, work, signed_only=False):
     signed = read_json(work / "signed.json")
+    build = read_json(work / "build.json")
+    require(
+        signed["build"] == build and build["configurationSHA256"] == configuration_digest(config)
+        and signed["signatureVerified"] is True and signed["profileVerified"] is True
+        and signed["signingIdentity"] == config["signingIdentity"].upper(),
+        "Signing receipt differs from the prepared build or configuration",
+    )
+    if signed_only:
+        metadata = artifact(work / "Clanky.ipa")
+        require(metadata == signed["artifact"], "Downloaded IPA differs from signed build")
+        require(
+            metadata["bundleIdentifier"] == config["bundleIdentifier"] == build["bundleIdentifier"]
+            and metadata["bundleVersion"] == build["bundleVersion"]
+            and metadata["marketingVersion"] == build["marketingVersion"],
+            "Signed bundle metadata differs from prepared build",
+        )
+        result = {
+            "artifact": metadata, "sourceRevision": build["sourceRevision"],
+            "signedIPADownloadVerified": True, "ipaPath": str(work / "Clanky.ipa"),
+            "publicationClaimed": False, "phoneInstallationClaimed": False,
+        }
+        write_json(work / "verified-signed.json", result)
+        return result
+    published = read_json(work / "publication.json")
     require(signed["build"]["configurationSHA256"] == configuration_digest(config), "Verification parameters changed")
     require(published["artifact"] == signed["artifact"], "Publication differs from signed artifact")
     ca = work / "root-ca.cer"
@@ -1089,11 +1154,17 @@ def main():
     ])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--work", type=Path)
-    parser.add_argument("--stage", choices=["preflight", "setup", "renew-tls", "sign", "publish", "rollback", "cleanup", "status", "stop", "reconcile"])
+    parser.add_argument("--stage", choices=["preflight", "setup", "renew-tls", "sign", "download", "publish", "rollback", "cleanup", "status", "stop", "reconcile"])
+    parser.add_argument("--ci-artifact", type=Path)
+    parser.add_argument("--source-revision")
+    parser.add_argument("--signed-only", action="store_true")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--initialize-ca", action="store_true")
     parser.add_argument("--confirm")
     args = parser.parse_args()
+    require(args.ci_artifact is None or args.command == "prepare", "--ci-artifact is only for prepare")
+    require(args.source_revision is None or args.command == "prepare", "--source-revision is only for prepare")
+    require(not args.signed_only or args.command == "verify", "--signed-only is only for verify")
     os.umask(0o077)
     config = config_at(args.config)
     if sys.platform == "darwin":
@@ -1118,7 +1189,7 @@ def main():
         require(args.stage, "--stage required")
         result = requests(config, work, args.stage, args.initialize_ca)
     elif args.command == "prepare":
-        result = prepare(config, work)
+        result = prepare(config, work, args.ci_artifact, args.source_revision)
     elif args.command == "preflight":
         result = preflight(config)
     elif args.command == "setup":
@@ -1136,7 +1207,7 @@ def main():
     elif args.command == "reconcile":
         result = reconcile(config, work)
     elif args.command == "verify":
-        result = verify(config, work)
+        result = verify(config, work, args.signed_only)
     elif args.command == "cleanup":
         result = cleanup(config, work, remote)
     else:
