@@ -143,8 +143,12 @@ The macOS menu bar's **Local Controller > Start Local Controller** starts the
 bundled existing CLI with `serve --api-only true`, then connects the API client
 to it after its health check succeeds. **Connect to Local Controller** connects
 the active window to the running controller. Commands require an active Clanky window and are disabled
-while the controller starts or stops. It is optional and never starts just
-because the app opens.
+while the controller starts or stops. It is optional and stays off on a fresh
+installation. A successful **Start Local Controller** is remembered: the next
+app launch starts it automatically after the bundled UI is ready. Opening
+another window or returning to the app does not start another process.
+Automatic startup uses the same health check and visible errors as manual
+startup, without adopting an unrelated controller or repeatedly retrying.
 An owned process that failed its startup health check still offers **Stop Local
 Controller**, including after an interrupted or timed-out shutdown. **Connect**
 is available only after a successful health check, and is disabled once shutdown
@@ -166,9 +170,10 @@ processes do not inherit `CLANKY_` overrides from the environment that launched
 the app. Startup/exit errors identify the app-controller log. A port already
 in use fails visibly rather than attaching to an unrelated controller.
 
-**Stop Local Controller** stops the app-owned process; connected local windows
-then lose their API connection. Quitting the app requests normal CLI shutdown
-and waits for cleanup. If shutdown does not finish, quitting is cancelled and
+**Stop Local Controller** stops the app-owned process and disables automatic
+startup; connected local windows then lose their API connection. Quitting the
+app requests normal CLI shutdown and waits for cleanup, but preserves the
+saved startup choice. If shutdown does not finish, quitting is cancelled and
 an error remains visible; the app does not silently abandon its controller.
 The app continues observing that process after an interrupted or timed-out
 shutdown. If it exits later, the controller state and log handle are finalized
@@ -823,9 +828,12 @@ Use **Settings > General > Connection > Change connection** to return to the
 chooser without signing out or removing pairings. The API connection/sign-in
 screen also has this link, so an unavailable server or unfinished login cannot
 trap the app in one mode. Returning to the chooser clears the startup selection.
-The optional Mac local-controller mode is remembered separately and still
-requires **Start Local Controller** after quitting; restoration does not start
-the controller automatically. Ordinary static-site/browser startup is unchanged.
+The optional Mac local-controller connection mode is separate from the saved
+controller launch preference. Restoring that mode alone does not start a server;
+a successful **Start Local Controller** enables automatic startup on later app
+launches. **Stop Local Controller** disables automatic startup, while quitting
+preserves the choice. See [Windows and local controller](#windows-and-local-controller).
+Ordinary static-site/browser startup is unchanged.
 
 API login
 uses the existing device-authorization flow: the shell opens the system browser,

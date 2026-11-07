@@ -97,6 +97,9 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(selectedPort, forKey: "assetServerPort")
             error = nil
             self.origin = origin
+            #if os(macOS)
+            await controller.startIfEnabled()
+            #endif
             #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .phone { NativeDiagnostics.record("app-started") }
             #endif
