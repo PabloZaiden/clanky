@@ -828,9 +828,12 @@ Use **Settings > General > Connection > Change connection** to return to the
 chooser without signing out or removing pairings. The API connection/sign-in
 screen also has this link, so an unavailable server or unfinished login cannot
 trap the app in one mode. Returning to the chooser clears the startup selection.
-The optional Mac local-controller mode is remembered separately and still
-requires **Start Local Controller** after quitting; restoration does not start
-the controller automatically. Ordinary static-site/browser startup is unchanged.
+The optional Mac local-controller connection mode is separate from the saved
+controller launch preference. Restoring that mode alone does not start a server;
+a successful **Start Local Controller** enables automatic startup on later app
+launches. **Stop Local Controller** disables automatic startup, while quitting
+preserves the choice. See [Windows and local controller](#windows-and-local-controller).
+Ordinary static-site/browser startup is unchanged.
 
 API login
 uses the existing device-authorization flow: the shell opens the system browser,
