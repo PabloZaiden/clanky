@@ -414,7 +414,6 @@ export function deletePasskey(req: Request, store: ClankyAccountStore, config: R
   const timestamp = nowIso();
   store.deletePasskeysForUser(userId);
   store.incrementUserAuthVersion(userId, timestamp);
-  store.deleteApiKeysForUser(userId);
   store.revokeRefreshSessionsForUser(userId, timestamp);
   audit(store, { eventType: "passkey_deleted", actorUserId: userId, targetUserId: userId });
   return logoutHeaders(req, config);

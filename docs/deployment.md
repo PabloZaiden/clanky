@@ -106,6 +106,13 @@ method does not prove human presence. See
 [authentication-method equivalence](development/architecture.md#authentication-method-equivalence).
 Treat API keys, worker keys, and persisted application data as secrets.
 
+Deleting a passkey preserves the account's API keys; existing browser-session
+invalidation and device-session revocation still apply. This is separate from
+**Reset account access** under Settings > Administration > Users: that
+administrative action removes the user's passkeys and API keys, revokes sessions
+and issues a new setup link. It is unavailable for the owner account. Deleting
+an account also removes its API keys.
+
 Accounts, credential storage, OAuth, CLI authorization, and their administrative
 pages are Clanky-owned. Webapp supplies the application frame and transports,
 with optional passkey/session helpers; it does not initialize an account

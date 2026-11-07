@@ -137,7 +137,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
                   </select>
                 ) : <Badge variant="success">Owner</Badge>}
                 {user.role !== "owner" ? <>
-                  <Button disabled={setupLinkPending} onClick={() => setUserToReset(user)}>Reset passkey</Button>
+                  <Button disabled={setupLinkPending} onClick={() => setUserToReset(user)}>Reset account access</Button>
                   <Button disabled={setupLinkPending} tone="danger" onClick={() => setUserToDelete(user)}>Delete user</Button>
                 </> : null}
               </div>
