@@ -1,10 +1,22 @@
 import { chmod, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-const platform = process.argv[2];
+const [platform, ...options] = process.argv.slice(2);
 const linux = platform === "macos-linux" || platform === "ios-linux" || platform === "ios-simulator-linux";
+const usage = "Usage: bun scripts/build-apple.ts assets|macos|macos-linux|ios|ios-device|ios-linux|ios-simulator-linux [--configuration Debug|Release]";
 if (!["assets", "macos", "macos-linux", "ios", "ios-device", "ios-linux", "ios-simulator-linux"].includes(platform ?? "")) {
-  throw new Error("Usage: bun scripts/build-apple.ts assets|macos|macos-linux|ios|ios-device|ios-linux|ios-simulator-linux");
+  throw new Error(usage);
+}
+let configuration: "Debug" | "Release" = "Debug";
+if (options.length > 0) {
+  const [flag, value] = options;
+  if (options.length !== 2 || flag !== "--configuration" || (value !== "Debug" && value !== "Release")) {
+    throw new Error(usage);
+  }
+  if (linux || platform === "assets") {
+    throw new Error("--configuration is only supported for native macos, ios and ios-device builds.");
+  }
+  configuration = value;
 }
 if (linux && process.platform !== "linux") {
   throw new Error("The xtool cross-build requires Linux.");
@@ -190,7 +202,7 @@ skipLSP: true
   const device = platform === "ios-device";
   await run([
     "xcodebuild", "-quiet", "-project", "native/Clanky.xcodeproj",
-    "-scheme", mac ? "Clanky-macOS" : "Clanky-iOS", "-configuration", "Debug",
+    "-scheme", mac ? "Clanky-macOS" : "Clanky-iOS", "-configuration", configuration,
     "-derivedDataPath", `${directory}/build`,
     "-destination", mac ? "platform=macOS" : device ? "generic/platform=iOS" : "generic/platform=iOS Simulator",
     ...(mac ? ["ARCHS=" + (process.arch === "x64" ? "x86_64" : process.arch), "ONLY_ACTIVE_ARCH=YES"]
@@ -198,5 +210,6 @@ skipLSP: true
     ...(device ? ["ARCHS=arm64"] : []),
     "build",
   ]);
-  console.log(`App: ${directory}/build/Build/Products/${mac ? "Debug" : device ? "Debug-iphoneos" : "Debug-iphonesimulator"}/Clanky.app`);
+  const product = mac ? configuration : `${configuration}-${device ? "iphoneos" : "iphonesimulator"}`;
+  console.log(`App: ${directory}/build/Build/Products/${product}/Clanky.app`);
 }

@@ -70,9 +70,13 @@ profile or signing certificate is needed for this stage.
 The job runs `bun run build:apple:macos` and
 `bun run build:apple:ios:device`. The Mac bundle includes the standalone
 controller and shared web UI; the iOS bundle targets physical iPhones/iPads,
-not the simulator. Other CLI, server, Docker and release-publication jobs keep
-their existing behavior. The optional Linux cross-build commands below remain
-available independently of CI.
+not the simulator. Main pushes use Xcode's Debug configuration; published
+versioned releases use Release, with the project's optimized Swift settings.
+Archive paths and build metadata follow that configuration, and publication
+rejects artifacts built in the wrong mode for the event. This does not change
+signing or the native app's version numbers. Other CLI, server, Docker and
+release-publication jobs keep their existing behavior. The optional Linux
+cross-build commands below remain available independently of CI.
 
 Download `apple-app-macos-arm64` or `apple-app-ios-arm64` from the workflow run's
 Actions artifacts; they use the repository's artifact retention policy.
@@ -129,6 +133,19 @@ with the command above. Xcode fails the build if required resources or the
 standalone helper are missing. Generated resources live under `dist/apple/`,
 not in the source tree. The build targets the host architecture; it does not
 produce a universal Mac controller.
+Native commands default to Debug. To build an optimized Mac app explicitly:
+
+```bash
+bun run build:apple:macos --configuration Release
+open dist/apple/build/Build/Products/Release/Clanky.app
+```
+
+`build:apple:ios` and `build:apple:ios:device` also accept
+`--configuration Debug|Release`; their outputs use `Debug-` or `Release-`
+followed by `iphonesimulator` or `iphoneos`. Configuration selection does not
+add distribution signing. Asset-only and Linux cross-build commands retain
+their existing behavior and do not accept this native Xcode option.
+
 The embed step rejects an app architecture not supported by the prepared CLI.
 Debug Run builds only the active Mac architecture, matching the bundled helper;
 Release builds still require a helper supporting every requested architecture.

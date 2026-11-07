@@ -14,6 +14,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      apple_configuration: ${{ github.event_name == 'release' && 'Release' || 'Debug' }}
       targets: ${{ steps.release_metadata.outputs.targets }}
       binaries: ${{ steps.release_metadata.outputs.binaries }}
       generate_checksums: ${{ steps.release_metadata.outputs.generate_checksums }}
@@ -48,6 +49,7 @@ jobs:
       contents: read
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
     defaults:
       run:
         shell: bash
@@ -78,10 +80,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build macOS app and bundled controller
-        run: bun run build:apple:macos
+        run: bun run build:apple:macos --configuration "$APPLE_BUILD_CONFIGURATION"
 
       - name: Build unsigned iOS device app
-        run: bun run build:apple:ios:device
+        run: bun run build:apple:ios:device --configuration "$APPLE_BUILD_CONFIGURATION"
 
       - name: Archive Apple apps
         run: |
@@ -89,8 +91,8 @@ jobs:
           xcode_version="$(xcodebuild -version)"
           for platform in macos ios; do
             case "$platform" in
-              macos) product=Debug; sdk=MacOSX; executable=Contents/MacOS/Clanky; plist=Contents/Info.plist ;;
-              ios) product=Debug-iphoneos; sdk=iPhoneOS; executable=Clanky; plist=Info.plist ;;
+              macos) product="$APPLE_BUILD_CONFIGURATION"; sdk=MacOSX; executable=Contents/MacOS/Clanky; plist=Contents/Info.plist ;;
+              ios) product="$APPLE_BUILD_CONFIGURATION-iphoneos"; sdk=iPhoneOS; executable=Clanky; plist=Info.plist ;;
             esac
             root="dist/apple/build/Build/Products/$product"
             app="$root/Clanky.app"
@@ -121,8 +123,9 @@ jobs:
               --arg platform "$platform" \
               --arg archive "$archive" \
               --arg xcode "$xcode_version" \
+              --arg configuration "$APPLE_BUILD_CONFIGURATION" \
               '{sourceRevision: $revision, sourceRef: $ref, platform: $platform,
-                architecture: "arm64", configuration: "Debug", archive: $archive,
+                architecture: "arm64", configuration: $configuration, archive: $archive,
                 distributionSigned: false, notarized: false, xcode: $xcode}' \
               > "$output/build.json"
           done
@@ -161,7 +164,7 @@ jobs:
 
   publish-apple-apps:
     name: Publish Apple app assets
-    needs: [apple-apps, binaries]
+    needs: [metadata, apple-apps, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,6 +191,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event_name == 'push' && 'latest' || github.event.release.tag_name }}
+          APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
         shell: bash
         run: |
           set -euo pipefail
@@ -222,10 +226,11 @@ jobs:
             input="$RUNNER_TEMP/apple-release-inputs/$platform"
             archive="Clanky-$platform-arm64-unsigned.tar.gz"
             if ! jq -e --arg revision "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
-              --arg platform "$platform" --arg archive "$archive" '
+              --arg platform "$platform" --arg archive "$archive" \
+              --arg configuration "$APPLE_BUILD_CONFIGURATION" '
               .sourceRevision == $revision and .sourceRef == $ref
               and .platform == $platform and .architecture == "arm64"
-              and .configuration == "Debug" and .archive == $archive
+              and .configuration == $configuration and .archive == $archive
               and .distributionSigned == false and .notarized == false
               and (.xcode | type == "string" and length > 0)
             ' "$input/build.json" > /dev/null; then
