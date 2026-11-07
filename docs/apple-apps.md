@@ -177,6 +177,13 @@ while the controller starts or stops. It is optional and stays off on a fresh
 installation. A successful **Start Local Controller** is remembered: the next
 app launch starts it automatically after the bundled UI is ready. Opening
 another window or returning to the app does not start another process.
+The first window waits for remembered controller startup to finish before
+loading a connection page. When the app-owned controller is ready, each new
+window connects to it by default, instead of restoring another connection mode.
+This does not redirect an already-open window after you choose a remote API,
+collaboration or the connection chooser. If the controller is off or fails to
+start, windows retain the saved mode/chooser behavior and startup errors remain
+visible.
 Automatic startup uses the same health check and visible errors as manual
 startup, without adopting an unrelated controller or repeatedly retrying.
 An owned process that failed its startup health check still offers **Stop Local
@@ -862,7 +869,10 @@ The optional Mac local-controller connection mode is separate from the saved
 controller launch preference. Restoring that mode alone does not start a server;
 a successful **Start Local Controller** enables automatic startup on later app
 launches. **Stop Local Controller** disables automatic startup, while quitting
-preserves the choice. See [Windows and local controller](#windows-and-local-controller).
+preserves the choice. On Mac, a healthy app-owned controller takes precedence
+over the saved connection mode when opening a new window, after startup has
+settled. Existing windows keep explicit connection choices.
+See [Windows and local controller](#windows-and-local-controller).
 Ordinary static-site/browser startup is unchanged.
 
 API login
