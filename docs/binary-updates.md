@@ -51,13 +51,19 @@ one prerelease tagged `latest`. A unique version and source revision identify
 each build; `release.json` selects its binaries and checksum files. The workflow
 skips superseded main commits, preserves macOS signing, and removes obsolete
 rolling assets without deleting versioned releases.
+After both CLI publication and native Apple builds succeed, the same release
+also receives the Mac/iOS app archives, checksums and platform build metadata.
+Their filenames use that release's exact version; rolling publication shares
+the CLI publisher's lock and freshness checks. These app bundles are not inputs
+to the CLI installer or updater. See [Apple apps](apple-apps.md#ci-builds-for-main-and-releases)
+for downloads and the deferred signing requirements.
 
-Stable and rolling binary builds share two compilation jobs: `ubuntu-latest`
-cross-compiles Linux x64/arm64, while `macos-latest` builds both
-Darwin architectures and applies the configured signing. The default macOS
-runner is ARM64. Each job installs dependencies and runs prebuild once, then
-builds its targets in sequence. Metadata and publication remain separate jobs;
-native platform E2E tests are unchanged.
+Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
+job. It installs dependencies and runs prebuild once, then uses the same Bun
+entrypoint to compile Linux and Darwin x64/arm64 targets in sequence. Only
+Darwin binaries receive the configured macOS signing. The native Apple app
+job uses the same runner image separately. Metadata and publication remain
+lightweight Linux jobs; Docker and native platform E2E tests are unchanged.
 
 GitHub's latest **stable** release endpoint is separate from the tag `latest`.
 This channel does not add unattended updates or restart running servers.

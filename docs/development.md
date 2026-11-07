@@ -95,8 +95,12 @@ for a Mac `.app` including the existing standalone CLI/controller, or
 `bun run build:apple:ios` for the client-only iOS simulator app.
 `bun run build:apple:ios:device` builds the unsigned physical-device app on a Mac.
 The main/release workflow builds both Mac and iOS device apps on hosted Mac
-runners, saving app archives, checksums and source metadata as Actions artifacts;
-distribution signing and notarization are separate, deferred steps.
+runners, saving app archives, checksums and source metadata as Actions artifacts
+and attaching versioned copies to the rolling `latest` and published versioned
+releases after the CLI publisher succeeds. Distribution signing and notarization
+are separate, deferred steps.
+The four Linux/macOS CLI binaries also compile on that Mac runner image using
+their existing Bun targets; main and versioned releases share this arrangement.
 `bun run build:apple:ios:linux` cross-compiles the physical-device app on Linux;
 `bun run build:apple:ios:simulator:linux` builds for Apple Silicon simulators.
 `bun run build:apple:macos:linux` cross-compiles the Apple Silicon Mac app,

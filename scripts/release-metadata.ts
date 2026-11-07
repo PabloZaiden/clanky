@@ -378,8 +378,8 @@ function validateTargets(targets: ReleaseTarget[]): void {
       throw new Error(`${path}.bunTarget does not match its OS and architecture`);
     }
     const supportedRunnerPrefixes = {
-      linux: ["ubuntu-"],
-      darwin: ["macos-"],
+      linux: ["ubuntu-", "macos-", "xcode-"],
+      darwin: ["macos-", "xcode-"],
     }[target.os];
     if (!supportedRunnerPrefixes.some((prefix) => target.runner.startsWith(prefix))) {
       throw new Error(`${path}.runner does not support its target OS`);
