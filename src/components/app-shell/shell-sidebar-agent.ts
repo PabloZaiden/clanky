@@ -2,9 +2,8 @@ import type {
   ActionMenuItem,
   SidebarNode,
 } from "@pablozaiden/webapp/web";
-import type { Agent } from "@/shared";
+import type { Agent, Workspace } from "@/shared";
 import type { UseAgentsResult } from "../../hooks/useAgents";
-import type { PrivateEntity } from "../../lib/private-items";
 import { formatStatusLabel } from "../common";
 import {
   getPrivateHidden,
@@ -86,16 +85,17 @@ export function getAgentSidebarActions(
 
 export function createAgentSidebarNode(
   agent: Agent,
-  ancestors: Array<PrivateEntity | null | undefined>,
+  workspace: Workspace,
   context: AgentSidebarContext,
 ): SidebarNode {
-  const privateHidden = getPrivateHidden(agent.config, ancestors, context.showPrivateItems);
+  const privateHidden = getPrivateHidden(agent.config, [workspace], context.showPrivateItems);
   const actions = getAgentSidebarActions(agent, context);
+  const statusLabel = agent.config.enabled ? "Agent" : "Paused agent";
   return privateSidebarPresentation({
     type: "item",
     id: `agent:${agent.config.id}`,
     title: agent.config.name,
-    subtitle: agent.config.enabled ? "Agent" : "Paused agent",
+    subtitle: `${workspace.name} · ${statusLabel}`,
     badge: formatStatusLabel(agent.config.enabled ? "enabled" : "paused"),
     badgeVariant: agent.config.enabled ? "success" : "disabled",
     route: { view: "agent", agentId: agent.config.id },
@@ -103,4 +103,16 @@ export function createAgentSidebarNode(
     pinnable: true,
     pinId: `agent:${agent.config.id}`,
   }, privateHidden, privateActions(actions, privateHidden, agent.config.isPrivate === true));
+}
+
+export function buildAgentSidebarNodes(
+  agents: Agent[],
+  workspaces: Workspace[],
+  context: AgentSidebarContext,
+): SidebarNode[] {
+  const workspaceById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  return agents.flatMap((agent) => {
+    const workspace = workspaceById.get(agent.config.workspaceId);
+    return workspace ? [createAgentSidebarNode(agent, workspace, context)] : [];
+  });
 }

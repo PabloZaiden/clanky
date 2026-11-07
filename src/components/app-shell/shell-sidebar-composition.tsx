@@ -157,7 +157,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
 function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefined): SidebarNode[] {
   switch (activeTab) {
     case "workspaces":
-      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "trash");
+      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "agents" || node.id === "trash");
     case "servers":
       return nodes.filter((node) => node.id === "execution-hosts");
     case "active":

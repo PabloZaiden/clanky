@@ -6,7 +6,12 @@ import type {
   Workspace,
 } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
-import { formatStatusLabel, getChatStatusBadgeVariant } from "../common";
+import {
+  formatStatusLabel,
+  getChatStatusBadgeVariant,
+  getTerminalSessionStatusBadgeVariant,
+  getTerminalSessionStatusLabel,
+} from "../common";
 import { getServerTransportLabel } from "./server-sidebar-item";
 import {
   createChatSidebarNode,
@@ -19,15 +24,17 @@ import {
 import {
   getPrivateHidden,
   privateSidebarPresentation,
+  renderActiveWorkSidebarItem,
   renderServerSidebarItem,
+  sortSidebarNodesByActivity,
 } from "./shell-sidebar-utils";
 import {
+  getTerminalLastInteractionAt,
+  getWorkItemLastInteractionAt,
+} from "./shell-types";
+import {
   executionHostId,
-  executionHostUsable,
-  getExecutionHostChatRoute,
   getExecutionHostSidebarActions,
-  getExecutionHostTerminalRoute,
-  getExecutionHostWorkspaceRoute,
   type ExecutionHostSidebarContext,
 } from "./shell-sidebar-execution-host";
 
@@ -103,80 +110,63 @@ export function buildServerSidebarNodes({
         actions,
         pinnable: true,
         pinId: `execution-host:${host.ref.kind}:${hostId}`,
-        children: [
-          {
-            type: "section",
-            id: `execution-host:${host.ref.kind}:${hostId}:workspaces`,
-            title: "Workspaces",
-            action: {
-              id: "new-workspace",
-              title: "New workspace",
-              label: "New",
-              route: executionHostUsable(host) && host.capabilities.provisioning
-                ? getExecutionHostWorkspaceRoute(host)
-                : undefined,
-            },
-            children: hostWorkspaces.map((workspace): SidebarNode => ({
+        children: sortSidebarNodesByActivity([
+          ...hostWorkspaces.map((workspace) => ({
+            lastActivityAt: workspace.updatedAt,
+            node: {
               type: "item",
               id: `workspace:${workspace.id}`,
               title: workspace.name,
+              subtitle: "Workspace",
               route: { view: "workspace", workspaceId: workspace.id },
               pinnable: true,
               pinId: `workspace:${workspace.id}`,
-            })),
-          },
-          {
-            type: "section",
-            id: `execution-host:${host.ref.kind}:${hostId}:terminals`,
-            title: "Terminals",
-            action: {
-              id: "new-terminal",
-              title: "New terminal",
-              label: "New",
-              route: executionHostUsable(host) && host.capabilities.interactiveTerminal
-                ? getExecutionHostTerminalRoute(host)
-                : undefined,
-            },
-            children: hostTerminals.map((session): SidebarNode =>
-              createTerminalSessionSidebarNode({
-                session,
-                target: {
-                  id: session.config.id,
-                  name: session.config.name,
-                },
-                id: `terminal-session:${session.config.id}`,
-                title: session.config.name,
-                ancestors: [host],
-                pinId: `terminal-session:${session.config.id}`,
-              }, context.terminal)
-            ),
-          },
-          {
-            type: "section",
-            id: `execution-host:${host.ref.kind}:${hostId}:chats`,
-            title: "Chats",
-            action: {
-              id: "new-chat",
-              title: "New chat",
-              label: "New",
-              route: executionHostUsable(host) && host.capabilities.acpRuntime
-                ? getExecutionHostChatRoute(host)
-                : undefined,
-            },
-            children: hostChats.map((chat): SidebarNode =>
-              createChatSidebarNode({
-                chatNode: {
-                  chat,
-                  title: chat.config.name,
-                  badge: formatStatusLabel(chat.state.status),
-                  badgeVariant: getChatStatusBadgeVariant(chat.state.status),
-                },
-                ancestors: [host],
-                idPrefix: "chat",
-              }, context.chat)
-            ),
-          },
-        ],
+            } satisfies SidebarNode,
+          })),
+          ...hostTerminals.map((session) => ({
+            lastActivityAt: getTerminalLastInteractionAt(session),
+            node: createTerminalSessionSidebarNode({
+              session,
+              target: {
+                id: session.config.id,
+                name: session.config.name,
+              },
+              id: `terminal-session:${session.config.id}`,
+              title: session.config.name,
+              subtitle: host.name,
+              badge: getTerminalSessionStatusLabel(session.state.status),
+              badgeVariant: getTerminalSessionStatusBadgeVariant(session.state.status),
+              badgeAppearance: "text",
+              itemLayout: "subtitle-above-title",
+              render: renderActiveWorkSidebarItem(
+                "Terminal",
+                getTerminalLastInteractionAt(session),
+              ),
+              ancestors: [host],
+              pinId: `terminal-session:${session.config.id}`,
+            }, context.terminal),
+          })),
+          ...hostChats.map((chat) => ({
+            lastActivityAt: getWorkItemLastInteractionAt(chat),
+            node: createChatSidebarNode({
+              chatNode: {
+                chat,
+                title: chat.config.name,
+                badge: formatStatusLabel(chat.state.status),
+                badgeVariant: getChatStatusBadgeVariant(chat.state.status),
+              },
+              subtitle: host.name,
+              badgeAppearance: "text",
+              itemLayout: "subtitle-above-title",
+              render: renderActiveWorkSidebarItem(
+                "Chat",
+                getWorkItemLastInteractionAt(chat),
+              ),
+              ancestors: [host],
+              idPrefix: "chat",
+            }, context.chat),
+          })),
+        ]),
       }, hostPrivateHidden, actions);
     })
     .sort((left, right) => left.title.localeCompare(right.title));
