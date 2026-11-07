@@ -51,6 +51,12 @@ one prerelease tagged `latest`. A unique version and source revision identify
 each build; `release.json` selects its binaries and checksum files. The workflow
 skips superseded main commits, preserves macOS signing, and removes obsolete
 rolling assets without deleting versioned releases.
+After both CLI publication and native Apple builds succeed, the same release
+also receives the Mac/iOS app archives, checksums and platform build metadata.
+Their filenames use that release's exact version; rolling publication shares
+the CLI publisher's lock and freshness checks. These app bundles are not inputs
+to the CLI installer or updater. See [Apple apps](apple-apps.md#ci-builds-for-main-and-releases)
+for downloads and the deferred signing requirements.
 
 Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
 job. It installs dependencies and runs prebuild once, then uses the same Bun
