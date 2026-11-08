@@ -115,12 +115,19 @@ async function distribute() {
   const selectedIdentity = matches.length === 1 ? matches[0]?.[1] : undefined;
   if (!selectedIdentity) throw new Error("Exactly one valid Developer ID Application identity is required.");
   const identity = selectedIdentity;
-  const emptyEntitlements = join(work, "app.entitlements");
+  const emptyEntitlements = join(work, "library.entitlements");
+  const appEntitlements = join(work, "app.entitlements");
   const bunEntitlements = join(work, "controller.entitlements");
   const plist = (body: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>${body}</dict></plist>\n`;
   await writeFile(emptyEntitlements, plist(""), { mode: 0o600 });
+  const appPermissions = {
+    "com.apple.security.device.audio-input": true,
+    "com.apple.security.device.camera": true,
+  };
+  await writeFile(appEntitlements, plist(Object.keys(appPermissions)
+    .map((key) => `<key>${key}</key><true/>`).join("")), { mode: 0o600 });
   await writeFile(bunEntitlements, plist("<key>com.apple.security.cs.allow-jit</key><true/>"), { mode: 0o600 });
   let teamId: string | undefined;
   let verificationIndex = 0;
@@ -145,18 +152,26 @@ async function distribute() {
     const fingerprint = await run(["openssl", "x509", "-inform", "DER", "-in", `${prefix}0`, "-noout", "-fingerprint", "-sha1"]);
     const actual = fingerprint.split("=")[1]?.trim().replaceAll(":", "").toUpperCase();
     if (actual !== identity) throw new Error(`Unexpected signing certificate: ${target}.`);
+    const expected = bun ? { "com.apple.security.cs.allow-jit": true }
+      : target.endsWith(".app") ? appPermissions : {};
     const xml = await run(["codesign", "-d", "--entitlements", "-", "--xml", target], true);
+    if (!xml.trim()) {
+      if (Object.keys(expected).length) throw new Error(`Missing required distribution entitlements: ${target}.`);
+      return;
+    }
     const entitlementPath = join(work, `verified-${verificationIndex}.plist`);
     await writeFile(entitlementPath, xml);
     const values: unknown = JSON.parse(await run(["plutil", "-convert", "json", "-o", "-", entitlementPath]));
-    const expected = bun ? { "com.apple.security.cs.allow-jit": true } : {};
-    if (JSON.stringify(values) !== JSON.stringify(expected)) {
+    const entitlements = z.record(z.string(), z.boolean()).parse(values);
+    if (Object.keys(entitlements).length !== Object.keys(expected).length
+      || Object.entries(expected).some(([key, value]) => entitlements[key] !== value)) {
       throw new Error(`Unexpected distribution entitlements: ${target}.`);
     }
   }
   async function sign(target: string, bun: boolean) {
     await run(["codesign", "--force", "--sign", identity, "--keychain", signingKeychain,
-      "--timestamp", "--options", "runtime", "--entitlements", bun ? bunEntitlements : emptyEntitlements, target]);
+      "--timestamp", "--options", "runtime", "--entitlements",
+      bun ? bunEntitlements : target.endsWith(".app") ? appEntitlements : emptyEntitlements, target]);
     await verify(target, bun);
     signed.push({ path: target, bun });
   }

@@ -37,7 +37,7 @@
     "@monaco-editor/react": "4.7.0",
     "@noble/hashes": "2.4.0",
     "@opencode/client": "2.2.6",
-    "@pablozaiden/installer": "github:PabloZaiden/installer#356a4509694dd9c3c75094c137f0e69c5194a1aa",
+    "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#87f8d9e28b150c29fec789464c4247092e82e23e",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",

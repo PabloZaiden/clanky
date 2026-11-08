@@ -144,7 +144,12 @@ Mac keychain before storing the package in CI; preserve the usual keychains.
 `scripts/macos-distribution.ts --notarize <app-or-binary-paths>` owns both
 native-app and standalone-CLI distribution verification. Bun executables use
 only the `allow-jit` runtime entitlement; the native shell has no runtime
-exceptions or development entitlements. Native nested Mach-O code is signed
+exceptions or development entitlements. Its camera/audio-input resource
+entitlements preserve the app's existing declared media-capture capabilities;
+system and website permission prompts still apply. Native libraries have no
+entitlements and inherit the host executable's permissions, as described in
+[Apple's Hardened Runtime guidance](https://developer.apple.com/documentation/security/hardened-runtime).
+Native nested Mach-O code is signed
 before the outer bundle, including Xcode's Debug/preview dylibs on main.
 Acceptance must cover every signed
 executable's code hash. Missing credentials, Apple rejection, signature/ticket
