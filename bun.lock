@@ -10,7 +10,7 @@
         "@monaco-editor/react": "4.7.0",
         "@noble/hashes": "2.4.0",
         "@opencode/client": "2.2.6",
-        "@pablozaiden/installer": "github:PabloZaiden/installer#b30e7af9e43cd41f8511d555e06ea60d066c4e9f",
+        "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
         "@pablozaiden/webapp": "github:PabloZaiden/webapp#87f8d9e28b150c29fec789464c4247092e82e23e",
         "@peculiar/x509": "2.2.0",
         "@tailwindcss/typography": "0.5.20",
@@ -176,7 +176,7 @@
 
     "@oven/bun-windows-x64": ["@oven/bun-windows-x64@1.4.4", "", { "os": "win32", "cpu": "x64" }, "sha512-a3LNctBVO8PjePsFZfwDleF2JXYf2BfQ1u/PLRnBDLnC2Riml+4+LgJpKj4xRGhB92KweGyQI5PXaTkP9qypMQ=="],
 
-    "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#b30e7af", { "peerDependencies": { "typescript": "^7.0.0" } }, "PabloZaiden-installer-b30e7af", "sha512-HQ+i9LKnKnaeZ52wdlbKFckueNqTvBqOGap12eHKK4BAw4lrLmDFff3P73yBt4aOO10eQfNX2xm3ljGr3vxN9w=="],
+    "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#a60b4b7", { "peerDependencies": { "typescript": "^7.0.0" } }, "PabloZaiden-installer-a60b4b7", "sha512-4ucYjA0vB9U1otEbQ9NmIOjpbWevEUpv3dL09joX0dEZHVHCA9d6Ne/H76hwDMqycH6SOoxoldv+ISCEV9IDhQ=="],
 
     "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#87f8d9e", { "dependencies": { "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.1.0", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.15", "tailwindcss": "4.3.5", "tslog": "5.4.0", "zod": "4.6.7" }, "peerDependencies": { "react": "^19.3.0", "react-dom": "^19.3.0" } }, "PabloZaiden-webapp-87f8d9e", "sha512-SYyZsvhcDldZwo9EJGtLIQU7+tMQBUwEesRxerPO616gc3tSsHFjgZf+MxAMsCgGYeLzJrNPNbkjJ8aNJnu7gQ=="],
 

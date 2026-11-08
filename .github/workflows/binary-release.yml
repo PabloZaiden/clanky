@@ -47,6 +47,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    outputs:
+      signing_certificate_sha1: ${{ steps.macos_signing.outputs.signing_certificate_sha1 }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
@@ -85,6 +87,26 @@ jobs:
       - name: Build unsigned iOS device app
         run: bun run build:apple:ios:device --configuration "$APPLE_BUILD_CONFIGURATION"
 
+      - name: Sign and notarize macOS app
+        id: macos_signing
+        env:
+          MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64 }}
+          MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD }}
+          MACOS_NOTARIZATION_KEY_P8: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_P8 }}
+          MACOS_NOTARIZATION_KEY_ID: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_ID }}
+          MACOS_NOTARIZATION_ISSUER_ID: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          bun scripts/macos-distribution.ts --notarize \
+            "dist/apple/build/Build/Products/$APPLE_BUILD_CONFIGURATION/Clanky.app" \
+            > "$RUNNER_TEMP/apple-macos-signing.json"
+          jq -e '.distributionSigned == true and .notarized == true and .stapled == true
+            and (.signingCertificateSHA1 | test("^[A-F0-9]{40}$"))
+            and (.teamId | test("^[A-Z0-9]{10}$"))
+            and (.notarizationSubmissionId | type == "string" and length > 0)
+          ' "$RUNNER_TEMP/apple-macos-signing.json" > /dev/null
+          echo "signing_certificate_sha1=$(jq -r .signingCertificateSHA1 "$RUNNER_TEMP/apple-macos-signing.json")" >> "$GITHUB_OUTPUT"
+
       - name: Archive Apple apps
         run: |
           set -euo pipefail
@@ -111,8 +133,13 @@ jobs:
             fi
             output="$RUNNER_TEMP/apple-apps/$platform"
             mkdir -p "$output"
-            archive="Clanky-$platform-arm64-unsigned.tar.gz"
-            COPYFILE_DISABLE=1 tar -czf "$output/$archive" -C "$root" Clanky.app
+            if [[ "$platform" == macos ]]; then
+              archive="Clanky-macos-arm64-notarized.zip"
+              ditto -c -k --keepParent "$app" "$output/$archive"
+            else
+              archive="Clanky-ios-arm64-unsigned.tar.gz"
+              COPYFILE_DISABLE=1 tar -czf "$output/$archive" -C "$root" Clanky.app
+            fi
             (
               cd "$output"
               shasum -a 256 "$archive" > "$archive.sha256"
@@ -124,9 +151,16 @@ jobs:
               --arg archive "$archive" \
               --arg xcode "$xcode_version" \
               --arg configuration "$APPLE_BUILD_CONFIGURATION" \
+              --slurpfile signing "$RUNNER_TEMP/apple-macos-signing.json" \
               '{sourceRevision: $revision, sourceRef: $ref, platform: $platform,
                 architecture: "arm64", configuration: $configuration, archive: $archive,
-                distributionSigned: false, notarized: false, xcode: $xcode}' \
+                distributionSigned: ($platform == "macos"), notarized: ($platform == "macos"), xcode: $xcode}
+                + (if $platform == "macos" then {
+                    signingCertificateSHA1: $signing[0].signingCertificateSHA1,
+                    teamId: $signing[0].teamId,
+                    notarizationSubmissionId: $signing[0].notarizationSubmissionId,
+                    stapled: $signing[0].stapled
+                  } else {} end)' \
               > "$output/build.json"
           done
 
@@ -148,16 +182,20 @@ jobs:
 
   binaries:
     needs: metadata
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@b30e7af9e43cd41f8511d555e06ea60d066c4e9f
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@a60b4b71e8add6dcdf1aa89f71f132b742c326e7
     permissions:
       contents: write
     secrets:
-      macos_signing_certificate_base64: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_BASE64 }}
-      macos_signing_certificate_password: ${{ secrets.CLANKY_MACOS_SIGNING_CERT_PASSWORD }}
+      macos_signing_certificate_base64: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64 }}
+      macos_signing_certificate_password: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD }}
+      macos_notarization_key_p8: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_P8 }}
+      macos_notarization_key_id: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_ID }}
+      macos_notarization_issuer_id: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
     with:
       release_channel: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
+      macos_finalize_command: bun scripts/macos-distribution.ts --notarize
       targets: ${{ needs.metadata.outputs.targets }}
       binaries: ${{ needs.metadata.outputs.binaries }}
       generate_checksums: ${{ needs.metadata.outputs.generate_checksums == 'true' }}
@@ -192,6 +230,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event_name == 'push' && 'latest' || github.event.release.tag_name }}
           APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
+          MACOS_SIGNING_CERTIFICATE_SHA1: ${{ needs.apple-apps.outputs.signing_certificate_sha1 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -224,14 +263,25 @@ jobs:
           assets=()
           for platform in macos ios; do
             input="$RUNNER_TEMP/apple-release-inputs/$platform"
-            archive="Clanky-$platform-arm64-unsigned.tar.gz"
+            if [[ "$platform" == macos ]]; then
+              suffix=notarized.zip
+            else
+              suffix=unsigned.tar.gz
+            fi
+            archive="Clanky-$platform-arm64-$suffix"
             if ! jq -e --arg revision "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
               --arg platform "$platform" --arg archive "$archive" \
+              --arg signer "$MACOS_SIGNING_CERTIFICATE_SHA1" \
               --arg configuration "$APPLE_BUILD_CONFIGURATION" '
               .sourceRevision == $revision and .sourceRef == $ref
               and .platform == $platform and .architecture == "arm64"
               and .configuration == $configuration and .archive == $archive
-              and .distributionSigned == false and .notarized == false
+              and (if $platform == "macos" then
+                .distributionSigned == true and .notarized == true and .stapled == true
+                and .signingCertificateSHA1 == $signer and ($signer | test("^[A-F0-9]{40}$"))
+                and (.teamId | type == "string" and test("^[A-Z0-9]{10}$"))
+                and (.notarizationSubmissionId | type == "string" and length > 0)
+              else .distributionSigned == false and .notarized == false end)
               and (.xcode | type == "string" and length > 0)
             ' "$input/build.json" > /dev/null; then
               echo "::error::Invalid $platform app metadata for $GITHUB_SHA." >&2
@@ -245,7 +295,7 @@ jobs:
               exit 1
             fi
 
-            name="Clanky-v$version-$platform-arm64-unsigned.tar.gz"
+            name="Clanky-v$version-$platform-arm64-$suffix"
             metadata="Clanky-v$version-$platform-arm64-build.json"
             cp "$input/$archive" "$output/$name"
             (

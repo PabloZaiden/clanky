@@ -65,7 +65,8 @@ both Apple apps on main pushes and published releases, excluding the rolling
 runner and selects its installed Xcode 27.1. That runner image is currently in
 preview; ordinary `macos-26` images do not provide the required iOS 27.1 SDK.
 The SDK stays on the runner: no private SDK archive, Apple login, provisioning
-profile or signing certificate is needed for this stage.
+profile or signing certificate is needed for compilation. Mac distribution
+signing and notarization run afterward with protected CI credentials.
 
 The job runs `bun run build:apple:macos` and
 `bun run build:apple:ios:device`. The Mac bundle includes the standalone
@@ -74,28 +75,33 @@ not the simulator. Main pushes use Xcode's Debug configuration; published
 versioned releases use Release, with the project's optimized Swift settings.
 Archive paths and build metadata follow that configuration, and publication
 rejects artifacts built in the wrong mode for the event. This does not change
-signing or the native app's version numbers. Other CLI, server, Docker and
+the native app's version numbers. Other server, Docker and
 release-publication jobs keep their existing behavior. The optional Linux
 cross-build commands below remain available independently of CI.
 
 Download `apple-app-macos-arm64` or `apple-app-ios-arm64` from the workflow run's
 Actions artifacts; they use the repository's artifact retention policy.
-Each contains a complete
-`Clanky-<platform>-arm64-unsigned.tar.gz`, its `.sha256` file and `build.json`
-with the exact source revision/ref, target and Xcode version. Verify and extract
-the archive without losing executable permissions:
+The Mac artifact contains `Clanky-macos-arm64-notarized.zip`, its `.sha256`
+file and `build.json`; iOS contains `Clanky-ios-arm64-unsigned.tar.gz` and the
+corresponding checksum/metadata. Metadata records the exact source revision/ref,
+target, configuration and Xcode version. Mac metadata also identifies the
+verified signing certificate, team, accepted notarization submission and
+stapled ticket. Verify and extract the Mac archive preserving bundle metadata:
 
 ```bash
-shasum -a 256 -c Clanky-macos-arm64-unsigned.tar.gz.sha256
-tar -xzf Clanky-macos-arm64-unsigned.tar.gz
+shasum -a 256 -c Clanky-macos-arm64-notarized.zip.sha256
+ditto -x -k Clanky-macos-arm64-notarized.zip .
 ```
 
-Use the corresponding `ios` filenames for the device app. Once both Apple and
+Use `tar -xzf Clanky-ios-arm64-unsigned.tar.gz` for the device app after
+verifying its checksum. Once both Apple and
 CLI builds succeed, the same app archives are also attached to the rolling
 [`latest` prerelease](https://github.com/pablozaiden/clanky/releases/tag/latest)
 for main pushes and to the exact versioned release for published-release events.
-Each platform has three assets: `Clanky-v<version>-<platform>-arm64-unsigned.tar.gz`,
-its `.sha256` file and `Clanky-v<version>-<platform>-arm64-build.json`.
+Each platform has three assets: its versioned archive, `.sha256` file and
+`Clanky-v<version>-<platform>-arm64-build.json`. Mac archives are named
+`Clanky-v<version>-macos-arm64-notarized.zip`; iOS archives retain
+`Clanky-v<version>-ios-arm64-unsigned.tar.gz`.
 Download the matching archive and checksum together and verify with
 `shasum -a 256 -c <archive>.sha256` before extraction. Metadata identifies the
 source revision, release version and archive filename. Main uses the CLI
@@ -104,11 +110,58 @@ shares its lock so rolling cleanup preserves the current Apple assets.
 Existing Actions artifacts keep their original names. Historical releases are
 not backfilled.
 
-These bundles are inputs for later signing, not installable iOS IPAs.
-The Mac build has only an ad-hoc signature, not Developer ID signing or
-notarization; the iOS build disables signing. CI does not import the existing
-CLI signing secrets into the Apple jobs, notarize, publish to App Store/TestFlight,
-install apps or change the private signing host.
+The Mac app, bundled controller and native dynamic libraries are Developer ID
+Application signed with Hardened Runtime and secure timestamps, notarized and
+verified before upload.
+The app's ticket is stapled and validated before the final ZIP is created.
+The iOS archive remains an input for later signing, not an installable IPA.
+CI does not publish to App Store/TestFlight, install apps or change the private
+signing host.
+
+### CI signing and notarization
+
+Configure these repository secrets before running either channel:
+
+- `CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64`: Base64-encoded encrypted PKCS#12
+  containing one valid Developer ID Application certificate, its private key
+  and the Apple intermediate chain.
+- `CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD`: exact PKCS#12 password, including
+  any leading or trailing whitespace.
+- `CLANKY_APPLE_NOTARY_KEY_P8`: private App Store Connect team API key.
+- `CLANKY_APPLE_NOTARY_KEY_ID` and `CLANKY_APPLE_NOTARY_ISSUER_ID`: its key and
+  issuer identifiers.
+
+Apple must issue the Developer ID Application certificate through an authorized
+Developer Program account. Development, Distribution and self-signed
+certificates are not substitutes. Use an authorized App Store Connect API key
+for notarization; never put private values in tracked configuration or logs.
+CI imports the identity into a job-owned keychain and removes temporary
+credentials/keychains. It does not depend on a private Mac or login session.
+The old `CLANKY_MACOS_SIGNING_CERT_*` secrets are not used by this workflow.
+Use an Apple Security-compatible PKCS#12 export: SHA1 MAC and legacy 3DES
+key/certificate encryption. A package can parse correctly in OpenSSL yet fail
+Apple's import with a MAC verification error. Verify an import into a temporary
+Mac keychain before storing the package in CI; preserve the usual keychains.
+
+`scripts/macos-distribution.ts --notarize <app-or-binary-paths>` owns both
+native-app and standalone-CLI distribution verification. Bun executables use
+only the `allow-jit` runtime entitlement; the native shell has no runtime
+exceptions or development entitlements. Its camera/audio-input resource
+entitlements preserve the app's existing declared media-capture capabilities;
+system and website permission prompts still apply. Native libraries have no
+entitlements and inherit the host executable's permissions, as described in
+[Apple's Hardened Runtime guidance](https://developer.apple.com/documentation/security/hardened-runtime).
+Native nested Mach-O code is signed before the outer bundle, including Xcode's
+Debug/preview dylibs on main. Acceptance must cover every signed executable's
+code hash. Missing credentials, Apple rejection, signature/ticket
+verification or credential-cleanup failures block the relevant publication;
+there is no unsigned or unnotarized fallback.
+
+Both main and versioned releases currently notarize. Each workflow makes two
+submissions: one Mac app (including its controller) and one batch containing
+both standalone Darwin architectures. Apple recommends limiting submissions
+to 75 per day; frequent main pushes consume this budget too. See Apple's
+[notarization guidance](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 
 ## Build for Mac
 
