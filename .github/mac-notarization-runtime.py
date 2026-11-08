@@ -32,6 +32,8 @@ def environment(home):
 
 def diagnostics(process, *logs):
     pids = ",".join(str(pid) for pid in [process.pid, *descendants(process.pid)])
+    state = subprocess.run(["ps", "-p", pids, "-o", "pid=,ppid=,stat=,pcpu=,etime=,wchan="], capture_output=True, text=True)
+    print("Owned process state:\n" + state.stdout, file=sys.stderr)
     sockets = subprocess.run(["lsof", "-nP", "-a", "-p", pids, "-iTCP"], capture_output=True, text=True)
     print("Owned process TCP state:\n" + sockets.stdout, file=sys.stderr)
     for log in logs:
@@ -221,6 +223,19 @@ else:
                     assert json.loads(response.read())["ok"] is True
             result.update(runtime=True, architecture=target, checksum=True, signedCodeHash=True, healthRequests=100)
         except (RuntimeError, AssertionError, OSError, ValueError):
+            if result["machine"] == "x86_64":
+                snapshot = work / "sample.txt"
+                sampled = subprocess.run(["sample", str(process.pid), "1", "10", "-file", str(snapshot)], capture_output=True, text=True)
+                if sampled.returncode:
+                    print("Owned process sampling failed: " + sampled.stderr, file=sys.stderr)
+                else:
+                    print("Owned process sample:\n" + snapshot.read_text(errors="replace")[:18000], file=sys.stderr)
+                try:
+                    health(f"http://127.0.0.1:{port}/api/health", process, lambda data: json.loads(data)["ok"] is True, time.monotonic() + 20)
+                except (RuntimeError, OSError, ValueError) as error:
+                    print("Late-readiness diagnostic: " + str(error), file=sys.stderr)
+                else:
+                    print("Late readiness observed; original validation failure is preserved.", file=sys.stderr)
             diagnostics(process, work / "cli.log")
             raise
         finally:
