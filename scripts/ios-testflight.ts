@@ -37,7 +37,7 @@ async function api(path: string, method = "GET", data?: unknown): Promise<unknow
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`App Store Connect ${method} ${url.pathname} failed (${response.status}): ${safe(text.slice(0, 4000))}`);
+    throw new Error(`App Store Connect ${method} ${url.pathname} failed (${response.status}): ${safe(text).slice(0, 4000)}`);
   }
   if (!text && method === "GET") throw new Error(`Empty App Store Connect response: ${url.pathname}.`);
   return text ? JSON.parse(text) : null;
