@@ -1,0 +1,301 @@
+name: Disposable Mac notarization validation
+'on':
+  push:
+    branches:
+    - mac-release-notarization
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      apple_configuration: Debug
+      targets: ${{ steps.release_metadata.outputs.targets }}
+      binaries: ${{ steps.release_metadata.outputs.binaries }}
+      generate_checksums: ${{ steps.release_metadata.outputs.generate_checksums }}
+      version: ${{ steps.version.outputs.version }}
+      build_groups: ${{ steps.groups.outputs.groups }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: latest
+    - name: Validate release metadata
+      run: bun run release:metadata:check
+    - name: Export installer workflow inputs
+      id: release_metadata
+      run: "{\n  echo \"targets=$(bun scripts/release-metadata.ts installer-targets)\"\n  echo \"binaries=$(bun scripts/release-metadata.ts\
+        \ installer-binaries)\"\n  echo \"generate_checksums=$(bun scripts/release-metadata.ts installer-checksums)\"\n} >>\
+        \ \"$GITHUB_OUTPUT\"\n"
+    - name: Resolve disposable build inputs
+      id: version
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: 'set -euo pipefail
+
+        version="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq ''.tag_name'' | sed ''s/^v//'')"
+
+        if [[ "Debug" == Debug ]]; then version="$version-main-notary-validation-$GITHUB_RUN_ID"; fi
+
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+        '
+    - name: Group original release targets
+      id: groups
+      env:
+        TARGETS_JSON: ${{ steps.release_metadata.outputs.targets }}
+      run: 'set -euo pipefail
+
+        echo "groups=$(printf ''%s'' "$TARGETS_JSON" | jq -c ''group_by(.os) | map({os: .[0].os, targets: ., sign_macos: any(.[];
+        .target | startswith("darwin-"))})'')" >> "$GITHUB_OUTPUT"
+
+        '
+  apple-apps:
+    name: Build Apple apps
+    needs: metadata
+    runs-on: xcode-27
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      signing_certificate_sha1: ${{ steps.macos_signing.outputs.signing_certificate_sha1 }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ github.sha }}
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: latest
+    - name: Verify Apple build tools
+      run: "set -euo pipefail\nif [[ \"$(uname -m)\" != arm64 ]]; then\n  echo \"::error::Apple app builds require an Apple\
+        \ Silicon runner.\" >&2\n  exit 1\nfi\nxcodebuild -version\nxcrun --sdk macosx --show-sdk-version\nxcrun --sdk iphoneos\
+        \ --show-sdk-version\n"
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+    - name: Build macOS app and bundled controller
+      run: bun run build:apple:macos --configuration "$APPLE_BUILD_CONFIGURATION"
+    - name: Build unsigned iOS device app
+      run: bun run build:apple:ios:device --configuration "$APPLE_BUILD_CONFIGURATION"
+    - name: Sign and notarize macOS app
+      id: macos_signing
+      env:
+        MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64 }}
+        MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD }}
+        MACOS_NOTARIZATION_KEY_P8: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_P8 }}
+        MACOS_NOTARIZATION_KEY_ID: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_ID }}
+        MACOS_NOTARIZATION_ISSUER_ID: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
+      run: "set -euo pipefail\nbun scripts/macos-distribution.ts --notarize \\\n  \"dist/apple/build/Build/Products/$APPLE_BUILD_CONFIGURATION/Clanky.app\"\
+        \ \\\n  > \"$RUNNER_TEMP/apple-macos-signing.json\"\njq -e '.distributionSigned == true and .notarized == true and\
+        \ .stapled == true\n  and (.signingCertificateSHA1 | test(\"^[A-F0-9]{40}$\"))\n  and (.teamId | test(\"^[A-Z0-9]{10}$\"\
+        ))\n  and (.notarizationSubmissionId | type == \"string\" and length > 0)\n' \"$RUNNER_TEMP/apple-macos-signing.json\"\
+        \ > /dev/null\necho \"signing_certificate_sha1=$(jq -r .signingCertificateSHA1 \"$RUNNER_TEMP/apple-macos-signing.json\"\
+        )\" >> \"$GITHUB_OUTPUT\"\n"
+    - name: Archive Apple apps
+      run: "set -euo pipefail\nxcode_version=\"$(xcodebuild -version)\"\nfor platform in macos ios; do\n  case \"$platform\"\
+        \ in\n    macos) product=\"$APPLE_BUILD_CONFIGURATION\"; sdk=MacOSX; executable=Contents/MacOS/Clanky; plist=Contents/Info.plist\
+        \ ;;\n    ios) product=\"$APPLE_BUILD_CONFIGURATION-iphoneos\"; sdk=iPhoneOS; executable=Clanky; plist=Info.plist\
+        \ ;;\n  esac\n  root=\"dist/apple/build/Build/Products/$product\"\n  app=\"$root/Clanky.app\"\n  if [[ ! -d \"$app\"\
+        \ ]]; then\n    echo \"::error::Missing $platform app: $app\" >&2\n    exit 1\n  fi\n  /usr/bin/lipo -verify_arch\
+        \ arm64 \"$app/$executable\"\n  actual_sdk=\"$(/usr/bin/plutil -extract CFBundleSupportedPlatforms.0 raw -o - \"$app/$plist\"\
+        )\"\n  if [[ \"$actual_sdk\" != \"$sdk\" ]]; then\n    echo \"::error::Expected $sdk app, got $actual_sdk.\" >&2\n\
+        \    exit 1\n  fi\n  if [[ \"$platform\" == macos ]]; then\n    /usr/bin/lipo -verify_arch arm64 \"$app/Contents/Helpers/clanky\"\
+        \n  fi\n  output=\"$RUNNER_TEMP/apple-apps/$platform\"\n  mkdir -p \"$output\"\n  if [[ \"$platform\" == macos ]];\
+        \ then\n    archive=\"Clanky-macos-arm64-notarized.zip\"\n    ditto -c -k --keepParent \"$app\" \"$output/$archive\"\
+        \n  else\n    archive=\"Clanky-ios-arm64-unsigned.tar.gz\"\n    COPYFILE_DISABLE=1 tar -czf \"$output/$archive\" -C\
+        \ \"$root\" Clanky.app\n  fi\n  (\n    cd \"$output\"\n    shasum -a 256 \"$archive\" > \"$archive.sha256\"\n  )\n\
+        \  jq -n \\\n    --arg revision \"$GITHUB_SHA\" \\\n    --arg ref \"$GITHUB_REF\" \\\n    --arg platform \"$platform\"\
+        \ \\\n    --arg archive \"$archive\" \\\n    --arg xcode \"$xcode_version\" \\\n    --arg configuration \"$APPLE_BUILD_CONFIGURATION\"\
+        \ \\\n    --slurpfile signing \"$RUNNER_TEMP/apple-macos-signing.json\" \\\n    '{sourceRevision: $revision, sourceRef:\
+        \ $ref, platform: $platform,\n      architecture: \"arm64\", configuration: $configuration, archive: $archive,\n \
+        \     distributionSigned: ($platform == \"macos\"), notarized: ($platform == \"macos\"), xcode: $xcode}\n      + (if\
+        \ $platform == \"macos\" then {\n          signingCertificateSHA1: $signing[0].signingCertificateSHA1,\n         \
+        \ teamId: $signing[0].teamId,\n          notarizationSubmissionId: $signing[0].notarizationSubmissionId,\n       \
+        \   stapled: $signing[0].stapled\n        } else {} end)' \\\n    > \"$output/build.json\"\ndone\n"
+    - name: Upload macOS app build
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: apple-app-macos-arm64
+        path: ${{ runner.temp }}/apple-apps/macos/*
+        if-no-files-found: error
+        compression-level: 0
+    - name: Upload iOS device app build
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: apple-app-ios-arm64
+        path: ${{ runner.temp }}/apple-apps/ios/*
+        if-no-files-found: error
+        compression-level: 0
+    - name: Verify distributed app and actual native/controller runtime
+      run: python3 .github/mac-notarization-runtime.py app "$RUNNER_TEMP" "$RUNNER_TEMP/app-runtime.json"
+    - name: Save app verification evidence
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: mac-app-signing-evidence
+        path: '${{ runner.temp }}/apple-macos-signing.json
+
+          ${{ runner.temp }}/app-runtime.json'
+        if-no-files-found: error
+  build-binaries:
+    needs: metadata
+    name: Build on ${{ matrix.group.os }}
+    runs-on: ${{ matrix.group.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        group: ${{ fromJson(needs.metadata.outputs.build_groups) }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      with:
+        bun-version: latest
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+    - name: Update package.json version
+      env:
+        VERSION: ${{ needs.metadata.outputs.version }}
+      run: bun -e 'const path = "package.json"; const value = await Bun.file(path).json(); value.version = process.env.VERSION.replace(/^v/,
+        ""); await Bun.write(path, JSON.stringify(value, null, 2) + "\n");'
+    - name: Run prebuild command
+      run: bun run build
+    - name: Prepare macOS signing keychain
+      if: matrix.group.sign_macos
+      env:
+        MACOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64 }}
+        MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD }}
+        MACOS_FINALIZE_COMMAND: bun scripts/macos-distribution.ts --notarize > "$RUNNER_TEMP/cli-signing.json"
+      run: "set +x\nset -euo pipefail\numask 077\nif [ -z \"${MACOS_SIGNING_CERTIFICATE_BASE64:-}\" ] && [ -z \"${MACOS_SIGNING_CERTIFICATE_PASSWORD:-}\"\
+        \ ]; then\n  if [ -n \"$MACOS_FINALIZE_COMMAND\" ]; then\n    echo \"::error::Mac finalization requires both signing\
+        \ secrets.\" >&2\n    exit 1\n  fi\n  echo \"::notice::No macOS signing certificate was supplied; macOS artifacts\
+        \ will remain unsigned.\"\n  exit 0\nfi\nif [ -z \"${MACOS_SIGNING_CERTIFICATE_BASE64:-}\" ] || [ -z \"${MACOS_SIGNING_CERTIFICATE_PASSWORD:-}\"\
+        \ ]; then\n  echo \"Both macOS signing secrets must be supplied together.\" >&2\n  exit 1\nfi\n\nCERTIFICATE_PATH=\"\
+        $RUNNER_TEMP/macos-signing.p12\"\nKEYCHAIN_PATH=\"$RUNNER_TEMP/macos-signing.keychain-db\"\nKEYCHAIN_PASSWORD=\"$(openssl\
+        \ rand -hex 32)\"\nprintf '%s' \"$MACOS_SIGNING_CERTIFICATE_BASE64\" | base64 -D > \"$CERTIFICATE_PATH\"\n{\n  printf\
+        \ 'MACOS_SIGNING_CERTIFICATE_PATH=%s\\n' \"$CERTIFICATE_PATH\"\n  printf 'MACOS_SIGNING_KEYCHAIN=%s\\n' \"$KEYCHAIN_PATH\"\
+        \n} >> \"$GITHUB_ENV\"\n\nsecurity create-keychain -p \"$KEYCHAIN_PASSWORD\" \"$KEYCHAIN_PATH\"\nsecurity set-keychain-settings\
+        \ -lut 21600 \"$KEYCHAIN_PATH\"\nsecurity unlock-keychain -p \"$KEYCHAIN_PASSWORD\" \"$KEYCHAIN_PATH\"\nsecurity import\
+        \ \"$CERTIFICATE_PATH\" \\\n  -k \"$KEYCHAIN_PATH\" \\\n  -P \"$MACOS_SIGNING_CERTIFICATE_PASSWORD\" \\\n  -T /usr/bin/codesign\n\
+        security set-key-partition-list \\\n  -S apple-tool:,apple:,codesign: \\\n  -s \\\n  -k \"$KEYCHAIN_PASSWORD\" \\\n\
+        \  \"$KEYCHAIN_PATH\" > /dev/null\nsecurity list-keychains -d user -s \"$KEYCHAIN_PATH\"\n\nif [ -n \"$MACOS_FINALIZE_COMMAND\"\
+        \ ]; then\n  SIGNING_IDENTITY=\"$(security find-identity -v -p codesigning \"$KEYCHAIN_PATH\" \\\n    | sed -n 's/^\
+        \ *[0-9][0-9]*) \\([0-9A-Fa-f]\\{40\\}\\) .*$/\\1/p')\"\n  if [[ ! \"$SIGNING_IDENTITY\" =~ ^[0-9A-Fa-f]{40}$ ]];\
+        \ then\n    echo \"::error::Mac finalization requires exactly one valid signing identity.\" >&2\n    exit 1\n  fi\n\
+        else\n  SIGNING_IDENTITY=\"$(security find-certificate -a -Z \"$KEYCHAIN_PATH\" \\\n    | sed -n 's/^SHA-1 hash: \\\
+        ([0-9A-Fa-f]\\{40\\}\\)$/\\1/p' \\\n    | head -n 1)\"\nfi\nif [ -z \"$SIGNING_IDENTITY\" ]; then\n  echo \"No imported\
+        \ macOS signing certificate fingerprint was found.\" >&2\n  security find-certificate -a -Z \"$KEYCHAIN_PATH\" >&2\
+        \ || true\n  exit 1\nfi\n\n{\n  printf 'MACOS_SIGNING_IDENTITY=%s\\n' \"$SIGNING_IDENTITY\"\n} >> \"$GITHUB_ENV\"\n"
+    - name: Build and stage release assets
+      env:
+        BINARIES_JSON: ${{ needs.metadata.outputs.binaries }}
+        TARGETS_JSON: ${{ toJson(matrix.group.targets) }}
+        TAG: v${{ needs.metadata.outputs.version }}
+        VERSION: ${{ needs.metadata.outputs.version }}
+        GENERATE_CHECKSUMS: 'true'
+      run: "set -euo pipefail\nexport TAG VERSION\nmkdir -p \"$RUNNER_TEMP/release-assets\"\nBINARIES_PATH=\"$RUNNER_TEMP/binaries.json\"\
+        \nTARGETS_PATH=\"$RUNNER_TEMP/targets.json\"\nprintf '%s' \"$BINARIES_JSON\" > \"$BINARIES_PATH\"\nprintf '%s' \"\
+        $TARGETS_JSON\" > \"$TARGETS_PATH\"\n\njq -c '.[]' \"$TARGETS_PATH\" | while read -r target; do\n  RELEASE_TARGET=\"\
+        $(printf '%s' \"$target\" | jq -r '.target')\"\n  BUN_TARGET=\"$(printf '%s' \"$target\" | jq -r '.bun_target')\"\n\
+        \  export RELEASE_TARGET BUN_TARGET\n  echo \"::group::Build $RELEASE_TARGET\"\n\n  jq -c '.[]' \"$BINARIES_PATH\"\
+        \ | while read -r spec; do\n    BINARY_NAME=\"$(printf '%s' \"$spec\" | jq -r '.name')\"\n    ASSET_PREFIX=\"$(printf\
+        \ '%s' \"$spec\" | jq -r '.asset_prefix // .assetPrefix // .name')\"\n    BUILD_COMMAND=\"$(printf '%s' \"$spec\"\
+        \ | jq -r '.build_command // .buildCommand')\"\n    OUTPUT_PATH=\"$(printf '%s' \"$spec\" | jq -r '.output_path //\
+        \ .outputPath')\"\n    ASSET_NAME=\"${ASSET_PREFIX}-${TAG}-${RELEASE_TARGET}\"\n    ASSET_PATH=\"$RUNNER_TEMP/release-assets/${ASSET_NAME}\"\
+        \n    export BINARY_NAME ASSET_PREFIX ASSET_NAME ASSET_PATH OUTPUT_PATH\n\n    if [ -z \"$BUILD_COMMAND\" ] || [ \"\
+        $BUILD_COMMAND\" = \"null\" ]; then\n      echo \"Missing build_command for ${BINARY_NAME}\" >&2\n      exit 1\n \
+        \   fi\n    if [ -z \"$OUTPUT_PATH\" ] || [ \"$OUTPUT_PATH\" = \"null\" ]; then\n      echo \"Missing output_path\
+        \ for ${BINARY_NAME}\" >&2\n      exit 1\n    fi\n\n    eval \"$BUILD_COMMAND\"\n    RESOLVED_OUTPUT_PATH=\"$(eval\
+        \ \"printf '%s' \\\"$OUTPUT_PATH\\\"\")\"\n    if [ ! -f \"$RESOLVED_OUTPUT_PATH\" ]; then\n      echo \"Missing build\
+        \ output for ${BINARY_NAME} (${RELEASE_TARGET}): ${RESOLVED_OUTPUT_PATH}\" >&2\n      exit 1\n    fi\n    if [[ \"\
+        $RELEASE_TARGET\" == darwin-* && -n \"${MACOS_SIGNING_KEYCHAIN:-}\" ]]; then\n      codesign \\\n        --force \\\
+        \n        --sign \"$MACOS_SIGNING_IDENTITY\" \\\n        --keychain \"$MACOS_SIGNING_KEYCHAIN\" \\\n        --timestamp=none\
+        \ \\\n        \"$RESOLVED_OUTPUT_PATH\"\n    fi\n    if [ \"$RESOLVED_OUTPUT_PATH\" != \"$ASSET_PATH\" ]; then\n \
+        \     cp \"$RESOLVED_OUTPUT_PATH\" \"$ASSET_PATH\"\n    fi\n    chmod +x \"$ASSET_PATH\"\n    if [ \"$GENERATE_CHECKSUMS\"\
+        \ = \"true\" ]; then\n      bun -e '\n        import { createHash } from \"node:crypto\";\n        const path = process.env.ASSET_PATH;\n\
+        \        const name = process.env.ASSET_NAME;\n        const payload = await Bun.file(path).arrayBuffer();\n     \
+        \   const hash = createHash(\"sha256\").update(new Uint8Array(payload)).digest(\"hex\");\n        await Bun.write(`${path}.sha256`,\
+        \ `${hash}  ${name}\\n`);\n      '\n    fi\n  done\n  echo \"::endgroup::\"\ndone\n"
+    - name: Finalize Mac artifacts
+      if: ${{ matrix.group.sign_macos && true }}
+      env:
+        MACOS_FINALIZE_COMMAND: bun scripts/macos-distribution.ts --notarize > "$RUNNER_TEMP/cli-signing.json"
+        MACOS_NOTARIZATION_KEY_P8: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_P8 }}
+        MACOS_NOTARIZATION_KEY_ID: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_ID }}
+        MACOS_NOTARIZATION_ISSUER_ID: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
+        TAG: v${{ needs.metadata.outputs.version }}
+        GENERATE_CHECKSUMS: 'true'
+      run: "set -euo pipefail\nexport MACOS_ARTIFACT_PATHS_JSON=\"$(jq -cn \\\n  --arg root \"$RUNNER_TEMP/release-assets\"\
+        \ --arg tag \"$TAG\" \\\n  --slurpfile targets \"$RUNNER_TEMP/targets.json\" \\\n  --slurpfile binaries \"$RUNNER_TEMP/binaries.json\"\
+        \ '\n  [$targets[0][] | select(.target | startswith(\"darwin-\")) | .target as $target\n    | $binaries[0][]\n   \
+        \ | $root + \"/\" + (.asset_prefix // .assetPrefix // .name) + \"-\" + $tag + \"-\" + $target]\n')\"\nbash -euo pipefail\
+        \ -c \"$MACOS_FINALIZE_COMMAND\"\nprintf '%s' \"$MACOS_ARTIFACT_PATHS_JSON\" | jq -r '.[]' | while IFS= read -r artifact;\
+        \ do\n  if [[ ! -f \"$artifact\" ]]; then\n    echo \"::error::Missing finalized Mac artifact: $artifact.\" >&2\n\
+        \    exit 1\n  fi\n  if [ \"$GENERATE_CHECKSUMS\" = true ]; then\n    (cd \"$(dirname \"$artifact\")\" && shasum -a\
+        \ 256 \"$(basename \"$artifact\")\") > \"$artifact.sha256\"\n  fi\ndone\n"
+    - name: Upload workflow artifacts
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-assets-${{ strategy.job-index }}
+        path: ${{ runner.temp }}/release-assets/*
+        if-no-files-found: error
+        retention-days: 1
+    - name: Verify signed Apple Silicon CLI runtime
+      run: python3 .github/mac-notarization-runtime.py cli "$RUNNER_TEMP" "$RUNNER_TEMP/cli-runtime.json"
+    - name: Save CLI verification evidence
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: mac-cli-signing-evidence
+        path: '${{ runner.temp }}/cli-signing.json
+
+          ${{ runner.temp }}/cli-runtime.json'
+        if-no-files-found: error
+    - name: Remove macOS signing keychain
+      if: ${{ always() && matrix.group.sign_macos }}
+      env:
+        MACOS_FINALIZE_COMMAND: bun scripts/macos-distribution.ts --notarize > "$RUNNER_TEMP/cli-signing.json"
+      run: "set -euo pipefail\ncleanup_status=0\nif [ -n \"${MACOS_SIGNING_KEYCHAIN:-}\" ]; then\n  if [ -n \"$MACOS_FINALIZE_COMMAND\"\
+        \ ]; then\n    if [[ -f \"$MACOS_SIGNING_KEYCHAIN\" ]]; then\n      security delete-keychain \"$MACOS_SIGNING_KEYCHAIN\"\
+        \ || cleanup_status=$?\n    fi\n  else\n    security delete-keychain \"$MACOS_SIGNING_KEYCHAIN\" || true\n  fi\nfi\n\
+        if [ -n \"${MACOS_SIGNING_CERTIFICATE_PATH:-}\" ]; then\n  rm -f \"$MACOS_SIGNING_CERTIFICATE_PATH\" || cleanup_status=$?\n\
+        fi\nexit \"$cleanup_status\"\n"
+    timeout-minutes: 30
+  intel:
+    name: Verify notarized CLI on native Intel
+    needs: build-binaries
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: release-assets-0
+        path: ${{ runner.temp }}/release-assets
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: mac-cli-signing-evidence
+        path: ${{ runner.temp }}
+    - name: Verify actual Intel runtime
+      run: python3 .github/mac-notarization-runtime.py cli "$RUNNER_TEMP" "$RUNNER_TEMP/intel-runtime.json"
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: mac-intel-runtime-evidence
+        path: ${{ runner.temp }}/intel-runtime.json
+        if-no-files-found: error

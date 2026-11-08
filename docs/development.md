@@ -97,8 +97,9 @@ for a Mac `.app` including the existing standalone CLI/controller, or
 The main/release workflow builds both Mac and iOS device apps on hosted Mac
 runners, saving app archives, checksums and source metadata as Actions artifacts
 and attaching versioned copies to the rolling `latest` and published versioned
-releases after the CLI publisher succeeds. Distribution signing and notarization
-are separate, deferred steps.
+releases after the CLI publisher succeeds. Both channels sign and notarize the
+Mac app, bundled controller and standalone Darwin binaries with one Developer
+ID Application identity. The iOS device archive remains unsigned.
 Release artifact downloads fail on a digest mismatch instead of publishing
 unverified assets.
 Native Apple builds use Debug for main and Release for published versioned

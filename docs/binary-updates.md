@@ -56,12 +56,20 @@ also receives the Mac/iOS app archives, checksums and platform build metadata.
 Their filenames use that release's exact version; rolling publication shares
 the CLI publisher's lock and freshness checks. These app bundles are not inputs
 to the CLI installer or updater. See [Apple apps](apple-apps.md#ci-builds-for-main-and-releases)
-for downloads and the deferred signing requirements.
+for downloads and signing prerequisites.
 
 Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
 job. It installs dependencies and runs prebuild once, then uses the same Bun
 entrypoint to compile Linux and Darwin x64/arm64 targets in sequence. Only
-Darwin binaries receive the configured macOS signing. The native Apple app
+Darwin binaries receive Developer ID Application signing with Hardened Runtime
+and secure timestamps. On both channels, the two standalone architectures
+share one Apple notarization submission after compilation; publication requires
+accepted tickets covering their exact signed code hashes. Raw binary filenames
+and checksums remain unchanged. Apple cannot staple tickets to standalone
+executables, so those use online ticket lookup rather than an attached ticket.
+They share the Mac app/controller's signing certificate; see
+[CI signing setup](apple-apps.md#ci-signing-and-notarization).
+The native Apple app
 job uses the same runner image separately. Metadata and publication remain
 lightweight Linux jobs; Docker and native platform E2E tests are unchanged.
 
