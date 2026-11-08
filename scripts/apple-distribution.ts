@@ -2,6 +2,10 @@ import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
+export function validAppleApiIdentifiers(keyId: string, issuer: string): boolean {
+  return /^[A-Z0-9]{10}$/.test(keyId) && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(issuer);
+}
+
 export function createAppleDistributionCommands() {
   const redactions: string[] = [];
   function redact(value: string) {

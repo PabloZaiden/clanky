@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { importPKCS8, SignJWT } from "jose";
 import { z } from "zod";
-import { createAppleDistributionCommands } from "./apple-distribution";
+import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
 
 const [tag, ...extra] = process.argv.slice(2);
 const version = tag?.match(/^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/)?.[1];
@@ -16,7 +16,7 @@ const issuer = secret("IOS_APP_STORE_ISSUER_ID");
 const privateKey = secret("IOS_APP_STORE_KEY_P8");
 const groupName = process.env["IOS_TESTFLIGHT_GROUP"]?.trim();
 if (!groupName) throw new Error("Missing IOS_TESTFLIGHT_GROUP.");
-if (!/^[A-Z0-9]{10}$/.test(keyId) || !z.string().uuid().safeParse(issuer).success) {
+if (!validAppleApiIdentifiers(keyId, issuer)) {
   throw new Error("Invalid App Store Connect API key/issuer identifiers.");
 }
 const key = await importPKCS8(privateKey, "ES256");

@@ -1,7 +1,7 @@
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
-import { createAppleDistributionCommands } from "./apple-distribution";
+import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
 
 const args = process.argv.slice(2);
 const notarize = args.includes("--notarize");
@@ -25,8 +25,7 @@ const { secret, safe, execute, run, importIdentity } = createAppleDistributionCo
 const keyId = notarize ? secret("MACOS_NOTARIZATION_KEY_ID") : "";
 const issuerId = notarize ? secret("MACOS_NOTARIZATION_ISSUER_ID") : "";
 const apiKey = notarize ? secret("MACOS_NOTARIZATION_KEY_P8") : "";
-if (notarize && (!/^[A-Z0-9]{10}$/.test(keyId)
-  || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(issuerId))) {
+if (notarize && !validAppleApiIdentifiers(keyId, issuerId)) {
   throw new Error("Invalid notarization key ID or issuer ID.");
 }
 
