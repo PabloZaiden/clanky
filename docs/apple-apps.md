@@ -74,8 +74,9 @@ controller and shared web UI; the iOS bundle targets physical iPhones/iPads,
 not the simulator. Main pushes use Xcode's Debug configuration; published
 versioned releases use Release, with the project's optimized Swift settings.
 Archive paths and build metadata follow that configuration, and publication
-rejects artifacts built in the wrong mode for the event. This does not change
-the native app's version numbers. Other server, Docker and
+rejects artifacts built in the wrong mode for the event. Public archives keep
+the project's native version numbers; the separate TestFlight IPA uses its
+release tag and an Apple build number. Other server, Docker and
 release-publication jobs keep their existing behavior. The optional Linux
 cross-build commands below remain available independently of CI.
 
@@ -114,8 +115,11 @@ The Mac app, bundled controller and native dynamic libraries are Developer ID
 Application signed with Hardened Runtime and secure timestamps, notarized and
 verified before upload.
 The app's ticket is stapled and validated before the final ZIP is created.
-The iOS archive remains an input for later signing, not an installable IPA.
-CI does not publish to App Store/TestFlight, install apps or change the private
+The public iOS archive remains an input for later signing, not an installable
+IPA. After all public app/CLI assets succeed, published versioned releases also
+archive, sign and publish a separate internal-only iOS build to TestFlight.
+Main and rolling `latest` never upload to TestFlight. CI does not submit apps
+for public App Store/external beta review, install apps or require the private
 signing host.
 
 ### CI signing and notarization
@@ -162,6 +166,53 @@ submissions: one Mac app (including its controller) and one batch containing
 both standalone Darwin architectures. Apple recommends limiting submissions
 to 75 per day; frequent main pushes consume this budget too. See Apple's
 [notarization guidance](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
+
+### CI internal TestFlight
+
+The existing iOS Bundle ID must have an App Store Connect app record and an
+internal testing group with at least one authorized team member and **Enable
+automatic distribution** enabled. Configure these additional repository inputs:
+
+- `CLANKY_IOS_DISTRIBUTION_CERT_BASE64`: Apple Security-compatible encrypted
+  PKCS12 containing one valid Apple Distribution identity and its intermediate
+  chain. Development and Mac Developer ID identities cannot sign this IPA.
+- `CLANKY_IOS_DISTRIBUTION_CERT_PASSWORD`: exact PKCS12 password; whitespace is
+  significant.
+- `CLANKY_IOS_TESTFLIGHT_PROFILE_BASE64`: App Store Connect distribution profile
+  for the current iOS Bundle ID/team and certificate, not Ad Hoc/development.
+- Repository variable `CLANKY_IOS_TESTFLIGHT_GROUP`: the existing internal group
+  name. Manage its members in App Store Connect; adding internal testers does
+  not require new credentials or workflow changes.
+
+The job reuses `CLANKY_APPLE_NOTARY_KEY_P8`, `CLANKY_APPLE_NOTARY_KEY_ID` and
+`CLANKY_APPLE_NOTARY_ISSUER_ID` as the existing team App Store Connect API key.
+A Developer-role key can upload builds; it must actually have access to the app,
+group and build APIs. Keep unrelated signing/OTA credentials and profiles intact.
+
+`bun scripts/ios-testflight.ts vX.Y.Z[-prerelease]` owns the publication:
+it reuses the canonical bundled-web build, creates a native Release
+`xcodebuild archive`, and exports with `app-store-connect` and
+`testFlightInternalTestingOnly=true`. Native marketing version is the numeric
+release core; the next major build number comes from Apple's existing builds
+for that version. The shared CI concurrency queue serializes uploads, including
+reruns, so the same marketing/build pair is never deliberately reused.
+Xcode's automatic version/build management is disabled.
+
+Both archive and extracted IPA must match the actual iOS Bundle ID, release
+version/build, arm64 device platform, exact profile and signing certificate,
+and authorized non-development entitlements. The exported app declares no
+non-exempt encryption: native hashing, client signing and transport use
+CryptoKit/Web Crypto/system networking. Reassess this declaration before adding
+cryptography not provided by the operating system.
+
+The Apple upload is followed by bounded processing and internal-group/readiness
+verification; group assignment uses only the explicitly selected internal
+group. Apple rejection, compliance/credential/signature problems or timeout
+fail the job, with no automatic uncertain upload retry or unsigned fallback.
+The build cannot be used for external TestFlight or public App Store submission.
+Only a non-secret result goes to the Actions summary; the IPA, temporary signing
+keychain, installed job-owned profile and API-key files are removed, not exposed
+as public release assets. Existing unsigned iOS downloads remain unchanged.
 
 ## Build for Mac
 
