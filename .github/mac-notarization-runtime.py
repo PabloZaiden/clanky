@@ -25,8 +25,26 @@ def command(*args, env=None):
 
 def environment(home):
     value = {key: item for key, item in os.environ.items() if not key.startswith("CLANKY_")}
-    value.update(HOME=str(home), CFFIXED_USER_HOME=str(home))
+    value.pop("CFFIXED_USER_HOME", None)
+    value.update(HOME=str(home))
     return value
+
+
+def diagnostics(process, *logs):
+    pids = ",".join(str(pid) for pid in [process.pid, *descendants(process.pid)])
+    sockets = subprocess.run(["lsof", "-nP", "-a", "-p", pids, "-iTCP"], capture_output=True, text=True)
+    print("Owned process TCP state:\n" + sockets.stdout, file=sys.stderr)
+    for log in logs:
+        if not log.exists():
+            continue
+        lines = []
+        for line in log.read_text(errors="replace").splitlines():
+            if re.search(r"secret|token|password|authorization|bearer|private.?key", line, re.I):
+                lines.append("[credential-related log line omitted]")
+            else:
+                line = re.sub(r"https?://\S+", "[URL]", line)
+                lines.append(re.sub(r"\b[A-Za-z0-9_=-]{24,}\b", "[opaque value]", line))
+        print("Sanitized runtime log:\n" + "\n".join(lines[-60:]), file=sys.stderr)
 
 
 def health(url, process, expected, deadline):
@@ -92,12 +110,25 @@ receipt_path = Path(receipt_path)
 assert root.is_absolute() and receipt_path.is_absolute()
 assert not receipt_path.exists()
 work = Path(tempfile.mkdtemp(prefix="clanky-signed-runtime-", dir=os.environ["RUNNER_TEMP"]))
+native_owned = []
+native_identifier = None
 
 
 def cleanup():
     try:
+        if native_identifier:
+            status = subprocess.run(["defaults", "read", native_identifier], capture_output=True)
+            if status.returncode == 0:
+                command("defaults", "delete", native_identifier)
+            elif status.returncode != 1:
+                raise RuntimeError("Cannot inspect owned native preferences during cleanup.")
+        for path in native_owned:
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
         shutil.rmtree(work)
-    except OSError as error:
+    except (OSError, RuntimeError) as error:
         print(f"Runtime cleanup failed: {error}", file=sys.stderr)
         os._exit(1)
 
@@ -122,26 +153,41 @@ if mode == "app":
     assessment = command("spctl", "--assess", "--type", "execute", "--verbose=2", str(app))
     assert "Notarized Developer ID" in assessment
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
-    preferences = home / "Library/Preferences"
-    preferences.mkdir(parents=True)
+    assert os.environ["GITHUB_ACTIONS"] == "true" and os.environ["RUNNER_OS"] == "macOS"
+    native_home = Path.home()
+    identifier = info["CFBundleIdentifier"]
+    assert identifier == "com.clanky.app"
+    owned = [
+        native_home / "Library/Preferences" / (identifier + ".plist"),
+        native_home / "Library/Application Support" / identifier,
+        native_home / "Library/WebKit" / identifier,
+        native_home / "Library/Caches" / identifier,
+        native_home / "Library/Saved Application State" / (identifier + ".savedState"),
+    ]
+    assert all(not path.exists() for path in owned), "Native validation requires a fresh isolated hosted-runner home."
+    native_owned = owned
+    native_identifier = identifier
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         asset_port = listener.getsockname()[1]
-    preferences.joinpath(info["CFBundleIdentifier"] + ".plist").write_bytes(
-        plistlib.dumps({"startLocalControllerOnLaunch": True, "assetServerPort": asset_port})
-    )
-    env = environment(home)
+    command("defaults", "write", identifier, "startLocalControllerOnLaunch", "-bool", "true")
+    command("defaults", "write", identifier, "assetServerPort", "-int", str(asset_port))
+    assert command("defaults", "read", identifier, "assetServerPort").strip() == str(asset_port)
+    env = environment(native_home)
+    controller = native_home / "Library/Application Support" / identifier / "Controller"
     with (work / "app.log").open("xb") as log:
         process = subprocess.Popen([str(app / "Contents/MacOS/Clanky")], env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 20
             health(f"http://127.0.0.1:{asset_port}/.clanky-health", process, lambda data: len(data) == 36, deadline)
             health("http://127.0.0.1:49372/api/health", process, lambda data: json.loads(data)["ok"] is True, deadline)
-            controller = home / "Library/Application Support" / info["CFBundleIdentifier"] / "Controller"
             assert (controller / "app-controller.log").is_file(), "Native controller did not use the isolated home."
             with urllib.request.urlopen(f"http://127.0.0.1:{asset_port}/local/", timeout=5) as response:
                 assert response.status == 200 and b"<html" in response.read().lower()
             result.update(runtime=True, stapledArchive=True, gatekeeper=True, controller=True, isolatedHome=True)
+        except (RuntimeError, AssertionError, OSError, ValueError):
+            diagnostics(process, work / "app.log", controller / "app-controller.log")
+            raise
         finally:
             stop(process, descendants(process.pid))
 else:
@@ -164,6 +210,8 @@ else:
     env = environment(home)
     env.update(CLANKY_DATA_DIR=str(work / "data"), CLANKY_HOST="127.0.0.1",
                CLANKY_PORT=str(port), CLANKY_DISABLE_PASSKEY="true")
+    config = json.loads(command(str(binary), "serve", "config", "show", env=env))["effective"]
+    assert config["port"] == port and config["host"] == "127.0.0.1"
     with (work / "cli.log").open("xb") as log:
         process = subprocess.Popen([str(binary), "serve"], env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -172,6 +220,9 @@ else:
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as response:
                     assert json.loads(response.read())["ok"] is True
             result.update(runtime=True, architecture=target, checksum=True, signedCodeHash=True, healthRequests=100)
+        except (RuntimeError, AssertionError, OSError, ValueError):
+            diagnostics(process, work / "cli.log")
+            raise
         finally:
             stop(process, descendants(process.pid))
 result.update(signingCertificateSHA1=receipt["signingCertificateSHA1"], notarizationSubmissionId=receipt["notarizationSubmissionId"])
