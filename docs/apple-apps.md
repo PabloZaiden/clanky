@@ -110,8 +110,9 @@ shares its lock so rolling cleanup preserves the current Apple assets.
 Existing Actions artifacts keep their original names. Historical releases are
 not backfilled.
 
-The Mac app, bundled controller and native dynamic libraries are Developer ID Application signed with
-Hardened Runtime and secure timestamps, notarized and verified before upload.
+The Mac app, bundled controller and native dynamic libraries are Developer ID
+Application signed with Hardened Runtime and secure timestamps, notarized and
+verified before upload.
 The app's ticket is stapled and validated before the final ZIP is created.
 The iOS archive remains an input for later signing, not an installable IPA.
 CI does not publish to App Store/TestFlight, install apps or change the private
@@ -149,10 +150,9 @@ entitlements preserve the app's existing declared media-capture capabilities;
 system and website permission prompts still apply. Native libraries have no
 entitlements and inherit the host executable's permissions, as described in
 [Apple's Hardened Runtime guidance](https://developer.apple.com/documentation/security/hardened-runtime).
-Native nested Mach-O code is signed
-before the outer bundle, including Xcode's Debug/preview dylibs on main.
-Acceptance must cover every signed
-executable's code hash. Missing credentials, Apple rejection, signature/ticket
+Native nested Mach-O code is signed before the outer bundle, including Xcode's
+Debug/preview dylibs on main. Acceptance must cover every signed executable's
+code hash. Missing credentials, Apple rejection, signature/ticket
 verification or credential-cleanup failures block the relevant publication;
 there is no unsigned or unnotarized fallback.
 

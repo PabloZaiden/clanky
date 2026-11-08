@@ -69,9 +69,9 @@ and checksums remain unchanged. Apple cannot staple tickets to standalone
 executables, so those use online ticket lookup rather than an attached ticket.
 They share the Mac app/controller's signing certificate; see
 [CI signing setup](apple-apps.md#ci-signing-and-notarization).
-The native Apple app
-job uses the same runner image separately. Metadata and publication remain
-lightweight Linux jobs; Docker and native platform E2E tests are unchanged.
+The native Apple app job uses the same runner image separately. Metadata and
+publication remain lightweight Linux jobs; Docker and native platform E2E
+tests are unchanged.
 
 GitHub's latest **stable** release endpoint is separate from the tag `latest`.
 This channel does not add unattended updates or restart running servers.
