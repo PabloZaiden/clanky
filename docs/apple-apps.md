@@ -125,7 +125,8 @@ Configure these repository secrets before running either channel:
 - `CLANKY_MACOS_DEVELOPER_ID_CERT_BASE64`: Base64-encoded encrypted PKCS#12
   containing one valid Developer ID Application certificate, its private key
   and the Apple intermediate chain.
-- `CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD`: PKCS#12 password.
+- `CLANKY_MACOS_DEVELOPER_ID_CERT_PASSWORD`: exact PKCS#12 password, including
+  any leading or trailing whitespace.
 - `CLANKY_APPLE_NOTARY_KEY_P8`: private App Store Connect team API key.
 - `CLANKY_APPLE_NOTARY_KEY_ID` and `CLANKY_APPLE_NOTARY_ISSUER_ID`: its key and
   issuer identifiers.

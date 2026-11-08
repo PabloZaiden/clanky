@@ -22,8 +22,9 @@ if (apps.length && (apps.length !== 1 || targets.length !== 1)) {
 }
 
 const redactions: string[] = [];
-function secret(name: string): string {
-  const value = process.env[name]?.trim();
+function secret(name: string, preserveWhitespace = false): string {
+  const raw = process.env[name];
+  const value = preserveWhitespace ? raw : raw?.trim();
   if (!value) throw new Error(`Missing ${name}.`);
   redactions.push(value);
   return value;
@@ -96,7 +97,7 @@ async function distribute() {
     if (!certificate.length || certificate.toString("base64") !== encoded) {
       throw new Error("Invalid signing certificate Base64.");
     }
-    const password = secret("MACOS_SIGNING_CERTIFICATE_PASSWORD");
+    const password = secret("MACOS_SIGNING_CERTIFICATE_PASSWORD", true);
     const keychainPassword = randomBytes(32).toString("hex");
     redactions.push(keychainPassword);
     const certificatePath = join(work, "signing.p12");
