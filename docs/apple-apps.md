@@ -110,7 +110,7 @@ shares its lock so rolling cleanup preserves the current Apple assets.
 Existing Actions artifacts keep their original names. Historical releases are
 not backfilled.
 
-The Mac app and bundled controller are Developer ID Application signed with
+The Mac app, bundled controller and native dynamic libraries are Developer ID Application signed with
 Hardened Runtime and secure timestamps, notarized and verified before upload.
 The app's ticket is stapled and validated before the final ZIP is created.
 The iOS archive remains an input for later signing, not an installable IPA.
@@ -136,11 +136,17 @@ for notarization; never put private values in tracked configuration or logs.
 CI imports the identity into a job-owned keychain and removes temporary
 credentials/keychains. It does not depend on a private Mac or login session.
 The old `CLANKY_MACOS_SIGNING_CERT_*` secrets are not used by this workflow.
+Use an Apple Security-compatible PKCS#12 export: SHA1 MAC and legacy 3DES
+key/certificate encryption. A package can parse correctly in OpenSSL yet fail
+Apple's import with a MAC verification error. Verify an import into a temporary
+Mac keychain before storing the package in CI; preserve the usual keychains.
 
 `scripts/macos-distribution.ts --notarize <app-or-binary-paths>` owns both
 native-app and standalone-CLI distribution verification. Bun executables use
 only the `allow-jit` runtime entitlement; the native shell has no runtime
-exceptions or development entitlements. Acceptance must cover every signed
+exceptions or development entitlements. Native nested Mach-O code is signed
+before the outer bundle, including Xcode's Debug/preview dylibs on main.
+Acceptance must cover every signed
 executable's code hash. Missing credentials, Apple rejection, signature/ticket
 verification or credential-cleanup failures block the relevant publication;
 there is no unsigned or unnotarized fallback.

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 
@@ -65,6 +65,24 @@ const logSchema = z.object({
   ticketContents: z.array(z.object({ cdhash: z.string() })).nullable().optional(),
 });
 
+async function machOFiles(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  const magic = new Set(["feedface", "cefaedfe", "feedfacf", "cffaedfe",
+    "cafebabe", "bebafeca", "cafebabf", "bfbafeca"]);
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await machOFiles(path));
+    } else if (entry.isFile()) {
+      const header = Buffer.from(await Bun.file(path).slice(0, 4).arrayBuffer()).toString("hex");
+      if (magic.has(header)) files.push(path);
+    } else {
+      throw new Error(`Unsupported app bundle entry: ${path}.`);
+    }
+  }
+  return files;
+}
+
 async function distribute() {
   for (const target of targets) {
     const stat = await lstat(target);
@@ -107,6 +125,7 @@ async function distribute() {
   let teamId: string | undefined;
   let verificationIndex = 0;
   const hashes = new Map<string, string>();
+  const signed: { path: string; bun: boolean }[] = [];
   async function verify(target: string, bun: boolean) {
     await run(["codesign", "--verify", "--strict", "--verbose=2", target]);
     const details = await run(["codesign", "-d", "--verbose=4", target]);
@@ -139,12 +158,20 @@ async function distribute() {
     await run(["codesign", "--force", "--sign", identity, "--keychain", signingKeychain,
       "--timestamp", "--options", "runtime", "--entitlements", bun ? bunEntitlements : emptyEntitlements, target]);
     await verify(target, bun);
+    signed.push({ path: target, bun });
   }
   for (const target of targets) {
     if (target.endsWith(".app")) {
       const controller = join(target, "Contents/Helpers/clanky");
       if (!(await lstat(controller)).isFile()) throw new Error("Missing bundled Mac controller.");
-      await sign(controller, true);
+      const main = join(target, "Contents/MacOS/Clanky");
+      const code = await machOFiles(target);
+      if (!code.includes(controller) || !code.includes(main)) {
+        throw new Error("Missing native Mac executable or bundled controller Mach-O code.");
+      }
+      for (const path of code) {
+        if (path !== main) await sign(path, path === controller);
+      }
       await sign(target, false);
       await run(["codesign", "--verify", "--deep", "--strict", target]);
     } else {
@@ -196,13 +223,8 @@ async function distribute() {
       await run(["xcrun", "stapler", "validate", apps[0]]);
       await run(["spctl", "--assess", "--type", "execute", "--verbose=2", apps[0]]);
     }
-    for (const target of targets) {
-      await verify(target, !target.endsWith(".app"));
-      if (target.endsWith(".app")) {
-        await verify(join(target, "Contents/Helpers/clanky"), true);
-        await run(["codesign", "--verify", "--deep", "--strict", target]);
-      }
-    }
+    for (const target of signed) await verify(target.path, target.bun);
+    for (const app of apps) await run(["codesign", "--verify", "--deep", "--strict", app]);
   }
   return {
     distributionSigned: true, notarized: notarize, signingCertificateSHA1: identity,
