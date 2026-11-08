@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
+import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
 
 const args = process.argv.slice(2);
 const notarize = args.includes("--notarize");
@@ -21,36 +21,11 @@ if (apps.length && (apps.length !== 1 || targets.length !== 1)) {
   throw new Error("Submit one app or a batch of standalone binaries, not a mixture.");
 }
 
-const redactions: string[] = [];
-function secret(name: string, preserveWhitespace = false): string {
-  const raw = process.env[name];
-  const value = preserveWhitespace ? raw : raw?.trim();
-  if (!value) throw new Error(`Missing ${name}.`);
-  redactions.push(value);
-  return value;
-}
-function safe(text: string): string {
-  return redactions.reduce((result, value) => result.replaceAll(value, "[redacted]"), text);
-}
-async function execute(cmd: [string, ...string[]]) {
-  const child = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
-  ]);
-  return { stdout, stderr, code };
-}
-async function run(cmd: [string, ...string[]], stdoutOnly = false): Promise<string> {
-  const result = await execute(cmd);
-  if (result.code !== 0) {
-    throw new Error(`${basename(cmd[0])} failed (${result.code}): ${safe(result.stderr)}`);
-  }
-  return stdoutOnly ? result.stdout : result.stdout + result.stderr;
-}
+const { secret, safe, execute, run, importIdentity } = createAppleDistributionCommands();
 const keyId = notarize ? secret("MACOS_NOTARIZATION_KEY_ID") : "";
 const issuerId = notarize ? secret("MACOS_NOTARIZATION_ISSUER_ID") : "";
 const apiKey = notarize ? secret("MACOS_NOTARIZATION_KEY_P8") : "";
-if (notarize && (!/^[A-Z0-9]{10}$/.test(keyId)
-  || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(issuerId))) {
+if (notarize && !validAppleApiIdentifiers(keyId, issuerId)) {
   throw new Error("Invalid notarization key ID or issuer ID.");
 }
 
@@ -92,22 +67,8 @@ async function distribute() {
     }
   }
   if (!keychain) {
-    const encoded = secret("MACOS_SIGNING_CERTIFICATE_BASE64").replace(/\s/g, "");
-    const certificate = Buffer.from(encoded, "base64");
-    if (!certificate.length || certificate.toString("base64") !== encoded) {
-      throw new Error("Invalid signing certificate Base64.");
-    }
-    const password = secret("MACOS_SIGNING_CERTIFICATE_PASSWORD", true);
-    const keychainPassword = randomBytes(32).toString("hex");
-    redactions.push(keychainPassword);
-    const certificatePath = join(work, "signing.p12");
     keychain = join(work, "signing.keychain-db");
-    await writeFile(certificatePath, certificate, { mode: 0o600 });
-    await run(["security", "create-keychain", "-p", keychainPassword, keychain]);
-    await run(["security", "set-keychain-settings", "-lut", "21600", keychain]);
-    await run(["security", "unlock-keychain", "-p", keychainPassword, keychain]);
-    await run(["security", "import", certificatePath, "-k", keychain, "-P", password, "-T", "/usr/bin/codesign"]);
-    await run(["security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s", "-k", keychainPassword, keychain]);
+    await importIdentity(keychain, "MACOS");
   }
   const signingKeychain = keychain;
   if (!signingKeychain) throw new Error("Missing prepared signing keychain.");
