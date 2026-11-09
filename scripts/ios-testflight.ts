@@ -304,7 +304,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
       }) }).parse(await api(`/v1/builds/${build.id}/buildBetaDetail`));
       if (["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].includes(detail.data.attributes.internalBuildState)) {
         const currentGroup = z.object({ data: groupSchema }).parse(await api(`/v1/betaGroups/${group.id}`)).data;
-        if (currentGroup.id !== group.id || currentGroup.attributes.name !== groupName
+        if (currentGroup.attributes.name !== groupName
           || !currentGroup.attributes.isInternalGroup || !currentGroup.attributes.hasAccessToAllBuilds) {
           throw new Error("The selected automatic internal TestFlight group changed or is no longer available.");
         }
