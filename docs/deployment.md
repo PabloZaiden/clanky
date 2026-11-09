@@ -96,6 +96,9 @@ Serve/HTTPS in Tailscale when prompted, then run the backend and proxy:
 CLANKY_HOST=127.0.0.1 \
 CLANKY_MANAGED_TLS=false \
 CLANKY_PUBLIC_BASE_URL=https://controller.example.ts.net \
+CLANKY_TRUST_PROXY=true \
+CLANKY_TRUST_PROXY_HEADERS=proto \
+CLANKY_TRUST_PROXY_CHAIN=first \
 clanky serve
 
 # Terminal 2: foreground publication; Ctrl+C withdraws it.
@@ -103,8 +106,10 @@ tailscale serve http://127.0.0.1:3000
 ```
 
 Keep the backend private and forward WebSockets through Serve. An explicit
-public base URL supplies the canonical HTTPS origin; forwarded-header trust is
-not needed for this root-path setup. Do not use global Serve resets to resolve
+public base URL supplies the canonical HTTPS origin. Mesh separately requires
+evidence of the actual HTTPS hop: trust only `X-Forwarded-Proto`, which Serve
+overwrites, on the loopback-only backend. Do not trust forwarded prefixes or
+Tailscale identity headers. Do not use global Serve resets to resolve
 conflicts with unrelated publications. Background Serve publications outlive
 the command and need their own explicit lifecycle management.
 
@@ -162,6 +167,10 @@ the controller's signing identity or application data. A missing, malformed or
 expired enabled identity fails rather than silently regenerating; explicit
 rotation is the recovery operation. `controller tls disable` restores HTTP
 after restart without clearing authentication credentials.
+
+Detached `clanky serve up` probes the actual listener protocol and trusts only
+the managed controller's certificate for its HTTPS readiness request. A public
+HTTPS URL behind a proxy does not change an ordinary HTTP backend's probe.
 
 ## Configuration
 

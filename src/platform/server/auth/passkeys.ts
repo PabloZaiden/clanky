@@ -241,7 +241,7 @@ export function isPasskeyAuthRequired(store: ClankyAccountStore, config: Runtime
   return !config.passkeyDisabled && store.countUsers() > 0;
 }
 
-export function passkeyStatus(req: Request, store: ClankyAccountStore, config: RuntimeConfig, enabled = true): PasskeyAuthStatusResponse {
+export function passkeyStatus(req: Request, store: ClankyAccountStore, config: RuntimeConfig, enabled = true, userId = getPasskeySessionUser(req, store, config)?.id): PasskeyAuthStatusResponse {
   const users = store.countUsers();
   const owner = store.getOwnerUser();
   const passkeyConfigured = store.listPasskeys().length > 0;
@@ -249,6 +249,7 @@ export function passkeyStatus(req: Request, store: ClankyAccountStore, config: R
   return {
     enabled,
     passkeyConfigured,
+    accountPasskeyConfigured: Boolean(userId && store.getPasskeyByUserId(userId)),
     passkeyDisabled: config.passkeyDisabled,
     passkeyRequired: enabled && users > 0 && !config.passkeyDisabled,
     authenticated: !enabled || config.passkeyDisabled || Boolean(getPasskeySessionUser(req, store, config)),

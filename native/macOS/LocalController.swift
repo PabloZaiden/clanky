@@ -53,7 +53,11 @@ final class LocalController: ObservableObject {
         environment["CLANKY_PORT"] = String(Self.port)
         environment["CLANKY_PUBLIC_BASE_URL"] = endpoint.absoluteString
         environment["CLANKY_MANAGED_TLS"] = managedHTTPS ? "true" : "false"
-        if tailscaleEnabled { environment["CLANKY_TRUST_PROXY"] = "false" }
+        if tailscaleEnabled {
+            environment["CLANKY_TRUST_PROXY"] = "true"
+            environment["CLANKY_TRUST_PROXY_HEADERS"] = "proto"
+            environment["CLANKY_TRUST_PROXY_CHAIN"] = "first"
+        }
         return environment
     }
 

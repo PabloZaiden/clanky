@@ -120,14 +120,14 @@ export function SecuritySection({ config, refresh }: SecuritySectionProps) {
           ? <SettingsFieldRow title="Password" actions={<a href={appPath("/account")} target="_blank" rel="noopener noreferrer">Manage on server</a>} />
           : <PasswordSection refresh={refresh} />
       ) : null}
-      <SettingsFieldRow title="Passkey" description={config.passkeyAuth.passkeyConfigured ? "Configured" : "Not configured"} actions={
+      <SettingsFieldRow title="Passkey" description={config.passkeyAuth.accountPasskeyConfigured ? "Configured" : "Not configured"} actions={
         <div className="wapp-row-actions">
           {getClientSession().enabled ? (
             <a href={appPath("/account")} target="_blank" rel="noopener noreferrer">Manage on server</a>
           ) : (
             <>
               {config.currentUser && !config.passkeyAuth.passkeyDisabled ? <Button type="button" onClick={() => void logout()}>Logout</Button> : null}
-              {config.passkeyAuth.passkeyConfigured ? (
+              {config.passkeyAuth.accountPasskeyConfigured ? (
                 <Button type="button" tone="danger" onClick={() => setConfirmDeletePasskey(true)}>Delete passkey</Button>
               ) : config.currentUser?.isOwner && config.passkeyAuth.passkeyAvailable ? (
                 <Button type="button" variant="primary" onClick={() => void setupPasskey()}>Set up passkey</Button>

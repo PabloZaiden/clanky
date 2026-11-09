@@ -131,7 +131,7 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
     const auth = context.auth;
     if (auth.kind === "api-key") assertScopes(auth.scopes, []);
     const user = authentication.currentUser(auth) ?? authentication.configUser(req);
-    const passkeyAuth = passkeyStatus(req, store, config, passkeysEnabled);
+    const passkeyAuth = passkeyStatus(req, store, config, passkeysEnabled, user?.id);
     if (auth.kind === "bearer" || auth.kind === "api-key" || auth.kind === "server") {
       passkeyAuth.authenticated = true;
       passkeyAuth.passkeyRequired = false;

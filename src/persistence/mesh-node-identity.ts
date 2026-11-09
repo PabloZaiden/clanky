@@ -64,6 +64,7 @@ interface StoredMeshNodeIdentity {
   nodeId: string;
   instanceName: string | null;
   meshEndpoint: string | null;
+  managedMeshEndpoint: string | null;
   publicKey: string;
   privateKey: string;
   fingerprint: string;
@@ -281,6 +282,7 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
     nodeId: record["nodeId"],
     instanceName: null,
     meshEndpoint: null,
+    managedMeshEndpoint: null,
     publicKey: record["publicKey"],
     privateKey: record["privateKey"],
     fingerprint: record["fingerprint"],
@@ -318,6 +320,13 @@ function parseStoredIdentity(raw: string): StoredMeshNodeIdentity {
   }
   if (typeof record["meshEndpoint"] === "string") {
     identity.meshEndpoint = record["meshEndpoint"].trim() || null;
+  }
+  const managedEndpoint = record["managedMeshEndpoint"];
+  if (managedEndpoint !== undefined && managedEndpoint !== null) {
+    if (typeof managedEndpoint !== "string" || managedEndpoint !== identity.meshEndpoint) {
+      throw new DomainError("mesh_node_identity_invalid", "The stored managed Mesh endpoint is invalid.");
+    }
+    identity.managedMeshEndpoint = managedEndpoint;
   }
   identity.execution = parseExecutionConfiguration(
     record["execution"],
@@ -402,6 +411,7 @@ function createStoredIdentity(
     nodeId: crypto.randomUUID(),
     instanceName,
     meshEndpoint,
+    managedMeshEndpoint: null,
     publicKey: publicKeyPem,
     privateKey: privateKeyPem,
     fingerprint: getMeshNodeFingerprint(publicKeyPem),
@@ -566,7 +576,7 @@ export async function setLocalMeshInstanceName(value: string): Promise<MeshNodeI
   return await withIdentityMutation(() => setLocalMeshInstanceNameUnlocked(value));
 }
 
-async function setLocalMeshEndpointUnlocked(value: string): Promise<MeshNodeIdentity> {
+async function setLocalMeshEndpointUnlocked(meshEndpoint: string | null, managed: boolean): Promise<MeshNodeIdentity> {
   let identity = await readStoredIdentity();
   if (!identity) {
     await ensureLocalMeshNodeIdentity();
@@ -575,20 +585,21 @@ async function setLocalMeshEndpointUnlocked(value: string): Promise<MeshNodeIden
   if (!identity) {
     throw new DomainError("mesh_node_identity_missing", "The mesh node identity is unavailable.");
   }
-  const meshEndpoint = value.trim();
-  if (!meshEndpoint) {
-    throw new DomainError("mesh_endpoint_invalid", "The Mesh endpoint must not be empty.");
+  if (managed && identity.meshEndpoint !== null && identity.managedMeshEndpoint !== identity.meshEndpoint) {
+    return publicIdentity(identity);
   }
-  if (identity.meshEndpoint === meshEndpoint) {
+  const managedMeshEndpoint = managed ? meshEndpoint : null;
+  if (identity.meshEndpoint === meshEndpoint && identity.managedMeshEndpoint === managedMeshEndpoint) {
     return publicIdentity(identity);
   }
   const updated: StoredMeshNodeIdentity = {
     ...identity,
     meshEndpoint,
+    managedMeshEndpoint,
     execution: {
       ...identity.execution,
       endpoint: meshEndpoint,
-      revision: identity.execution.revision + 1,
+      revision: identity.execution.revision + (identity.meshEndpoint === meshEndpoint ? 0 : 1),
     },
     updatedAt: new Date().toISOString(),
   };
@@ -598,7 +609,15 @@ async function setLocalMeshEndpointUnlocked(value: string): Promise<MeshNodeIden
 }
 
 export async function setLocalMeshEndpoint(value: string): Promise<MeshNodeIdentity> {
-  return await withIdentityMutation(() => setLocalMeshEndpointUnlocked(value));
+  const endpoint = value.trim();
+  if (!endpoint) {
+    throw new DomainError("mesh_endpoint_invalid", "The Mesh endpoint must not be empty.");
+  }
+  return await withIdentityMutation(() => setLocalMeshEndpointUnlocked(endpoint, false));
+}
+
+export async function reconcileLocalMeshEndpoint(endpoint: string | null): Promise<MeshNodeIdentity> {
+  return await withIdentityMutation(() => setLocalMeshEndpointUnlocked(endpoint, true));
 }
 
 async function setLocalMeshExecutionConfigurationUnlocked(

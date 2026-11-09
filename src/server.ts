@@ -120,7 +120,7 @@ import { workspaceRealtimeSources } from "./api/workspace-realtime-source";
 import { ControlServer } from "./server/control-server";
 import { mcpRoutes } from "./api/control";
 import { loadManagedControllerTls, setActiveControllerTls } from "./core/controller-tls";
-import { setLocalMeshEndpoint } from "./persistence/mesh-node-identity";
+import { reconcileLocalMeshEndpoint } from "./persistence/mesh-node-identity";
 import { isOwnerInitialized } from "./platform/server/auth/users";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
@@ -650,9 +650,13 @@ export async function getWebAppServer(
     const tlsIdentity = await loadManagedControllerTls(endpoint);
     workerTls = { cert: tlsIdentity.certificate, key: tlsIdentity.privateKey };
     setActiveControllerTls(tlsIdentity);
-    await setLocalMeshEndpoint(tlsIdentity.endpoint);
+    await reconcileLocalMeshEndpoint(tlsIdentity.endpoint);
   } else {
     setActiveControllerTls(undefined);
+    if (!meshWorker) {
+      const endpoint = controlRuntime.publicBaseUrl;
+      await reconcileLocalMeshEndpoint(endpoint && new URL(endpoint).protocol === "https:" ? new URL(endpoint).origin : null);
+    }
   }
   if (!meshWorker && !Bun.isStandaloneExecutable) {
     const { writeClientOperationCatalog } = await import("./client-operation-catalog");

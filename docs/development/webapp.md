@@ -32,6 +32,8 @@ changed by authenticated accounts in existing Security settings. There is no
 public password signup, recovery or removal. Password attempt admission is
 deliberately unrestricted: Clanky does not apply a limiter or lockout. The
 framework's 12-character minimum and 1024-byte maximum remain enforced.
+Security settings use the authenticated account's passkey status, independently
+of the server-wide flag used to offer passkey login.
 Do not add Clanky policies or storage to webapp.
 
 All persistence is selected explicitly, including browser preferences.

@@ -93,11 +93,17 @@ export function setActiveControllerTls(identity: ControllerTlsIdentity | undefin
   activeIdentity = identity;
 }
 
+export async function getControllerTlsClientOptions(dataDir: string): Promise<Bun.TLSOptions> {
+  const identity = await readControllerTlsIdentity(dataDir);
+  if (!identity) {
+    throw new DomainError("controller_tls_identity_missing", "The managed controller TLS identity is unavailable.");
+  }
+  return { ca: identity.certificate, rejectUnauthorized: true };
+}
+
 export function getControllerEnrollmentCertificate(target: string): string | undefined {
   if (!activeIdentity) return undefined;
-  if (new URL(target).origin !== activeIdentity.endpoint) {
-    throw new DomainError("controller_tls_endpoint_mismatch", "The invitation endpoint does not match the managed HTTPS listener.");
-  }
+  if (new URL(target).origin !== activeIdentity.endpoint) return undefined;
   assertSelfSignedTlsCertificate(activeIdentity.certificate, new URL(target).hostname, activeIdentity.fingerprint);
   return activeIdentity.certificate;
 }

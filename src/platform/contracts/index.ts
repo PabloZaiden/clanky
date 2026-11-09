@@ -56,6 +56,7 @@ export interface AuditEventSummary {
 export interface PasskeyAuthStatusResponse {
   enabled: boolean;
   passkeyConfigured: boolean;
+  accountPasskeyConfigured: boolean;
   passkeyDisabled: boolean;
   passkeyRequired: boolean;
   authenticated: boolean;

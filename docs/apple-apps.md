@@ -362,6 +362,8 @@ locally before publication. Existing owners first add a password in Account
 Settings while using Local Only. Passkeys remain preferred on the resulting
 hostname; a localhost passkey cannot sign in to its different Tailscale RP.
 Tailscale identity headers never substitute for Clanky authentication.
+The loopback-only backend trusts only Serve's overwritten protocol header for
+Mesh transport checks, not client-supplied forwarded prefixes.
 
 The menu shows publication status and **Copy Remote Link**, enabled only after
 the public HTTPS health check succeeds. Disconnections make remote access
@@ -385,6 +387,9 @@ fixed LAN/Tailscale IP or network hostname on port `49372`. It binds all
 interfaces and requires explicit browser certificate trust. Local Only remains
 loopback HTTP with no certificate setup. Explicit Direct HTTPS settings are
 not replaced simply because Tailscale becomes available.
+Switching modes updates an automatically managed Mesh endpoint to the new
+HTTPS origin, or clears it for Local Only. An explicitly configured Mesh
+endpoint is preserved, including when it matches the previous managed address.
 
 **Initialize Owner Password...** uses the bundled local CLI and private stdin
 to create the first owner only. Existing accounts create/change their password

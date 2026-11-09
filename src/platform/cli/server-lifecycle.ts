@@ -1,6 +1,7 @@
 import { closeSync, existsSync, openSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
+import { getControllerTlsClientOptions } from "../../core/controller-tls";
 import {
   WEB_APP_CONFIG_VERSION,
   parsePort,
@@ -478,7 +479,7 @@ function healthUrl(config: RuntimeConfig, path: string): string {
   const formattedHost = host.includes(":") && !host.startsWith("[")
     ? `[${host}]`
     : host;
-  return `http://${formattedHost}:${String(config.port)}${path}`;
+  return `${config.managedTls ? "https" : "http"}://${formattedHost}:${String(config.port)}${path}`;
 }
 
 function readinessTimeout<TAppContext>(input: CreateWebAppCliOptions<TAppContext>): number {
@@ -500,6 +501,7 @@ async function waitForReadiness<TAppContext>(
   const url = healthUrl(config, path);
   const deadline = Date.now() + timeoutMs;
   let lastFailure = "no response";
+  let tls: Bun.TLSOptions | undefined;
   while (Date.now() <= deadline) {
     if (child.exitCode !== null) {
       throw new Error(
@@ -509,7 +511,8 @@ async function waitForReadiness<TAppContext>(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), READINESS_REQUEST_TIMEOUT_MS);
     try {
-      const response = await context.fetchFn(url, { signal: controller.signal });
+      if (config.managedTls && !tls) tls = await getControllerTlsClientOptions(config.dataDir);
+      const response = await context.fetchFn(url, { signal: controller.signal, tls, redirect: "error" });
       if (response.ok) {
         await response.text();
         return;

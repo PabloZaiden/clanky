@@ -21,8 +21,8 @@ const identitySchema = z.object({
 
 export type ControllerTlsIdentity = z.infer<typeof identitySchema>;
 
-function identityPath(): string {
-  return join(getDataDir(), "mesh", "controller-tls.json");
+function identityPath(dataDir = getDataDir()): string {
+  return join(dataDir, "mesh", "controller-tls.json");
 }
 
 export function validateControllerTlsIdentity(identity: ControllerTlsIdentity): void {
@@ -38,8 +38,8 @@ export function validateControllerTlsIdentity(identity: ControllerTlsIdentity): 
   }
 }
 
-export async function readControllerTlsIdentity(): Promise<ControllerTlsIdentity | null> {
-  const file = Bun.file(identityPath());
+export async function readControllerTlsIdentity(dataDir = getDataDir()): Promise<ControllerTlsIdentity | null> {
+  const file = Bun.file(identityPath(dataDir));
   if (!await file.exists()) return null;
   let identity: ControllerTlsIdentity;
   try {

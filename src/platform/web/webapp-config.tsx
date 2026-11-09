@@ -48,6 +48,7 @@ function isWebAppConfigResponse(value: unknown): value is WebAppConfigResponse {
     && hasBooleanFields(value["passkeyAuth"], [
       "enabled",
       "passkeyConfigured",
+      "accountPasskeyConfigured",
       "passkeyDisabled",
       "passkeyRequired",
       "authenticated",

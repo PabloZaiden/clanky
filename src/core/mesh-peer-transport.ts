@@ -120,7 +120,7 @@ export function openMeshDirectSocket(
   url: string,
   headers: Record<string, string> = {},
 ): WebSocket {
-  if (new URL(url).origin !== route.endpoint.replace(/^https:/, "wss:")) {
+  if (new URL(url).origin !== new URL(route.endpoint).origin.replace(/^https:/, "wss:")) {
     throw new DomainError("mesh_transport_route_invalid", "The socket target does not match its trusted Mesh route.");
   }
   const BunWebSocket = WebSocket as unknown as {

@@ -77,6 +77,7 @@ import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
   setLocalMeshEndpoint,
+  reconcileLocalMeshEndpoint,
   setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
@@ -106,6 +107,7 @@ import {
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
+  getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "../domain/domain-error";
@@ -176,7 +178,8 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
     return identity;
   }
   const endpoint = resolveAdvertisedMeshEndpoint();
-  const updatedIdentity = await setLocalMeshEndpoint(endpoint);
+  if (getMeshTransport(endpoint) !== "https") return identity;
+  const updatedIdentity = await reconcileLocalMeshEndpoint(endpoint);
   log.info("Materialized the configured public base URL as the local Mesh endpoint", {
     endpoint,
   });

@@ -4,6 +4,8 @@ import { AuthError } from "./types";
 import { audit, createUserRecord, normalizeUsername } from "./users";
 import { nowIso } from "./crypto";
 
+const loginVerifiers = new WeakMap<ClankyAccountStore, Map<string, ReturnType<typeof createPasswordAuth>>>();
+
 function passwordAuth(store: ClankyAccountStore, origin: string, authorizedUser?: UserRecord) {
   return createPasswordAuth({
     origin,
@@ -19,6 +21,20 @@ function passwordAuth(store: ClankyAccountStore, origin: string, authorizedUser?
       && store.setPassword(id, expected, next, authorizedUser.authVersion)),
     allowAttempt: () => true,
   });
+}
+
+function loginVerifier(store: ClankyAccountStore, origin: string) {
+  let origins = loginVerifiers.get(store);
+  if (!origins) {
+    origins = new Map();
+    loginVerifiers.set(store, origins);
+  }
+  let verifier = origins.get(origin);
+  if (!verifier) {
+    verifier = passwordAuth(store, origin);
+    origins.set(origin, verifier);
+  }
+  return verifier;
 }
 
 async function passwordResult<T>(operation: () => Promise<T>): Promise<T> {
@@ -40,7 +56,7 @@ function currentPasswordUser(store: ClankyAccountStore, id: string, version: num
 
 export async function loginWithPassword(req: Request, store: ClankyAccountStore, origin: string, username: string, value: string): Promise<UserRecord> {
   const expectedUser = store.getUserByUsername(normalizeUsername(username));
-  const result = await passwordResult(() => passwordAuth(store, origin).verify(req, username, value));
+  const result = await passwordResult(() => loginVerifier(store, origin).verify(req, username, value));
   if (!result || !expectedUser || expectedUser.disabledAt || result.identityId !== expectedUser.id) {
     throw new AuthError("invalid_credentials", "Invalid credentials.", 401);
   }
