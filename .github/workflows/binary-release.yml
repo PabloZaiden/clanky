@@ -95,9 +95,52 @@ jobs:
             + "Source: `" + .sourceRevision + "`. Internal-only; no external testing or App Store submission."
           ' "$RUNNER_TEMP/ios-testflight-result.json" >> "$GITHUB_STEP_SUMMARY"
 
+  apple-version:
+    name: Resolve Apple distribution version
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Read exact published CLI version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            default_branch="$(gh api "repos/$GH_REPO" --jq '.default_branch')"
+            head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
+            if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+              echo "::notice::Skipping superseded Apple main build $GITHUB_SHA."
+              exit 0
+            fi
+            gh release download latest --pattern release.json --dir "$RUNNER_TEMP" --repo "$GH_REPO"
+            if ! version="$(jq -er --arg revision "$GITHUB_SHA" '
+              select(.schemaVersion == 1 and .channel == "latest" and .revision == $revision)
+              | .version | select(type == "string")
+            ' "$RUNNER_TEMP/release.json")"; then
+              echo "::error::Published latest manifest does not match this source revision." >&2
+              exit 1
+            fi
+          else
+            version="${RELEASE_TAG#v}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid Apple release version: $version." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   apple-apps:
     name: Build Apple apps
-    needs: metadata
+    needs: [metadata, apple-version]
+    if: needs.apple-version.outputs.version != ''
     runs-on: xcode-27
     timeout-minutes: 30
     permissions:
@@ -107,6 +150,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
+      APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
     defaults:
       run:
         shell: bash
@@ -136,11 +180,33 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Set frontend and bundled controller version
+        run: |
+          bun -e 'const path = "package.json";
+          const value = await Bun.file(path).json();
+          value.version = process.env.APPLE_BUILD_VERSION;
+          await Bun.write(path, JSON.stringify(value, null, 2) + "\n");'
+
       - name: Build macOS app and bundled controller
         run: bun run build:apple:macos --configuration "$APPLE_BUILD_CONFIGURATION"
 
       - name: Build unsigned iOS device app
         run: bun run build:apple:ios:device --configuration "$APPLE_BUILD_CONFIGURATION"
+
+      - name: Verify embedded Apple distribution versions
+        run: |
+          set -euo pipefail
+          products="dist/apple/build/Build/Products"
+          for web in \
+            "$products/$APPLE_BUILD_CONFIGURATION/Clanky.app/Contents/Resources/Web" \
+            "$products/$APPLE_BUILD_CONFIGURATION-iphoneos/Clanky.app/Web"; do
+            bun scripts/verify-apple-frontend.ts "$web" "$GITHUB_SHA" "$APPLE_BUILD_VERSION"
+          done
+          controller="$products/$APPLE_BUILD_CONFIGURATION/Clanky.app/Contents/Helpers/clanky"
+          if [[ "$("$controller" version)" != "$APPLE_BUILD_VERSION" ]]; then
+            echo "::error::Bundled Mac controller does not match the Apple distribution version." >&2
+            exit 1
+          fi
 
       - name: Sign and notarize macOS app
         id: macos_signing
@@ -208,9 +274,10 @@ jobs:
               --arg archive "$archive" \
               --arg xcode "$xcode_version" \
               --arg configuration "$APPLE_BUILD_CONFIGURATION" \
+              --arg version "$APPLE_BUILD_VERSION" \
               --slurpfile signing "$RUNNER_TEMP/apple-macos-signing.json" \
               '{sourceRevision: $revision, sourceRef: $ref, platform: $platform,
-                architecture: "arm64", configuration: $configuration, archive: $archive,
+                architecture: "arm64", configuration: $configuration, version: $version, archive: $archive,
                 distributionSigned: ($platform == "macos"), notarized: ($platform == "macos"), xcode: $xcode}
                 + (if $platform == "macos" then {
                     signingCertificateSHA1: $signing[0].signingCertificateSHA1,
@@ -259,7 +326,7 @@ jobs:
 
   publish-apple-apps:
     name: Publish Apple app assets
-    needs: [metadata, apple-apps, binaries]
+    needs: [metadata, apple-version, apple-apps, binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -287,6 +354,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.event_name == 'push' && 'latest' || github.event.release.tag_name }}
           APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
+          APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
           MACOS_SIGNING_CERTIFICATE_SHA1: ${{ needs.apple-apps.outputs.signing_certificate_sha1 }}
         shell: bash
         run: |
@@ -316,6 +384,10 @@ jobs:
             echo "::error::Invalid Apple release version: $version." >&2
             exit 1
           fi
+          if [[ "$version" != "$APPLE_BUILD_VERSION" ]]; then
+            echo "::error::Published CLI version does not match the embedded Apple build version." >&2
+            exit 1
+          fi
 
           assets=()
           for platform in macos ios; do
@@ -329,9 +401,10 @@ jobs:
             if ! jq -e --arg revision "$GITHUB_SHA" --arg ref "$GITHUB_REF" \
               --arg platform "$platform" --arg archive "$archive" \
               --arg signer "$MACOS_SIGNING_CERTIFICATE_SHA1" \
-              --arg configuration "$APPLE_BUILD_CONFIGURATION" '
+              --arg configuration "$APPLE_BUILD_CONFIGURATION" --arg version "$version" '
               .sourceRevision == $revision and .sourceRef == $ref
               and .platform == $platform and .architecture == "arm64"
+              and .version == $version
               and .configuration == $configuration and .archive == $archive
               and (if $platform == "macos" then
                 .distributionSigned == true and .notarized == true and .stapled == true
@@ -359,8 +432,8 @@ jobs:
               cd "$output"
               sha256sum "$name" > "$name.sha256"
             )
-            jq --arg version "$version" --arg archive "$name" \
-              '. + {version: $version, archive: $archive}' "$input/build.json" \
+            jq --arg archive "$name" \
+              '. + {archive: $archive}' "$input/build.json" \
               > "$output/$metadata"
             assets+=("$output/$name" "$output/$name.sha256" "$output/$metadata")
           done

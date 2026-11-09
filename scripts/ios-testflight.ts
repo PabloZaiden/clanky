@@ -3,9 +3,9 @@ import { chmod, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "n
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { importPKCS8, SignJWT } from "jose";
-import { WEB_APP_CLIENT_CONFIG_PATH } from "@pablozaiden/webapp/contracts";
 import { z } from "zod";
 import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
+import { verifyAppleFrontend } from "./verify-apple-frontend";
 
 const [tag, ...extra] = process.argv.slice(2);
 const version = tag?.match(/^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/)?.[1];
@@ -198,33 +198,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
       CFBundleSupportedPlatforms: z.tuple([z.literal("iPhoneOS")]), ITSAppUsesNonExemptEncryption: z.literal(false),
     }).parse(JSON.parse(await run(["plutil", "-convert", "json", "-o", "-", join(appPath, "Info.plist")], true)));
     await run([process.execPath, "scripts/verify-ios-settings.ts", appPath]);
-    const web = join(appPath, "Web");
-    const hash = z.string().regex(/^[a-f0-9]{64}$/);
-    const frontendInfo = z.object({
-      revision: z.literal(sourceRevision), version: z.literal(frontendVersion),
-      update: z.object({
-        manifest: z.literal("frontend-update.json"), bytes: z.number().int().positive(), sha256: hash,
-      }),
-    }).parse(JSON.parse(await readFile(join(web, "build-info.json"), "utf8")));
-    const manifestBytes = await readFile(join(web, frontendInfo.update.manifest));
-    if (manifestBytes.byteLength !== frontendInfo.update.bytes
-      || new Bun.CryptoHasher("sha256").update(manifestBytes).digest("hex") !== frontendInfo.update.sha256) {
-      throw new Error("The TestFlight frontend manifest failed integrity verification.");
-    }
-    const manifest = z.object({
-      revision: z.literal(sourceRevision), version: z.literal(frontendVersion),
-      files: z.array(z.object({ path: z.string(), bytes: z.number().int().nonnegative(), sha256: hash })),
-    }).parse(JSON.parse(manifestBytes.toString()));
-    for (const [connection, mode] of [["api", "remote"], ["collaboration", "external"]] as const) {
-      const path = `${connection}${WEB_APP_CLIENT_CONFIG_PATH}`;
-      const asset = manifest.files.find((file) => file.path === path);
-      const bytes = await readFile(join(web, path));
-      if (!asset || bytes.byteLength !== asset.bytes
-        || new Bun.CryptoHasher("sha256").update(bytes).digest("hex") !== asset.sha256) {
-        throw new Error(`The TestFlight frontend bootstrap ${path} failed integrity verification.`);
-      }
-      z.object({ mode: z.literal(mode), version: z.literal(frontendVersion) }).parse(JSON.parse(bytes.toString()));
-    }
+    await verifyAppleFrontend(join(appPath, "Web"), sourceRevision, frontendVersion);
     if ((await run(["lipo", "-archs", join(appPath, info.CFBundleExecutable)], true)).trim() !== "arm64") {
       throw new Error("The TestFlight app must contain exactly the arm64 device architecture.");
     }
