@@ -214,6 +214,72 @@ Only a non-secret result goes to the Actions summary; the IPA, temporary signing
 keychain, installed job-owned profile and API-key files are removed, not exposed
 as public release assets. Existing unsigned iOS downloads remain unchanged.
 
+### Public iOS App Store prerequisites
+
+Public App Store publication is not implemented by the release workflow.
+Published GitHub releases upload only internal TestFlight builds; public
+distribution requires a separately approved tooling/workflow change.
+
+The same valid Apple Distribution certificate **and private key**, matching
+[App Store Connect provisioning profile](https://developer.apple.com/help/account/provisioning-profiles/create-an-app-store-provisioning-profile/)
+and app record used for internal TestFlight can support public iOS distribution.
+Keep the existing Bundle ID/team; moving to App Store does not itself require
+another certificate, profile or app record. An authorized Developer-role team
+API key can continue uploading builds.
+
+An [internal-only build](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)
+cannot be submitted to external testers or customers. Export a new
+`app-store-connect` IPA without `testFlightInternalTestingOnly=true` and upload
+it with a new build number. Changing group membership or store metadata cannot
+convert an existing internal-only upload. The current TestFlight tooling
+enforces internal-only export and processing checks, not public eligibility.
+
+[Submitting for App Review](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app)
+requires Account Holder, Admin or App Manager permissions. A Developer-role key
+is sufficient for upload, not review submission. To automate submission, use
+an authorized team API key with App Manager permissions rather than granting
+unnecessary Admin access. An authorized user submitting manually through
+App Store Connect needs no additional API key.
+
+Before submitting, prepare:
+
+- The [required app/version metadata](https://developer.apple.com/help/app-store-connect/reference/app-information/required-localizable-and-editable-properties),
+  supported-device screenshots, description, support URL, age rating and
+  content-rights declarations.
+- A privacy policy URL and accurate app privacy disclosures. Reassess privacy
+  and encryption/export compliance for the actual shipping app; internal
+  TestFlight acceptance does not establish public compliance or App Review
+  approval.
+- Review contact details, instructions and dedicated review access when sign-in
+  or an external service is required. Do not provide personal or production
+  credentials as review access.
+- Pricing, availability and applicable agreements for the selected markets,
+  with an active Developer Program membership. The Account Holder must accept
+  required legal agreements; paid apps/In-App Purchases also require the
+  applicable paid agreement, tax and banking setup.
+
+Upload, Apple processing, App Review submission, approval and public release
+are separate steps. Neither a successful GitHub release nor an accepted
+TestFlight build guarantees App Store approval or publishes the app publicly.
+
+### Apple credential lifecycle and recovery
+
+Check certificate/profile expiry and API-key authorization before publication.
+Renew or replace expired or revoked credentials, and regenerate profiles when
+their certificate or authorized app
+capabilities change. Update matching CI inputs together without replacing
+unrelated Mac Developer ID identities or Ad Hoc/OTA profiles.
+
+Keep a recoverable backup in encrypted storage or an approved secret manager:
+signing certificates with their private keys and intermediate chains, exact
+PKCS12 passwords, provisioning profiles, App Store Connect API private keys
+and their key/issuer identifiers, and the mapping to CI inputs. A public
+certificate alone cannot restore a signing identity. Verify recovery with an
+isolated temporary keychain and remove temporary credential files afterward.
+Keep secret values out of tracked files, logs and public artifacts; local
+paths, hosts, account identifiers and backup locations belong only in private
+configuration, as described in [local-only information](development.md#local-only-information).
+
 ## Build for Mac
 
 From the repository root:
