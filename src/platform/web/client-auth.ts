@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fetchAppRequest } from "@pablozaiden/webapp/web";
 import type { WebAppClientCredentials } from "./client-credentials";
 
 const deviceSchema = z.object({
@@ -28,14 +29,14 @@ export function clientApiUrl(baseUrl: string, path: string): string {
 
 async function authRequest(baseUrl: string, path: string, body: object, signal?: AbortSignal): Promise<unknown> {
   const timeout = AbortSignal.timeout(5_000);
-  const response = await fetch(clientApiUrl(baseUrl, path), {
+  const response = await fetchAppRequest(new Request(clientApiUrl(baseUrl, path), {
     method: "POST",
     credentials: "omit",
     redirect: "error",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  });
+  }));
   const value: unknown = await response.json();
   if (!response.ok) {
     const parsed = z.object({

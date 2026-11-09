@@ -400,6 +400,10 @@ Keep terminal, preview, and Mesh sockets as separate raw transports.
 Keep last-loaded UI data during recoverable connection loss and refresh after
 reconnection without global/per-resource error noise. Explicit operation
 failures and terminal protocol/synchronization errors remain visible.
+Remote authentication requests use the same monitored transport as API reads:
+a network failure during token renewal must suspend live reads before their
+rejection reaches the UI. Authorization rejections retain their existing
+session-invalidating behavior; network interruptions do not discard credentials.
 Sidebar activity uses compact metadata, not all transcripts. Live transcript
 windows stay bounded; older history is explicit. Recovery replaces the loaded
 window authoritatively, preserving its coverage rather than unioning stale
