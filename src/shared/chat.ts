@@ -23,7 +23,7 @@ import type { CollaborationCreator } from "./collaboration";
 
 export type { ModelConfig };
 
-export type ChatScope = "workspace" | "task" | "agent";
+export type ChatScope = "workspace" | "task" | "automation";
 
 export interface ChatActivityUpdate {
   timestamp: string;
@@ -217,12 +217,12 @@ export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope"
   return config.scope === "task" || config.taskId !== undefined;
 }
 
-export function isAgentChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
-  return "config" in chat ? chat.config.scope === "agent" : chat.scope === "agent";
+export function isAutomationChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return "config" in chat ? chat.config.scope === "automation" : chat.scope === "automation";
 }
 
 export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
-  return !isTaskChat(chat) && !isAgentChat(chat);
+  return !isTaskChat(chat) && !isAutomationChat(chat);
 }
 
 export function isWorkspaceChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {

@@ -5,7 +5,7 @@ import {
   type SidebarNode,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { UseAgentsResult } from "../../hooks/useAgents";
+import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import type { ShellDialogComposition } from "./shell-dialog-composition";
 import type { UseComposeStateResult } from "./use-compose-state";
 import {
@@ -20,13 +20,13 @@ import {
   sidebarNodeMatchesRoute,
 } from "./shell-sidebar-utils";
 import type {
-  Agent,
+  Automation,
   Chat,
   ExecutionHostDescriptor,
   Task,
   Workspace,
 } from "@/shared";
-import { Badge, formatStatusLabel, getAgentStatusBadgeVariant, StateText, StatusBadge } from "../common";
+import { Badge, formatStatusLabel, getAutomationStatusBadgeVariant, StateText, StatusBadge } from "../common";
 
 export interface HeaderModel {
   title?: string;
@@ -49,13 +49,13 @@ interface UseShellHeaderOptions {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  selectedAgent: Agent | null;
+  selectedAutomation: Automation | null;
   tasksLoading: boolean;
   chatsLoading: boolean;
-  agents: UseAgentsResult;
+  automations: UseAutomationsResult;
   terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
-  editingAgentId: ShellDialogComposition["editingAgentId"];
+  editingAutomationId: ShellDialogComposition["editingAutomationId"];
   composeActionState: UseComposeStateResult["composeActionState"];
 }
 
@@ -145,8 +145,8 @@ interface HeaderScopeOptions {
   selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
-  selectedAgent: Agent | null;
-  agentRunWorkspaceId: string | undefined;
+  selectedAutomation: Automation | null;
+  automationRunWorkspaceId: string | undefined;
   terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
 }
@@ -159,8 +159,8 @@ function getHeaderScopeSubtitle({
   selectedTask,
   selectedChat,
   selectedWorkspace,
-  selectedAgent,
-  agentRunWorkspaceId,
+  selectedAutomation,
+  automationRunWorkspaceId,
   terminalSessions,
   workspaces,
 }: HeaderScopeOptions): string | undefined {
@@ -177,11 +177,11 @@ function getHeaderScopeSubtitle({
         terminalSessions,
         workspaces,
       );
-    case "agent":
-      return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId, workspaces);
-    case "agent-run":
-      return getWorkspaceScopeSubtitle(selectedAgent?.config.workspaceId ?? agentRunWorkspaceId, workspaces);
-    case "agents":
+    case "automation":
+      return getWorkspaceScopeSubtitle(selectedAutomation?.config.workspaceId, workspaces);
+    case "automation-run":
+      return getWorkspaceScopeSubtitle(selectedAutomation?.config.workspaceId ?? automationRunWorkspaceId, workspaces);
+    case "automations":
       return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
     case "scratchpad":
       return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
@@ -223,13 +223,13 @@ export function useShellHeader({
   selectedWorkspace,
   composeWorkspace,
   composeExecutionHost,
-  selectedAgent,
+  selectedAutomation,
   tasksLoading,
   chatsLoading,
-  agents,
+  automations,
   terminalSessions,
   workspaces,
-  editingAgentId,
+  editingAutomationId,
   composeActionState,
 }: UseShellHeaderOptions) {
   const headerOwnerRoute = useMemo(() => {
@@ -249,12 +249,12 @@ export function useShellHeader({
           badgeVariant: headerNode.badgeVariant,
         }
       : null;
-    const agentRun = route.view === "agent-run"
+    const automationRun = route.view === "automation-run"
       ? (() => {
-          const agentId = getRouteString(route, "agentId");
+          const automationId = getRouteString(route, "automationId");
           const runId = getRouteString(route, "runId");
-          return agentId && runId
-            ? (agents.runsByAgentId[agentId] ?? []).find((item) => item.id === runId) ?? null
+          return automationId && runId
+            ? (automations.runsByAutomationId[automationId] ?? []).find((item) => item.id === runId) ?? null
             : null;
         })()
       : null;
@@ -266,8 +266,8 @@ export function useShellHeader({
       selectedTask,
       selectedChat,
       selectedWorkspace,
-      selectedAgent,
-      agentRunWorkspaceId: agentRun?.configSnapshot.workspaceId,
+      selectedAutomation,
+      automationRunWorkspaceId: automationRun?.configSnapshot.workspaceId,
       terminalSessions,
       workspaces,
     });
@@ -333,42 +333,42 @@ export function useShellHeader({
         return { title: "Provisioning" };
       case "worker-update-job":
         return { title: "Worker update" };
-      case "agent": {
-        const agentId = getRouteString(route, "agentId");
-        if (agentId && !selectedAgent && !agents.loading) {
-          return { title: "Agent not found" };
+      case "automation": {
+        const automationId = getRouteString(route, "automationId");
+        if (automationId && !selectedAutomation && !automations.loading) {
+          return { title: "Automation not found" };
         }
-        const agent = selectedAgent;
-        const agentWorkspace = agent
-          ? workspaces.find((workspace) => workspace.id === agent.config.workspaceId)
+        const automation = selectedAutomation;
+        const automationWorkspace = automation
+          ? workspaces.find((workspace) => workspace.id === automation.config.workspaceId)
           : undefined;
-        return editingAgentId && editingAgentId === agentId
-          && !isWorkspaceReadOnly(agentWorkspace)
-          ? { title: `Edit agent ${agent?.config.name ?? nodeModel?.title ?? ""}`.trim(), scopeSubtitle }
-          : agent
+        return editingAutomationId && editingAutomationId === automationId
+          && !isWorkspaceReadOnly(automationWorkspace)
+          ? { title: `Edit automation ${automation?.config.name ?? nodeModel?.title ?? ""}`.trim(), scopeSubtitle }
+          : automation
             ? {
-                title: agent.config.name,
+                title: automation.config.name,
                 scopeSubtitle,
-                detailSubtitle: agentWorkspace?.directory,
-                badge: formatStatusLabel(agent.state.status),
-                badgeVariant: getAgentStatusBadgeVariant(agent.state.status),
+                detailSubtitle: automationWorkspace?.directory,
+                badge: formatStatusLabel(automation.state.status),
+                badgeVariant: getAutomationStatusBadgeVariant(automation.state.status),
                 detailSubtitleMobileHidden: true,
               }
-            : nodeModel ?? { title: "Agent" };
+            : nodeModel ?? { title: "Automation" };
       }
-      case "agent-run": {
-        const agent = selectedAgent;
+      case "automation-run": {
+        const automation = selectedAutomation;
         return {
-          title: agent?.config.name ?? agentRun?.configSnapshot.name ?? "Agent run",
+          title: automation?.config.name ?? automationRun?.configSnapshot.name ?? "Automation run",
           scopeSubtitle,
-          detailSubtitle: agentRun ? `Run · ${agentRun.status}` : "Agent run",
+          detailSubtitle: automationRun ? `Run · ${automationRun.status}` : "Automation run",
         };
       }
-      case "agents": {
+      case "automations": {
         const workspaceId = getRouteString(route, "workspaceId");
         const workspace = workspaceId ? workspaces.find((item) => item.id === workspaceId) : null;
         return {
-          title: workspace ? `Agents in ${getWorkspaceDisplayName(workspace)}` : "Agents",
+          title: workspace ? `Automations in ${getWorkspaceDisplayName(workspace)}` : "Automations",
           scopeSubtitle,
           detailSubtitle: workspace?.directory,
         };
@@ -417,9 +417,9 @@ export function useShellHeader({
             scopeSubtitle,
           };
         }
-        if (composeKind === "agent") {
+        if (composeKind === "automation") {
           return {
-            title: composeWorkspace ? `Start a new agent in ${composeWorkspace.name}` : "Start a new agent",
+            title: composeWorkspace ? `Start a new automation in ${composeWorkspace.name}` : "Start a new automation",
             scopeSubtitle,
           };
         }
@@ -436,17 +436,17 @@ export function useShellHeader({
         return {};
     }
   }, [
-    agents.loading,
-    agents.runsByAgentId,
+    automations.loading,
+    automations.runsByAutomationId,
     chatId,
     chatsLoading,
     composeKind,
     composeExecutionHost,
     composeWorkspace,
-    editingAgentId,
+    editingAutomationId,
     headerNode,
     route,
-    selectedAgent,
+    selectedAutomation,
     selectedChat,
     selectedTask,
     selectedWorkspace,
@@ -457,7 +457,7 @@ export function useShellHeader({
   ]);
   const headerActions = useMemo<ActionMenuItem[]>(() => {
     const ownerActions = headerNode?.actions ?? [];
-    const entityActions = route.view !== "code-explorer" && route.view !== "agent-run"
+    const entityActions = route.view !== "code-explorer" && route.view !== "automation-run"
       && headerOwnerRoute
       && headerNode
       && !sidebarNodeMatchesRoute(headerNode, route)

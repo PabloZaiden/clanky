@@ -4,7 +4,7 @@
 
 Choose the adapter in the existing workspace settings page. Tasks and chats
 continue to choose a model and variant from that workspace's harness catalog.
-Clanky scheduled Agents inherit the same execution behavior; they are not
+Clanky scheduled Automations inherit the same execution behavior; they are not
 harness subagents.
 
 | Adapter | `agent.adapter` | `agent.provider` | Runtime |
@@ -57,7 +57,7 @@ OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.
 
-Owned native chats, tasks and managed Agent runs support
+Owned native chats, tasks and managed Automation runs support
 [Clanky Control](control-chats.md) in their workspace without Quick Chat setup
 or general access. Explicit general access permits broader application control
 within the user's permissions. Native adapters discover their granted catalog
@@ -240,7 +240,7 @@ checkpoint and transport release. If settlement or the final refresh fails,
 the retained total is marked **Last known** instead of implying complete
 final accounting.
 
-Tasks include their task-scoped chat consumption. Scheduled Agent runs share
+Tasks include their task-scoped chat consumption. Scheduled Automation runs share
 their backing chat's accounting rather than counting a second execution.
 Consumption is private to the entity owner. On Mesh, the controller requests
 usage only when the worker advertises token-accounting support; update older
@@ -423,7 +423,7 @@ actual execution host and referenced by absolute path. Clanky does not parse
 their content or require provider-native document/embedded-context support.
 The agent chooses its own tools; acceptance of a file does not guarantee the
 model can interpret its format. [Attachment storage and lifecycle](attachments.md)
-also apply to tasks and Agent runs.
+also apply to tasks and Automation runs.
 
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission

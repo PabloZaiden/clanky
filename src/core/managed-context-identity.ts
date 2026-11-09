@@ -5,14 +5,14 @@
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
 import type { Task } from "@/shared/task";
 import { getChatWorkspaceId, type Chat } from "@/shared/chat";
-import { loadAgentRunSummary, loadAgentRunSummaryByChatId } from "../persistence/agents";
+import { loadAutomationRunSummary, loadAutomationRunSummaryByChatId } from "../persistence/automations";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { getWorkspace } from "../persistence/workspaces";
-import { isAgentRunActiveStatus } from "@/shared/agent";
+import { isAutomationRunActiveStatus } from "@/shared/automation";
 
 function missingContext(contextType: ManagedContextType, contextId: string): DomainError {
   return new DomainError("managed_context_not_found", "Managed execution context was not found", {
@@ -73,17 +73,17 @@ export class ManagedContextIdentityResolver {
       return await this.forTask(chat.config.taskId, expectedWorkspaceId ?? chat.config.workspaceId);
     }
 
-    if (chat.config.scope === "agent") {
-      const run = await loadAgentRunSummaryByChatId(chatId);
+    if (chat.config.scope === "automation") {
+      const run = await loadAutomationRunSummaryByChatId(chatId);
       if (run) {
         return this.createIdentity(
-          "agent_run",
+          "automation_run",
           run.id,
-          ensureWorkspace("agent_run", run.id, run.configSnapshot.workspaceId, expectedWorkspaceId),
+          ensureWorkspace("automation_run", run.id, run.configSnapshot.workspaceId, expectedWorkspaceId),
         );
       }
-      // Persistent agent-generation chats use the agent scope without an
-      // AgentRun, so their lifecycle is managed like a standalone chat.
+      // Persistent automation-generation chats use the automation scope without an
+      // AutomationRun, so their lifecycle is managed like a standalone chat.
     }
 
     return this.createIdentity(
@@ -93,15 +93,15 @@ export class ManagedContextIdentityResolver {
     );
   }
 
-  async forAgentRun(runId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const run = await loadAgentRunSummary(runId);
+  async forAutomationRun(runId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
+    const run = await loadAutomationRunSummary(runId);
     if (!run) {
-      throw missingContext("agent_run", runId);
+      throw missingContext("automation_run", runId);
     }
     return this.createIdentity(
-      "agent_run",
+      "automation_run",
       runId,
-      ensureWorkspace("agent_run", runId, run.configSnapshot.workspaceId, expectedWorkspaceId),
+      ensureWorkspace("automation_run", runId, run.configSnapshot.workspaceId, expectedWorkspaceId),
     );
   }
 
@@ -134,9 +134,9 @@ export class ManagedContextIdentityResolver {
         const chat = await loadChatMetadata(identity.contextId);
         return chat?.config.workspaceId === identity.workspaceId;
       }
-      case "agent_run": {
-        const run = await loadAgentRunSummary(identity.contextId);
-        return run?.configSnapshot.workspaceId === identity.workspaceId && isAgentRunActiveStatus(run.status);
+      case "automation_run": {
+        const run = await loadAutomationRunSummary(identity.contextId);
+        return run?.configSnapshot.workspaceId === identity.workspaceId && isAutomationRunActiveStatus(run.status);
       }
       case "terminal_session": {
         const session = await getTerminalSession(identity.contextId);

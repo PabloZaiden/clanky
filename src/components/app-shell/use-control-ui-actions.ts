@@ -39,7 +39,7 @@ type NavigationResources = Pick<ReturnType<typeof useShellResources>,
   | "tasks" | "tasksError" | "refreshTasks"
   | "chats" | "chatsError" | "refreshChats"
   | "workspaces" | "workspaceError" | "refreshWorkspaces"
-  | "agents"
+  | "automations"
   | "terminalSessions" | "terminalSessionsError" | "refreshTerminalSessions"
   | "executionHosts" | "executionHostsError" | "refreshExecutionHosts"
 >;
@@ -69,7 +69,7 @@ function getActionRoute(action: ControlUiAction): WebAppRoute | null {
     case "open_chat":
       return { view: "chat", chatId: action.chatId };
     case "open_task": return { view: "task", taskId: action.taskId };
-    case "open_agent": return { view: "agent", agentId: action.agentId };
+    case "open_automation": return { view: "automation", automationId: action.automationId };
     case "open_terminal": return { view: "terminal", terminalSessionId: action.terminalSessionId };
     case "open_execution_host": return { view: "execution-host", hostKind: action.kind, hostId: action.id };
     case "open_home": return { view: "home" };
@@ -84,7 +84,7 @@ async function refreshNavigationTarget(action: ControlUiAction, resources: Navig
     case "open_workspace_file": await resources.refreshWorkspaces(); break;
     case "open_chat": await resources.refreshChats(); break;
     case "open_task": await resources.refreshTasks(); break;
-    case "open_agent": await resources.agents.refresh(); break;
+    case "open_automation": await resources.automations.refresh(); break;
     case "open_terminal": await resources.refreshTerminalSessions(); break;
     case "open_execution_host":
       await resources.refreshExecutionHosts();
@@ -101,8 +101,8 @@ function isNavigationTargetReady(expected: WebAppRoute, resources: NavigationRes
       return !resources.chatsError && resources.chats.some((chat) => chat.config.id === expected["chatId"]);
     case "task":
       return !resources.tasksError && resources.tasks.some((task) => task.config.id === expected["taskId"]);
-    case "agent":
-      return !resources.agents.error && resources.agents.agents.some((agent) => agent.config.id === expected["agentId"]);
+    case "automation":
+      return !resources.automations.error && resources.automations.automations.some((automation) => automation.config.id === expected["automationId"]);
     case "terminal":
       return !resources.terminalSessionsError && resources.terminalSessions.some((session) => session.config.id === expected["terminalSessionId"]);
     case "execution-host":

@@ -14,15 +14,15 @@ DELETE FROM task_transcript_entries WHERE task_id LIKE 'demo-%';
 DELETE FROM task_transcript_meta WHERE task_id LIKE 'demo-%';
 DELETE FROM chat_transcript_entries WHERE chat_id LIKE 'demo-%';
 DELETE FROM chat_transcript_meta WHERE chat_id LIKE 'demo-%';
-DELETE FROM agent_run_transcript_entries WHERE agent_run_id LIKE 'demo-%';
-DELETE FROM agent_run_transcript_meta WHERE agent_run_id LIKE 'demo-%';
+DELETE FROM automation_run_transcript_entries WHERE automation_run_id LIKE 'demo-%';
+DELETE FROM automation_run_transcript_meta WHERE automation_run_id LIKE 'demo-%';
 DELETE FROM review_comments WHERE id LIKE 'demo-%' OR task_id LIKE 'demo-%';
-DELETE FROM agent_runs WHERE id LIKE 'demo-%' OR agent_id LIKE 'demo-%';
+DELETE FROM automation_runs WHERE id LIKE 'demo-%' OR automation_id LIKE 'demo-%';
 DELETE FROM provisioning_jobs WHERE id LIKE 'demo-%';
 DELETE FROM terminal_sessions WHERE id LIKE 'demo-%';
 DELETE FROM preview_sessions WHERE id LIKE 'demo-%';
 DELETE FROM chats WHERE id LIKE 'demo-%';
-DELETE FROM agents WHERE id LIKE 'demo-%';
+DELETE FROM automations WHERE id LIKE 'demo-%';
 DELETE FROM tasks WHERE id LIKE 'demo-%';
 DELETE FROM sessions WHERE task_id LIKE 'demo-%';
 DELETE FROM clanky_context_api_keys
@@ -522,7 +522,7 @@ ON CONFLICT(id) DO UPDATE SET
   execution_host_id = excluded.execution_host_id,
   execution_host_revision = excluded.execution_host_revision;
 
-INSERT INTO agents (
+INSERT INTO automations (
   id, user_id, name, workspace_id, directory, prompt, code, generation_chat_id,
   model_provider_id, model_model_id, model_variant, base_branch, use_worktree,
   schedule_start_at_local, schedule_timezone, schedule_interval_value,
@@ -531,7 +531,7 @@ INSERT INTO agents (
   last_error_message, last_error_timestamp, last_error_code, active_run_id
 ) VALUES
   (
-    'demo-agent-billing', 'demo-user', 'Billing risk review', 'demo-workspace-remote',
+    'demo-automation-billing', 'demo-user', 'Billing risk review', 'demo-workspace-remote',
     '/srv/workspaces/billing-api',
     'Review recent billing changes and summarize risks for the team.',
     'Review changed files, run focused tests, and report actionable risks.',
@@ -539,10 +539,10 @@ INSERT INTO agents (
     'America/New_York', 1, 'days', '2030-04-18T13:00:00.000Z', 0, 'paused',
     '2026-04-16T18:00:00.000Z', '2026-04-17T13:45:00.000Z', 0, 'running',
     '2026-04-17T13:40:00.000Z', '2026-04-18T13:00:00.000Z', NULL, NULL, NULL, NULL,
-    'demo-agent-run-billing'
+    'demo-automation-run-billing'
   ),
   (
-    'demo-agent-docs', 'demo-user', 'Documentation gardener', 'demo-workspace-local',
+    'demo-automation-docs', 'demo-user', 'Documentation gardener', 'demo-workspace-local',
     '/workspaces/demo-storefront',
     'Keep the product documentation aligned with the latest UI behavior.',
     NULL, NULL, 'claude', 'claude-sonnet', '', 'main', 0, '2026-04-17T07:30',
@@ -551,7 +551,7 @@ INSERT INTO agents (
     '2026-04-17T12:00:00.000Z', NULL, '2026-04-17T11:58:00.000Z',
     'The provider rejected the configured model.', '2026-04-17T12:00:00.000Z',
     'provider_model_unavailable',
-    'demo-agent-run-docs'
+    'demo-automation-run-docs'
   )
 ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
@@ -585,35 +585,35 @@ ON CONFLICT(id) DO UPDATE SET
   last_error_code = excluded.last_error_code,
   active_run_id = excluded.active_run_id;
 
-INSERT INTO agent_runs (
-  id, user_id, agent_id, chat_id, status, trigger, scheduled_for, started_at,
+INSERT INTO automation_runs (
+  id, user_id, automation_id, chat_id, status, trigger, scheduled_for, started_at,
   completed_at, skip_reason, error_message, error_timestamp, error_code,
   session_id, session_server_url, worktree_original_branch, worktree_working_branch,
   worktree_path, pending_permission_requests, attachments, config_snapshot,
   created_at, updated_at
 ) VALUES
   (
-    'demo-agent-run-billing', 'demo-user', 'demo-agent-billing', 'demo-chat-ops',
+    'demo-automation-run-billing', 'demo-user', 'demo-automation-billing', 'demo-chat-ops',
     'running', 'manual', '2026-04-17T13:40:00.000Z', '2026-04-17T13:40:00.000Z',
-    NULL, NULL, NULL, NULL, NULL, 'demo-agent-session-billing', 'http://127.0.0.1:4302',
-    'main', 'agents/demo-agent-billing', '/srv/workspaces/billing-api/.clanky-worktrees/demo-agent-billing',
-    '[{"requestId":"demo-agent-permission","permission":"git_push","status":"pending"}]',
+    NULL, NULL, NULL, NULL, NULL, 'demo-automation-session-billing', 'http://127.0.0.1:4302',
+    'main', 'automations/demo-automation-billing', '/srv/workspaces/billing-api/.clanky-worktrees/demo-automation-billing',
+    '[{"requestId":"demo-automation-permission","permission":"git_push","status":"pending"}]',
     '[]',
     '{"name":"Billing risk review","workspaceId":"demo-workspace-remote","directory":"/srv/workspaces/billing-api","prompt":"Review recent billing changes and summarize risks for the team.","model":{"providerID":"copilot","modelID":"gpt-5.2","variant":""},"useWorktree":true,"schedule":{"startAtLocal":"2026-04-17T09:00","timezone":"America/New_York","interval":{"value":1,"unit":"days"},"nextRunAt":"2026-04-18T13:00:00.000Z"}}',
     '2026-04-17T13:40:00.000Z', '2026-04-17T13:49:00.000Z'
   ),
   (
-    'demo-agent-run-docs', 'demo-user', 'demo-agent-docs', NULL,
+    'demo-automation-run-docs', 'demo-user', 'demo-automation-docs', NULL,
     'failed', 'schedule', '2026-04-17T12:00:00.000Z', '2026-04-17T12:00:00.000Z', NULL,
     'Provider model unavailable', 'The provider rejected the configured model.',
     '2026-04-17T12:00:00.000Z', 'provider_model_unavailable', NULL, NULL,
-    'main', 'agents/demo-agent-docs', NULL, '[]', '[]',
+    'main', 'automations/demo-automation-docs', NULL, '[]', '[]',
     '{"name":"Documentation gardener","workspaceId":"demo-workspace-local","directory":"/workspaces/demo-storefront","prompt":"Keep the product documentation aligned with the latest UI behavior.","model":{"providerID":"claude","modelID":"claude-sonnet","variant":""},"useWorktree":false,"schedule":{"startAtLocal":"2026-04-17T07:30","timezone":"UTC","interval":{"value":1,"unit":"weeks"},"nextRunAt":"2026-04-24T07:30:00.000Z"}}',
     '2026-04-17T12:00:00.000Z', '2026-04-17T12:00:00.000Z'
   )
 ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
-  agent_id = excluded.agent_id,
+  automation_id = excluded.automation_id,
   chat_id = excluded.chat_id,
   status = excluded.status,
   trigger = excluded.trigger,
@@ -944,36 +944,36 @@ ON CONFLICT(chat_id) DO UPDATE SET
   entry_count = excluded.entry_count,
   updated_at = excluded.updated_at;
 
-INSERT INTO agent_run_transcript_entries (
-  agent_run_id, user_id, entry_id, kind, timestamp, sequence, payload,
+INSERT INTO automation_run_transcript_entries (
+  automation_run_id, user_id, entry_id, kind, timestamp, sequence, payload,
   tool_name, tool_status, tool_input, tool_output, tool_extras, message_role,
   created_at, updated_at
 ) VALUES
   (
-    'demo-agent-run-billing', 'demo-user', 'message:demo-agent-run-billing-user', 'message',
+    'demo-automation-run-billing', 'demo-user', 'message:demo-automation-run-billing-user', 'message',
     '2026-04-17T13:41:00.000Z', 0,
-    '{"id":"demo-agent-run-billing-user","role":"user","content":"Review the webhook retry changes.","timestamp":"2026-04-17T13:41:00.000Z"}',
+    '{"id":"demo-automation-run-billing-user","role":"user","content":"Review the webhook retry changes.","timestamp":"2026-04-17T13:41:00.000Z"}',
     NULL, NULL, NULL, NULL, NULL, 'user', '2026-04-17T13:41:00.000Z', '2026-04-17T13:41:00.000Z'
   ),
   (
-    'demo-agent-run-billing', 'demo-user', 'message:demo-agent-run-billing-assistant', 'message',
+    'demo-automation-run-billing', 'demo-user', 'message:demo-automation-run-billing-assistant', 'message',
     '2026-04-17T13:42:00.000Z', 1,
-    '{"id":"demo-agent-run-billing-assistant","role":"assistant","content":"I found one retry path that can duplicate a charge event; I am validating the idempotency key flow.","timestamp":"2026-04-17T13:42:00.000Z"}',
+    '{"id":"demo-automation-run-billing-assistant","role":"assistant","content":"I found one retry path that can duplicate a charge event; I am validating the idempotency key flow.","timestamp":"2026-04-17T13:42:00.000Z"}',
     NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T13:42:00.000Z', '2026-04-17T13:42:00.000Z'
   ),
   (
-    'demo-agent-run-billing', 'demo-user', 'tool:demo-agent-run-billing-tool', 'tool',
+    'demo-automation-run-billing', 'demo-user', 'tool:demo-automation-run-billing-tool', 'tool',
     '2026-04-17T13:43:00.000Z', 2, '{}', 'Grep', 'completed',
     '{"pattern":"idempotency","path":"src"}', '"src/webhooks/retry.ts:42"', '[]', NULL,
     '2026-04-17T13:43:00.000Z', '2026-04-17T13:43:00.000Z'
   ),
   (
-    'demo-agent-run-docs', 'demo-user', 'message:demo-agent-run-docs-assistant', 'message',
+    'demo-automation-run-docs', 'demo-user', 'message:demo-automation-run-docs-assistant', 'message',
     '2026-04-17T12:00:30.000Z', 0,
-    '{"id":"demo-agent-run-docs-assistant","role":"assistant","content":"I could not start because the configured provider model is unavailable.","timestamp":"2026-04-17T12:00:30.000Z"}',
+    '{"id":"demo-automation-run-docs-assistant","role":"assistant","content":"I could not start because the configured provider model is unavailable.","timestamp":"2026-04-17T12:00:30.000Z"}',
     NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T12:00:30.000Z', '2026-04-17T12:00:30.000Z'
   )
-ON CONFLICT(agent_run_id, entry_id) DO UPDATE SET
+ON CONFLICT(automation_run_id, entry_id) DO UPDATE SET
   user_id = excluded.user_id,
   kind = excluded.kind,
   timestamp = excluded.timestamp,
@@ -987,10 +987,10 @@ ON CONFLICT(agent_run_id, entry_id) DO UPDATE SET
   message_role = excluded.message_role,
   updated_at = excluded.updated_at;
 
-INSERT INTO agent_run_transcript_meta (agent_run_id, user_id, revision, entry_count, updated_at) VALUES
-  ('demo-agent-run-billing', 'demo-user', '3:2026-04-17T13:43:00.000Z:2026-04-17T13:43:00.000Z', 3, '2026-04-17T13:43:00.000Z'),
-  ('demo-agent-run-docs', 'demo-user', '1:2026-04-17T12:00:30.000Z:2026-04-17T12:00:30.000Z', 1, '2026-04-17T12:00:30.000Z')
-ON CONFLICT(agent_run_id) DO UPDATE SET
+INSERT INTO automation_run_transcript_meta (automation_run_id, user_id, revision, entry_count, updated_at) VALUES
+  ('demo-automation-run-billing', 'demo-user', '3:2026-04-17T13:43:00.000Z:2026-04-17T13:43:00.000Z', 3, '2026-04-17T13:43:00.000Z'),
+  ('demo-automation-run-docs', 'demo-user', '1:2026-04-17T12:00:30.000Z:2026-04-17T12:00:30.000Z', 1, '2026-04-17T12:00:30.000Z')
+ON CONFLICT(automation_run_id) DO UPDATE SET
   user_id = excluded.user_id,
   revision = excluded.revision,
   entry_count = excluded.entry_count,

@@ -30,14 +30,14 @@ import type {
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
-import { agentScheduler } from "./core/agent-scheduler";
+import { automationScheduler } from "./core/automation-scheduler";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
 import { provisioningManager } from "./core/provisioning-manager";
 import { workerUpdateManager } from "./core/worker-update-manager";
 import { meshManager } from "./core/mesh-manager";
 import {
-  agentEventEmitter,
+  automationEventEmitter,
   chatEventEmitter,
   provisioningEventEmitter,
   terminalSessionEventEmitter,
@@ -190,7 +190,7 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
   realtimeBridgeUnsubscribers = [
     taskEventEmitter.subscribe(publishEvent),
     chatEventEmitter.subscribe(publishEvent),
-    agentEventEmitter.subscribe(publishEvent),
+    automationEventEmitter.subscribe(publishEvent),
     terminalSessionEventEmitter.subscribe(publishEvent),
     provisioningEventEmitter.subscribe(publishEvent),
     previewEventEmitter.subscribe(publishEvent),
@@ -354,7 +354,7 @@ async function completeStartup(
   }
   if (options.startBackgroundWorkers !== false) {
     pushedTaskMonitor.start();
-    agentScheduler.start();
+    automationScheduler.start();
     startWorkspaceWorkerReconciliation();
     startChatTrashMaintenance();
   }
@@ -373,7 +373,7 @@ async function completeStartup(
 
 function stopBackgroundWorkers(): void {
   pushedTaskMonitor.stop();
-  agentScheduler.stop();
+  automationScheduler.stop();
   stopWorkspaceWorkerReconciliation();
 }
 

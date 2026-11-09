@@ -22,7 +22,7 @@ export type DomainErrorBoundary =
 
 export type DomainErrorPolicyName =
   | "authenticated"
-  | "agents"
+  | "automations"
   | "chats"
   | "execution-hosts"
   | "file-explorer"
@@ -144,12 +144,12 @@ const API_DOMAIN_ERROR_CODES = {
   chat_history_recovery_unresolved_input: true,
   chat_history_recovery_unresolved_permission: true,
   chat_history_recovery_unresolved_question: true,
-  agent_already_running: true,
-  agent_chat_not_found: true,
-  agent_code_generation_failed: true,
-  agent_code_invalid: true,
-  agent_not_found: true,
-  agent_run_not_ready: true,
+  automation_already_running: true,
+  automation_chat_not_found: true,
+  automation_code_generation_failed: true,
+  automation_code_invalid: true,
+  automation_not_found: true,
+  automation_run_not_ready: true,
   automatic_pr_flow_busy: true,
   automatic_pr_flow_disabled: true,
   conflict: true,
@@ -581,35 +581,35 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: COMMON_MAPPINGS,
   },
-  agents: {
+  automations: {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
-      agent_already_running: {
+      automation_already_running: {
         status: 409,
-        message: "Agent already has an active run.",
+        message: "Automation already has an active run.",
       },
-      agent_chat_not_found: {
+      automation_chat_not_found: {
         status: 409,
-        error: "agent_run_not_ready",
-        message: "Agent run chat is no longer available",
+        error: "automation_run_not_ready",
+        message: "Automation run chat is no longer available",
       },
-      agent_code_generation_failed: {
+      automation_code_generation_failed: {
         status: 502,
         message: "The code generation provider did not create a non-empty source file.",
       },
-      agent_code_invalid: {
+      automation_code_invalid: {
         status: 400,
         extra: diagnosticsDetails,
-        message: "Agent code is invalid",
+        message: "Automation code is invalid",
       },
-      agent_not_found: {
+      automation_not_found: {
         status: 404,
-        message: "Agent not found",
+        message: "Automation not found",
       },
-      agent_run_not_ready: {
+      automation_run_not_ready: {
         status: 409,
-        message: "The agent run is not ready.",
+        message: "The automation run is not ready.",
       },
       workspace_not_found: {
         status: 404,

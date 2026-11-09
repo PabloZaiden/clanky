@@ -9,10 +9,10 @@ const REFERENCE_FIELDS = {
   taskId: "task",
   chatId: "chat",
   subagentId: "subagent",
-  agentId: "agent",
-  runId: "agent-run",
-  agentRunId: "agent-run",
-  activeRunId: "agent-run",
+  automationId: "automation",
+  runId: "automation-run",
+  automationRunId: "automation-run",
+  activeRunId: "automation-run",
   generationChatId: "chat",
   terminalSessionId: "terminal",
   previewId: "preview",
@@ -93,10 +93,10 @@ function qualifyEntity(
   context: WorkspaceSourceResponseContext,
 ): Record<string, unknown> {
   const config = isReadRecord(value["config"]) ? value["config"] : value;
-  if (["task", "chat", "agent"].includes(String(config["mode"]))) resource = String(config["mode"]);
+  if (["task", "chat", "automation"].includes(String(config["mode"]))) resource = String(config["mode"]);
   else if (typeof config["remoteSessionName"] === "string") resource = "terminal";
   else if (typeof config["targetKind"] === "string" && typeof config["remotePort"] === "number") resource = "preview";
-  else if (typeof value["agentId"] === "string" && isReadRecord(value["configSnapshot"])) resource = "agent-run";
+  else if (typeof value["automationId"] === "string" && isReadRecord(value["configSnapshot"])) resource = "automation-run";
   else if (typeof value["commentText"] === "string" && typeof value["taskId"] === "string") resource = "review-comment";
   else if (isReadRecord(value["activity"]) && isReadRecord(value["binding"])
     && (typeof value["chatId"] === "string" || typeof value["taskId"] === "string")) resource = "subagent";
@@ -149,8 +149,8 @@ const ENTITY_SLOTS = {
   workspace: "workspace",
   task: "task",
   chat: "chat",
-  agent: "agent",
-  run: "agent-run",
+  automation: "automation",
+  run: "automation-run",
   terminal: "terminal",
   terminalSession: "terminal",
   preview: "preview",
@@ -199,7 +199,7 @@ export function qualifyWorkspaceResponse(
   }
   if (Array.isArray(result["deletedRunIds"])) {
     result["deletedRunIds"] = result["deletedRunIds"].map((id: unknown) => (
-      typeof id === "string" ? context.qualify("agent-run", id) : id
+      typeof id === "string" ? context.qualify("automation-run", id) : id
     ));
   }
   return qualifyTranscriptReferences(result, context);

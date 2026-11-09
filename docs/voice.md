@@ -30,7 +30,7 @@ phone or browser. The server must trust the provider's TLS certificate.
 Each signed-in user can configure their own endpoints; deployments must account
 for those users being able to connect to services reachable from the server.
 
-Assistant response blocks in chat, task, and agent-run transcripts can be
+Assistant response blocks in chat, task, and automation-run transcripts can be
 translated to English or Spanish. Translation sends the selected block's text
 to the configured, validated shared text-generation model. Clanky returns the
 result to the browser for display in that block only; it does not modify or
@@ -311,7 +311,7 @@ standalone chats. Marking done does not interrupt active work; the chat API
 rejects busy or reconnecting chats. Moving a chat to Trash stops active work
 and keeps its history and worktree recoverable for 30 days, but requires the
 originating user's visual approval. This tool cannot set runtime statuses or
-permanently purge chats. Task chats remain task-managed, and agent chats are
+permanently purge chats. Task chats remain task-managed, and automation chats are
 excluded because their existing delete path is permanent.
 
 `steer_queued_chat_message` operates only on messages already in a chat queue.
@@ -644,7 +644,7 @@ transcription provider.
 `{"text":"<selected message text>","targetLanguage":"en"|"es"}` and returns
 `{"translatedText":"<translation>"}`. It requires the user's validated shared
 text-generation capability, accepts at most 30,000 characters, and does not
-persist or associate the submitted text with a chat, task, or agent run.
+persist or associate the submitted text with a chat, task, or automation run.
 
 ## Upstream voice assets
 

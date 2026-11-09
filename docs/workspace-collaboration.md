@@ -2,7 +2,7 @@
 
 Connect your local Clanky to another controller to work in selected shared
 workspaces. Your instance remains a normal Clanky application, not an execution
-worker. The controller keeps the conversations, tasks, agents, files and execution
+worker. The controller keeps the conversations, tasks, automations, files and execution
 resources; your instance stores the pairing, not a replica of that content.
 Shared conversation and scratchpad drafts remain in browser memory rather than
 local draft storage; reload discards unsent text.
@@ -38,7 +38,7 @@ name, with **Revoke invitation** alongside those details.
 To grant **Work** access everywhere, select **All workspaces**
 instead of individual workspaces. This includes all your current and future
 workspaces, even if none exist when the invitation is accepted. The collaborator
-can use them, including scratchpad, chats, tasks and agents, but cannot create,
+can use them, including scratchpad, chats, tasks and automations, but cannot create,
 configure, archive or delete your workspaces. This also prevents changing
 **Clanky Context**, the execution host or provider. Server, user, credential and
 collaboration-invitation administration are not granted. Existing all-workspaces
@@ -71,7 +71,7 @@ returned by the API when reading or modifying a shared resource; do not extract
 or construct its underlying controller ID.
 
 Collaborators with **Work** access can work with existing and new conversations, tasks/plans,
-workspace agents, scratchpad, Git/files, transfers, terminals and previews.
+workspace automations, scratchpad, Git/files, transfers, terminals and previews.
 Chats and tasks show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
@@ -126,7 +126,7 @@ the grant constrains subsequent operations and pending approvals. See
 [agent control and MCP](deployment.md#agent-control-and-mcp) for external
 integration grants and human interactions.
 
-Agents and their schedules stay on the owning controller. An invited controller
+Automations and their schedules stay on the owning controller. An invited controller
 does not schedule a second copy. Work access permits manual runs and schedule
 edits; admitted runs and schedules continue under the original owner.
 
@@ -136,7 +136,7 @@ Permissions are assigned separately for each collaborator and workspace. A
 collaborator can review one workspace while working in another. Existing grants
 and invitations preserve their **Read only** or **Work** access after upgrading.
 
-**Read only** allows reading conversations, tasks/plans, agents, transcripts,
+**Read only** allows reading conversations, tasks/plans, automations, transcripts,
 logs, scratchpad, files and Git information, downloading files, and receiving
 authorized realtime updates. The UI marks the workspace as read-only and
 disables or removes modification controls. Controller credentials and other
@@ -258,7 +258,7 @@ On the controller, revoke one workspace or the whole collaborator from
 close, and new requests are denied. Other granted workspaces remain usable.
 For all-workspaces access, revoke the whole collaborator.
 
-Already admitted chats, tasks and agent schedules continue under the controller.
+Already admitted chats, tasks and automation schedules continue under the controller.
 Revocation does not cancel them, delete shared content or undo commands.
 Disconnecting a pairing on the invited instance also leaves controller work
 intact. Neither action can retract information already seen or downloaded.

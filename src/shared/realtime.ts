@@ -3,7 +3,7 @@
  */
 
 import type { ResourceRealtimeEvent } from "@pablozaiden/webapp/contracts";
-import type { TaskEvent, ChatEvent, AgentEvent } from "./events";
+import type { TaskEvent, ChatEvent, AutomationEvent } from "./events";
 import type { ProvisioningEvent } from "./provisioning";
 import type { ControlUiActionEvent } from "./clanky-control";
 import type { LiveVoiceActivityEvent } from "./live-voice";
@@ -20,8 +20,8 @@ export const CLANKY_REALTIME_RESOURCES = {
   subagents: "subagents",
   chatActivity: "chat-activity",
   trash: "trash",
-  agents: "agents",
-  agentRuns: "agent-runs",
+  automations: "automations",
+  automationRuns: "automation-runs",
   terminalSessions: "terminal-sessions",
   provisioningJobs: "provisioning-jobs",
   workerUpdateJobs: "worker-update-jobs",
@@ -53,10 +53,10 @@ export type RetainedChatEvent = BrowserTranscriptEvent<Extract<ChatEvent, {
     | "chat.log" | "chat.log.delta";
 }>>;
 
-type RetainedAgentEvent = BrowserTranscriptEvent<Extract<AgentEvent, {
+type RetainedAutomationEvent = BrowserTranscriptEvent<Extract<AutomationEvent, {
   type:
-    | "agent.run.message" | "agent.run.message.delta" | "agent.run.tool_call"
-    | "agent.run.log" | "agent.run.log.delta";
+    | "automation.run.message" | "automation.run.message.delta" | "automation.run.tool_call"
+    | "automation.run.log" | "automation.run.log.delta";
 }>>;
 
 type RetainedProvisioningEvent = Extract<ProvisioningEvent, {
@@ -64,7 +64,7 @@ type RetainedProvisioningEvent = Extract<ProvisioningEvent, {
 }>;
 
 export type TranscriptContentEvent =
-  | RetainedTaskEvent | RetainedChatEvent | RetainedAgentEvent
+  | RetainedTaskEvent | RetainedChatEvent | RetainedAutomationEvent
   | Extract<SubagentEvent, { type: "subagent.transcript" }>;
 
 export type ClankyStreamEvent =
@@ -80,8 +80,8 @@ export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, Collabor
   subagents: "subagent",
   trash: "chat",
   "chat-activity": "chat",
-  agents: "agent",
-  "agent-runs": "agent-run",
+  automations: "automation",
+  "automation-runs": "automation-run",
   "terminal-sessions": "terminal",
   previews: "preview",
 };
@@ -91,8 +91,8 @@ const WORKSPACE_STREAM_TYPES = new Set<string>([
   "task.message", "task.message.delta", "task.tool_call",
   "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
   "chat.message", "chat.message.delta", "chat.tool_call", "chat.log", "chat.log.delta",
-  "agent.run.message", "agent.run.message.delta", "agent.run.tool_call",
-  "agent.run.log", "agent.run.log.delta",
+  "automation.run.message", "automation.run.message.delta", "automation.run.tool_call",
+  "automation.run.log", "automation.run.log.delta",
 ]);
 
 export function isWorkspaceRealtimeEvent(value: unknown): value is ClankyRealtimeEvent {

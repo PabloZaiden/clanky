@@ -97,7 +97,7 @@ review a generated plan before code changes begin. During and after execution
 you can inspect logs, the diff, and the task state.
 
 Image previews from supported image-reading tools appear directly in chat, task,
-and agent conversations, with the filename below the image. Select an image to
+and automation conversations, with the filename below the image. Select an image to
 open the full-size viewer. Images stay visible between independently collapsible
 tool or thinking groups, including when reopening or loading older conversation
 history. These image entries replace the tool's technical disclosure in the
@@ -109,7 +109,7 @@ contrasting colors and stays at or above 50% opacity throughout the pulse.
 Completed activity keeps its static, muted styling. The effect is disabled
 when your system requests reduced motion.
 
-When the browser tab is hidden, chat, task, and agent transcripts defer grouping
+When the browser tab is hidden, chat, task, and automation transcripts defer grouping
 and rendering new content, pause the activity animation, and stop automatic
 scrolling. Event reception and data updates continue. Returning to the tab
 reopens realtime subscriptions and recovers the current state without a page
@@ -120,7 +120,7 @@ and unchanged Markdown is not reparsed for playback or local UI updates.
 Content changes, display preferences, and message actions still update normally.
 
 Messages longer than 100,000 characters initially show a preview in chat, task,
-and agent conversations. Select **Show full message** beside the character count
+and automation conversations. Select **Show full message** beside the character count
 to display that message in full; opening a very large message may briefly pause
 the browser. Shorter messages and attachments are unchanged. This display limit
 does not shorten saved messages, API responses, transcript exports, or the text
@@ -155,7 +155,7 @@ metadata. New views and explicit chat creation can still load initial state.
 Open chats keep their transcript live without republishing operational state
 solely because an activity timestamp or revision advanced.
 
-Chat, task, and agent transcripts publish streamed text, reasoning, and tool
+Chat, task, and automation transcripts publish streamed text, reasoning, and tool
 extras to React as their events arrive, without an app-owned batching timer.
 Complete messages, interactions, status changes, and explicit transcript loads
 also publish immediately. Snapshot refresh coalescing and gap recovery remain
@@ -170,7 +170,7 @@ the system requests reduced motion.
 Each arriving fragment finishes its 400 ms reveal while subsequent fragments
 arrive; new text does not cancel or restart the preceding fragment's fade.
 
-Agent, chat, and task status text and transcript activity summaries use a brief
+Automation, chat, and task status text and transcript activity summaries use a brief
 fade, light blur, and small vertical movement when their actual state changes.
 The latest status is shown immediately, without queuing previous labels or
 simulating progress. Initial rendering, hidden-tab updates, and reduced-motion
@@ -194,7 +194,7 @@ and re-blurs in 0.5 seconds when the pointer leaves. **Show private items**
 reveals them immediately.
 
 In Dashboard **Resources**, each workspace's **sessions** count includes its
-tasks and standalone chats, including history. Embedded task and agent chats
+tasks and standalone chats, including history. Embedded task and automation chats
 are not counted again; terminal sessions remain separate.
 
 ## Manage files in Code Explorer

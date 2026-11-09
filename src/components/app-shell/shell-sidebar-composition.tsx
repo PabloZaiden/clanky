@@ -62,13 +62,13 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
     showPrivateItems: handlers.showPrivateItems,
   };
   const agentContext = {
-    setEditingAgentId: handlers.setEditingAgentId,
-    setDeleteAgentTarget: handlers.setDeleteAgentTarget,
-    setPurgeAgentTarget: handlers.setPurgeAgentTarget,
-    exportAgent: handlers.exportAgent,
-    agents: handlers.agents,
+    setEditingAutomationId: handlers.setEditingAutomationId,
+    setDeleteAutomationTarget: handlers.setDeleteAutomationTarget,
+    setPurgeAutomationTarget: handlers.setPurgeAutomationTarget,
+    exportAutomation: handlers.exportAutomation,
+    automations: handlers.automations,
     onError: handlers.onError,
-    toggleAgentPrivate: handlers.toggleAgentPrivate,
+    toggleAutomationPrivate: handlers.toggleAutomationPrivate,
     showPrivateItems: handlers.showPrivateItems,
   };
   const executionContext = {
@@ -82,7 +82,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
     chat: chatContext,
     task: taskContext,
     terminal: terminalContext,
-    agent: agentContext,
+    automation: agentContext,
     workspace: workspaceContext,
     server: {
       execution: executionContext,
@@ -100,7 +100,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
     chats: options.chats,
     terminalSessions: options.terminalSessions,
     workspaces: options.workspaces,
-    agents: options.agents,
+    automations: options.automations,
     contexts,
   });
   const trashIndex = nodes.findIndex((node) => node.id === "execution-hosts");
@@ -150,7 +150,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
 function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefined): SidebarNode[] {
   switch (activeTab) {
     case "workspaces":
-      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "agents" || node.id === "trash");
+      return nodes.filter((node) => node.id === "workspaces" || node.id === "archived-workspaces" || node.id === "automations" || node.id === "trash");
     case "servers":
       return nodes.filter((node) => node.id === "execution-hosts");
     case "active":

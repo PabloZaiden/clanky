@@ -53,7 +53,7 @@ export function ComposeTaskView(props: ComposeTaskViewProps) {
     return (
       <ErrorState
         title="Tasks are unavailable"
-        description="Tasks need branch and worktree support. Select another workspace, or use chats and agents directly from this workspace."
+        description="Tasks need branch and worktree support. Select another workspace, or use chats and automations directly from this workspace."
       />
     );
   }

@@ -37,16 +37,16 @@ export function resolveWorkspaceEventAuthority(
     } else if (type.startsWith("chat.")) {
       resource = "chat";
       id = target["chatId"];
-    } else if (type.startsWith("agent.run.")) {
-      resource = "agent-run";
-      id = target["agentRunId"];
+    } else if (type.startsWith("automation.run.")) {
+      resource = "automation-run";
+      id = target["automationRunId"];
     } else return undefined;
   } else if (publication.kind !== "state") return undefined;
   if (!resource || (publication.kind === "content" && !id)) return undefined;
   const workspaceId = target["workspaceId"]
     ?? (id ? findGuestResourceWorkspace(guest, resource, id) : undefined)
-    ?? (resource === "agent-run" && target.scope
-      ? findGuestResourceWorkspace(guest, "agent", target.scope) : undefined)
+    ?? (resource === "automation-run" && target.scope
+      ? findGuestResourceWorkspace(guest, "automation", target.scope) : undefined)
     ?? (resource === "preview" && target.scope && guest.workspaceIds.includes(target.scope)
       ? target.scope : undefined);
   if (!workspaceId || !guest.workspaceIds.includes(workspaceId)) return undefined;

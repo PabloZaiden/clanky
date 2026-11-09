@@ -7,7 +7,7 @@
  */
 
 import type {
-  AgentEvent,
+  AutomationEvent,
   ChatEvent,
   PreviewEvent,
   ProvisioningEvent,
@@ -35,7 +35,7 @@ import type {
 export type ClankyDomainEvent =
   | TaskEvent
   | ChatEvent
-  | AgentEvent
+  | AutomationEvent
   | TerminalSessionEvent
   | ProvisioningEvent
   | WorkerUpdateEvent
@@ -210,7 +210,7 @@ export function publishClankyDomainEvent(
     case "harness.changed":
       publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
       for (const run of event.runs ?? []) {
-        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, run.id, run.agentId);
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, run.id, run.automationId);
       }
       return;
     case "mesh.changed":
@@ -340,28 +340,28 @@ export function publishClankyDomainEvent(
       publishStream(publisher, owner, event, { clientId: event.clientId });
       return;
 
-    case "agent.created":
-    case "agent.updated":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
+    case "automation.created":
+    case "automation.updated":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automations, event.automationId);
       return;
-    case "agent.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId, undefined, { workspaceId: event.workspaceId });
+    case "automation.deleted":
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.automations, event.automationId, undefined, { workspaceId: event.workspaceId });
       return;
-    case "agent.run.message":
+    case "automation.run.message":
       publishStream(publisher, owner, {
         ...event,
-        message: projectTranscriptMessage(event.message, `/api/agent-runs/${encodeURIComponent(event.agentRunId)}`),
-      }, { agentId: event.agentId, agentRunId: event.agentRunId });
+        message: projectTranscriptMessage(event.message, `/api/automation-runs/${encodeURIComponent(event.automationRunId)}`),
+      }, { automationId: event.automationId, automationRunId: event.automationRunId });
       return;
-    case "agent.run.message.delta":
-    case "agent.run.log":
-    case "agent.run.log.delta":
+    case "automation.run.message.delta":
+    case "automation.run.log":
+    case "automation.run.log.delta":
       publishStream(publisher, owner, event, {
-        agentId: event.agentId,
-        agentRunId: event.agentRunId,
+        automationId: event.automationId,
+        automationRunId: event.automationRunId,
       });
       return;
-    case "agent.run.tool_call":
+    case "automation.run.tool_call":
       publishStream(
         publisher,
         owner,
@@ -370,28 +370,28 @@ export function publishClankyDomainEvent(
           tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
         },
         {
-          agentId: event.agentId,
-          agentRunId: event.agentRunId,
+          automationId: event.automationId,
+          automationRunId: event.automationRunId,
         },
       );
       return;
-    case "agent.run.scheduled":
-    case "agent.run.started":
-    case "agent.run.status":
-    case "agent.run.skipped":
-    case "agent.run.completed":
-    case "agent.run.failed":
-    case "agent.run.interrupted":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, event.agentRunId, event.agentId);
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
+    case "automation.run.scheduled":
+    case "automation.run.started":
+    case "automation.run.status":
+    case "automation.run.skipped":
+    case "automation.run.completed":
+    case "automation.run.failed":
+    case "automation.run.interrupted":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, event.automationRunId, event.automationId);
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automations, event.automationId);
       return;
-    case "agent.run.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, event.agentRunId, event.agentId);
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
+    case "automation.run.deleted":
+      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, event.automationRunId, event.automationId);
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automations, event.automationId);
       return;
-    case "agent.runs.purged":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agentRuns, undefined, event.agentId);
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.agents, event.agentId);
+    case "automation.runs.purged":
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, undefined, event.automationId);
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automations, event.automationId);
       return;
 
     case "terminal_session.created":

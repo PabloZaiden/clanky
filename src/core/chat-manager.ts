@@ -32,7 +32,7 @@ import type {
   ChatInteractionPort,
   ChatMessageOptions,
   ChatServiceBundle,
-  CreateAgentRunChatOptions,
+  CreateAutomationRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
   DeleteTaskChatResult,
@@ -46,7 +46,7 @@ export type {
   ChatConfigUpdates,
   ChatMessageOptions,
   DeleteChatOptions,
-  CreateAgentRunChatOptions,
+  CreateAutomationRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
   DeleteTaskChatResult,
@@ -193,8 +193,8 @@ export class ChatManager {
     return this.services.lifecycle.createChatHere(sourceChatId);
   }
 
-  async createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat> {
-    return this.services.lifecycle.createAgentRunChat(options);
+  async createAutomationRunChat(options: CreateAutomationRunChatOptions): Promise<Chat> {
+    return this.services.lifecycle.createAutomationRunChat(options);
   }
 
   async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {

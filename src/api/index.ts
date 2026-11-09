@@ -12,7 +12,7 @@
  * - terminal-sessions: Transport-neutral terminal sessions
  * - provisioning: Remote workspace provisioning jobs
  * - chats: Standalone and task-linked chat sessions
- * - agents: Scheduled-agent management and runs
+ * - automations: Scheduled automation management and runs
  * - previews: Workspace and direct server preview management
  * - mesh: Controller-managed worker enrollment and transport
  * - raw websocket upgrades: Realtime, terminal, and preview transports are defined separately
@@ -32,7 +32,7 @@ import { provisioningRoutes } from "./provisioning";
 import { workerUpdateRoutes } from "./worker-update-jobs";
 import { chatsRoutes } from "./chats/index";
 import { trashRoutes } from "./trash";
-import { agentsRoutes } from "./agents";
+import { automationsRoutes } from "./automations";
 import { previewRoutes } from "./previews";
 import { meshRoutes } from "./mesh";
 import { meshRelayRoutes } from "./mesh-relay";
@@ -65,7 +65,7 @@ export const nativeApiRoutes = {
   ...workerUpdateRoutes,
   ...chatsRoutes,
   ...trashRoutes,
-  ...agentsRoutes,
+  ...automationsRoutes,
   ...previewRoutes,
   ...meshRoutes,
   ...meshRelayRoutes,
@@ -119,7 +119,7 @@ export * from "./provisioning";
 export * from "./worker-update-jobs";
 export * from "./chats/index";
 export * from "./trash";
-export * from "./agents";
+export * from "./automations";
 export * from "./previews";
 export * from "./mesh";
 export * from "./mesh-relay";

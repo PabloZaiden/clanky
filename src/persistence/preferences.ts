@@ -138,7 +138,7 @@ export interface UserPreferences {
   dashboardViewMode?: DashboardViewMode;
   /** Quick chat workspace/model settings */
   quickChatSettings?: QuickChatSettings;
-  /** IANA timezone used by schedules such as Agents */
+  /** IANA timezone used by schedules such as Automations */
   schedulerTimezone?: string;
   workerUpdates?: WorkerUpdatePreferences;
 }

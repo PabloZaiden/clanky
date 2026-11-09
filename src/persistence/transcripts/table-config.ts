@@ -70,7 +70,7 @@ const TRANSCRIPT_TABLE_CONFIGS: Readonly<
 > = {
   chat: createTranscriptTableConfig("chat"),
   task: createTranscriptTableConfig("task"),
-  agent_run: createTranscriptTableConfig("agent_run"),
+  automation_run: createTranscriptTableConfig("automation_run"),
   subagent: createTranscriptTableConfig("subagent"),
 };
 

@@ -35,9 +35,9 @@ import {
   type ServerSidebarContext,
 } from "./shell-sidebar-server";
 import {
-  buildAgentSidebarNodes,
-  type AgentSidebarContext,
-} from "./shell-sidebar-agent";
+  buildAutomationSidebarNodes,
+  type AutomationSidebarContext,
+} from "./shell-sidebar-automation";
 import type { WorkspaceSidebarContext } from "./shell-sidebar-workspace";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
@@ -45,7 +45,7 @@ export interface SidebarDomainBuilderContexts {
   chat: ChatSidebarContext;
   task: TaskSidebarContext;
   terminal: TerminalSessionSidebarContext;
-  agent: AgentSidebarContext;
+  automation: AutomationSidebarContext;
   workspace: WorkspaceSidebarContext;
   server: ServerSidebarContext;
 }
@@ -58,7 +58,7 @@ export interface BuildSidebarDomainNodesOptions {
   chats: Chat[];
   terminalSessions: TerminalSession[];
   workspaces: Workspace[];
-  agents: import("@/shared").Agent[];
+  automations: import("@/shared").Automation[];
   contexts: SidebarDomainBuilderContexts;
 }
 
@@ -70,7 +70,7 @@ export function buildSidebarDomainNodes({
   chats,
   terminalSessions,
   workspaces,
-  agents,
+  automations,
   contexts,
 }: BuildSidebarDomainNodesOptions): SidebarNode[] {
   const capabilities = getClankyClientCapabilities();
@@ -153,10 +153,10 @@ export function buildSidebarDomainNodes({
     }, contexts.terminal);
   });
 
-  const agentNodes = buildAgentSidebarNodes(
-    agents,
+  const automationNodes = buildAutomationSidebarNodes(
+    automations,
     workspaces,
-    contexts.agent,
+    contexts.automation,
   );
   const workspaceContext: WorkspaceSidebarBuilderContext = {
     workspace: contexts.workspace,
@@ -203,9 +203,9 @@ export function buildSidebarDomainNodes({
     }] : []),
     {
       type: "section" as const,
-      id: "agents",
-      title: "Agents",
-      children: agentNodes,
+      id: "automations",
+      title: "Automations",
+      children: automationNodes,
     },
     ...(capabilities.executionHosts ? [{
       type: "section" as const,

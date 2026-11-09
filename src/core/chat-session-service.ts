@@ -423,8 +423,8 @@ export class ChatSessionService implements ChatSessionPort {
     if (controlTools && backend.harness.capabilities.clankyControlTools !== true) {
       throw new HarnessError("harness_unsupported_feature", "This execution host does not support Clanky control tools.");
     }
-    const unattended = chat.config.scope === "agent"
-      && (await managedContextIdentityResolver.forChatSnapshot(chat)).contextType === "agent_run";
+    const unattended = chat.config.scope === "automation"
+      && (await managedContextIdentityResolver.forChatSnapshot(chat)).contextType === "automation_run";
     return {
       ownerId: requireExecutionOwnerUserId(),
       contextId: chat.config.id,

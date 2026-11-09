@@ -3,7 +3,7 @@ import { ErrorState, LoadingState, Page, type WebAppRoute } from "@pablozaiden/w
 import { useWebAppConfig, type WebAppConfigState } from "@/platform/web/webapp-config";
 import { type WebAppRootProps } from "@/platform/web/root-types";
 import type {
-  Agent,
+  Automation,
   Chat,
   ExecutionHostDescriptor,
   Task,
@@ -22,9 +22,9 @@ import { ControlConsentPage } from "../control/control-consent-page";
 const ROUTE_VIEWS = [
   "home",
   "trash",
-  "agents",
-  "agent",
-  "agent-run",
+  "automations",
+  "automation",
+  "automation-run",
   "code-explorer",
   "scratchpad",
   "task",
@@ -66,7 +66,7 @@ export interface ShellRouteSelection {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  selectedAgent: Agent | null;
+  selectedAutomation: Automation | null;
 }
 
 type ShellRouteContentSelection = Pick<
@@ -93,7 +93,7 @@ interface ShellRouteSelectionData {
   chats: Chat[];
   workspaces: Workspace[];
   executionHosts: ExecutionHostDescriptor[];
-  agents: Agent[];
+  automations: Automation[];
 }
 
 interface ShellRouteEntityCollection<T> {
@@ -106,7 +106,7 @@ interface ShellRouteEntityResources {
   chats: ShellRouteEntityCollection<Chat>;
   workspaces: ShellRouteEntityCollection<Workspace>;
   executionHosts: ShellRouteEntityCollection<ExecutionHostDescriptor>;
-  agents: ShellRouteEntityCollection<Agent>;
+  automations: ShellRouteEntityCollection<Automation>;
   terminalSessions: ShellRouteEntityCollection<TerminalSession>;
 }
 
@@ -157,10 +157,10 @@ export function isMissingShellRouteTarget(
     return true;
   }
 
-  const agentId = route.view === "agent" || route.view === "agent-run"
-    ? getRouteString(route, "agentId")
+  const automationId = route.view === "automation" || route.view === "automation-run"
+    ? getRouteString(route, "automationId")
     : undefined;
-  if (isMissingFromCollection(agentId, resources.agents, (agent) => agent.config.id)) {
+  if (isMissingFromCollection(automationId, resources.automations, (automation) => automation.config.id)) {
     return true;
   }
 
@@ -211,7 +211,7 @@ export function getShellRouteSelection(
     chats,
     workspaces,
     executionHosts,
-    agents,
+    automations,
   }: ShellRouteSelectionData,
 ): ShellRouteSelection {
   const codeExplorerContentType = route.view === "code-explorer" ? route["contentType"] : undefined;
@@ -273,11 +273,11 @@ export function getShellRouteSelection(
             && hostId === getRouteString(route, "hostId");
         }) ?? null)
       : null;
-  const selectedAgentId = route.view === "agent" || route.view === "agent-run"
-    ? getRouteString(route, "agentId") ?? null
+  const selectedAutomationId = route.view === "automation" || route.view === "automation-run"
+    ? getRouteString(route, "automationId") ?? null
     : null;
-  const selectedAgent = selectedAgentId
-    ? (agents.find((agent) => agent.config.id === selectedAgentId) ?? null)
+  const selectedAutomation = selectedAutomationId
+    ? (automations.find((automation) => automation.config.id === selectedAutomationId) ?? null)
     : null;
 
   return {
@@ -289,7 +289,7 @@ export function getShellRouteSelection(
     selectedWorkspace,
     composeWorkspace,
     composeExecutionHost,
-    selectedAgent,
+    selectedAutomation,
   };
 }
 
@@ -338,7 +338,7 @@ function renderShellRouteContent(
     chats: context.chats,
     workspaces: context.workspaces,
     executionHosts: context.executionHosts,
-    agents: context.agents.agents,
+    automations: context.automations.automations,
   });
 
   return (

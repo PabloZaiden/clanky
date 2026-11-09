@@ -25,7 +25,7 @@ import {
 } from "@/shared";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import type { UseAgentsResult } from "../../hooks/useAgents";
+import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { ChatDetails } from "../ChatDetails";
@@ -41,7 +41,7 @@ import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { WorkspaceScratchpadView } from "./workspace-scratchpad-view";
-import { AgentsView } from "./agents-view";
+import { AutomationsView } from "./automations-view";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { WorkerUpdateJobView } from "../WorkerUpdateJobView";
 import type {
@@ -108,16 +108,16 @@ export interface ShellMainContentProps {
 
   // Dashboard data
   dashboardData: UseDashboardDataResult;
-  agents: UseAgentsResult;
-  editingAgentId: string | null;
-  onSavedAgentEdit: (agent: import("@/shared").Agent) => void;
+  automations: UseAutomationsResult;
+  editingAutomationId: string | null;
+  onSavedAutomationEdit: (automation: import("@/shared").Automation) => void;
 
   // Compose state
   composeActionState: CreateTaskFormActionState | null;
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
-  startAgentImport: (workspaceId: string) => void;
+  startAutomationImport: (workspaceId: string) => void;
   pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
 
@@ -464,7 +464,7 @@ function renderMainContent(props: ShellMainContentProps) {
     createChat,
     workspaceSettings,
     workspacesSaving,
-    agents,
+    automations,
     showPrivateItems,
   } = props;
 
@@ -472,26 +472,26 @@ function renderMainContent(props: ShellMainContentProps) {
     return <LoadingState title="Loading Clanky" />;
   }
 
-  if (route.view === "agents" || route.view === "agent" || route.view === "agent-run") {
+  if (route.view === "automations" || route.view === "automation" || route.view === "automation-run") {
     return (
-      <AgentsView
-        agents={agents.agents}
+      <AutomationsView
+        automations={automations.automations}
         workspaces={workspaces}
         models={dashboardData.models}
         modelsLoading={dashboardData.modelsLoading}
         modelsWorkspaceId={dashboardData.modelsWorkspaceId}
         lastModel={dashboardData.lastModel}
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
-        editingAgentId={props.editingAgentId}
-        onSavedAgentEdit={props.onSavedAgentEdit}
+        editingAutomationId={props.editingAutomationId}
+        onSavedAutomationEdit={props.onSavedAutomationEdit}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
-        onUpdateAgent={agents.updateAgent}
-        onPrepareGenerateAgentCode={agents.prepareGenerateAgentCode}
-        onGenerateAgentCode={agents.generateAgentCode}
-        onTestAgentCode={agents.testAgentCode}
-        onDeleteRun={agents.deleteRun}
-        onRefreshRuns={agents.refreshRuns}
-        runsByAgentId={agents.runsByAgentId}
+        onUpdateAutomation={automations.updateAutomation}
+        onPrepareGenerateAutomationCode={automations.prepareGenerateAutomationCode}
+        onGenerateAutomationCode={automations.generateAutomationCode}
+        onTestAutomationCode={automations.testAutomationCode}
+        onDeleteRun={automations.deleteRun}
+        onRefreshRuns={automations.refreshRuns}
+        runsByAutomationId={automations.runsByAutomationId}
         route={route}
         navigateWithinShell={navigateWithinShell}
         branches={dashboardData.branches}
@@ -499,8 +499,8 @@ function renderMainContent(props: ShellMainContentProps) {
         branchesWorkspaceId={dashboardData.branchesWorkspaceId}
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
-        loading={agents.loading}
-        error={agents.error}
+        loading={automations.loading}
+        error={automations.error}
       />
     );
   }
@@ -650,16 +650,16 @@ function renderMainContent(props: ShellMainContentProps) {
     const relatedTerminalSessions = terminalSessions.filter(
       (terminal) => terminal.config.workspaceId === selectedWorkspace.id,
     );
-    const relatedAgents = agents.agents.filter((agent) => agent.config.workspaceId === selectedWorkspace.id);
+    const relatedAutomations = automations.automations.filter((automation) => automation.config.workspaceId === selectedWorkspace.id);
     return (
       <WorkspaceView
         workspace={selectedWorkspace}
         relatedTasks={relatedTasks}
         relatedChats={relatedChats}
         relatedTerminalSessions={relatedTerminalSessions}
-        relatedAgents={relatedAgents}
-        agentsLoading={agents.loading}
-        agentsError={agents.error}
+        relatedAutomations={relatedAutomations}
+        automationsLoading={automations.loading}
+        automationsError={automations.error}
         onNavigate={navigateWithinShell}
         onPullLatestChanges={() => props.pullLatestWorkspaceChanges(selectedWorkspace.id)}
         pullingLatestChanges={props.pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
@@ -895,9 +895,9 @@ function renderMainContent(props: ShellMainContentProps) {
         setComposeActionState={props.setComposeActionState}
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
-        startAgentImport={props.startAgentImport}
+        startAutomationImport={props.startAutomationImport}
         dashboardData={dashboardData}
-        agents={agents}
+        automations={automations}
         workspaces={workspaces.filter((workspace) => workspace.access !== "read")}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
@@ -913,9 +913,9 @@ function renderMainContent(props: ShellMainContentProps) {
     <OverviewView
       executionHosts={executionHosts}
       executionHostNodes={executionHostNodes}
-      agents={agents.agents}
-      agentsLoading={agents.loading}
-      agentsError={agents.error}
+      automations={automations.automations}
+      automationsLoading={automations.loading}
+      automationsError={automations.error}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       onNavigate={navigateWithinShell}
@@ -935,7 +935,7 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
     return props.selectedTask?.state.status !== "draft";
   }
 
-  return props.route.view === "agent-run"
+  return props.route.view === "automation-run"
     || props.route.view === "chat"
     || props.route.view === "code-explorer"
     || props.route.view === "scratchpad"

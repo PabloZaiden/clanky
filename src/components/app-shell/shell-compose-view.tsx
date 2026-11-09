@@ -14,18 +14,18 @@ import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
-import { AgentComposer } from "./agents-view";
-import type { UseAgentsResult } from "../../hooks/useAgents";
+import { AutomationComposer } from "./automations-view";
+import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 import { ExecutionHostTerminalComposer } from "./execution-host-terminal-composer";
 
-type ComposeKind = "task" | "chat" | "agent" | "workspace" | "terminal-session" | "execution-host-chat" | "execution-host-terminal";
+type ComposeKind = "task" | "chat" | "automation" | "workspace" | "terminal-session" | "execution-host-chat" | "execution-host-terminal";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
     "task",
     "chat",
-    "agent",
+    "automation",
     "workspace",
     "terminal-session",
     "execution-host-chat",
@@ -42,9 +42,9 @@ interface ComposeViewProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
-  startAgentImport: (workspaceId: string) => void;
+  startAutomationImport: (workspaceId: string) => void;
   dashboardData: UseDashboardDataResult;
-  agents: UseAgentsResult;
+  automations: UseAutomationsResult;
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -64,7 +64,7 @@ export function ComposeView(props: ComposeViewProps) {
     handleTaskSubmit,
     createChat,
     dashboardData,
-    agents,
+    automations,
     workspaces,
     workspacesLoading,
     workspaceError,
@@ -101,9 +101,9 @@ export function ComposeView(props: ComposeViewProps) {
     );
   }
 
-  if (kind === "agent") {
+  if (kind === "automation") {
     return (
-      <AgentComposer
+      <AutomationComposer
         composeWorkspace={composeWorkspace}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
@@ -118,11 +118,11 @@ export function ComposeView(props: ComposeViewProps) {
         currentBranch={dashboardData.currentBranch}
         defaultBranch={dashboardData.defaultBranch}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
-        onCreateAgent={agents.createAgent}
-        onImportAgent={props.startAgentImport}
-        onPrepareGenerateAgentCode={agents.prepareGenerateAgentCode}
-        onGenerateAgentCode={agents.generateAgentCode}
-        onTestAgentCode={agents.testAgentCode}
+        onCreateAutomation={automations.createAutomation}
+        onImportAutomation={props.startAutomationImport}
+        onPrepareGenerateAutomationCode={automations.prepareGenerateAutomationCode}
+        onGenerateAutomationCode={automations.generateAutomationCode}
+        onTestAutomationCode={automations.testAutomationCode}
         navigateWithinShell={navigateWithinShell}
       />
     );

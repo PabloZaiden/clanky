@@ -1,6 +1,6 @@
 ---
 name: clanky
-description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, expose a workspace through local WebDAV, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or agents, stream events, mount a workspace, or automate Clanky through the `clanky` command.
+description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, expose a workspace through local WebDAV, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or automations, stream events, mount a workspace, or automate Clanky through the `clanky` command.
 compatibility: Requires `clanky` on PATH. Normal operations require existing CLI authentication and access to the target instance; worker bootstrap initializes its own API-key access.
 ---
 
@@ -52,7 +52,7 @@ unclean shutdown can leave protected staging on the execution host.
 
 ## Conversation files
 
-For chat/task/Agent inputs, discover the endpoint's `attachments` schema before
+For chat/task/Automation inputs, discover the endpoint's `attachments` schema before
 constructing the payload. Entries use `{ id, filename, mimeType, data, size }`,
 with canonical padded base64 and an exact decoded byte count. Any file type is
 accepted within 20 files, 20 MiB per file and 60 MiB per provider turn.
@@ -234,7 +234,7 @@ before attributing a slow voice answer to local data access.
 - Endpoint paths are relative to `/api`; use `tasks`, not `/api/tasks`.
 - Use `--method <METHOD>` for non-default methods.
 - Use `--payload '<json>'` for request bodies.
-- Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or agent-related endpoints.
+- Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or automation-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
 - CLI access works against both combined and API-only servers without registering
   the client's host. A separately hosted frontend uses its own device session;
@@ -293,7 +293,7 @@ it without autoapproval, invented browser/voice sessions, or an indefinite wait.
 Do not retry uncertain mutations automatically. Current-conversation prompts
 use the same owned runner protocol, remain limited to that run's exact chat,
 and wait for conversation settlement rather than the control-tool deadline. See
-[deterministic execution](../../docs/API.md#deterministic-agent-execution) for
+[deterministic execution](../../docs/API.md#deterministic-automation-execution) for
 request bounds, cancellation and the unchanged exec/prompt workflow.
 For `"read"`, inspect content, transcripts, files, Git information and realtime
 updates, and download files normally. Do not send messages, answer questions or
@@ -697,15 +697,15 @@ clanky ws
 
 If the schema or endpoint list differs from this example, follow the local `clanky api` and `clanky schema` output instead of forcing the example.
 
-## Working with chats, agents, and other entities
+## Working with chats, automations, and other entities
 
-Deterministic agent runs and code tests use long-running execution on the
+Deterministic automation runs and code tests use long-running execution on the
 selected workspace host. A short Mesh session expiry is not a run deadline.
 Monitor admitted runs through their status and transcript; use the explicit
-agent interrupt operation to cancel them. Keep code-test requests connected
+automation interrupt operation to cancel them. Keep code-test requests connected
 until completion, since disconnecting cancels the test.
 
-Clanky may expose chats, agents, terminal sessions, previews, provisioning
+Clanky may expose chats, automations, terminal sessions, previews, provisioning
 jobs, or other entity APIs depending on the instance configuration. Discover
 them first:
 
@@ -717,7 +717,7 @@ Then inspect relevant schemas before making changes:
 
 ```bash
 clanky schema chats
-clanky schema agents
+clanky schema automations
 clanky schema workspaces
 ```
 

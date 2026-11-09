@@ -39,7 +39,7 @@ export function SchedulerTimezoneRowContent({
     <div className="space-y-2">
       <SettingsSelect
         id="scheduler-timezone"
-        aria-label="Agent scheduler timezone"
+        aria-label="Automation scheduler timezone"
         value={timezone}
         onChange={(event) => void onUpdate(event.currentTarget.value)}
         disabled={loading || saving}

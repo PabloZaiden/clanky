@@ -6,9 +6,9 @@ import {
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { CreateChatRequest } from "@/contracts";
-import type { Agent, Workspace } from "@/shared";
+import type { Automation, Workspace } from "@/shared";
 import type {
-  UseAgentsResult,
+  UseAutomationsResult,
   UseChatsResult,
   UseQuickChatSettingsResult,
   UseTerminalSessionsResult,
@@ -23,7 +23,7 @@ interface ShellDialogCompositionOptions {
   onError: ToastService["error"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
-  agents: UseAgentsResult;
+  automations: UseAutomationsResult;
   createChat: UseChatsResult["createChat"];
   quickChatSettings: UseQuickChatSettingsResult;
   quickChatWorkspace: Workspace | null;
@@ -31,14 +31,14 @@ interface ShellDialogCompositionOptions {
 }
 
 export interface ShellDialogComposition {
-  editingAgentId: string | null;
-  setEditingAgentId: (agentId: string) => void;
-  cancelAgentEdit: () => void;
-  handleAgentSaved: (agent: Agent) => void;
+  editingAutomationId: string | null;
+  setEditingAutomationId: (automationId: string) => void;
+  cancelAutomationEdit: () => void;
+  handleAutomationSaved: (automation: Automation) => void;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
   openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
-  setDeleteAgentTarget: (agent: Agent) => void;
-  setPurgeAgentTarget: (agent: Agent) => void;
+  setDeleteAutomationTarget: (automation: Automation) => void;
+  setPurgeAutomationTarget: (automation: Automation) => void;
   quickChatCreating: boolean;
   handleQuickChat: () => Promise<void>;
   modals: ReactNode;
@@ -50,7 +50,7 @@ export function useShellDialogComposition({
   onError,
   updateTerminalSession,
   deleteTerminalSession,
-  agents,
+  automations,
   createChat,
   quickChatSettings,
   quickChatWorkspace,
@@ -60,11 +60,11 @@ export function useShellDialogComposition({
   const [deleteTerminalSessionTarget, setDeleteTerminalSessionTarget] = useState<TerminalSessionActionTarget | null>(null);
   const [deleteTerminalSessionPending, setDeleteTerminalSessionPending] = useState(false);
   const deleteTerminalSessionPendingRef = useRef(false);
-  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [deleteAgentTarget, setDeleteAgentTarget] = useState<Agent | null>(null);
-  const [deleteAgentPending, setDeleteAgentPending] = useState(false);
-  const [purgeAgentTarget, setPurgeAgentTarget] = useState<Agent | null>(null);
-  const [purgeAgentPending, setPurgeAgentPending] = useState(false);
+  const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null);
+  const [deleteAutomationTarget, setDeleteAutomationTarget] = useState<Automation | null>(null);
+  const [deleteAutomationPending, setDeleteAutomationPending] = useState(false);
+  const [purgeAutomationTarget, setPurgeAutomationTarget] = useState<Automation | null>(null);
+  const [purgeAutomationPending, setPurgeAutomationPending] = useState(false);
   const [quickChatCreating, setQuickChatCreating] = useState(false);
 
   const openRenameTerminalSession = useCallback((target: TerminalSessionActionTarget) => {
@@ -119,53 +119,53 @@ export function useShellDialogComposition({
     }
   }, [deleteTerminalSession, deleteTerminalSessionTarget, navigateWithinShell, onError, route]);
 
-  const cancelAgentEdit = useCallback(() => {
-    setEditingAgentId(null);
+  const cancelAutomationEdit = useCallback(() => {
+    setEditingAutomationId(null);
   }, []);
 
-  const handleAgentSaved = useCallback((savedAgent: Agent) => {
-    setEditingAgentId(null);
-    navigateWithinShell({ view: "agent", agentId: savedAgent.config.id });
+  const handleAutomationSaved = useCallback((savedAutomation: Automation) => {
+    setEditingAutomationId(null);
+    navigateWithinShell({ view: "automation", automationId: savedAutomation.config.id });
   }, [navigateWithinShell]);
 
-  const deleteAgent = useCallback(async (): Promise<void> => {
-    if (!deleteAgentTarget) {
+  const deleteAutomation = useCallback(async (): Promise<void> => {
+    if (!deleteAutomationTarget) {
       return;
     }
-    setDeleteAgentPending(true);
+    setDeleteAutomationPending(true);
     try {
-      const deleted = await agents.deleteAgent(deleteAgentTarget.config.id);
+      const deleted = await automations.deleteAutomation(deleteAutomationTarget.config.id);
       if (!deleted) {
-        onError("Failed to delete agent");
+        onError("Failed to delete automation");
         return;
       }
-      const deletedActiveAgent = route.view === "agent"
-        && getRouteString(route, "agentId") === deleteAgentTarget.config.id;
-      setDeleteAgentTarget(null);
-      if (deletedActiveAgent) {
-        navigateWithinShell({ view: "agents", workspaceId: deleteAgentTarget.config.workspaceId });
+      const deletedActiveAutomation = route.view === "automation"
+        && getRouteString(route, "automationId") === deleteAutomationTarget.config.id;
+      setDeleteAutomationTarget(null);
+      if (deletedActiveAutomation) {
+        navigateWithinShell({ view: "automations", workspaceId: deleteAutomationTarget.config.workspaceId });
       }
     } catch (error) {
       onError(String(error));
     } finally {
-      setDeleteAgentPending(false);
+      setDeleteAutomationPending(false);
     }
-  }, [agents, deleteAgentTarget, navigateWithinShell, onError, route]);
+  }, [automations, deleteAutomationTarget, navigateWithinShell, onError, route]);
 
-  const purgeAgentRuns = useCallback(async (): Promise<void> => {
-    if (!purgeAgentTarget) {
+  const purgeAutomationRuns = useCallback(async (): Promise<void> => {
+    if (!purgeAutomationTarget) {
       return;
     }
-    setPurgeAgentPending(true);
+    setPurgeAutomationPending(true);
     try {
-      await agents.purgeRuns(purgeAgentTarget.config.id);
-      setPurgeAgentTarget(null);
+      await automations.purgeRuns(purgeAutomationTarget.config.id);
+      setPurgeAutomationTarget(null);
     } catch (error) {
       onError(String(error));
     } finally {
-      setPurgeAgentPending(false);
+      setPurgeAutomationPending(false);
     }
-  }, [agents, onError, purgeAgentTarget]);
+  }, [automations, onError, purgeAutomationTarget]);
 
   const handleQuickChat = useCallback(async (): Promise<void> => {
     if (quickChatSettings.loading || quickChatCreating) {
@@ -237,24 +237,24 @@ export function useShellDialogComposition({
         loading={deleteTerminalSessionPending}
       />
       <ConfirmModal
-        isOpen={Boolean(deleteAgentTarget)}
-        onClose={() => setDeleteAgentTarget(null)}
-        onConfirm={() => void deleteAgent()}
-        title="Delete agent"
-        message={deleteAgentTarget ? `Delete "${deleteAgentTarget.config.name}" and its runs?` : ""}
-        confirmLabel="Delete agent"
+        isOpen={Boolean(deleteAutomationTarget)}
+        onClose={() => setDeleteAutomationTarget(null)}
+        onConfirm={() => void deleteAutomation()}
+        title="Delete automation"
+        message={deleteAutomationTarget ? `Delete "${deleteAutomationTarget.config.name}" and its runs?` : ""}
+        confirmLabel="Delete automation"
         variant="danger"
-        loading={deleteAgentPending}
+        loading={deleteAutomationPending}
       />
       <ConfirmModal
-        isOpen={Boolean(purgeAgentTarget)}
-        onClose={() => setPurgeAgentTarget(null)}
-        onConfirm={() => void purgeAgentRuns()}
-        title="Purge agent runs"
-        message={purgeAgentTarget ? `Purge all completed, failed, skipped, interrupted, and cancelled runs for "${purgeAgentTarget.config.name}"? This cannot be undone.` : ""}
+        isOpen={Boolean(purgeAutomationTarget)}
+        onClose={() => setPurgeAutomationTarget(null)}
+        onConfirm={() => void purgeAutomationRuns()}
+        title="Purge automation runs"
+        message={purgeAutomationTarget ? `Purge all completed, failed, skipped, interrupted, and cancelled runs for "${purgeAutomationTarget.config.name}"? This cannot be undone.` : ""}
         confirmLabel="Purge runs"
         variant="danger"
-        loading={purgeAgentPending}
+        loading={purgeAutomationPending}
       />
       <Modal
         isOpen={quickChatCreating}
@@ -277,14 +277,14 @@ export function useShellDialogComposition({
   );
 
   return {
-    editingAgentId,
-    setEditingAgentId,
-    cancelAgentEdit,
-    handleAgentSaved,
+    editingAutomationId,
+    setEditingAutomationId,
+    cancelAutomationEdit,
+    handleAutomationSaved,
     openRenameTerminalSession,
     openDeleteTerminalSession,
-    setDeleteAgentTarget,
-    setPurgeAgentTarget,
+    setDeleteAutomationTarget,
+    setPurgeAutomationTarget,
     quickChatCreating,
     handleQuickChat,
     modals,

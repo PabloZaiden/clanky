@@ -278,8 +278,8 @@ other tab before reconnecting. Clearing site storage loses the pairing;
 controller revocation remains the authoritative way to retire access.
 Nonextractable keys do not protect against malicious scripts on the same origin.
 
-Granted workspaces support conversations, tasks/plans, agents, scratchpad,
-Git/files, uploads, bounded images and application terminals. New agent
+Granted workspaces support conversations, tasks/plans, automations, scratchpad,
+Git/files, uploads, bounded images and application terminals. New automation
 schedules use the selected workspace controller's timezone; editing preserves
 the schedule's existing timezone. Quick Chat, templates, Markdown, view/tree
 preferences and last-used models are device/profile preferences in this mode.

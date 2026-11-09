@@ -1,0 +1,20 @@
+/**
+ * Scheduled-automation API route aggregation.
+ */
+
+import { defineRoutes } from "@/platform/server";
+import { crudRoutes } from "./crud";
+import { generationRoutes } from "./generation";
+import { runsRoutes, TEST_CODE_HEARTBEAT_INTERVAL_MS } from "./runs";
+import { transferRoutes } from "./transfer";
+import { transcriptRoutes } from "./transcripts";
+
+export const automationsRoutes = defineRoutes({
+  ...crudRoutes,
+  ...generationRoutes,
+  ...runsRoutes,
+  ...transferRoutes,
+  ...transcriptRoutes,
+});
+
+export { TEST_CODE_HEARTBEAT_INTERVAL_MS };

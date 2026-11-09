@@ -150,7 +150,7 @@ pending requests must not be lost merely because a lease reconnects.
 Retain the admitted binding separately and reject host, target or revision
 changes during live validation, including pending decisions. Live permission
 narrowing does not replace that binding or the immutable ceiling.
-An ended Agent run cannot authorize further control or pending approvals, even
+An ended Automation run cannot authorize further control or pending approvals, even
 when its native conversation is retained.
 Grant and provenance checks use metadata snapshots, not unrequested transcripts.
 Native control has no API-key-expiry reconnect; Mesh lease renewal and owned
@@ -384,7 +384,7 @@ Publications, including scheduled/background work, must target the authoritative
 current user. Centralize resource names and retained stream classification at
 the server realtime boundary.
 
-Custom deltas are reserved for incremental task/chat/agent-run/provisioning
+Custom deltas are reserved for incremental task/chat/automation-run/provisioning
 content where refetching is disruptive. Use bounded, no-history stream adapters,
 versioned snapshots/deltas, and authoritative refresh after reconnects or gaps.
 Take snapshot content and its position together from the domain owner, not a

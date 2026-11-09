@@ -261,10 +261,10 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
             hostId: getRouteString(route, "hostId")!,
           }
         : null;
-    case "agent":
-    case "agent-run":
-      return getRouteString(route, "agentId")
-        ? { view: "agent", agentId: getRouteString(route, "agentId")! }
+    case "automation":
+    case "automation-run":
+      return getRouteString(route, "automationId")
+        ? { view: "automation", automationId: getRouteString(route, "automationId")! }
         : null;
     case "code-explorer": {
       const contentType = getRouteString(route, "contentType");

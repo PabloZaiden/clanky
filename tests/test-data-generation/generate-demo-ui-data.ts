@@ -131,15 +131,15 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
       ["workspaces", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["tasks", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["chats", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
-      ["agents", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
-      ["agent_runs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["automations", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
+      ["automation_runs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["terminal_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["preview_sessions", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["provisioning_jobs", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["review_comments", "user_id = 'demo-user' AND id LIKE 'demo-%'"],
       ["task_transcript_entries", "user_id = 'demo-user' AND task_id LIKE 'demo-%'"],
       ["chat_transcript_entries", "user_id = 'demo-user' AND chat_id LIKE 'demo-%'"],
-      ["agent_run_transcript_entries", "user_id = 'demo-user' AND agent_run_id LIKE 'demo-%'"],
+      ["automation_run_transcript_entries", "user_id = 'demo-user' AND automation_run_id LIKE 'demo-%'"],
     ];
     for (const [table, predicate] of requiredDemoRows) {
       const row = db.query(`SELECT COUNT(*) AS count FROM ${table} WHERE ${predicate}`).get() as {

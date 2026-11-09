@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
-  Agent,
+  Automation,
   Chat,
   Task,
   Workspace,
@@ -12,7 +12,7 @@ import { isWorkspaceChat } from "@/shared/chat";
 import { isAgentProvider } from "@/shared/settings";
 import {
   stopTaskApi,
-  type UseAgentsResult,
+  type UseAutomationsResult,
   type UseChatsResult,
   type UseDashboardDataResult,
   type UseGithubUsernameResult,
@@ -49,7 +49,7 @@ interface UseShellActionsOptions {
   selectedChat: Chat | null;
   refreshChats: UseChatsResult["refresh"];
   updateChat: UseChatsResult["updateChat"];
-  agents: UseAgentsResult;
+  automations: UseAutomationsResult;
   updateTask: UseTasksResult["updateTask"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
@@ -80,7 +80,7 @@ export function useShellActions({
   selectedChat,
   refreshChats,
   updateChat,
-  agents,
+  automations,
   updateTask,
   updateTerminalSession,
   deleteTerminalSession,
@@ -219,7 +219,7 @@ export function useShellActions({
     onError: toast.error,
     updateTerminalSession,
     deleteTerminalSession,
-    agents,
+    automations,
     createChat,
     quickChatSettings,
     quickChatWorkspace,
@@ -240,12 +240,12 @@ export function useShellActions({
     }
   }, [toast, updateChat]);
 
-  const toggleAgentPrivate = useCallback(async (agent: Agent): Promise<void> => {
-    const updated = await agents.updateAgent(agent.config.id, { isPrivate: !agent.config.isPrivate });
+  const toggleAutomationPrivate = useCallback(async (automation: Automation): Promise<void> => {
+    const updated = await automations.updateAutomation(automation.config.id, { isPrivate: !automation.config.isPrivate });
     if (!updated) {
-      toast.error(agent.config.isPrivate ? "Failed to unmark agent as private" : "Failed to mark agent as private");
+      toast.error(automation.config.isPrivate ? "Failed to unmark automation as private" : "Failed to mark automation as private");
     }
-  }, [agents, toast]);
+  }, [automations, toast]);
 
   const toggleTerminalSessionPrivate = useCallback(async (session: TerminalSession): Promise<void> => {
     try {
@@ -280,7 +280,7 @@ export function useShellActions({
     getChatLifecycleActions: chatActions.getLifecycleActions,
     toggleTaskPrivate,
     toggleChatPrivate,
-    toggleAgentPrivate,
+    toggleAutomationPrivate,
     toggleTerminalSessionPrivate,
     stopSidebarTask,
   };

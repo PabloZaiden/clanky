@@ -174,7 +174,13 @@ Automatic Clanky access for ACP is currently unsupported, even when general
 workspace access is enabled. Ordinary ACP chats and prompts still work, but
 ACP subprocesses receive no managed Clanky control key.
 
-## Deterministic agent execution
+## Deterministic automation execution
+
+The scheduled feature is named **Automations**. Its API uses `/api/automations`
+and `/api/automation-runs`, with `automationId` and `automationRunId` references.
+Portable exports use `format: "clanky-automation"` and an `automation` payload.
+The former Agent routes, payloads, events and export format are not supported.
+Upgrading migrates existing configurations and run history automatically.
 
 Scheduled runs, manual runs, and deterministic code tests execute on the
 workspace's selected host without a runner execution timeout. On Mesh, they use
@@ -227,7 +233,7 @@ passing control authority to the ACP subprocess.
 
 ## Transcript snapshots
 
-Chat, task and agent-run `GET .../:id/snapshot` responses default to the
+Chat, task and automation-run `GET .../:id/snapshot` responses default to the
 latest 100 non-empty assistant responses. Without `view=conversation`, they
 accept mutually exclusive transcript-window options:
 
@@ -277,7 +283,7 @@ All catalogued collection reads share these parameters, including read-policy
 Collections return `{ "items": [...], "nextCursor": "..." | null }`, optionally
 with small `context` such as the resolved directory, activity coverage or
 source truncation. This applies to chats, tasks, workspaces, execution hosts,
-agents/runs, terminals, provisioning/logs, models, previews,
+automations/runs, terminals, provisioning/logs, models, previews,
 review comments, interactions, and exposed file/Git collections. File trees return flat entry
 pages; `loadOnExpand` still identifies deferred directories. Objects containing
 multiple collections label rows with `collection` and the matching detail
@@ -345,7 +351,7 @@ budgets count UTF-8 bytes of serialized JSON.** Chunks never split a surrogate
 pair. `section=details` retrieves the original response/item without compact
 field projection.
 
-Chat, task and agent-run `/snapshot` endpoints also accept
+Chat, task and automation-run `/snapshot` endpoints also accept
 `view=conversation`. They return chronological literal user/assistant text:
 `{ id, role, timestamp, content, offset, complete }`, with minimal optional
 delivery/attachment-count markers. Actual question/answer messages are
@@ -985,24 +991,24 @@ not expose authentication or raw transport protocols; see
 
 | Method(s) | Path | Description |
 |-----------|------|-------------|
-| GET, DELETE | `/api/agent-runs/:id` | Read or delete an agent run. |
-| GET | `/api/agent-runs/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned agent run. |
-| GET | `/api/agent-runs/:id/snapshot` | Read an agent-run transcript snapshot, paged by non-empty assistant responses (page size 100). |
-| GET | `/api/agent-runs/:id/tool-calls/:toolCallId` | Read one complete agent-run tool-call payload. |
-| GET, POST | `/api/agents` | List or create scheduled agents. |
-| GET, PATCH, DELETE | `/api/agents/:id` | Read, update, or delete a scheduled agent. |
-| GET | `/api/agents/:id/code/draft` | Read the current generated deterministic agent draft. |
-| GET | `/api/agents/:id/export` | Download a portable scheduled-agent configuration. |
-| POST | `/api/agents/:id/code/generate` | Generate an editable deterministic agent program without saving it. |
-| POST | `/api/agents/:id/code/generate/prepare` | Prepare the hidden deterministic-agent generation conversation before a long generation request. |
-| POST | `/api/agents/:id/interrupt` | Interrupt an active agent run. |
-| POST | `/api/agents/:id/pause` | Pause a scheduled agent. |
-| POST | `/api/agents/:id/resume` | Resume a paused scheduled agent. |
-| POST | `/api/agents/:id/run` | Start an agent run immediately. |
-| GET, DELETE | `/api/agents/:id/runs` | List or purge runs for an agent. |
-| POST | `/api/agents/code/generate` | Reject generation for unsaved agents. |
-| POST | `/api/agents/code/test` | Test deterministic agent code without saving an agent or run. |
-| POST | `/api/agents/code/test/stream` | Stream deterministic agent code test output without saving an agent or run. |
+| GET, DELETE | `/api/automation-runs/:id` | Read or delete an automation run. |
+| GET | `/api/automation-runs/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned automation run. |
+| GET | `/api/automation-runs/:id/snapshot` | Read an automation-run transcript snapshot, paged by non-empty assistant responses (page size 100). |
+| GET | `/api/automation-runs/:id/tool-calls/:toolCallId` | Read one complete automation-run tool-call payload. |
+| GET, POST | `/api/automations` | List or create scheduled automations. |
+| GET, PATCH, DELETE | `/api/automations/:id` | Read, update, or delete a scheduled automation. |
+| GET | `/api/automations/:id/code/draft` | Read the current generated deterministic automation draft. |
+| GET | `/api/automations/:id/export` | Download a portable scheduled-automation configuration. |
+| POST | `/api/automations/:id/code/generate` | Generate an editable deterministic automation program without saving it. |
+| POST | `/api/automations/:id/code/generate/prepare` | Prepare the hidden deterministic-automation generation conversation before a long generation request. |
+| POST | `/api/automations/:id/interrupt` | Interrupt an active automation run. |
+| POST | `/api/automations/:id/pause` | Pause a scheduled automation. |
+| POST | `/api/automations/:id/resume` | Resume a paused scheduled automation. |
+| POST | `/api/automations/:id/run` | Start an automation run immediately. |
+| GET, DELETE | `/api/automations/:id/runs` | List or purge runs for an automation. |
+| POST | `/api/automations/code/generate` | Reject generation for unsaved automations. |
+| POST | `/api/automations/code/test` | Test deterministic automation code without saving an automation or run. |
+| POST | `/api/automations/code/test/stream` | Stream deterministic automation code test output without saving an automation or run. |
 | GET, POST | `/api/chats` | List chats or create a chat session. |
 | GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session; remote cleanup may continue after deletion. |
 | POST | `/api/chats/:id/new-here` | Create an empty chat in the source chat's current workspace directory and execution target. |
@@ -1147,7 +1153,7 @@ not expose authentication or raw transport protocols; see
 | GET, PUT, DELETE | `/api/workspaces/:id` | Read, update, or delete a workspace. |
 | GET | `/api/workspaces/:id/task-creation-context` | Read effective task defaults, connected models and usable branches on the selected host. |
 | POST | `/api/workspaces/:id/archived-tasks/purge` | Purge archived tasks for a workspace. |
-| POST | `/api/workspaces/:id/agents/import` | Import a portable scheduled-agent configuration into a workspace. |
+| POST | `/api/workspaces/:id/automations/import` | Import a portable scheduled-automation configuration into a workspace. |
 | POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
 | GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
 | GET | `/api/workspaces/:id/files/content` | Read a workspace file. |
@@ -2621,7 +2627,7 @@ characters, descriptions to 500, and prompts to 50,000.
 
 #### GET /api/preferences/scheduler-timezone
 
-Get the IANA timezone used for scheduled-agent times.
+Get the IANA timezone used for scheduled-automation times.
 
 **Response**
 
@@ -2763,7 +2769,7 @@ any existing directory.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered local or Mesh execution-host reference |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 | `workspaceType` | string | No | `git` (default) or `directory` |
-| `allowWorktrees` | boolean | No | Whether task, chat, and agent worktrees may be created for this workspace (defaults to `true`) |
+| `allowWorktrees` | boolean | No | Whether task, chat, and automation worktrees may be created for this workspace (defaults to `true`) |
 | `allowClankyContext` | boolean | No | Whether new execution contexts may receive authenticated Clanky CLI access (defaults to `false`) |
 
 **Response**
@@ -2808,7 +2814,7 @@ Update a workspace.
 | `isPrivate` | boolean | Hide the workspace when private items are hidden |
 | `archived` | boolean | Hide the workspace from active work surfaces |
 | `allowClankyContext` | boolean | Allow authenticated Clanky CLI access in new execution contexts |
-| `allowWorktrees` | boolean | Enable or disable creation of task, chat, and agent worktrees |
+| `allowWorktrees` | boolean | Enable or disable creation of task, chat, and automation worktrees |
 | `scratchpad` | string | Replace the saved Markdown note (maximum 100,000 characters); send the complete content, or an empty string to clear it |
 
 **Response**
@@ -4034,7 +4040,7 @@ GitHub URL and configured GitHub CLI credentials.
 #### WS /api/ws
 
 Authenticated framework realtime endpoint for private resource invalidations and selected
-incremental task, chat, agent-run, and provisioning events. The endpoint is protected by
+incremental task, chat, automation-run, and provisioning events. The endpoint is protected by
 the framework's same-origin policy.
 
 **Dynamic Interests**
@@ -4056,11 +4062,11 @@ current interests from obsolete acknowledgements and delivery.
 | Interest field | Description |
 | --- | --- |
 | `kinds` | Required categories: `state` invalidations, `content` deltas, or transient `action` commands |
-| `resources` | Resource names such as `tasks`, `chats`, or `agent-runs` |
+| `resources` | Resource names such as `tasks`, `chats`, or `automation-runs` |
 | `ids` | Entity IDs for resource invalidations |
-| `scopes` | Resource scopes, such as an agent ID for `agent-runs`, workspace ID for workspace `previews`, or serialized execution-host reference for direct server `previews` |
+| `scopes` | Resource scopes, such as an automation ID for `automation-runs`, workspace ID for workspace `previews`, or serialized execution-host reference for direct server `previews` |
 | `types` | Concrete event names |
-| `targets` | Named publication targets, such as `taskId`, `chatId`, `agentId`, `agentRunId`, or `provisioningJobId`, with one or more accepted values |
+| `targets` | Named publication targets, such as `taskId`, `chatId`, `automationId`, `automationRunId`, or `provisioningJobId`, with one or more accepted values |
 
 At least one concrete selector besides `kinds` is required. Interests only
 narrow delivery; they cannot override authenticated user ownership. Use
@@ -4134,8 +4140,8 @@ Resource invalidations use these resource names and actions:
 | `tasks.changed`, `tasks.deleted` | Task collection or entity changed/deleted |
 | `chats.changed`, `chats.deleted` | Chat collection or entity changed/deleted |
 | `chat-activity.changed` | Compact chat activity timestamp/source update |
-| `agents.changed`, `agents.deleted` | Agent collection or entity changed/deleted |
-| `agent-runs.changed`, `agent-runs.deleted` | Agent-run collection or entity changed/deleted |
+| `automations.changed`, `automations.deleted` | Automation collection or entity changed/deleted |
+| `automation-runs.changed`, `automation-runs.deleted` | Automation-run collection or entity changed/deleted |
 | `terminal-sessions.changed`, `terminal-sessions.deleted` | Workspace terminal collection or entity changed/deleted |
 | `provisioning-jobs.changed`, `provisioning-jobs.deleted` | Provisioning-job collection or entity changed/deleted |
 | `worker-update-jobs.changed`, `worker-update-jobs.deleted` | Worker update-job collection or entity changed/deleted |
@@ -4150,7 +4156,7 @@ event types are:
 |------|-------------|
 | Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.tool_call.extra`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
 | Chats | `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.tool_call.extra`, `chat.log`, `chat.log.delta` |
-| Agent runs | `agent.run.message`, `agent.run.message.delta`, `agent.run.tool_call`, `agent.run.tool_call.extra`, `agent.run.log`, `agent.run.log.delta` |
+| Automation runs | `automation.run.message`, `automation.run.message.delta`, `automation.run.tool_call`, `automation.run.tool_call.extra`, `automation.run.log`, `automation.run.log.delta` |
 | Provisioning | `provisioning.step`, `provisioning.updated`, `provisioning.output` |
 
 Provisioning execution/state transitions publish a positioned

@@ -4,14 +4,14 @@ import type { ReactNode } from "react";
 import type { UseChatTrashResult } from "../../hooks/useChatTrash";
 import type { ChatTrashActions } from "./use-chat-trash-actions";
 import type {
-  Agent,
+  Automation,
   Chat,
   ExecutionHostDescriptor,
   Task,
   TerminalSession,
   Workspace,
 } from "@/shared";
-import type { UseAgentsResult } from "../../hooks/useAgents";
+import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import type { NotificationSettings } from "../../hooks/useNotificationSettings";
 import type { PrivateSidebarNode } from "../../lib/private-items";
 import type {
@@ -37,16 +37,16 @@ export interface ShellSidebarActionHandlers {
   toggleTaskPrivate: (task: Task) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
   getChatLifecycleActions: (chat: Chat) => ActionMenuItem[];
-  toggleAgentPrivate: (agent: Agent) => void | Promise<void>;
+  toggleAutomationPrivate: (automation: Automation) => void | Promise<void>;
   stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
   openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;
-  setEditingAgentId: (agentId: string) => void;
-  setDeleteAgentTarget: (agent: Agent) => void;
-  setPurgeAgentTarget: (agent: Agent) => void;
-  exportAgent: (agent: Agent) => void | Promise<void>;
-  agents: Pick<UseAgentsResult, "pauseAgent" | "resumeAgent" | "interruptAgent" | "runAgent">;
+  setEditingAutomationId: (automationId: string) => void;
+  setDeleteAutomationTarget: (automation: Automation) => void;
+  setPurgeAutomationTarget: (automation: Automation) => void;
+  exportAutomation: (automation: Automation) => void | Promise<void>;
+  automations: Pick<UseAutomationsResult, "pauseAutomation" | "resumeAutomation" | "interruptAutomation" | "runAutomation">;
   showPrivateItems: boolean;
 }
 
@@ -60,7 +60,7 @@ export interface ShellSidebarCompositionOptions {
   chats: Chat[];
   terminalSessions: TerminalSession[];
   workspaces: Workspace[];
-  agents: Agent[];
+  automations: Automation[];
   handlers: ShellSidebarActionHandlers;
   sidebarSnapshotReady: boolean;
   quickChatUnavailableReason: string | null;

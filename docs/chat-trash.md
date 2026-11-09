@@ -2,7 +2,7 @@
 
 Deleting a standalone chat moves it to **Trash**, under the **Workspaces** tab
 after Workspaces and Archived. Workspace chats and direct execution-server
-chats are included. Tasks, task-owned conversations and agent-owned
+chats are included. Tasks, task-owned conversations and automation-owned
 conversations keep their existing deletion behavior.
 
 ## Recover and delete

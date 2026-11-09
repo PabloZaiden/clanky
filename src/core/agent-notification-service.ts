@@ -13,10 +13,10 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId, requireExecutionOwnerUserId } from "../context/user-context";
 import type { NotificationEventKind } from "@/shared/agent-notifications";
-import { agentEventEmitter, taskEventEmitter } from "./event-emitter";
+import { automationEventEmitter, taskEventEmitter } from "./event-emitter";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
-import { loadAgent, loadAgentRunSummary } from "../persistence/agents";
+import { loadAutomation, loadAutomationRunSummary } from "../persistence/automations";
 import { controlRequestPrivate, resourcePrivate } from "./control-request-privacy";
 import type { PreparedOperation } from "./clanky-operation-service";
 import type { ManagedContextIdentity } from "@/shared/context-api-key";
@@ -24,7 +24,7 @@ import type { ManagedContextIdentity } from "@/shared/context-api-key";
 const log = createLogger("core:agent-notifications");
 
 type AutomaticNotificationSource =
-  | { kind: "Chat" | "Task" | "Agent run"; id: string; context?: string }
+  | { kind: "Chat" | "Task" | "Automation run"; id: string; context?: string }
   | { kind: "Agent operation"; operation: PreparedOperation; context: string; origin?: ManagedContextIdentity };
 
 function boundedText(value: string, maximum: number): string {
@@ -74,9 +74,9 @@ class AgentNotificationService {
           case "task.completed": this.notify("completed", { kind: "Task", id: event.taskId }, context.userId); break;
         }
       }),
-      agentEventEmitter.subscribe((event, context) => {
+      automationEventEmitter.subscribe((event, context) => {
         if (!context.userId) return;
-        if (event.type === "agent.run.failed") this.notify("error", { kind: "Agent run", id: event.agentId }, context.userId);
+        if (event.type === "automation.run.failed") this.notify("error", { kind: "Automation run", id: event.automationId }, context.userId);
       }),
     ];
   }
@@ -111,19 +111,19 @@ class AgentNotificationService {
       let work: AutomaticNotificationSource;
       if (origin.contextType === "chat" || origin.contextType === "task") {
         work = { kind: origin.contextType === "chat" ? "Chat" : "Task", id: origin.contextId };
-      } else if (origin.contextType === "agent_run") {
-        const run = await loadAgentRunSummary(origin.contextId);
+      } else if (origin.contextType === "automation_run") {
+        const run = await loadAutomationRunSummary(origin.contextId);
         if (!run) return {};
-        work = { kind: "Agent run", id: run.agentId };
+        work = { kind: "Automation run", id: run.automationId };
       } else {
         return {};
       }
       const details = await this.sourceDetails(work);
       return details.name ? { ...details, context: source.context } : {};
     }
-    const resource = source.kind === "Chat" ? "chat" : source.kind === "Task" ? "task" : "agent";
+    const resource = source.kind === "Chat" ? "chat" : source.kind === "Task" ? "task" : "automation";
     const work = source.kind === "Chat" ? await loadChatMetadata(source.id)
-      : source.kind === "Task" ? await loadTaskSummary(source.id) : await loadAgent(source.id);
+      : source.kind === "Task" ? await loadTaskSummary(source.id) : await loadAutomation(source.id);
     if (!work || await resourcePrivate(resource, source.id)) return {};
     return { kind: source.kind, name: work.config.name, context: source.context };
   }

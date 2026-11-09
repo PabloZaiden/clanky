@@ -20,7 +20,7 @@ export {
   type BadgeVariant,
 } from "@pablozaiden/webapp/web";
 export {
-  getAgentStatusBadgeVariant,
+  getAutomationStatusBadgeVariant,
   getChatStatusBadgeVariant,
   getTerminalSessionStatusBadgeVariant,
   getTerminalSessionStatusLabel,

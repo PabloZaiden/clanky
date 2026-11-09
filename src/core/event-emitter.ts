@@ -5,7 +5,7 @@
  */
 
 import type {
-  AgentEvent,
+  AutomationEvent,
   ChatEvent,
   PreviewEvent,
   ProvisioningEvent,
@@ -108,9 +108,9 @@ export const chatEventEmitter = new SimpleEventEmitter<ChatEvent>();
 export const clientActionEventEmitter = new SimpleEventEmitter<ControlUiActionEvent | LiveVoiceActivityEvent>();
 
 /**
- * Global event emitter instance for scheduled agent events.
+ * Global event emitter instance for scheduled automation events.
  */
-export const agentEventEmitter = new SimpleEventEmitter<AgentEvent>();
+export const automationEventEmitter = new SimpleEventEmitter<AutomationEvent>();
 
 /**
  * Global event emitter instance for terminal session events.
@@ -137,7 +137,7 @@ export const meshStateEventEmitter = new SimpleEventEmitter<MeshStateEvent>();
 export interface HarnessStateEvent {
   type: "harness.changed";
   context: { kind: "chat" | "task"; id: string };
-  runs?: Array<{ id: string; agentId: string }>;
+  runs?: Array<{ id: string; automationId: string }>;
 }
 
 export const harnessEventEmitter = new SimpleEventEmitter<HarnessStateEvent>();

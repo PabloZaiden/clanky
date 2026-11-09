@@ -80,7 +80,7 @@ export function fitReadText(text: string, fits: (part: string) => boolean): stri
 
 const SUMMARY_FIELDS = [
   "id", "name", "title", "description", "creator", "workspaceId", "taskId", "chatId",
-  "agentId", "runId", "providerId", "modelId", "displayName", "kind", "type",
+  "automationId", "runId", "providerId", "modelId", "displayName", "kind", "type",
   "status", "createdAt", "updatedAt", "lastActivityAt", "startedAt", "completedAt",
   "directory", "resolvedDirectory", "targetDirectory", "workspaceAction",
   "currentStep", "currentIteration", "branch", "path", "size", "isDirectory",
@@ -163,7 +163,7 @@ export function fitCompactMetadata(value: Record<string, unknown>, maxBytes: num
 }
 
 const COLLECTION_SECTIONS = [
-  "items", "jobs", "runs", "agents", "models", "providers", "files", "directories",
+  "items", "jobs", "runs", "automations", "models", "providers", "files", "directories",
   "entries", "branches", "templates", "addresses", "sessions", "servers",
   "workspaces", "chats", "tasks", "workers", "enrollments", "questions", "permissions",
   "inputs", "activity", "activities", "variants", "previews", "nodes", "grants", "candidates", "issues",
@@ -399,7 +399,7 @@ export function readOperationReceipt(source: unknown, maxBytes: number): unknown
   const projected = isReadRecord(source)
     ? typeof source["id"] === "string" || isReadRecord(source["config"]) && isReadRecord(source["state"])
       ? compactResource(source) : Object.fromEntries(Object.entries(source).map(([key, value]) => [
-        key, ["job", "chat", "task", "run", "workspace", "server", "agent", "session", "preview"].includes(key)
+        key, ["job", "chat", "task", "run", "workspace", "server", "automation", "session", "preview"].includes(key)
           && isReadRecord(value) ? compactResource(value) : value,
       ])) : source;
   if (readBytes(projected) <= maxBytes) return projected;

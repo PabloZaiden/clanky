@@ -38,7 +38,7 @@ export interface TranscriptResourceState<TResource> {
 export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceId: string;
   resourceLabel: string;
-  stream: "task" | "chat" | "agent.run" | "subagent";
+  stream: "task" | "chat" | "automation.run" | "subagent";
   baseUrl: string;
   initialResource?: TResource | null;
   resourceState?: TranscriptResourceState<TResource>;
@@ -70,7 +70,7 @@ type ContentEvent = TranscriptContentEvent;
 const STREAMS = {
   task: { resource: "tasks", target: "taskId" },
   chat: { resource: "chats", target: "chatId" },
-  "agent.run": { resource: "agent-runs", target: "agentRunId" },
+  "automation.run": { resource: "automation-runs", target: "automationRunId" },
   subagent: { resource: "subagents", target: "subagentId" },
 } as const;
 const CONTENT_SUFFIXES = ["message", "message.delta", "log", "log.delta", "tool_call"];
