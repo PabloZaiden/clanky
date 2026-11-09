@@ -1144,8 +1144,24 @@ the next activation if the app is inactive. The WebView is never replaced.
 ### Frontend updates on iPhone and iPad
 
 On a fresh iOS process launch, before opening the WebView, the app checks
-`https://pablozaiden.github.io/clanky/build-info.json`. An unchanged frontend
-manifest digest needs no asset download, installation or confirmation.
+the build's fixed frontend channel:
+
+| App build origin | Update metadata |
+| --- | --- |
+| Published stable release, including its TestFlight build | `https://pablozaiden.github.io/clanky/stable/build-info.json` |
+| Main, prerelease, or local build | `https://pablozaiden.github.io/clanky/latest/build-info.json` |
+
+CI records the origin through `CLANKY_FRONTEND_UPDATE_CHANNEL` and embeds it
+in the native bundle, including signed TestFlight archives. Local Xcode and
+Linux/xtool builds default to latest, even when built with Release optimization.
+Debug/Release configuration and the frontend's version are not channel
+selectors. The updater never changes channels after downloading a frontend.
+Saved snapshots and selections are kept separately for each channel.
+Missing or invalid native channel metadata fails startup visibly.
+The old root update URL is not retained; older app builds need replacement.
+
+An unchanged frontend manifest digest needs no asset download, installation
+or confirmation.
 A published frontend also skips rebuilds of its already installed source
 revision, even if bundler details or the resolved version/timestamp change.
 Development frontends do not use that shortcut because they may include
@@ -1164,7 +1180,9 @@ before packaging. An active version with that development marker offers
 **Update** or **Keep Current** before downloading the update. Keeping it asks
 again on a later cold launch if a different deployment is still available.
 Once the active frontend is a published version, updates are automatic.
-Xcode's Debug configuration is not the development-build criterion.
+Xcode's Debug configuration is not the development-build confirmation
+criterion either; a local development frontend still asks before its first
+channel update.
 
 Downloads use the existing Pages assets and their manifest's byte sizes and
 SHA-256 hashes. Identical verified local assets are reused, including assets

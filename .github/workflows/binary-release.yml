@@ -54,6 +54,7 @@ jobs:
       queue: max
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      CLANKY_FRONTEND_UPDATE_CHANNEL: ${{ github.event.release.prerelease && 'latest' || 'stable' }}
     steps:
       - name: Checkout exact release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -104,6 +105,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
+      CLANKY_FRONTEND_UPDATE_CHANNEL: ${{ github.event_name == 'release' && !github.event.release.prerelease && 'stable' || 'latest' }}
     defaults:
       run:
         shell: bash
@@ -182,6 +184,12 @@ jobs:
             fi
             if [[ "$platform" == macos ]]; then
               /usr/bin/lipo -verify_arch arm64 "$app/Contents/Helpers/clanky"
+            else
+              channel="$(/usr/libexec/PlistBuddy -c 'Print :ClankyFrontendUpdateChannel' "$app/$plist")"
+              if [[ "$channel" != "$CLANKY_FRONTEND_UPDATE_CHANNEL" ]]; then
+                echo "::error::The iOS frontend update channel does not match its build origin." >&2
+                exit 1
+              fi
             fi
             output="$RUNNER_TEMP/apple-apps/$platform"
             mkdir -p "$output"
