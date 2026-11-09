@@ -948,6 +948,17 @@ export const migrations: Migration[] = [
     transactional: false,
     up: retireExecutionTransport,
   },
+  {
+    version: 92,
+    name: "persist_controller_tls_trust",
+    up: (db) => {
+      for (const column of ["controller_tls_certificate", "controller_tls_fingerprint"]) {
+        if (!getTableColumns(db, "mesh_controller_grants").includes(column)) {
+          db.run(`ALTER TABLE mesh_controller_grants ADD COLUMN ${column} TEXT`);
+        }
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {
@@ -1047,7 +1058,7 @@ export function getTableColumns(db: Database, tableName: string): string[] {
   return rows.map((row) => row.name);
 }
 
-function ensureMigrationsTable(db: Database): void {
+export function ensureMigrationsTable(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,

@@ -16,6 +16,7 @@ import { chmod, mkdir, rename, rm } from "node:fs/promises";
 import { isIP } from "node:net";
 import { dirname, join } from "node:path";
 import { createSelfSignedTlsIdentity } from "../lib/self-signed-tls";
+import { assertSelfSignedTlsCertificate } from "../lib/tls-certificate";
 import { DomainError } from "../domain/domain-error";
 import { assertMeshEndpointAllowed } from "../core/mesh-transport-config";
 import { getDataDir } from "./database";
@@ -91,6 +92,7 @@ export function assertMeshWorkerTlsCertificate(
     );
   }
   try {
+    assertSelfSignedTlsCertificate(certificate, endpointHostname(endpoint), expectedFingerprint);
     if (!parsedCertificate.verify(parsedCertificate.publicKey)) {
       throw new Error("certificate is not self-signed");
     }

@@ -10,6 +10,7 @@ import { SettingsFieldRow } from "@pablozaiden/webapp/web";
 import { log } from "@pablozaiden/webapp/web";
 import { useLiveQuery } from "@pablozaiden/webapp/web";
 import { ResourceState } from "./resource-state";
+import { PasswordSection } from "./password-section";
 
 export interface SecuritySectionProps {
   config: WebAppConfigResponse;
@@ -114,17 +115,24 @@ export function SecuritySection({ config, refresh }: SecuritySectionProps) {
 
   return (
     <>
+      {config.passkeyAuth.passwordEnabled ? (
+        getClientSession().enabled
+          ? <SettingsFieldRow title="Password" actions={<a href={appPath("/account")} target="_blank" rel="noopener noreferrer">Manage on server</a>} />
+          : <PasswordSection refresh={refresh} />
+      ) : null}
       <SettingsFieldRow title="Passkey" description={config.passkeyAuth.passkeyConfigured ? "Configured" : "Not configured"} actions={
         <div className="wapp-row-actions">
           {getClientSession().enabled ? (
             <a href={appPath("/account")} target="_blank" rel="noopener noreferrer">Manage on server</a>
-          ) : config.passkeyAuth.passkeyConfigured ? (
-            <>
-              <Button type="button" onClick={() => void logout()}>Logout</Button>
-              <Button type="button" tone="danger" onClick={() => setConfirmDeletePasskey(true)}>Delete passkey</Button>
-            </>
           ) : (
-            config.currentUser?.isOwner ? <Button type="button" variant="primary" onClick={() => void setupPasskey()}>Set up passkey</Button> : null
+            <>
+              {config.currentUser && !config.passkeyAuth.passkeyDisabled ? <Button type="button" onClick={() => void logout()}>Logout</Button> : null}
+              {config.passkeyAuth.passkeyConfigured ? (
+                <Button type="button" tone="danger" onClick={() => setConfirmDeletePasskey(true)}>Delete passkey</Button>
+              ) : config.currentUser?.isOwner && config.passkeyAuth.passkeyAvailable ? (
+                <Button type="button" variant="primary" onClick={() => void setupPasskey()}>Set up passkey</Button>
+              ) : null}
+            </>
           )}
         </div>} />
       {config.apiKeys.enabled ? (

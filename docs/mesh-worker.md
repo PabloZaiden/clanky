@@ -97,6 +97,30 @@ Before selecting a native adapter, check worker and relay generations in
 by a Mesh route is not retried through ACP. Explicitly select ACP on the
 workspace when that is the desired integration.
 
+### Managed controller certificates
+
+A private controller can enable
+[managed HTTPS](deployment.md#optional-controller-managed-https) at its stable
+LAN/Tailscale IP or network hostname. The existing **Enroll worker** flow
+automatically includes `--controller-cert` in direct invitations when that
+listener uses a managed certificate. Copy the entire generated command and use
+an updated CLI. The flag contains the base64 public PEM, not a private key.
+The existing signing-key fingerprint and single-use token remain separate.
+
+The worker validates the certificate, hostname, dates and fingerprint before
+using it for discovery and enrollment. Its controller grant persists scoped
+trust for subsequent HTTPS requests, control/data WebSockets and reconnects.
+No insecure verification, redirect fallback or global worker CA installation
+is needed. Workers still connect outward and need no public listener.
+Ordinary public-PKI/proxy routes and relay invitations keep their existing
+system trust, without the certificate flag. Mesh stays v7; trust is local
+grant state, not an enrollment wire-format change.
+
+Restarting a controller preserves its TLS identity. Explicit TLS rotation or
+loss of that identity requires re-enrollment with a fresh command; workers do
+not silently accept a replacement certificate. Re-pairing updates the live
+connection's trust. Dispatched commands or prompts are never replayed.
+
 ### Protocol evolution
 
 For a future breaking wire change, keep generations global and aligned with

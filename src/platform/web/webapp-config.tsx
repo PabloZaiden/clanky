@@ -53,6 +53,8 @@ function isWebAppConfigResponse(value: unknown): value is WebAppConfigResponse {
       "authenticated",
       "bootstrapRequired",
       "ownerPasskeySetupRequired",
+      "passkeyAvailable",
+      "passwordEnabled",
     ])
     && hasBooleanFields(value["userManagement"], ["enabled", "canManageUsers"])
     && isRecord(value["logLevel"])

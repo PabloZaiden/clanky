@@ -119,6 +119,9 @@ import { remoteTerminalProxy } from "./api/workspace-socket-proxy";
 import { workspaceRealtimeSources } from "./api/workspace-realtime-source";
 import { ControlServer } from "./server/control-server";
 import { mcpRoutes } from "./api/control";
+import { loadManagedControllerTls, setActiveControllerTls } from "./core/controller-tls";
+import { setLocalMeshEndpoint } from "./persistence/mesh-node-identity";
+import { isOwnerInitialized } from "./platform/server/auth/users";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
 const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
@@ -134,6 +137,7 @@ let app: WebAppServer<ClankyRealtimeEvent> | undefined;
 let appMeshWorkerMode: boolean | undefined;
 let appRelayOnlyMode: boolean | undefined;
 let appApiOnlyMode: boolean | undefined;
+let appManagedTlsMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
 let workspaceWorkerReconcileTimer: Timer | undefined;
 let workspaceWorkerReconcileRunning = false;
@@ -531,11 +535,22 @@ export async function getWebAppServer(
     apiOnly?: boolean;
     workerEndpoint?: string;
     rotateWorkerTls?: boolean;
+    managedTls?: boolean;
   } = {},
 ): Promise<WebAppServer<ClankyRealtimeEvent>> {
   const meshWorker = options.meshWorker ?? false;
   const relayOnly = options.relayOnly ?? false;
   const apiOnly = options.apiOnly ?? false;
+  const runtimeInput = {
+    appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky",
+    ...(options.managedTls === undefined ? {} : {
+      environment: { ...process.env, CLANKY_MANAGED_TLS: String(options.managedTls) },
+    }),
+  };
+  const controlRuntime = readRuntimeConfig(runtimeInput);
+  if (meshWorker && controlRuntime.managedTls) {
+    throw new Error("Managed controller TLS cannot be combined with Mesh worker mode.");
+  }
   if (meshWorker && apiOnly) {
     throw new Error("API-only serving applies to controllers, not restricted Mesh workers.");
   }
@@ -559,6 +574,7 @@ export async function getWebAppServer(
       appMeshWorkerMode !== meshWorker
       || appRelayOnlyMode !== relayOnly
       || appApiOnlyMode !== apiOnly
+      || appManagedTlsMode !== controlRuntime.managedTls
     ) {
       throw new Error(
         `Clanky server is already initialized with meshWorker=${String(appMeshWorkerMode)}, relayOnly=${String(appRelayOnlyMode)}, apiOnly=${String(appApiOnlyMode)} and cannot be reused with meshWorker=${String(meshWorker)}, relayOnly=${String(relayOnly)}, apiOnly=${String(apiOnly)}`,
@@ -619,13 +635,29 @@ export async function getWebAppServer(
     log.info("Creating Mesh worker application server");
   }
   const store = getAccountStore();
+  if (!meshWorker && controlRuntime.managedTls) {
+    if (controlRuntime.passkeyDisabled || controlRuntime.sameOriginDisabled) {
+      throw new Error("Managed controller HTTPS cannot disable authentication or origin protection.");
+    }
+    if (!isOwnerInitialized(store)) {
+      throw new Error("Initialize the owner locally with clanky auth setup before exposing managed controller HTTPS.");
+    }
+    const endpoint = controlRuntime.managedTlsEndpoint;
+    if (!endpoint) throw new Error("Configure controller tls enable --endpoint HTTPS_ORIGIN before starting managed HTTPS.");
+    if (Number(new URL(endpoint).port || "443") !== controlRuntime.port) {
+      throw new Error("The managed HTTPS endpoint port must match the controller listener port.");
+    }
+    const tlsIdentity = await loadManagedControllerTls(endpoint);
+    workerTls = { cert: tlsIdentity.certificate, key: tlsIdentity.privateKey };
+    setActiveControllerTls(tlsIdentity);
+    await setLocalMeshEndpoint(tlsIdentity.endpoint);
+  } else {
+    setActiveControllerTls(undefined);
+  }
   if (!meshWorker && !Bun.isStandaloneExecutable) {
     const { writeClientOperationCatalog } = await import("./client-operation-catalog");
     await writeClientOperationCatalog();
   }
-  const controlRuntime = readRuntimeConfig({
-    appName: "Clanky", envPrefix: "CLANKY", appDirectoryName: ".clanky",
-  });
   let controlBaseUrl = controlRuntime.publicBaseUrl
     ?? getLocalManagedCredentialBaseUrl(controlRuntime.host, controlRuntime.port);
   const controlServer = meshWorker ? undefined : new ControlServer({
@@ -635,6 +667,7 @@ export async function getWebAppServer(
     appName: "Clanky",
     envPrefix: "CLANKY",
     appDirectoryName: ".clanky",
+    runtimeConfig: controlRuntime,
     web: meshWorker ? false : { ...CLANKY_WEB_OPTIONS, mode: apiOnly ? "auth" : "app" },
     ...(meshWorker ? { requestFilter: isMeshWorkerRequestAllowed } : {}),
     server: {
@@ -697,6 +730,7 @@ export async function getWebAppServer(
         }
       },
       beforeStop: async () => {
+        setActiveControllerTls(undefined);
         chatManager.beginShutdown();
         taskManager.beginShutdown();
         const errors: unknown[] = [];
@@ -748,6 +782,7 @@ export async function getWebAppServer(
   appMeshWorkerMode = meshWorker;
   appRelayOnlyMode = relayOnly;
   appApiOnlyMode = apiOnly;
+  appManagedTlsMode = controlRuntime.managedTls;
   managedCredentialService.configure(app.store, {
     publicBaseUrl: app.config.publicBaseUrl,
     localBaseUrl: getLocalManagedCredentialBaseUrl(app.config.host, app.config.port),

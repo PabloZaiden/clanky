@@ -221,21 +221,21 @@ function defaultDeviceClientId(commandName: string): string {
   return clientId.length <= 200 ? clientId : `cli-${sha256(clientId)}`;
 }
 
-function authCommand<TAppContext>(
-  dependencies: BuiltInCommandDependencies<TAppContext>,
+export function createDeviceAuthCliCommand<TAppContext>(
+  input: Pick<CreateWebAppCliOptions<TAppContext>, "commandName" | "envPrefix" | "clientId">,
 ): WebAppCliCommandDefinition<TAppContext> {
   return {
     description: "Authenticate the selected profile with device authorization.",
     usage: "auth [--base-url URL] [--client-id ID] [--scope SCOPE]",
-    handler: async ({ args, profile }) => {
+    handler: async ({ args, profile, profiles, environment, fetchFn, stdout }) => {
       const invalid = validateAuthArgs(args);
       if (invalid) return { exitCode: 1, error: invalid };
-      const credentials = dependencies.profiles.credentials(profile);
+      const credentials = profiles.credentials(profile);
       const stored = await credentials.read();
-      const names = cliAuthEnvironmentNames(dependencies.input.envPrefix);
+      const names = cliAuthEnvironmentNames(input.envPrefix);
       const baseUrl = readOption(args, ["--base-url"])
         ?? stored?.baseUrl
-        ?? dependencies.environment[names.baseUrl];
+        ?? environment[names.baseUrl];
       if (!baseUrl?.trim()) {
         return {
           exitCode: 1,
@@ -245,12 +245,12 @@ function authCommand<TAppContext>(
       await runDeviceAuthCommand({
         baseUrl: normalizeBaseUrl(baseUrl),
         clientId: readOption(args, ["--client-id"])
-          ?? dependencies.input.clientId
-          ?? defaultDeviceClientId(dependencies.input.commandName),
+          ?? input.clientId
+          ?? defaultDeviceClientId(input.commandName),
         scope: readOption(args, ["--scope"]),
         store: credentials,
-        fetchFn: dependencies.fetchFn,
-        out: (message) => dependencies.stdout.write(`${message}\n`),
+        fetchFn,
+        out: (message) => stdout.write(`${message}\n`),
       });
       return { exitCode: 0 };
     },
@@ -391,7 +391,7 @@ export function createBuiltInCommands<TAppContext>(
     logs: logsCommand(dependencies),
     api: apiCommand(dependencies, "api"),
     schema: apiCommand(dependencies, "schema"),
-    auth: authCommand(dependencies),
+    auth: createDeviceAuthCliCommand(dependencies.input),
     status: statusCommand(dependencies),
     profile: profileCommand(dependencies.profiles),
     ws: websocketCommand(dependencies),

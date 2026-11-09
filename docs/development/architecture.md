@@ -50,7 +50,7 @@ maintain a parallel API/CLI catalog.
 
 ### Authentication-method equivalence
 
-API keys and passkeys are equivalent authentication methods. Authorize the
+API keys, passwords and passkeys are equivalent authentication methods. Authorize the
 authenticated account using roles, ownership, credential scopes and explicit
 operation/execution policy, not the method that established its session.
 Never require WebAuthn provenance, a passkey ID or a passkey-only session kind
@@ -58,13 +58,27 @@ for ordinary account operations, including approvals, approval-policy changes,
 integration administration and private input. Valid existing browser sessions
 do not need a new passkey ceremony to acquire those capabilities.
 
-Neither method proves human presence, agent absence or stronger authority.
+No authentication method proves human presence, agent absence or stronger authority.
 Prevent execution self-approval through canonical automation exclusions and
 validated execution authority, not credential-type heuristics. Credential
 validation, expiry/revocation and grant ceilings remain required; limited
 integration credentials do not become unrestricted account credentials.
 Cookie-backed requests retain framework same-origin/CSRF protection, while
 explicit bearer credentials use their existing transport policy.
+
+Owner initialization is durable, not inferred from missing passkeys. Existing
+accounts migrate without changing account IDs or browser-session epochs, and
+credential removal does not reopen anonymous ownership claiming. First-owner
+password enrollment is a trusted local CLI operation that atomically publishes
+the owner and password, without initializing the application server. Local
+preflight through `auth status` reads owner existence, durable initialization
+and password presence without creating or migrating the account database.
+Local authentication commands and their help are dispatched before loading the
+application CLI or route catalog; ordinary device/profile authentication keeps
+its existing command behavior.
+Password creation/login/change require the framework's exact Origin check. Credential
+writes compare both password versions and the account's existing session epoch
+to reject concurrent replacement, disable and access reset.
 
 Await API operations before returning their result. Starting a long-running
 task may return before completion only when its lifecycle owner handles errors,

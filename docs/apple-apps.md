@@ -339,6 +339,69 @@ which applies its own icon mask. It does not sign or launch apps.
 
 ### Windows and local controller
 
+**Local Controller > Network Access...** selects **Local Only** (the default),
+**Automatic Remote Access (Tailscale)** or **Direct HTTPS**. Remote access is
+opt-in and remembered; merely installing Tailscale does not publish Clanky.
+Apply explicitly restarts a running controller and warns about interrupted
+connections. The existing asset listener remains local and is not another
+controller.
+
+Automatic access discovers the installed Tailscale CLI, connected node and
+HTTPS hostname. Clanky configures its own controller's canonical public URL
+and publishes the loopback HTTP backend through Tailscale Serve on HTTPS port
+443. Tailscale supplies the publicly trusted certificate; no Clanky certificate
+or browser trust installation is needed. The native client uses that canonical
+HTTPS origin for authorization and API requests, while startup health checks
+use the separate loopback endpoint. Consequently, this connection mode needs
+Tailscale; choose Local Only to work without it.
+
+Install and sign in to Tailscale separately. If Serve/HTTPS needs tailnet
+consent, **Finish Tailscale Setup...** opens Tailscale's approval page and Clanky
+continues once it is enabled. Initial owner setup prompts for a password
+locally before publication. Existing owners first add a password in Account
+Settings while using Local Only. Passkeys remain preferred on the resulting
+hostname; a localhost passkey cannot sign in to its different Tailscale RP.
+Tailscale identity headers never substitute for Clanky authentication.
+
+The menu shows publication status and **Copy Remote Link**, enabled only after
+the public HTTPS health check succeeds. Disconnections make remote access
+unavailable without exposing another listener or silently restarting work.
+Use the copied URL as the API address in the iPhone app or
+[static browser client](static-client.md). The controller keeps its API-only
+mode with authentication pages; the full Mac frontend remains bundled locally.
+The same hostname reconnects automatically; a hostname change while running
+requires applying Network Access again. An occupied Serve port is reported
+without replacing existing routes. Clanky never enables Funnel, resets Serve
+globally, stops Tailscale or changes tailnet policy.
+
+An owned foreground Serve session lasts only with the app/controller. Its
+separate lifetime observer removes the publication when the controller exits
+or the app is forcibly terminated; normal Stop/Quit waits for unpublication
+before stopping the backend. Logs are `app-controller.log` and
+`app-tailscale.log` in the private controller directory below.
+
+Direct HTTPS optionally switches the same controller listener to HTTPS at a
+fixed LAN/Tailscale IP or network hostname on port `49372`. It binds all
+interfaces and requires explicit browser certificate trust. Local Only remains
+loopback HTTP with no certificate setup. Explicit Direct HTTPS settings are
+not replaced simply because Tailscale becomes available.
+
+**Initialize Owner Password...** uses the bundled local CLI and private stdin
+to create the first owner only. Existing accounts create/change their password
+through authenticated Account settings before enabling managed access.
+**Export Controller Certificate...** saves the public PEM, never the private
+key. The TLS identity is durable in the controller's private data directory;
+CLI rotation/recovery is described in the
+[deployment guide](deployment.md#optional-controller-managed-https).
+
+The Mac app loads its own known certificate for scoped native health and
+WebView HTTPS trust challenges; unrelated origins retain normal OS validation.
+External Safari/system-browser authorization does not inherit that trust:
+install the exported certificate explicitly for that browser. iPhone/iPad
+pairing/pinning is unchanged and is not supplied automatically by Mac trust.
+Endpoint changes update the existing asset bootstrap and reload only pages
+connected to the local controller, not unrelated remote windows.
+
 **File > New Window** (`Cmd+N`) opens another native window. The window has no
 extra title or navigation toolbar; the standard macOS window controls remain.
 Windows share ordinary WebKit website data, just as browser tabs do. There
@@ -392,7 +455,9 @@ The app continues observing that process after an interrupted or timed-out
 shutdown. If it exits later, the controller state and log handle are finalized
 and starting it again becomes available.
 Closing a window is not quitting the app. A forced OS termination cannot run
-normal cleanup.
+normal GUI cleanup; an active Tailscale lifetime observer still withdraws its
+owned publication and requests controller shutdown. Local-only controllers
+have no such publication observer.
 
 Bundling Clanky removes the need to install its runtime, not the workspace's
 own tools. Local Git/provider execution still requires the tools,

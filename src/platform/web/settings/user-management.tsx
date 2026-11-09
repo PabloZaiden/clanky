@@ -127,7 +127,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
             <div className="wapp-list-row" key={user.id}>
               <span>
                 <strong>{user.username}</strong>
-                <small>{user.passkeyConfigured ? "Passkey configured" : "Setup pending"} · <DateTimeValue value={user.createdAt} /></small>
+                <small>{user.passkeyConfigured ? "Passkey configured" : "No passkey"} · <DateTimeValue value={user.createdAt} /></small>
               </span>
               <div className="wapp-row-actions">
                 {user.role !== "owner" ? (
@@ -148,7 +148,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
       <ConfirmDialog
         open={Boolean(userToReset)}
         title="Reset account access?"
-        message={userToReset ? `This removes "${userToReset.username}"'s passkey and API keys, revokes device sessions and signs them out. A new setup link will be created.` : ""}
+        message={userToReset ? `This removes "${userToReset.username}"'s passkey, password and API keys, revokes device sessions and signs them out. A new setup link will be created.` : ""}
         confirmLabel="Reset account access"
         danger
         loading={setupLinkPending}
@@ -158,7 +158,7 @@ export function UserManagement({ config }: { config: WebAppConfigResponse }) {
       <ConfirmDialog
         open={Boolean(userToDelete)}
         title="Delete user?"
-        message={userToDelete ? `This permanently deletes "${userToDelete.username}" and revokes their setup links, API keys, passkeys and device sessions.` : ""}
+        message={userToDelete ? `This permanently deletes "${userToDelete.username}" and revokes their setup links, API keys, passkeys, password and device sessions.` : ""}
         confirmLabel="Delete user"
         danger
         onCancel={() => setUserToDelete(undefined)}

@@ -1,6 +1,15 @@
 import SwiftUI
 
 @main
+enum ClankyEntry {
+    @MainActor static func main() {
+        #if os(macOS)
+        TailscaleServeSession.runIfRequested()
+        #endif
+        ClankyApp.main()
+    }
+}
+
 struct ClankyApp: App {
     @StateObject private var model = AppModel()
     #if os(iOS)
@@ -109,10 +118,14 @@ private struct BrowserSession: View {
     init(origin: URL, app: AppModel) {
         #if os(macOS)
         let initialURL = app.controller.running ? origin.appendingPathComponent("local/") : nil
+        let controllerTrust: (@MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?)? = {
+            app.controller.trust?.decision($0)
+        }
         #else
         let initialURL: URL? = nil
+        let controllerTrust: (@MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?)? = nil
         #endif
-        _browser = StateObject(wrappedValue: BrowserModel(origin: origin, initialURL: initialURL, ensureAssets: {
+        _browser = StateObject(wrappedValue: BrowserModel(origin: origin, initialURL: initialURL, controllerTrust: controllerTrust, ensureAssets: {
             try await app.ensureAssets()
         }))
     }
@@ -130,6 +143,14 @@ private struct BrowserSession: View {
         #if os(iOS)
         .onChange(of: app.frontendRevision) { _, _ in
             browser.frontendChanged()
+        }
+        #endif
+        #if os(macOS)
+        .onChange(of: app.controller.endpoint) { _, _ in
+            Task {
+                await app.localControllerChanged()
+                browser.localControllerChanged()
+            }
         }
         #endif
         .onDisappear {

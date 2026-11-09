@@ -61,6 +61,26 @@ export interface PasskeyAuthStatusResponse {
   authenticated: boolean;
   bootstrapRequired: boolean;
   ownerPasskeySetupRequired: boolean;
+  passkeyAvailable: boolean;
+  passwordEnabled: boolean;
+}
+
+export interface PasswordLoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface PasswordEnrollmentRequest {
+  password: string;
+}
+
+export interface PasswordChangeRequest {
+  currentPassword: string;
+  nextPassword: string;
+}
+
+export interface PasswordStatusResponse {
+  configured: boolean;
 }
 
 export type ApiKeyKind = "user" | "managed";
