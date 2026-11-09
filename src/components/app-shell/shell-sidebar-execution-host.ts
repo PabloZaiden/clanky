@@ -3,7 +3,11 @@ import type {
   WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import type { ExecutionHostDescriptor } from "@/shared";
-import { getExecutionHostDefaultDirectory, getExecutionHostSourceId } from "@/shared";
+import {
+  getExecutionHostDefaultDirectory,
+  getExecutionHostSourceId,
+  supportsExecutionHostCapability,
+} from "@/shared";
 import { sidebarActionItems } from "./shell-sidebar-utils";
 
 export interface ExecutionHostSidebarContext {
@@ -95,6 +99,17 @@ export function getExecutionHostSidebarActions(
       label: "New Chat",
       disabled: !usable || !host.capabilities.acpRuntime,
       onClick: () => createExecutionHostChat(host, context),
+    },
+    {
+      id: "open-code-explorer",
+      label: "Code Explorer",
+      disabled: !usable || !supportsExecutionHostCapability(host.capabilities, "fileOperations"),
+      onClick: () => context.navigateWithinShell({
+        view: "code-explorer",
+        contentType: "execution-host",
+        hostKind: host.ref.kind,
+        hostId: executionHostId(host),
+      }),
     },
   ]);
 }
