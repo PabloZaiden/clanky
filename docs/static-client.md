@@ -70,7 +70,9 @@ when rebuilding the same source revision, so it is an integrity identifier,
 not an ordered release version. Publish metadata and assets together, not as
 separate deployments.
 The [iPhone/iPad app](apple-apps.md#frontend-updates-on-iphone-and-ipad)
-uses this metadata for frontend-only updates.
+uses this metadata for frontend-only updates. Its native iOS Settings toggle
+selects stable by default or latest; an explicit change can install an older
+channel version without clearing web sessions.
 Sidebar and Settings / About show the
 client's own embedded build version, including in collaboration mode without
 a server connection. Stable uses the exact release version and source revision;

@@ -9,10 +9,6 @@ if (!["assets", "macos", "macos-linux", "ios", "ios-device", "ios-linux", "ios-s
 }
 let configuration: "Debug" | "Release" = "Debug";
 let frontendVersion: string | undefined;
-const frontendUpdateChannel = process.env["CLANKY_FRONTEND_UPDATE_CHANNEL"] ?? "latest";
-if (frontendUpdateChannel !== "stable" && frontendUpdateChannel !== "latest") {
-  throw new Error("CLANKY_FRONTEND_UPDATE_CHANNEL must be stable or latest.");
-}
 const seenOptions = new Set<string>();
 for (let index = 0; index < options.length; index += 2) {
   const flag = options[index];
@@ -176,9 +172,9 @@ if (linux) {
     await cp(resolve("native/Shared"), `${staging}/Shared`, { recursive: true });
     const plist = (await Bun.file("native/Configuration/iOS.plist").text()).replace(
       /\$\(([^)]+)\)/g,
-      (_, name: string) => Bun.escapeHTML(name === "EXECUTABLE_NAME" ? product
-        : name === "CLANKY_FRONTEND_UPDATE_CHANNEL" ? frontendUpdateChannel : setting(name)),
+      (_, name: string) => Bun.escapeHTML(name === "EXECUTABLE_NAME" ? product : setting(name)),
     );
+    await cp(resolve("native/Configuration/Settings.bundle"), `${staging}/Settings.bundle`, { recursive: true });
     await Bun.write(`${staging}/Info.plist`, plist);
     // Preserve linked-SDK behavior: xtool otherwise uses the deployment target as the SDK version.
     await Bun.write(`${staging}/Package.swift`, `// swift-tools-version: 6.4
@@ -204,12 +200,14 @@ infoPath: Info.plist
 iconPath: Shared/Assets.xcassets/AppIcon.appiconset/ios-1024.png
 resources:
   - ../Web
+  - Settings.bundle
 skipLSP: true
 `);
     await run([
       "xtool", "dev", "build", "--triple",
       simulator ? "arm64-apple-ios-simulator" : "arm64-apple-ios",
     ], staging);
+    await run([process.execPath, "scripts/verify-ios-settings.ts", `${staging}/xtool/${product}.app`]);
     console.log(`App (${simulator ? "iOS simulator" : "requires development signing"}): ${staging}/xtool/${product}.app`);
   }
 } else if (platform !== "assets") {
@@ -223,9 +221,11 @@ skipLSP: true
     ...(mac ? ["ARCHS=" + (process.arch === "x64" ? "x86_64" : process.arch), "ONLY_ACTIVE_ARCH=YES"]
       : ["CODE_SIGNING_ALLOWED=NO"]),
     ...(device ? ["ARCHS=arm64"] : []),
-    ...(!mac ? [`CLANKY_FRONTEND_UPDATE_CHANNEL=${frontendUpdateChannel}`] : []),
     "build",
   ]);
   const product = mac ? configuration : `${configuration}-${device ? "iphoneos" : "iphonesimulator"}`;
+  if (!mac) {
+    await run([process.execPath, "scripts/verify-ios-settings.ts", `${directory}/build/Build/Products/${product}/Clanky.app`]);
+  }
   console.log(`App: ${directory}/build/Build/Products/${product}/Clanky.app`);
 }

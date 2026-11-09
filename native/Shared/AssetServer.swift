@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 /// A loopback origin keeps bundled content eligible for Web Crypto, Web Locks and workers.
 final class AssetServer: @unchecked Sendable {
-    private let root: URL
+    private var root: URL
     private let localAPI: URL?
     private let requestedPort: UInt16?
     private let queue = DispatchQueue(label: "clanky.assets")
@@ -130,6 +130,15 @@ final class AssetServer: @unchecked Sendable {
                     }
                 }
                 listener.cancel()
+            }
+        }
+    }
+
+    func updateRoot(_ root: URL) async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                self.root = root.resolvingSymlinksInPath()
+                continuation.resume()
             }
         }
     }
