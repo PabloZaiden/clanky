@@ -156,7 +156,9 @@ actor FrontendUpdater {
                     let offer = FrontendUpdateOffer(
                         currentVersion: current.info.version, version: info.version, revision: info.revision
                     )
-                    guard await confirm(offer) else {
+                    let accepted = await confirm(offer)
+                    try Task.checkCancellation()
+                    guard accepted else {
                         return PreparedFrontend(
                             root: current.root, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"),
                             resolved: false

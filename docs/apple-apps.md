@@ -1176,7 +1176,9 @@ verified and reused, not accepted without checking its public metadata.
 There is no downloading while Settings has suspended Clanky; only the final
 selection is observed when returning. If preparation fails, the running frontend
 stays selected and an informational warning is shown; the pending switch is
-retried on a later activation. Concurrent scenes share one update operation.
+retried on a later activation. Concurrent scenes share one update operation;
+every scene activation checks the preference. Obsolete checks and their
+development prompts are cancelled.
 
 An unchanged frontend manifest digest needs no asset download, installation
 or confirmation during ordinary updates.

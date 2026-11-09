@@ -151,11 +151,7 @@ final class AppModel: ObservableObject {
         if phase == .active {
             activeScenes.insert(scene)
             #if os(iOS)
-            do {
-                if try FrontendChannel.selected() != startupChannel { frontendSettingsChanged() }
-            } catch {
-                reportChannelFailure(error)
-            }
+            frontendSettingsChanged()
             #endif
             recoverAssetsIfActive()
         } else {
@@ -348,7 +344,8 @@ final class AppModel: ObservableObject {
     }
 
     private func confirmUpdate(_ offer: FrontendUpdateOffer) async -> Bool {
-        await withCheckedContinuation { continuation in
+        guard !Task.isCancelled else { return false }
+        return await withCheckedContinuation { continuation in
             updateAnswer = continuation
             updateOffer = offer
         }
