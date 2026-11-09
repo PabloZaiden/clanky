@@ -3,6 +3,9 @@ import SwiftUI
 @main
 struct ClankyApp: App {
     @StateObject private var model = AppModel()
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
@@ -20,6 +23,11 @@ struct ClankyApp: App {
                     #endif
                     await model.start()
                 }
+                #if os(iOS)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { model.frontendSettingsChanged() }
+                }
+                #endif
         }
         #if os(macOS)
         .defaultSize(width: 1200, height: 800)
@@ -119,6 +127,11 @@ private struct BrowserSession: View {
             app.setScenePhase(phase, for: sceneID)
             browser.setScenePhase(phase)
         }
+        #if os(iOS)
+        .onChange(of: app.frontendRevision) { _, _ in
+            browser.frontendChanged()
+        }
+        #endif
         .onDisappear {
             app.setScenePhase(.inactive, for: sceneID)
             browser.setScenePhase(.inactive)

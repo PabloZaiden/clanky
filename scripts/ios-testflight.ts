@@ -12,7 +12,6 @@ const version = tag?.match(/^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?
 if (!tag || !version || extra.length) throw new Error("Usage: bun scripts/ios-testflight.ts vX.Y.Z[-prerelease]");
 const frontendVersion = tag.slice(1);
 if (process.platform !== "darwin") throw new Error("TestFlight publication requires macOS and Xcode.");
-const frontendUpdateChannel = z.enum(["stable", "latest"]).parse(process.env["CLANKY_FRONTEND_UPDATE_CHANNEL"] ?? "latest");
 const { secret, redact, safe, run, importIdentity } = createAppleDistributionCommands();
 const keyId = secret("IOS_APP_STORE_KEY_ID");
 const issuer = secret("IOS_APP_STORE_ISSUER_ID");
@@ -92,9 +91,7 @@ async function publish() {
     throw new Error("The checked-out iOS source does not match GITHUB_SHA.");
   }
   const native: string[] = ["-project", "native/Clanky.xcodeproj", "-scheme", "Clanky-iOS",
-    "-configuration", "Release", "-destination", "generic/platform=iOS",
-    `CLANKY_FRONTEND_UPDATE_CHANNEL=${frontendUpdateChannel}`,
-    `INFOPLIST_KEY_ClankyFrontendUpdateChannel=${frontendUpdateChannel}`];
+    "-configuration", "Release", "-destination", "generic/platform=iOS"];
   const settings = z.array(z.object({
     target: z.string(),
     buildSettings: z.object({ PRODUCT_BUNDLE_IDENTIFIER: z.string(), PRODUCT_NAME: z.string() }),
@@ -199,8 +196,8 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
       CFBundleIdentifier: z.literal(bundleId), CFBundleShortVersionString: z.literal(version!),
       CFBundleVersion: z.literal(buildNumber), CFBundleExecutable: z.string().regex(/^[A-Za-z0-9._-]+$/),
       CFBundleSupportedPlatforms: z.tuple([z.literal("iPhoneOS")]), ITSAppUsesNonExemptEncryption: z.literal(false),
-      ClankyFrontendUpdateChannel: z.literal(frontendUpdateChannel),
     }).parse(JSON.parse(await run(["plutil", "-convert", "json", "-o", "-", join(appPath, "Info.plist")], true)));
+    await run([process.execPath, "scripts/verify-ios-settings.ts", appPath]);
     const web = join(appPath, "Web");
     const hash = z.string().regex(/^[a-f0-9]{64}$/);
     const frontendInfo = z.object({

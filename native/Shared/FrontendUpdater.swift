@@ -11,6 +11,7 @@ struct FrontendUpdateOffer: Identifiable, Sendable {
 struct PreparedFrontend: Sendable {
     let root: URL
     let warning: String?
+    let resolved: Bool
 }
 
 actor FrontendUpdater {
@@ -79,20 +80,31 @@ actor FrontendUpdater {
 
     func prepare(
         bundledRoot: URL,
+        installedRoot: URL? = nil,
+        fallbackStorage: URL? = nil,
+        force: Bool = false,
+        confirmDevelopment: Bool = true,
         progress: @escaping @MainActor @Sendable (String) -> Void,
         confirm: @escaping @MainActor @Sendable (FrontendUpdateOffer) async -> Bool
     ) async throws -> PreparedFrontend {
         defer { session.invalidateAndCancel() }
         let bundled = try loadSnapshot(bundledRoot)
         var current = bundled
+        var resolved = false
         var warnings: [String] = []
         func report(_ message: String) {
             NSLog("Clanky frontend update: %@", message)
             warnings.append(message)
         }
         do {
-            let selectionFile = storage.appendingPathComponent("selection.json")
-            if files.fileExists(atPath: selectionFile.path) {
+            let restoring = fallbackStorage ?? storage
+            let selectionFile = restoring.appendingPathComponent("selection.json")
+            if let installedRoot {
+                current = try loadSnapshot(installedRoot)
+                for asset in current.manifest.files {
+                    try verify(current.root.appendingPathComponent(asset.path), asset: asset)
+                }
+            } else if files.fileExists(atPath: selectionFile.path) {
                 let selection = try JSONDecoder().decode(Selection.self, from: read(selectionFile, limit: 4096))
                 guard isHash(selection.bundled), isHash(selection.active),
                       selection.previous.map({ isHash($0) }) ?? true else {
@@ -101,11 +113,11 @@ actor FrontendUpdater {
                 // A newly installed app's bundled frontend supersedes an older app's selection.
                 if selection.bundled == bundled.info.update.sha256 {
                     do {
-                        current = try savedSnapshot(selection.active)
+                        current = try savedSnapshot(selection.active, in: restoring)
                     } catch {
                         report("Unable to restore the active frontend: \(error.localizedDescription)")
                         if let previous = selection.previous {
-                            current = try savedSnapshot(previous)
+                            current = try savedSnapshot(previous, in: restoring)
                         }
                     }
                 }
@@ -136,22 +148,32 @@ actor FrontendUpdater {
                 options: .regularExpression
             ) != nil && info.version.compare(current.info.version, options: .numeric) == .orderedDescending
             let samePublishedRevision = !development && info.revision == current.info.revision && !newerStableVersion
-            if info.update.sha256 != current.info.update.sha256 && !samePublishedRevision {
-                if development {
+            let copyAcrossChannels = force && current.root != bundled.root
+                && current.root.deletingLastPathComponent() != storage
+            if (info.update.sha256 != current.info.update.sha256 && (force || !samePublishedRevision))
+                || copyAcrossChannels {
+                if development && confirmDevelopment {
                     let offer = FrontendUpdateOffer(
                         currentVersion: current.info.version, version: info.version, revision: info.revision
                     )
-                    guard await confirm(offer) else {
-                        return PreparedFrontend(root: current.root, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"))
+                    let accepted = await confirm(offer)
+                    try Task.checkCancellation()
+                    guard accepted else {
+                        return PreparedFrontend(
+                            root: current.root, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"),
+                            resolved: false
+                        )
                     }
                 }
                 let installed = current
                 let updated = try await deadline(seconds: 120) {
                     try await self.install(info, current: installed, bundled: bundled, progress: progress)
                 }
+                try Task.checkCancellation()
                 let selection = Selection(
                     bundled: bundled.info.update.sha256, active: info.update.sha256,
-                    previous: current.root == bundled.root ? nil : current.info.update.sha256
+                    previous: current.root != bundled.root && current.root.deletingLastPathComponent() == storage
+                        && current.info.update.sha256 != info.update.sha256 ? current.info.update.sha256 : nil
                 )
                 try JSONEncoder().encode(selection).write(
                     to: storage.appendingPathComponent("selection.json"), options: .atomic
@@ -167,11 +189,22 @@ actor FrontendUpdater {
                 } catch {
                     report("The frontend was updated, but old update files could not be removed: \(error.localizedDescription)")
                 }
+            } else if force && current.root == bundled.root {
+                let selectionFile = storage.appendingPathComponent("selection.json")
+                if files.fileExists(atPath: selectionFile.path) {
+                    try files.removeItem(at: selectionFile)
+                }
             }
+            try Task.checkCancellation()
+            resolved = true
         } catch {
+            try Task.checkCancellation()
             report("Unable to update the frontend: \(error.localizedDescription) Using the installed frontend.")
         }
-        return PreparedFrontend(root: current.root, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"))
+        return PreparedFrontend(
+            root: current.root, warning: warnings.isEmpty ? nil : warnings.joined(separator: "\n"),
+            resolved: resolved
+        )
     }
 
     private func deployment() async throws -> BuildInfo {
@@ -185,6 +218,18 @@ actor FrontendUpdater {
         _ info: BuildInfo, current: Snapshot, bundled: Snapshot,
         progress: @escaping @MainActor @Sendable (String) -> Void
     ) async throws -> Snapshot {
+        let target = storage.appendingPathComponent(info.update.sha256)
+        if files.fileExists(atPath: target.path) {
+            do {
+                let cached = try savedSnapshot(info.update.sha256, in: storage)
+                guard cached.info.revision == info.revision, cached.info.version == info.version else {
+                    throw UpdateError(message: "The cached frontend does not match this deployment.")
+                }
+                return cached
+            } catch {
+                NSLog("Clanky could not reuse the target frontend: %@", error.localizedDescription)
+            }
+        }
         let manifestData = try await downloadData(info.update.manifest, limit: info.update.bytes)
         let manifest = try decodeManifest(manifestData, info: info)
         try files.createDirectory(at: storage, withIntermediateDirectories: true)
@@ -230,7 +275,6 @@ actor FrontendUpdater {
         try manifestData.write(to: staging.appendingPathComponent("frontend-update.json"), options: .atomic)
         try JSONEncoder().encode(info).write(to: staging.appendingPathComponent("build-info.json"), options: .atomic)
         try Task.checkCancellation()
-        let target = storage.appendingPathComponent(info.update.sha256)
         if files.fileExists(atPath: target.path) {
             try files.removeItem(at: target)
         }
@@ -251,8 +295,8 @@ actor FrontendUpdater {
         return Snapshot(root: root, info: info, manifest: manifest)
     }
 
-    private func savedSnapshot(_ identity: String) throws -> Snapshot {
-        let snapshot = try loadSnapshot(storage.appendingPathComponent(identity))
+    private func savedSnapshot(_ identity: String, in directory: URL) throws -> Snapshot {
+        let snapshot = try loadSnapshot(directory.appendingPathComponent(identity))
         guard snapshot.info.update.sha256 == identity else {
             throw UpdateError(message: "The saved frontend identity is invalid.")
         }

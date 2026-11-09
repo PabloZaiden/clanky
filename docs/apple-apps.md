@@ -205,7 +205,8 @@ and authorized non-development entitlements. Their bundled frontend metadata,
 integrity manifest and both connection bootstraps must match the checked-out
 source and full release version, including any prerelease suffix. TestFlight
 never ships the default development frontend merely because the checked-in
-package version has that marker. The exported app declares no
+package version has that marker. Both apps must contain the checked-out iOS
+Settings bundle with stable as the default frontend channel. The exported app declares no
 non-exempt encryption: native hashing, client signing and transport use
 CryptoKit/Web Crypto/system networking. Reassess this declaration before adding
 cryptography not provided by the operating system.
@@ -1148,34 +1149,49 @@ the next activation if the app is inactive. The WebView is never replaced.
 
 ### Frontend updates on iPhone and iPad
 
-On a fresh iOS process launch, before opening the WebView, the app checks
-the build's fixed frontend channel:
+In **iOS Settings > Apps > Clanky**, **Use latest frontend** chooses the
+frontend update channel. The toggle is off by default for every iOS build,
+including main, local, prerelease and TestFlight builds:
 
-| App build origin | Update metadata |
+| Setting | Update metadata |
 | --- | --- |
-| Published stable release, including its TestFlight build | `https://pablozaiden.github.io/clanky/stable/build-info.json` |
-| Main, prerelease, or local build | `https://pablozaiden.github.io/clanky/latest/build-info.json` |
+| Off: stable (default) | `https://pablozaiden.github.io/clanky/stable/build-info.json` |
+| On: latest | `https://pablozaiden.github.io/clanky/latest/build-info.json` |
 
-CI records the origin through `CLANKY_FRONTEND_UPDATE_CHANNEL` and embeds it
-in the native bundle, including signed TestFlight archives. Local Xcode and
-Linux/xtool builds default to latest, even when built with Release optimization.
-Debug/Release configuration and the frontend's version are not channel
-selectors. The updater never changes channels after downloading a frontend.
+The preference is stored by iOS, independently of native build origin,
+Debug/Release configuration and frontend version. The same Settings bundle
+is packaged and verified in Xcode, Linux/xtool, CI and signed/exported TestFlight
+apps. It requires an updated native shell; a Pages frontend update cannot add
+the system setting to an older installed app.
 Saved snapshots and selections are kept separately for each channel.
-Missing or invalid native channel metadata fails startup visibly.
+Invalid saved preference data is reported explicitly.
 The old root update URL is not retained; older app builds need replacement.
 
+Before opening the WebView on a cold launch, the app checks the selected channel.
+Changing the toggle takes effect on returning to Clanky, without force-quitting.
+It always requests that channel's metadata and applies its verified frontend,
+even for an older version or the same source revision. This explicit choice is
+automatic, including from a development frontend. An already cached target is
+verified and reused, not accepted without checking its public metadata.
+There is no downloading while Settings has suspended Clanky; only the final
+selection is observed when returning. If preparation fails, the running frontend
+stays selected and an informational warning is shown; the pending switch is
+retried on a later activation. Concurrent scenes share one update operation;
+every scene activation checks the preference. Obsolete checks and their
+development prompts are cancelled.
+
 An unchanged frontend manifest digest needs no asset download, installation
-or confirmation.
+or confirmation during ordinary updates.
 A published frontend also skips rebuilds of its already installed source
 revision when the stable release version has not advanced, even if bundler
 details or the latest/main version timestamp change. A newer stable release
 version updates even at the same source revision; an old saved release cannot
 block that upgrade merely because the commit matches.
 Development frontends do not use that shortcut because they may include
-uncommitted changes. `builtAt` alone never triggers an update. Returning from the background,
-reloading the web page, opening another scene and retrying the local asset
-server do not initiate another update check in that process.
+uncommitted changes. `builtAt` alone never triggers an update. With an unchanged
+channel and no pending switch, returning from the background, reloading the
+web page, opening another scene and retrying the local asset server do not
+initiate another update check in that process.
 
 When a different frontend is available, the app prepares it during that same
 startup and opens the updated UI. The version used to detect development
@@ -1187,7 +1203,7 @@ site's build metadata. The checked-in `0.0.0-development` version retains its
 version before packaging, and TestFlight passes its release version explicitly.
 Apple asset/native builds can set `--frontend-version` without changing the
 package version; this build parameter does not select or change update channels.
-An active version with the development marker offers
+During an ordinary non-switch update, an active version with the development marker offers
 **Update** or **Keep Current** before downloading the update. Keeping it asks
 again on a later cold launch if a different deployment is still available.
 Once the active frontend is a published version, updates are automatic.
@@ -1199,7 +1215,11 @@ Downloads use the existing Pages assets and their manifest's byte sizes and
 SHA-256 hashes. Identical verified local assets are reused, including assets
 shared between connection modes. The complete snapshot is prepared in private
 Application Support storage and selected atomically, never written into the
-signed app bundle. The active snapshot stays fixed while the process runs.
+signed app bundle. The active snapshot stays fixed unless the user changes
+channels. The target is prepared before the existing listener switches roots
+at the same origin; the existing WebViews reload without replacing their
+persistent website data stores. Unsaved in-memory page state can be lost on
+that deliberate reload.
 The selection retains the previous downloaded snapshot as well as the bundled
 frontend. A newly installed app with a different bundled frontend starts from
 that bundle rather than an older app's downloaded selection.

@@ -19,9 +19,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var startupMessage = "Opening Clanky..."
     @Published private(set) var updateOffer: FrontendUpdateOffer?
     @Published var updateWarning: String?
+    @Published private(set) var frontendRevision = 0
     private var updateAnswer: CheckedContinuation<Bool, Never>?
     private var preparedRoot: URL?
     private var startup: Task<PreparedFrontend, Error>?
+    private var startupChannel: FrontendChannel?
+    private var activeChannel: FrontendChannel?
+    private var channelUpdate: Task<Void, Never>?
+    private var requestedChannel: FrontendChannel?
+    private var channelSwitchPending = false
     #endif
     private var starting = false
     #if os(macOS)
@@ -63,34 +69,38 @@ final class AppModel: ObservableObject {
             if let preparedRoot {
                 root = preparedRoot
             } else {
-                if startup == nil {
+                while preparedRoot == nil {
                     let bundledRoot = root
-                    guard let channel = Bundle.main.object(forInfoDictionaryKey: "ClankyFrontendUpdateChannel") as? String,
-                          channel == "stable" || channel == "latest",
-                          let source = URL(string: "https://pablozaiden.github.io/clanky/\(channel)/") else {
-                        throw NSError(domain: "Clanky", code: 6, userInfo: [
-                            NSLocalizedDescriptionKey: "The app's frontend update channel is missing or invalid."
-                        ])
+                    let channel = try FrontendChannel.selected()
+                    let previous = try FrontendChannel.applied()
+                    let explicitChoice = previous != nil || channel == .latest
+                    if startup == nil {
+                        startupChannel = channel
+                        startup = Task {
+                            try await self.prepareFrontend(
+                                channel, bundledRoot: bundledRoot,
+                                fallbackChannel: previous != channel ? previous : nil,
+                                force: previous != channel,
+                                confirmDevelopment: previous == channel || (previous == nil && !explicitChoice)
+                            )
+                        }
                     }
-                    startup = Task { [weak self] in
-                        let directory = try FileManager.default.url(
-                            for: .applicationSupportDirectory, in: .userDomainMask,
-                            appropriateFor: nil, create: false
-                        ).appendingPathComponent("FrontendUpdates").appendingPathComponent(channel)
-                        return try await FrontendUpdater(storage: directory, source: source).prepare(
-                            bundledRoot: bundledRoot,
-                            progress: { [weak self] message in self?.startupMessage = message },
-                            confirm: { [weak self] offer in
-                                guard let self else { return false }
-                                return await self.confirmUpdate(offer)
-                            }
-                        )
+                    guard let startup else { throw CancellationError() }
+                    let prepared: PreparedFrontend
+                    do {
+                        prepared = try await startup.value
+                    } catch is CancellationError {
+                        self.startup = nil
+                        guard try FrontendChannel.selected() != channel else { throw CancellationError() }
+                        continue
                     }
-                }
-                if let startup {
-                    let prepared = try await startup.value
+                    self.startup = nil
+                    guard try FrontendChannel.selected() == channel else { continue }
                     preparedRoot = prepared.root
                     updateWarning = prepared.warning
+                    activeChannel = prepared.resolved ? channel : (previous ?? channel)
+                    channelSwitchPending = !prepared.resolved && previous != channel && explicitChoice
+                    if prepared.resolved { channel.recordApplied() }
                     root = prepared.root
                 }
             }
@@ -110,6 +120,7 @@ final class AppModel: ObservableObject {
             self.origin = origin
             #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .phone { NativeDiagnostics.record("app-started") }
+            if try FrontendChannel.selected() != startupChannel { frontendSettingsChanged() }
             #endif
         } catch {
             await assets?.stop()
@@ -139,6 +150,9 @@ final class AppModel: ObservableObject {
     func setScenePhase(_ phase: ScenePhase, for scene: UUID) {
         if phase == .active {
             activeScenes.insert(scene)
+            #if os(iOS)
+            frontendSettingsChanged()
+            #endif
             recoverAssetsIfActive()
         } else {
             activeScenes.remove(scene)
@@ -241,8 +255,97 @@ final class AppModel: ObservableObject {
     }
 
     #if os(iOS)
+    private func prepareFrontend(
+        _ channel: FrontendChannel, bundledRoot: URL, installedRoot: URL? = nil,
+        fallbackChannel: FrontendChannel? = nil, force: Bool, confirmDevelopment: Bool
+    ) async throws -> PreparedFrontend {
+        try await FrontendUpdater(storage: channel.storageDirectory(), source: channel.source).prepare(
+            bundledRoot: bundledRoot, installedRoot: installedRoot,
+            fallbackStorage: fallbackChannel?.storageDirectory(),
+            force: force, confirmDevelopment: confirmDevelopment,
+            progress: { [weak self] message in self?.startupMessage = message },
+            confirm: { [weak self] offer in
+                guard let self else { return false }
+                return await self.confirmUpdate(offer)
+            }
+        )
+    }
+
+    func frontendSettingsChanged() {
+        do {
+            let channel = try FrontendChannel.selected()
+            guard origin != nil else {
+                if let startupChannel, startupChannel != channel {
+                    startup?.cancel()
+                    answerUpdate(false)
+                }
+                return
+            }
+            if channelUpdate != nil {
+                if requestedChannel != channel { channelUpdate?.cancel() }
+                return
+            }
+            guard channel != activeChannel || channelSwitchPending,
+                  let installedRoot = assetRoot,
+                  let bundledRoot = Bundle.main.resourceURL?.appendingPathComponent("Web") else { return }
+            requestedChannel = channel
+            channelUpdate = Task { [weak self] in
+                guard let self else { return }
+                defer {
+                    self.channelUpdate = nil
+                    self.requestedChannel = nil
+                    if !self.activeScenes.isEmpty {
+                        do {
+                            if try FrontendChannel.selected() != channel { self.frontendSettingsChanged() }
+                        } catch {
+                            self.reportChannelFailure(error)
+                        }
+                    }
+                }
+                do {
+                    let prepared = try await self.prepareFrontend(
+                        channel, bundledRoot: bundledRoot, installedRoot: installedRoot,
+                        force: true, confirmDevelopment: false
+                    )
+                    try Task.checkCancellation()
+                    guard prepared.resolved else {
+                        self.channelSwitchPending = true
+                        self.updateWarning = prepared.warning
+                        return
+                    }
+                    try await self.ensureAssets()
+                    try Task.checkCancellation()
+                    guard try FrontendChannel.selected() == channel, !self.activeScenes.isEmpty else { return }
+                    guard let server = self.assets else { throw NWError.posix(.ENOTCONN) }
+                    // A listener replacement during the queue handoff must use the prepared root.
+                    self.assetRoot = prepared.root
+                    await server.updateRoot(prepared.root)
+                    self.preparedRoot = prepared.root
+                    self.activeChannel = channel
+                    self.channelSwitchPending = false
+                    channel.recordApplied()
+                    self.updateWarning = prepared.warning
+                    if prepared.root != installedRoot { self.frontendRevision += 1 }
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.reportChannelFailure(error)
+                }
+            }
+        } catch {
+            reportChannelFailure(error)
+        }
+    }
+
+    private func reportChannelFailure(_ failure: Error) {
+        channelSwitchPending = true
+        NSLog("Clanky frontend channel change failed: %@", failure.localizedDescription)
+        updateWarning = "Unable to change the frontend channel: \(failure.localizedDescription) Using the installed frontend."
+    }
+
     private func confirmUpdate(_ offer: FrontendUpdateOffer) async -> Bool {
-        await withCheckedContinuation { continuation in
+        guard !Task.isCancelled else { return false }
+        return await withCheckedContinuation { continuation in
             updateAnswer = continuation
             updateOffer = offer
         }
@@ -257,6 +360,11 @@ final class AppModel: ObservableObject {
     #endif
 
     func stopAssets() async {
+        #if os(iOS)
+        channelUpdate?.cancel()
+        startup?.cancel()
+        answerUpdate(false)
+        #endif
         assetRecovery?.cancel()
         recoveryID = UUID()
         assetID = UUID()
@@ -391,6 +499,20 @@ final class BrowserModel: ObservableObject {
         needsReload = true
         if active { reloadAutomatically() }
     }
+
+    #if os(iOS)
+    func frontendChanged() {
+        closePopup()
+        nativeToolbar.clear()
+        error = nil
+        needsReload = true
+        if webView.url == nil {
+            home()
+        } else {
+            withAssetsReady { $0.reloadFromOrigin() }
+        }
+    }
+    #endif
 
     private func reloadAutomatically() {
         error = nil
