@@ -80,11 +80,11 @@ function getWorkspaceSidebarActions(
         }),
       },
       {
-        id: "new-agent",
-        label: "New Agent",
+        id: "new-automation",
+        label: "New Automation",
         onClick: () => context.navigateWithinShell({
           view: "compose",
-          kind: "agent",
+          kind: "automation",
           workspaceId,
         }),
       },

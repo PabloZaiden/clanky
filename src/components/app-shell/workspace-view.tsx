@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Agent, Chat, PublicWorkspace, Workspace } from "@/shared";
+import type { Automation, Chat, PublicWorkspace, Workspace } from "@/shared";
 import type { useChats, useTasks } from "../../hooks";
 import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
@@ -13,7 +13,7 @@ import {
   getTerminalSessionStatusLabel,
 } from "../common";
 import { EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
-import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
+import { ConfiguredAutomationsSection } from "../ConfiguredAutomationsSection";
 import {
   isEffectivelyPrivate,
   shouldObscurePrivateItem,
@@ -119,9 +119,9 @@ export function WorkspaceView({
   relatedTasks,
   relatedChats,
   relatedTerminalSessions,
-  relatedAgents,
-  agentsLoading,
-  agentsError,
+  relatedAutomations,
+  automationsLoading,
+  automationsError,
   onNavigate,
   onPullLatestChanges,
   pullingLatestChanges,
@@ -132,9 +132,9 @@ export function WorkspaceView({
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
   relatedTerminalSessions: UseTerminalSessionsResult["sessions"];
-  relatedAgents: Agent[];
-  agentsLoading: boolean;
-  agentsError: string | null;
+  relatedAutomations: Automation[];
+  automationsLoading: boolean;
+  automationsError: string | null;
   onNavigate: (route: WebAppRoute) => void;
   onPullLatestChanges: () => Promise<void>;
   pullingLatestChanges: boolean;
@@ -267,14 +267,14 @@ export function WorkspaceView({
         </div>
       </Panel>
 
-      <ConfiguredAgentsSection
-        agents={relatedAgents}
-        loading={agentsLoading}
-        error={agentsError}
-        title="Configured Agents"
+      <ConfiguredAutomationsSection
+        automations={relatedAutomations}
+        loading={automationsLoading}
+        error={automationsError}
+        title="Configured Automations"
         panelClassName="border-0"
-        onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
-        isAgentPrivateHidden={(agent) => shouldObscurePrivateItem(isEffectivelyPrivate(agent.config, [workspace]), showPrivateItems)}
+        onSelectAutomation={(automationId) => onNavigate({ view: "automation", automationId })}
+        isAutomationPrivateHidden={(automation) => shouldObscurePrivateItem(isEffectivelyPrivate(automation.config, [workspace]), showPrivateItems)}
       />
 
       {historyTasks.length > 0 || historyChats.length > 0 ? (

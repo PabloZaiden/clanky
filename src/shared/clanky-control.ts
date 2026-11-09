@@ -45,7 +45,7 @@ export const ControlNavigationActionSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1).max(500),
   }).strict(),
   z.object({ type: z.literal("open_task"), taskId: z.string().min(1).max(500) }).strict(),
-  z.object({ type: z.literal("open_agent"), agentId: z.string().min(1).max(500) }).strict(),
+  z.object({ type: z.literal("open_automation"), automationId: z.string().min(1).max(500) }).strict(),
   z.object({ type: z.literal("open_terminal"), terminalSessionId: z.string().min(1).max(500) }).strict(),
   z.object({
     type: z.literal("open_execution_host"),

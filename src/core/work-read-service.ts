@@ -9,7 +9,7 @@ import { listWorkReadIds, listWorkReadWindow, type WorkReadResource, type Stored
 import { collectionReadPage, decodeReadCursor, readRevision, resourceKey, fitCompactMetadata } from "../client-sdk/collaboration/resource-read";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
-import { loadAgentRunSummary } from "../persistence/agents";
+import { loadAutomationRunSummary } from "../persistence/automations";
 import { DomainError } from "../domain/domain-error";
 import { getExecutionHostRefsByIds } from "../persistence/execution-hosts";
 
@@ -29,7 +29,7 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
       host: row.executionHostId ? hosts.get(row.executionHostId) ?? null : null,
       directory: row.directory,
     } : { kind: "workspace", workspaceId: row.workspaceId },
-    ...(row.agentId ? { agentId: row.agentId, chatId: row.chatId } : {}),
+    ...(row.automationId ? { automationId: row.automationId, chatId: row.chatId } : {}),
     ...(row.taskId ? { taskId: row.taskId } : {}),
     ...(row.currentIteration !== null ? { currentIteration: row.currentIteration } : {}),
     ...(row.stateAvailable ? {
@@ -60,18 +60,18 @@ export function readWorkMetadata(input: { resource: WorkReadResource; id: string
 }
 
 export async function readWorkCollectionItem(input: {
-  resource: WorkReadResource; options: ResourceReadOptions; workspaceId?: string; agentId?: string;
+  resource: WorkReadResource; options: ResourceReadOptions; workspaceId?: string; automationId?: string;
 }): Promise<unknown> {
   const id = listWorkReadIds({ ...input, userId: requireExecutionOwnerUserId() })
     .find((candidate) => resourceKey({ id: candidate }) === input.options.item);
   if (!id) throw new DomainError("read_item_unavailable", "The selected item is unavailable.");
   return input.resource === "chat" ? await loadChatMetadata(id)
-    : input.resource === "task" ? await loadTaskSummary(id) : await loadAgentRunSummary(id);
+    : input.resource === "task" ? await loadTaskSummary(id) : await loadAutomationRunSummary(id);
 }
 
 export function readWorkCollection(input: {
   resource: WorkReadResource; scope: string; options: ResourceReadOptions;
-  workspaceId?: string; agentId?: string; baseOffset?: number;
+  workspaceId?: string; automationId?: string; baseOffset?: number;
 }): Page<unknown> {
   const source = { ...input, userId: requireExecutionOwnerUserId() };
   const allIds = listWorkReadIds(source);

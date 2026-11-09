@@ -1,5 +1,5 @@
 import type {
-  AgentStatus,
+  AutomationStatus,
   ChatStatus,
   ProvisioningJobStatus,
   TerminalSessionStatus,
@@ -29,7 +29,7 @@ export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
   }
 }
 
-export function getAgentStatusBadgeVariant(status: AgentStatus | string): BadgeVariant {
+export function getAutomationStatusBadgeVariant(status: AutomationStatus | string): BadgeVariant {
   switch (status) {
     case "enabled":
     case "completed":

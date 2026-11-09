@@ -5,7 +5,7 @@ import {
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import {
   executionHostRefsEqual,
-  type Agent,
+  type Automation,
   type Chat,
   type ExecutionHostDescriptor,
   type Task,
@@ -45,8 +45,8 @@ export interface SidebarChatNode {
   badgeVariant: BadgeVariant;
 }
 
-export interface SidebarAgentNode {
-  agent: Agent;
+export interface SidebarAutomationNode {
+  automation: Automation;
   title: string;
   badge: string;
   badgeVariant: BadgeVariant;

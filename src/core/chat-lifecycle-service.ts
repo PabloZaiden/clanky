@@ -38,7 +38,7 @@ import type {
   ChatSessionPort,
   ChatStatePort,
   ChatWorktreePort,
-  CreateAgentRunChatOptions,
+  CreateAutomationRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
 } from "./chat-service-contracts";
@@ -304,10 +304,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     });
   }
 
-  async createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat> {
+  async createAutomationRunChat(options: CreateAutomationRunChatOptions): Promise<Chat> {
     return this.createChat({
       ...options,
-      scope: "agent",
+      scope: "automation",
       prepareWorktreeOnCreate: options.prepareWorktreeOnCreate ?? true,
     });
   }

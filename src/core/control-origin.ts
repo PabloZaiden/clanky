@@ -5,7 +5,7 @@ import type { ControlToolOrigin } from "./control-tool-context";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
-import { loadAgentRunSummary } from "../persistence/agents";
+import { loadAutomationRunSummary } from "../persistence/automations";
 import { DomainError } from "../domain/domain-error";
 
 export async function requireControlChat(grant: ControlGrant, chatId: string): Promise<void> {
@@ -43,9 +43,9 @@ export async function resolveControlOrigin(
       autoAcceptPlan: task.config.autoAcceptPlan === true,
       fullyAutonomous: task.config.fullyAutonomous === true,
     };
-  } else if (identity?.contextType === "agent_run") {
-    const run = await loadAgentRunSummary(identity.contextId);
-    if (!run) throw new DomainError("control_context_unavailable", "The originating agent run is unavailable.");
+  } else if (identity?.contextType === "automation_run") {
+    const run = await loadAutomationRunSummary(identity.contextId);
+    if (!run) throw new DomainError("control_context_unavailable", "The originating automation run is unavailable.");
     origin.defaultModel = run.configSnapshot.model;
     if (run.chatId) origin.current.chat = run.chatId;
   }

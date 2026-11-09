@@ -10,7 +10,7 @@ export {
 } from "./useDocumentVisibility";
 export { useForegroundPresentation } from "./useForegroundPresentation";
 export { useTextStateSwap } from "./useTextStateSwap";
-export { useAgents, type UseAgentsResult } from "./useAgents";
+export { useAutomations, type UseAutomationsResult } from "./useAutomations";
 export { useWorkspaceSchedulerTimezone } from "./useWorkspaceSchedulerTimezone";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";

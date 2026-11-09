@@ -265,8 +265,8 @@ export function buildShellSettingsSections({
       render: () => <VoiceSettingsRowContent voiceSettings={voiceSettings} />,
     },
     {
-      id: "agents",
-      title: "Agents",
+      id: "automations",
+      title: "Automations",
       category: { id: "integrations", title: "Agents & integrations" },
       scope: "user" as const,
       rows: [{
@@ -392,7 +392,7 @@ export function buildShellSettingsSections({
     },
   ];
   const capabilities = getClankyClientCapabilities();
-  const controllerSections = new Set(["mesh", "controller", "relays", "agents", "github", "agent-notifications", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
+  const controllerSections = new Set(["mesh", "controller", "relays", "automations", "github", "agent-notifications", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
   return sections.filter((section) => section.id === "voice"
     ? capabilities.voice
     : capabilities.controllerAdministration || !controllerSections.has(section.id));

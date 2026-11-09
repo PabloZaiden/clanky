@@ -1,7 +1,7 @@
 /**
  * Resource-fixed transcript adapters over the shared SQL implementation.
  *
- * Callers select chat, task, or agent-run at this boundary so SQL remains
+ * Callers select chat, task, or automation-run at this boundary so SQL remains
  * shared without making resource identifiers part of higher-level contracts.
  */
 import type { Database } from "bun:sqlite";

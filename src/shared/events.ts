@@ -16,7 +16,7 @@
  * @module types/events
  */
 
-import type { Agent, AgentRun, AgentRunStatus } from "./agent";
+import type { Automation, AutomationRun, AutomationRunStatus } from "./automation";
 import type { ChatMetadata, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig, PersistedMessage } from "./task";
 import type { ToolCallRecord } from "./tool-call";
@@ -142,26 +142,26 @@ export type ChatEvent = (
 ) & { streamPosition?: StreamDeltaPosition };
 
 /**
- * Union type of all agent-scoped events streamed to clients.
+ * Union type of all automation-scoped events streamed to clients.
  */
-export type AgentEvent = (
-  | AgentCreatedEvent
-  | AgentUpdatedEvent
-  | AgentDeletedEvent
-  | AgentRunScheduledEvent
-  | AgentRunStartedEvent
-  | AgentRunStatusEvent
-  | AgentRunMessageEvent
-  | AgentRunMessageDeltaEvent
-  | AgentRunToolCallEvent
-  | AgentRunLogEvent
-  | AgentRunLogDeltaEvent
-  | AgentRunSkippedEvent
-  | AgentRunCompletedEvent
-  | AgentRunFailedEvent
-  | AgentRunInterruptedEvent
-  | AgentRunDeletedEvent
-  | AgentRunsPurgedEvent
+export type AutomationEvent = (
+  | AutomationCreatedEvent
+  | AutomationUpdatedEvent
+  | AutomationDeletedEvent
+  | AutomationRunScheduledEvent
+  | AutomationRunStartedEvent
+  | AutomationRunStatusEvent
+  | AutomationRunMessageEvent
+  | AutomationRunMessageDeltaEvent
+  | AutomationRunToolCallEvent
+  | AutomationRunLogEvent
+  | AutomationRunLogDeltaEvent
+  | AutomationRunSkippedEvent
+  | AutomationRunCompletedEvent
+  | AutomationRunFailedEvent
+  | AutomationRunInterruptedEvent
+  | AutomationRunDeletedEvent
+  | AutomationRunsPurgedEvent
 ) & { streamPosition?: StreamDeltaPosition };
 
 export interface ChatCreatedEvent {
@@ -256,85 +256,85 @@ export interface ChatDeletedEvent {
   timestamp: string;
 }
 
-export interface AgentCreatedEvent {
-  type: "agent.created";
-  agentId: string;
-  agent: Agent;
+export interface AutomationCreatedEvent {
+  type: "automation.created";
+  automationId: string;
+  automation: Automation;
   timestamp: string;
 }
 
-export interface AgentUpdatedEvent {
-  type: "agent.updated";
-  agentId: string;
-  agent: Agent;
+export interface AutomationUpdatedEvent {
+  type: "automation.updated";
+  automationId: string;
+  automation: Automation;
   timestamp: string;
 }
 
-export interface AgentDeletedEvent {
-  type: "agent.deleted";
-  agentId: string;
+export interface AutomationDeletedEvent {
+  type: "automation.deleted";
+  automationId: string;
   workspaceId: string;
   timestamp: string;
 }
 
-export interface AgentRunScheduledEvent {
-  type: "agent.run.scheduled";
-  agentId: string;
-  agentRunId: string;
-  run: AgentRun;
+export interface AutomationRunScheduledEvent {
+  type: "automation.run.scheduled";
+  automationId: string;
+  automationRunId: string;
+  run: AutomationRun;
   timestamp: string;
 }
 
-export interface AgentRunStartedEvent {
-  type: "agent.run.started";
-  agentId: string;
-  agentRunId: string;
-  run: AgentRun;
+export interface AutomationRunStartedEvent {
+  type: "automation.run.started";
+  automationId: string;
+  automationRunId: string;
+  run: AutomationRun;
   timestamp: string;
 }
 
-export interface AgentRunStatusEvent {
-  type: "agent.run.status";
-  agentId: string;
-  agentRunId: string;
-  status: AgentRunStatus;
+export interface AutomationRunStatusEvent {
+  type: "automation.run.status";
+  automationId: string;
+  automationRunId: string;
+  status: AutomationRunStatus;
   timestamp: string;
 }
 
-export interface AgentRunMessageEvent {
-  type: "agent.run.message";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunMessageEvent {
+  type: "automation.run.message";
+  automationId: string;
+  automationRunId: string;
   message: MessageData;
   timestamp: string;
 }
 
-export interface AgentRunMessageDeltaEvent extends MessageDeltaData {
-  type: "agent.run.message.delta";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunMessageDeltaEvent extends MessageDeltaData {
+  type: "automation.run.message.delta";
+  automationId: string;
+  automationRunId: string;
 }
 
-export interface AgentRunToolCallEvent {
-  type: "agent.run.tool_call";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunToolCallEvent {
+  type: "automation.run.tool_call";
+  automationId: string;
+  automationRunId: string;
   tool: ToolCallData;
   timestamp: string;
 }
 
-export interface AgentRunLogEvent {
-  type: "agent.run.log";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunLogEvent {
+  type: "automation.run.log";
+  automationId: string;
+  automationRunId: string;
   log: TaskLogEntry;
   timestamp: string;
 }
 
-export interface AgentRunLogDeltaEvent {
-  type: "agent.run.log.delta";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunLogDeltaEvent {
+  type: "automation.run.log.delta";
+  automationId: string;
+  automationRunId: string;
   logId: string;
   level: TaskLogEntry["level"];
   message: string;
@@ -346,47 +346,47 @@ export interface AgentRunLogDeltaEvent {
   timestamp: string;
 }
 
-export interface AgentRunSkippedEvent {
-  type: "agent.run.skipped";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunSkippedEvent {
+  type: "automation.run.skipped";
+  automationId: string;
+  automationRunId: string;
   reason: string;
   timestamp: string;
 }
 
-export interface AgentRunCompletedEvent {
-  type: "agent.run.completed";
-  agentId: string;
-  agentRunId: string;
-  run: AgentRun;
+export interface AutomationRunCompletedEvent {
+  type: "automation.run.completed";
+  automationId: string;
+  automationRunId: string;
+  run: AutomationRun;
   timestamp: string;
 }
 
-export interface AgentRunFailedEvent {
-  type: "agent.run.failed";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunFailedEvent {
+  type: "automation.run.failed";
+  automationId: string;
+  automationRunId: string;
   message: string;
   timestamp: string;
 }
 
-export interface AgentRunInterruptedEvent {
-  type: "agent.run.interrupted";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunInterruptedEvent {
+  type: "automation.run.interrupted";
+  automationId: string;
+  automationRunId: string;
   timestamp: string;
 }
 
-export interface AgentRunDeletedEvent {
-  type: "agent.run.deleted";
-  agentId: string;
-  agentRunId: string;
+export interface AutomationRunDeletedEvent {
+  type: "automation.run.deleted";
+  automationId: string;
+  automationRunId: string;
   timestamp: string;
 }
 
-export interface AgentRunsPurgedEvent {
-  type: "agent.runs.purged";
-  agentId: string;
+export interface AutomationRunsPurgedEvent {
+  type: "automation.runs.purged";
+  automationId: string;
   deletedRunIds: string[];
   timestamp: string;
 }

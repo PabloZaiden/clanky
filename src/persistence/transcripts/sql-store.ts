@@ -1,5 +1,5 @@
 /**
- * Shared SQL implementation for chat, task, and agent-run transcript stores.
+ * Shared SQL implementation for chat, task, and automation-run transcript stores.
  *
  * Resource-specific adapters live in separate modules; this file owns only
  * the parameterized persistence operations.
@@ -149,7 +149,7 @@ export function replaceTranscriptEntriesForUserInTransaction(
   state: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const entries = sortStateEntries(getTranscriptStateEntries(state, shouldIncludeLog));
@@ -192,7 +192,7 @@ export function replaceTranscriptEntries(
   replaceTranscriptEntriesForUser(
     resource,
     resourceId,
-    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
+    requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId),
     state,
     shouldIncludeLog,
   );
@@ -207,7 +207,7 @@ export function syncTranscriptEntriesInTransaction(
   nextState: TranscriptStateLike,
   shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
 ): void {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
   const config = getTableConfig(resource);
   const previousEntries = new Map(
@@ -284,7 +284,7 @@ export function applyTranscriptChangeSetInTransaction(
   userId: string,
   changes: TranscriptChangeSet,
 ): void {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "chat" && (changes.upserts.length > 0 || changes.deletes.length > 0)) {
     invalidateChatMetadata(db, userId, resourceId);
   }
@@ -356,7 +356,7 @@ export function syncTranscriptEntries(
   shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
 ): void {
   const db = getDatabase();
-  const userId = requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId);
+  const userId = requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId);
   db.transaction(() => {
     syncTranscriptEntriesInTransaction(
       db,
@@ -375,7 +375,7 @@ export function getTranscriptMetaForUser(
   resourceId: string,
   userId: string,
 ): TranscriptMeta | null {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT revision, entry_count
@@ -386,11 +386,11 @@ export function getTranscriptMetaForUser(
 }
 
 export function getTranscriptMeta(resource: TranscriptResource, resourceId: string): TranscriptMeta | null {
-  return getTranscriptMetaForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId));
+  return getTranscriptMetaForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId));
 }
 
 export function getConversationMessageIdsForUser(resource: TranscriptResource, resourceId: string, userId: string): string[] {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const rows = getDatabase().prepare(`
     SELECT entry_id FROM ${config.entriesTable}
@@ -403,7 +403,7 @@ export function getConversationMessageIdsForUser(resource: TranscriptResource, r
 export function getConversationMessageWindowForUser(input: {
   resource: TranscriptResource; resourceId: string; userId: string; position: number; limit: number;
 }): PersistedMessage[] {
-  assertResourcePersistenceUser(input.resource === "agent_run" ? "agent-run" : input.resource, input.resourceId, input.userId);
+  assertResourcePersistenceUser(input.resource === "automation_run" ? "automation-run" : input.resource, input.resourceId, input.userId);
   const config = getTableConfig(input.resource);
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload, updated_at,
@@ -428,13 +428,13 @@ export function getConversationAdmissionsForUser(
   resourceId: string,
   userId: string,
 ): Array<{ inputId: string; nativeMessageId: string | null; status: string }> {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "subagent") return [];
   const table = resource === "task" ? "tasks" : "chats";
-  const target = resource === "agent_run"
-    ? getDatabase().prepare("SELECT chat_id FROM agent_runs WHERE id = ? AND user_id = ?")
+  const target = resource === "automation_run"
+    ? getDatabase().prepare("SELECT chat_id FROM automation_runs WHERE id = ? AND user_id = ?")
       .get(resourceId, userId) as { chat_id: string | null } | null : null;
-  const id = resource === "agent_run" ? target?.chat_id : resourceId;
+  const id = resource === "automation_run" ? target?.chat_id : resourceId;
   if (!id) return [];
   return getDatabase().prepare(`
     SELECT
@@ -454,7 +454,7 @@ export function listTranscriptEntriesForUser(
   userId: string,
   includeToolPayload = false,
 ): ChatTranscriptStorageEntry[] {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
 
   const rows = getDatabase().prepare(`
@@ -484,7 +484,7 @@ export function listTranscriptEntriesAfterForUser(
     fileAttachmentsOnly?: boolean;
   },
 ): TranscriptStoragePage {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const MAX_TRANSCRIPT_STORAGE_PAGE_SIZE = 256;
   if (
     !Number.isInteger(options.limit)
@@ -750,7 +750,7 @@ export function listTranscriptEntriesPageForUser(
   userId: string,
   options: TranscriptSnapshotOptions = {},
 ): TranscriptEntriesPage {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if ([options.full, options.before, options.since].filter(Boolean).length > 1) {
     throw new TranscriptCursorError("Transcript window options cannot be combined");
   }
@@ -869,7 +869,7 @@ export function listTranscriptEntries(
   return listTranscriptEntriesForUser(
     resource,
     resourceId,
-    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
+    requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId),
     includeToolPayload,
   );
 }
@@ -882,7 +882,7 @@ export function listTranscriptEntriesPage(
   return listTranscriptEntriesPageForUser(
     resource,
     resourceId,
-    requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId),
+    requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId),
     options,
   );
 }
@@ -893,7 +893,7 @@ export function getTranscriptToolCallForUser(
   userId: string,
   toolCallId: string,
 ): ToolCallRecord | null {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -916,7 +916,7 @@ export function getTranscriptMessageForUser(
   userId: string,
   messageId: string,
 ): PersistedMessage | null {
-  assertResourcePersistenceUser(resource === "agent_run" ? "agent-run" : resource, resourceId, userId);
+  assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   const config = getTableConfig(resource);
   const row = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
@@ -941,7 +941,7 @@ export function getTranscriptToolCall(
   resourceId: string,
   toolCallId: string,
 ): ToolCallRecord | null {
-  return getTranscriptToolCallForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId), toolCallId);
+  return getTranscriptToolCallForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId), toolCallId);
 }
 
 export function hydrateTranscriptStateForUser(
@@ -987,5 +987,5 @@ export function hydrateTranscriptState(
   resource: TranscriptResource,
   resourceId: string,
 ): TranscriptStateLike {
-  return hydrateTranscriptStateForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "agent_run" ? "agent-run" : resource, resourceId));
+  return hydrateTranscriptStateForUser(resource, resourceId, requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId));
 }

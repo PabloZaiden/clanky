@@ -245,7 +245,7 @@ own project without enabling general Clanky access or installing a CLI/skill.
 The workspace's **Allow general
 Clanky access** setting permits all catalogued application operations within
 the user's existing permissions, including cross-project work, Git, scheduled
-agents, terminals, previews, maintenance, Mesh administration, account/key/session
+automations, terminals, previews, maintenance, Mesh administration, account/key/session
 and integration administration, private invitations/enrollment and binary
 transfers. There is no separate list of enabled control modules. Operations
 declare their read/write/confirmation policy or an explicit exclusion at their

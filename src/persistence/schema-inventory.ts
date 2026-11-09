@@ -13,14 +13,14 @@ export type SchemaTableCategory =
   | "clanky"
   | "metadata";
 
-export type SchemaTranscriptResource = "chat" | "task" | "agent_run" | "subagent";
+export type SchemaTranscriptResource = "chat" | "task" | "automation_run" | "subagent";
 export type SchemaTranscriptTableRole = "entries" | "meta";
 
 export interface SchemaTranscriptTableMetadata {
   readonly resource: SchemaTranscriptResource;
   readonly role: SchemaTranscriptTableRole;
-  readonly parentTable: "chats" | "tasks" | "agent_runs" | "harness_subagents";
-  readonly resourceColumn: "chat_id" | "task_id" | "agent_run_id" | "subagent_id";
+  readonly parentTable: "chats" | "tasks" | "automation_runs" | "harness_subagents";
+  readonly resourceColumn: "chat_id" | "task_id" | "automation_run_id" | "subagent_id";
 }
 
 export interface SchemaTableDefinition {
@@ -108,20 +108,24 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   resetOnlyTable("workspace_execution_targets", "clanky"),
   currentTable("clanky_context_api_keys", "clanky"),
   currentTable("preview_sessions", "clanky"),
-  currentTable("agent_run_transcript_meta", "clanky", {
-    resource: "agent_run",
+  currentTable("automation_run_transcript_meta", "clanky", {
+    resource: "automation_run",
     role: "meta",
-    parentTable: "agent_runs",
-    resourceColumn: "agent_run_id",
+    parentTable: "automation_runs",
+    resourceColumn: "automation_run_id",
   }),
-  currentTable("agent_run_transcript_entries", "clanky", {
-    resource: "agent_run",
+  currentTable("automation_run_transcript_entries", "clanky", {
+    resource: "automation_run",
     role: "entries",
-    parentTable: "agent_runs",
-    resourceColumn: "agent_run_id",
+    parentTable: "automation_runs",
+    resourceColumn: "automation_run_id",
   }),
-  currentTable("agent_runs", "clanky"),
-  currentTable("agents", "clanky"),
+  currentTable("automation_runs", "clanky"),
+  currentTable("automations", "clanky"),
+  resetOnlyTable("agent_run_transcript_meta", "clanky"),
+  resetOnlyTable("agent_run_transcript_entries", "clanky"),
+  resetOnlyTable("agent_runs", "clanky"),
+  resetOnlyTable("agents", "clanky"),
   currentTable("review_comments", "clanky"),
   currentTable("sessions", "clanky"),
   currentTable("terminal_sessions", "clanky"),

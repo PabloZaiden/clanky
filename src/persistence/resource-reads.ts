@@ -10,7 +10,7 @@ import { DomainError } from "../domain/domain-error";
 import type { CollaborationCreator } from "@/shared/collaboration";
 import { collaborationCreatorFromRow, collaborationCreatorProjection } from "./collaboration-authorship";
 
-export type WorkReadResource = "chat" | "task" | "agent_run";
+export type WorkReadResource = "chat" | "task" | "automation_run";
 export interface StoredWorkReadRow {
   id: string;
   creator?: CollaborationCreator;
@@ -31,7 +31,7 @@ export interface StoredWorkReadRow {
   pendingPermissions: number;
   pendingInputs: number;
   stateAvailable: number;
-  agentId: string | null;
+  automationId: string | null;
   chatId: string | null;
   taskId: string | null;
   sourceKind: string;
@@ -42,37 +42,37 @@ interface WorkReadSource {
   resource: WorkReadResource;
   userId: string;
   workspaceId?: string;
-  agentId?: string;
+  automationId?: string;
   id?: string;
   options?: ResourceReadOptions;
 }
 
-const TABLES = { chat: "chats", task: "tasks", agent_run: "agent_runs" } as const;
+const TABLES = { chat: "chats", task: "tasks", automation_run: "automation_runs" } as const;
 
 function sourceWhere(source: WorkReadSource): { clause: string; values: string[] } {
-  const kind = source.resource === "agent_run" ? "agent-run" : source.resource;
+  const kind = source.resource === "automation_run" ? "automation-run" : source.resource;
   const expectedOwner = requireResourcePersistenceUserId(kind, source.id,
     source.workspaceId ?? source.options?.workspaceId);
   if (getPersistenceWorkspaceId() && source.userId !== expectedOwner) {
     throw new DomainError("collaboration_authority_mismatch", "The collection owner does not match workspace authority.");
   }
-  if (source.agentId) requireResourcePersistenceUserId("agent", source.agentId);
+  if (source.automationId) requireResourcePersistenceUserId("automation", source.automationId);
   const clauses = ["user_id = ?"];
   const values = [source.userId];
   if (source.resource === "chat") clauses.push("deleted_at IS NULL");
   if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace' AND task_id IS NULL");
   if (source.id) { clauses.push("id = ?"); values.push(source.id); }
   const workspaceId = getPersistenceWorkspaceId() ?? source.workspaceId ?? source.options?.workspaceId;
-  if (workspaceId && source.resource !== "agent_run") {
+  if (workspaceId && source.resource !== "automation_run") {
     clauses.push("workspace_id = ?");
     values.push(workspaceId);
   }
-  if (source.resource === "agent_run" && source.agentId) {
-    clauses.push("agent_id = ?");
-    values.push(source.agentId!);
+  if (source.resource === "automation_run" && source.automationId) {
+    clauses.push("automation_id = ?");
+    values.push(source.automationId!);
   }
-  if (workspaceId && source.resource === "agent_run") {
-    clauses.push("agent_id IN (SELECT id FROM agents WHERE workspace_id = ? AND user_id = ?)");
+  if (workspaceId && source.resource === "automation_run") {
+    clauses.push("automation_id IN (SELECT id FROM automations WHERE workspace_id = ? AND user_id = ?)");
     values.push(workspaceId, source.userId);
   }
   return { clause: clauses.join(" AND "), values };
@@ -80,11 +80,11 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
 
 function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
   const where = sourceWhere(source);
-  const run = source.resource === "agent_run";
+  const run = source.resource === "automation_run";
   const task = source.resource === "task";
   const snapshot = "CASE WHEN json_valid(config_snapshot) THEN config_snapshot ELSE '{}' END";
   const storedHarness = run
-    ? "(SELECT harness_state_json FROM chats WHERE chats.id = agent_runs.chat_id AND chats.user_id = agent_runs.user_id)"
+    ? "(SELECT harness_state_json FROM chats WHERE chats.id = automation_runs.chat_id AND chats.user_id = automation_runs.user_id)"
     : "harness_state_json";
   const harness = `CASE WHEN json_valid(${storedHarness}) THEN ${storedHarness} ELSE '{}' END`;
   const permissions = "CASE WHEN json_valid(pending_permission_requests) THEN pending_permission_requests ELSE '[]' END";
@@ -114,7 +114,7 @@ function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
     json_extract(${snapshot}, '$.model.variant') AS variant,
     NULL AS currentIteration, ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
     0 AS planApproval,
-    agent_id AS agentId, chat_id AS chatId, NULL AS taskId, 'workspace' AS sourceKind, NULL AS executionHostId,
+    automation_id AS automationId, chat_id AS chatId, NULL AS taskId, 'workspace' AS sourceKind, NULL AS executionHostId,
     ${pendingPermissions} AS pendingPermissions,
     CASE WHEN json_valid(config_snapshot) AND json_type(${snapshot}) = 'object' AND ${harnessAvailable}
       AND ${permissionsAvailable} THEN 1 ELSE 0 END AS stateAvailable
@@ -122,7 +122,7 @@ function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
     name, workspace_id AS workspaceId, directory,
     model_provider_id AS providerID, model_model_id AS modelID, model_variant AS variant,
     ${task ? "current_iteration" : "NULL"} AS currentIteration,
-    NULL AS agentId, NULL AS chatId,
+    NULL AS automationId, NULL AS chatId,
     ${task ? "NULL" : "task_id"} AS taskId,
     ${task ? "'workspace'" : "source_kind"} AS sourceKind,
     ${task ? "NULL" : "execution_host_id"} AS executionHostId,

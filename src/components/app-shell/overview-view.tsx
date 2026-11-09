@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import {
   getExecutionHostSourceId,
   isProvisioningJobTerminal,
-  type Agent,
+  type Automation,
   type ExecutionHostDescriptor,
   type PublicProvisioningJob,
   type WorkerUpdateJob,
@@ -24,7 +24,7 @@ import { ClankyListRow } from "./clanky-list-row";
 import { ServerTransportIcon } from "./server-sidebar-item";
 import { WorkerUpdateJobsSection } from "./worker-update-jobs-section";
 import { WorkspaceIdentity } from "../common";
-import { OverviewAgents } from "./overview-agents";
+import { OverviewAutomations } from "./overview-automations";
 import { OverviewWork } from "./overview-work";
 import { JobListRow } from "../job-list-row";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
@@ -54,9 +54,9 @@ function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
 export function OverviewView({
   executionHosts,
   executionHostNodes,
-  agents,
-  agentsLoading,
-  agentsError,
+  automations,
+  automationsLoading,
+  automationsError,
   workspaceGroups,
   sidebarWorkspaceGroups,
   onNavigate,
@@ -70,9 +70,9 @@ export function OverviewView({
 }: {
   executionHosts: ExecutionHostDescriptor[];
   executionHostNodes: SidebarExecutionHostNode[];
-  agents: Agent[];
-  agentsLoading: boolean;
-  agentsError: string | null;
+  automations: Automation[];
+  automationsLoading: boolean;
+  automationsError: string | null;
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
@@ -109,9 +109,9 @@ export function OverviewView({
     () => new Set(workspaceGroups.map((group) => group.workspace.id)),
     [workspaceGroups],
   );
-  const visibleAgents = useMemo(
-    () => agents.filter((agent) => visibleWorkspaceIds.has(agent.config.workspaceId)),
-    [agents, visibleWorkspaceIds],
+  const visibleAutomations = useMemo(
+    () => automations.filter((automation) => visibleWorkspaceIds.has(automation.config.workspaceId)),
+    [automations, visibleWorkspaceIds],
   );
   const terminalProvisioningJobs = useMemo(
     () => provisioningJobs.filter((job) => isProvisioningJobTerminal(job.state.status)),
@@ -145,7 +145,7 @@ export function OverviewView({
       <OverviewWork
         sidebarWorkspaceGroups={sidebarWorkspaceGroups}
         executionHostNodes={executionHostNodes}
-        agents={visibleAgents}
+        automations={visibleAutomations}
         workspaces={visibleWorkspaces}
         onNavigate={onNavigate}
         showPrivateItems={showPrivateItems}
@@ -175,10 +175,10 @@ export function OverviewView({
               </DataList>
             )}
           </section>
-          <OverviewAgents
-            agents={visibleAgents}
-            loading={agentsLoading}
-            error={agentsError}
+          <OverviewAutomations
+            automations={visibleAutomations}
+            loading={automationsLoading}
+            error={automationsError}
             workspaces={visibleWorkspaces}
             onNavigate={onNavigate}
             showPrivateItems={showPrivateItems}

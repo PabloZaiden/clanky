@@ -25,7 +25,7 @@ interface UsageRow {
 
 export interface UsageChange {
   contexts: HarnessContext[];
-  runs: Array<{ id: string; agentId: string }>;
+  runs: Array<{ id: string; automationId: string }>;
 }
 
 export function parseStoredTokenUsage(raw: unknown, contextId: string): TokenUsageSummary | undefined {
@@ -99,10 +99,10 @@ function updateSummaries(context: HarnessContext, row: Pick<UsageRow, "chat_id" 
     invalidateChatMetadata(db, userId, row.chat_id);
     db.query("UPDATE chats SET usage_json = ?, state_revision = state_revision + 1 WHERE id = ? AND user_id = ?")
       .run(json, row.chat_id, userId);
-    runs.push(...db.query<{ id: string; agentId: string }, [string, string]>(
-      "SELECT id, agent_id AS agentId FROM agent_runs WHERE chat_id = ? AND user_id = ?",
+    runs.push(...db.query<{ id: string; automationId: string }, [string, string]>(
+      "SELECT id, automation_id AS automationId FROM automation_runs WHERE chat_id = ? AND user_id = ?",
     ).all(row.chat_id, userId));
-    db.query("UPDATE agent_runs SET usage_json = ? WHERE chat_id = ? AND user_id = ?").run(json, row.chat_id, userId);
+    db.query("UPDATE automation_runs SET usage_json = ? WHERE chat_id = ? AND user_id = ?").run(json, row.chat_id, userId);
   }
   if (row.task_id) {
     const summary = summarize(db.query<UsageRow, [string, string]>(

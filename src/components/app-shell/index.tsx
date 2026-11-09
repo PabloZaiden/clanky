@@ -3,7 +3,7 @@ import logoPath from "../../web-app-manifest-192x192.png" with { type: "file" };
 import { useToast, routeToHash, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ClankyRoot as WebAppRoot } from "@/platform/web/root";
 import { type WebAppConfigState } from "@/platform/web/webapp-config";
-import type { Agent } from "@/shared";
+import type { Automation } from "@/shared";
 import {
   buildShellRoutes,
   ShellRuntimeObserver,
@@ -52,7 +52,7 @@ export function AppShell() {
     updateChat,
     markChatDone,
     deleteChat,
-    agents,
+    automations,
     tasks,
     tasksLoading,
     refreshTasks,
@@ -106,7 +106,7 @@ export function AppShell() {
     selectedWorkspace,
     composeWorkspace,
     composeExecutionHost,
-    selectedAgent,
+    selectedAutomation,
   } = resources;
 
   const {
@@ -160,52 +160,52 @@ export function AppShell() {
     handleWebRouteChange(nextRoute);
   }, [handleWebRouteChange]);
 
-  const agentImportInputRef = useRef<HTMLInputElement>(null);
-  const [agentImportWorkspaceId, setAgentImportWorkspaceId] = useState<string | null>(null);
-  const startAgentImport = useCallback((workspaceId: string): void => {
-    const input = agentImportInputRef.current;
+  const automationImportInputRef = useRef<HTMLInputElement>(null);
+  const [automationImportWorkspaceId, setAutomationImportWorkspaceId] = useState<string | null>(null);
+  const startAutomationImport = useCallback((workspaceId: string): void => {
+    const input = automationImportInputRef.current;
     if (!input) {
-      toast.error("Agent import is not available yet");
+      toast.error("Automation import is not available yet");
       return;
     }
-    setAgentImportWorkspaceId(workspaceId);
+    setAutomationImportWorkspaceId(workspaceId);
     input.value = "";
     input.click();
   }, [toast]);
-  const exportAgent = useCallback(async (agent: Agent): Promise<void> => {
+  const exportAutomation = useCallback(async (automation: Automation): Promise<void> => {
     try {
-      await agents.exportAgent(agent.config.id);
-      toast.success(`Exported agent "${agent.config.name}".`);
+      await automations.exportAutomation(automation.config.id);
+      toast.success(`Exported automation "${automation.config.name}".`);
     } catch (error) {
       toast.error(String(error));
     }
-  }, [agents.exportAgent, toast]);
-  const handleAgentImportFile = useCallback(async (
+  }, [automations.exportAutomation, toast]);
+  const handleAutomationImportFile = useCallback(async (
     event: ChangeEvent<HTMLInputElement>,
   ): Promise<void> => {
     const file = event.currentTarget.files?.[0];
-    const workspaceId = agentImportWorkspaceId;
+    const workspaceId = automationImportWorkspaceId;
     event.currentTarget.value = "";
-    setAgentImportWorkspaceId(null);
+    setAutomationImportWorkspaceId(null);
     if (!file || !workspaceId) {
       return;
     }
 
     try {
       const payload: unknown = JSON.parse(await file.text());
-      const imported = await agents.importAgent(workspaceId, payload);
+      const imported = await automations.importAutomation(workspaceId, payload);
       if (!imported) {
-        toast.error("Failed to import agent");
+        toast.error("Failed to import automation");
         return;
       }
-      toast.success(`Imported agent "${imported.config.name}".`);
-      navigateWithinShell({ view: "agent", agentId: imported.config.id });
+      toast.success(`Imported automation "${imported.config.name}".`);
+      navigateWithinShell({ view: "automation", automationId: imported.config.id });
     } catch (error) {
       toast.error(String(error));
     }
   }, [
-    agentImportWorkspaceId,
-    agents.importAgent,
+    automationImportWorkspaceId,
+    automations.importAutomation,
     navigateWithinShell,
     toast,
   ]);
@@ -221,7 +221,7 @@ export function AppShell() {
     getChatLifecycleActions,
     toggleTaskPrivate,
     toggleChatPrivate,
-    toggleAgentPrivate,
+    toggleAutomationPrivate,
     toggleTerminalSessionPrivate,
     stopSidebarTask,
   } = useShellActions({
@@ -243,7 +243,7 @@ export function AppShell() {
     selectedChat,
     refreshChats,
     updateChat,
-    agents,
+    automations,
     updateTask,
     updateTerminalSession,
     deleteTerminalSession,
@@ -289,14 +289,14 @@ export function AppShell() {
     createTerminalSession,
     deleteWorkspace,
     dashboardData,
-    agents,
-    editingAgentId: dialogs.editingAgentId,
-    onSavedAgentEdit: dialogs.handleAgentSaved,
+    automations,
+    editingAutomationId: dialogs.editingAutomationId,
+    onSavedAutomationEdit: dialogs.handleAutomationSaved,
     composeActionState: composeState.composeActionState,
     setComposeActionState: composeState.setComposeActionState,
     handleTaskSubmit: composeState.handleTaskSubmit,
     createChat,
-    startAgentImport,
+    startAutomationImport,
     pullLatestWorkspaceChanges,
     pullingLatestWorkspaceIds,
     workspaceCreate,
@@ -310,20 +310,20 @@ export function AppShell() {
     activityRoute,
     closeHarnessActivity,
     openHarnessActivity,
-    agents,
+    automations,
     chats,
     composeState.composeActionState,
     composeState.handleTaskSubmit,
     composeState.setComposeActionState,
     createChat,
-    startAgentImport,
+    startAutomationImport,
     pullLatestWorkspaceChanges,
     pullingLatestWorkspaceIds,
     createTerminalSession,
     dashboardData,
     deleteWorkspace,
-    dialogs.editingAgentId,
-    dialogs.handleAgentSaved,
+    dialogs.editingAutomationId,
+    dialogs.handleAutomationSaved,
     navigateWithinShell,
     privateItemsPreference.showPrivateItems,
     pendingControlFileOpen,
@@ -404,7 +404,7 @@ export function AppShell() {
     chats,
     terminalSessions,
     workspaces,
-    agents: agents.agents,
+    automations: automations.automations,
     handlers: {
       route,
       selectedChat,
@@ -415,16 +415,16 @@ export function AppShell() {
       toggleTaskPrivate,
       toggleChatPrivate,
       getChatLifecycleActions,
-      toggleAgentPrivate,
+      toggleAutomationPrivate,
       toggleTerminalSessionPrivate,
       stopSidebarTask,
       openRenameTerminalSession: dialogs.openRenameTerminalSession,
       openDeleteTerminalSession: dialogs.openDeleteTerminalSession,
-      setEditingAgentId: dialogs.setEditingAgentId,
-      setDeleteAgentTarget: dialogs.setDeleteAgentTarget,
-      setPurgeAgentTarget: dialogs.setPurgeAgentTarget,
-      exportAgent,
-      agents,
+      setEditingAutomationId: dialogs.setEditingAutomationId,
+      setDeleteAutomationTarget: dialogs.setDeleteAutomationTarget,
+      setPurgeAutomationTarget: dialogs.setPurgeAutomationTarget,
+      exportAutomation,
+      automations,
       showPrivateItems: privateItemsPreference.showPrivateItems,
     } satisfies ShellSidebarActionHandlers,
     sidebarSnapshotReady,
@@ -438,7 +438,7 @@ export function AppShell() {
   }), [
     trash,
     trashActions,
-    agents,
+    automations,
     dialogs.handleQuickChat,
     navigateWithinShell,
     openHarnessActivity,
@@ -453,15 +453,15 @@ export function AppShell() {
     executionHostNodes,
     dashboardData.remoteOnly,
     sidebarSnapshotReady,
-    dialogs.setDeleteAgentTarget,
-    dialogs.setEditingAgentId,
-    dialogs.setPurgeAgentTarget,
-    exportAgent,
+    dialogs.setDeleteAutomationTarget,
+    dialogs.setEditingAutomationId,
+    dialogs.setPurgeAutomationTarget,
+    exportAutomation,
     executionHosts,
     sidebarWorkspaceGroups,
     stopSidebarTask,
     toast,
-    toggleAgentPrivate,
+    toggleAutomationPrivate,
     toggleChatPrivate,
     getChatLifecycleActions,
     toggleTaskPrivate,
@@ -485,16 +485,16 @@ export function AppShell() {
     selectedWorkspace,
     composeWorkspace,
     composeExecutionHost,
-    selectedAgent,
+    selectedAutomation,
     tasksLoading,
     chatsLoading,
-    agents,
+    automations,
     terminalSessions,
     workspaces,
-    editingAgentId: dialogs.editingAgentId,
+    editingAutomationId: dialogs.editingAutomationId,
     composeActionState: composeState.composeActionState,
   });
-  const readOnly = isReadOnlyWorkspaceRoute(route, { workspaces, tasks, chats, agents: agents.agents, terminalSessions });
+  const readOnly = isReadOnlyWorkspaceRoute(route, { workspaces, tasks, chats, automations: automations.automations, terminalSessions });
 
   return (
     <WorkspaceReadOnlyContext.Provider value={readOnly}>
@@ -528,11 +528,11 @@ export function AppShell() {
       {trashActions.dialogs}
       {voiceClient.dialogs}
       <input
-        ref={agentImportInputRef}
+        ref={automationImportInputRef}
         type="file"
         accept=".json,application/json"
         className="hidden"
-        onChange={(event) => void handleAgentImportFile(event)}
+        onChange={(event) => void handleAutomationImportFile(event)}
       />
     </WorkspaceReadOnlyContext.Provider>
   );

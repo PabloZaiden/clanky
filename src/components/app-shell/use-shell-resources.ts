@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { WebAppConfigState } from "@/platform/web/webapp-config";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import {
-  useAgents,
+  useAutomations,
   useChats,
   useDashboardData,
   useFileExplorerFullTreePreference,
@@ -48,7 +48,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     markChatDone,
     deleteChat,
   } = useChats();
-  const agents = useAgents();
+  const automations = useAutomations();
   const {
     tasks,
     loading: tasksLoading,
@@ -185,13 +185,13 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     || terminalSessionsLoading
     || executionHosts.loading
     || workspacesLoading
-    || agents.loading;
+    || automations.loading;
   const shellErrors = [
     chatsError,
     tasksError,
     terminalSessionsError,
     workspaceError,
-    agents.error,
+    automations.error,
     provisioning.jobsError,
     workerUpdates.jobsError,
     executionHosts.error,
@@ -201,7 +201,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     chats,
     workspaces,
     executionHosts: executionHosts.hosts,
-    agents: agents.agents,
+    automations: automations.automations,
   });
   const missingRouteTarget = missingTaskRouteTarget || isMissingShellRouteTarget(route, {
     chats: { items: chats, loading: chatsLoading, error: chatsError },
@@ -211,7 +211,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
       loading: executionHosts.loading,
       error: executionHosts.error,
     },
-    agents: { items: agents.agents, loading: agents.loading, error: agents.error },
+    automations: { items: automations.automations, loading: automations.loading, error: automations.error },
     terminalSessions: {
       items: terminalSessions,
       loading: terminalSessionsLoading,
@@ -230,7 +230,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     updateChat,
     markChatDone,
     deleteChat,
-    agents,
+    automations,
     tasks,
     tasksLoading,
     tasksError,

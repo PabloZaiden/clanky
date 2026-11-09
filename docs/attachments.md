@@ -1,6 +1,6 @@
 # Conversation attachments
 
-Attach any file to a chat, task input or manual Agent run. The picker accepts
+Attach any file to a chat, task input or manual Automation run. The picker accepts
 all extensions and MIME types. File paste works when the browser exposes actual
 files; ordinary clipboard text still inserts text. Browsers may not expose
 every operating-system clipboard format.
@@ -81,7 +81,7 @@ messages share this behavior without changing transcript pagination.
 Message images and tool previews load automatically when they enter the visible
 conversation, not when offscreen history is opened. Click a loaded image to
 enlarge it; a failed load remains visible with a retry action. The same behavior
-applies to chat, task, agent-run and saved subagent transcripts.
+applies to chat, task, automation-run and saved subagent transcripts.
 
 Attachment reads use the conversation's normal authorization and saved originals,
 independently of execution-host working copies. Uploads and provider delivery

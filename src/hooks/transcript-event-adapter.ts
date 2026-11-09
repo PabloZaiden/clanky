@@ -11,11 +11,11 @@ export function toTranscriptStreamEvent(
     case "subagent.transcript":
       return event.event;
     case "chat.message":
-    case "agent.run.message":
+    case "automation.run.message":
     case "task.message":
       return { type: "transcript.message", message: event.message };
     case "chat.message.delta":
-    case "agent.run.message.delta":
+    case "automation.run.message.delta":
     case "task.message.delta":
       return {
         type: "transcript.message.delta",
@@ -26,14 +26,14 @@ export function toTranscriptStreamEvent(
         messageTimestamp: event.messageTimestamp,
       };
     case "chat.tool_call":
-    case "agent.run.tool_call":
+    case "automation.run.tool_call":
     case "task.tool_call":
       return { type: "transcript.tool", tool: event.tool };
     case "chat.log":
       return shouldIncludeConversationTranscriptLog(event.log)
         ? { type: "transcript.log", log: event.log }
         : null;
-    case "agent.run.log":
+    case "automation.run.log":
       return { type: "transcript.log", log: event.log };
     case "task.log":
       {
@@ -68,7 +68,7 @@ export function toTranscriptStreamEvent(
         baseLength: event.baseLength,
         logTimestamp: event.logTimestamp,
       };
-    case "agent.run.log.delta":
+    case "automation.run.log.delta":
       return {
         type: "transcript.log.delta",
         logId: event.logId,

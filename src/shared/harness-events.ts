@@ -1,5 +1,5 @@
 /**
- * Provider-neutral execution events, separate from scheduled Clanky Agent events.
+ * Provider-neutral execution events, separate from scheduled Clanky Automation events.
  */
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type { HarnessActivity } from "./harness-control";

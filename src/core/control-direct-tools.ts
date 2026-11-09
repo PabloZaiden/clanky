@@ -199,7 +199,7 @@ export async function executeDirectControlTool(context: ControlToolContext, name
       if (config["scope"] !== "workspace" || config["taskId"] !== undefined) {
         throw new DomainError(
           "voice_chat_lifecycle_unsupported",
-          "Live voice lifecycle actions are available only for standalone chats; task chats are managed by their task and agent chats are not supported.",
+          "Live voice lifecycle actions are available only for standalone chats; task chats are managed by their task and automation chats are not supported.",
         );
       }
       if (input.action === "mark_done") {

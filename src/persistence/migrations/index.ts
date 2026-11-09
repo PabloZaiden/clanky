@@ -14,7 +14,6 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
 import { isAgentProvider } from "@/shared/settings";
-import { getTranscriptTableConfig } from "../transcripts/table-config";
 import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
@@ -22,12 +21,14 @@ import { migrateCollaboration } from "../collaboration-schema";
 import { migrateCollaborationAdministration } from "./collaboration-administration";
 import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes";
 import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
+import { dropLegacyAutomationTables, renameAutomations } from "./rename-automations";
 
 const log = createLogger("persistence:migrations");
 
 export const BASELINE_SCHEMA_VERSION = 56;
 const MULTI_RELAY_PAIRING_MIGRATION_VERSION = BASELINE_SCHEMA_VERSION + 7;
 const RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION = 91;
+const RENAME_AUTOMATIONS_MIGRATION_VERSION = 93;
 
 export interface Migration {
   version: number;
@@ -695,10 +696,10 @@ export const migrations: Migration[] = [
     name: "add_transcript_image_preview_presence",
     up: (db) => {
       for (const resource of ["chat", "task", "agent_run"] as const) {
-        const { entriesTable } = getTranscriptTableConfig(resource);
+        const entriesTable = `${resource}_transcript_entries`;
         if (
           !tableExists(db, entriesTable)
-          || getTableColumns(db, entriesTable).includes("tool_has_image_preview")
+          || getMigrationTableColumns(db, entriesTable).includes("tool_has_image_preview")
         ) {
           continue;
         }
@@ -750,8 +751,9 @@ export const migrations: Migration[] = [
     name: "index_transcript_file_attachments",
     up: (db) => {
       for (const resource of ["chat", "task", "agent_run"] as const) {
-        const { entriesTable, resourceColumn } = getTranscriptTableConfig(resource);
-        if (!getTableColumns(db, entriesTable).includes("message_has_files")) {
+        const entriesTable = `${resource}_transcript_entries`;
+        const resourceColumn = `${resource}_id`;
+        if (!getMigrationTableColumns(db, entriesTable).includes("message_has_files")) {
           db.run(`ALTER TABLE ${entriesTable} ADD COLUMN message_has_files INTEGER NOT NULL DEFAULT 0 CHECK (message_has_files IN (0, 1))`);
         }
         const read = db.query<{ rowid: number; payload: string }, [number]>(`
@@ -843,7 +845,7 @@ export const migrations: Migration[] = [
     name: "persist_native_token_usage",
     up: (db) => {
       for (const table of ["chats", "tasks", "agent_runs"]) {
-        if (!getTableColumns(db, table).includes("usage_json")) {
+        if (!getMigrationTableColumns(db, table).includes("usage_json")) {
           db.run(`ALTER TABLE ${table} ADD COLUMN usage_json TEXT`);
         }
       }
@@ -959,15 +961,23 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: RENAME_AUTOMATIONS_MIGRATION_VERSION,
+    name: "rename_agents_to_automations",
+    up: renameAutomations,
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {
-  if (tableName === "mesh_controller_relay_pairing") {
-    // The retired singleton table is intentionally absent from the current inventory.
-    const rows = db.query("PRAGMA table_info(mesh_controller_relay_pairing)").all() as Array<{
-      name: string;
-    }>;
-    return rows.map((row) => row.name);
+  for (const legacyTable of [
+    "mesh_controller_relay_pairing",
+    "agents", "agent_runs", "agent_run_transcript_entries", "agent_run_transcript_meta",
+  ] as const) {
+    if (tableName === legacyTable) {
+      // Historical migrations run against the immutable baseline's legacy names.
+      const rows = db.query(`PRAGMA table_info(${legacyTable})`).all() as Array<{ name: string }>;
+      return rows.map((row) => row.name);
+    }
   }
   return getTableColumns(db, tableName);
 }
@@ -1147,6 +1157,10 @@ export function runMigrations(
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
+  if (appliedVersions.has(RENAME_AUTOMATIONS_MIGRATION_VERSION)) {
+    // The immutable baseline recreates the old empty tables on every startup.
+    db.transaction(() => dropLegacyAutomationTables(db))();
+  }
   if (appliedVersions.has(RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION)) {
     // The immutable baseline recreates retired empty tables on startup.
     db.transaction(() => dropRetiredExecutionTables(db))();

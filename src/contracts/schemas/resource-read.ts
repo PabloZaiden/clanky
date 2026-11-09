@@ -7,7 +7,7 @@ import { COLLABORATION_RESOURCE_REFERENCE_MAX_LENGTH } from "@/shared/collaborat
 export const ReadSectionSchema = z.enum([
   "details", "questions", "permissions", "inputs", "activity", "prompt",
   "content", "output", "plan", "diff", "models", "providers", "files",
-  "directories", "branches", "jobs", "runs", "agents", "templates", "addresses",
+  "directories", "branches", "jobs", "runs", "automations", "templates", "addresses",
   "items", "entries", "sessions", "servers", "workspaces", "chats", "tasks",
   "workers", "enrollments", "activities", "variants", "previews", "nodes",
   "grants", "candidates", "issues", "comments", "logs",

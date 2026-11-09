@@ -107,8 +107,8 @@ space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.
 
 Workspace menus group creation actions as **New Task** (Git workspaces only),
-**New Terminal**, **New Chat**, and **New Agent**. **Import Agent** belongs to
-the New Agent page and imports into its selected workspace. File-opening
+**New Terminal**, **New Chat**, and **New Automation**. **Import Automation** belongs to
+the New Automation page and imports into its selected workspace. File-opening
 actions use the label **Code Explorer**. Scratchpad opens from its overview
 heading, not the workspace menu. Git-backed workspace overviews expose
 **Pull Latest Changes** and **Open in GitHub** as page buttons; pulling retains
@@ -121,14 +121,14 @@ the server does not accept execution or lacks the required file-operation capabi
 
 In the sidebar's **Workspaces** tab, each workspace directly lists chats,
 Git-backed tasks, and terminals together, including completed chats and
-historical tasks. **Agents** is a peer section containing agents from all
+historical tasks. **Automations** is a peer section containing automations from all
 workspaces, with their workspace names and inherited privacy/access rules.
 In **Servers**, each server directly lists its workspaces, host chats, and host
 terminals together. Mixed lists sort by most recent interaction (chat/task user
 message or terminal connection, falling back to creation); server workspace
 entries use the workspace's last update. Chats, tasks, and terminals reuse
 Active's rich rows: workspace/host and textual status above the title, with
-relative interaction time and type/provider metadata below. Agents and
+relative interaction time and type/provider metadata below. Automations and
 workspace/server rows retain their own presentation.
 There are no type or History subsections and no subsection-level New buttons.
 Dashboard creation controls and entity context/header actions remain unchanged.
@@ -184,7 +184,7 @@ not data rewriting.
 
 Transcripts use 18px body text and 16px technical output on desktop and mobile.
 Check rendered Markdown, raw text, code, and tool descendants, not just inherited
-container styles. Across chat, task-log, and agent transcripts, visible
+container styles. Across chat, task-log, and automation transcripts, visible
 timestamps for entries before the current local day include the date and time;
 same-day entries remain time-only. Keep the existing timestamp visibility
 cadence, and refresh the displayed day at local midnight and when returning to

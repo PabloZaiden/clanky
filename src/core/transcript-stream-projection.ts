@@ -29,7 +29,7 @@ export interface TranscriptStreamProjectionLimits {
 }
 
 /**
- * Shared in-memory transcript projection for task and agent-run streams.
+ * Shared in-memory transcript projection for task and automation-run streams.
  *
  * Domain owners still decide when to persist and how to publish state. This
  * class owns only indexed collections, eviction, and incremental change

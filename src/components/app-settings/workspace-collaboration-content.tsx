@@ -182,7 +182,7 @@ function ApiWorkspaceCollaborationContent({ workspaces }: { workspaces: Workspac
               {connection.status !== "revoked" ? <Button size="sm" disabled={saving} onClick={() => void recover(connection.id)}>Reconnect</Button> : null}
               <Button size="sm" variant="danger" disabled={saving} onClick={() => setConfirmation({
                 path: `/api/collaboration/connections/${encodeURIComponent(connection.id)}`,
-                title: "Disconnect controller", message: "Remote tasks, chats and agent schedules will continue on the controller.",
+                title: "Disconnect controller", message: "Remote tasks, chats and automation schedules will continue on the controller.",
               })}>Disconnect</Button>
             </>} />
         ); })}

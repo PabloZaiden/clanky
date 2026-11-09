@@ -1,0 +1,202 @@
+import type {
+  Automation,
+  DeterministicAutomationTestResult,
+  DeterministicCodeDiagnostic,
+} from "@/shared";
+import { DETERMINISTIC_AUTOMATION_CODE_CONTRACT } from "@/shared/deterministic-automation";
+import type { TaskLogEntry } from "@/shared/task";
+import { StatusBadge } from "../common";
+import { ChatDetails } from "../ChatDetails";
+import { MonacoCodeEditor } from "../MonacoCodeEditor";
+import type { UseAutomationCodeGenerationResult } from "./use-automation-code-generation";
+import type { UseAutomationCodeTestResult } from "./use-automation-code-test";
+import type { AutomationFormMode } from "./use-automation-form-state";
+import { DeterministicOutputStreams } from "./deterministic-output-streams";
+
+export interface AutomationDeterministicModeProps {
+  mode: AutomationFormMode;
+  automation: Automation | null;
+  generation: UseAutomationCodeGenerationResult;
+  testing: UseAutomationCodeTestResult;
+}
+
+export function AutomationDeterministicMode({
+  mode,
+  automation,
+  generation,
+  testing,
+}: AutomationDeterministicModeProps) {
+  return (
+    <section className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Deterministic Mode (optional)</h2>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Deterministic Mode code replaces the scheduled prompt. Leave it empty to keep prompt mode
+        </p>
+      </div>
+      <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+        <p className="font-medium">Code contract</p>
+        <p className="mt-1">{DETERMINISTIC_AUTOMATION_CODE_CONTRACT.exportRule} {DETERMINISTIC_AUTOMATION_CODE_CONTRACT.asyncRule}</p>
+        <div className="mt-3 space-y-3">
+          <div>
+            <p className="font-medium">Context API</p>
+            <div className="mt-2 space-y-2">
+              {DETERMINISTIC_AUTOMATION_CODE_CONTRACT.contextTypes.map((contextType) => (
+                <ContractCodeBlock key={contextType} code={contextType} />
+              ))}
+            </div>
+          </div>
+          <ContractList
+            title="Runtime semantics"
+            items={DETERMINISTIC_AUTOMATION_CODE_CONTRACT.runtimeSemantics}
+          />
+          <ContractList
+            title="Node.js and safety restrictions"
+            items={DETERMINISTIC_AUTOMATION_CODE_CONTRACT.nodeRestrictions}
+          />
+          <div>
+            <p className="font-medium">Examples</p>
+            <div className="mt-2 space-y-3">
+              {DETERMINISTIC_AUTOMATION_CODE_CONTRACT.examples.map((example) => (
+                <div key={example.title}>
+                  <p className="font-medium">{example.title}</p>
+                  <p className="mt-1">{example.description}</p>
+                  <ContractCodeBlock code={example.code} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <label htmlFor="automation-code" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          TypeScript code
+        </label>
+        <div
+          id="automation-code"
+          aria-label="TypeScript code"
+          className="mt-1 min-h-72 overflow-hidden rounded-md border border-gray-300 dark:border-gray-600"
+        >
+          <MonacoCodeEditor
+            height="360px"
+            language="typescript"
+            value={generation.code}
+            ariaLabel="TypeScript code editor"
+            onChange={generation.setCode}
+          />
+        </div>
+        {/* Monaco owns the editable code surface; keep diagnostics outside its model. */}
+        {generation.codeDiagnostics.length > 0 && (
+          <div className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-300">
+            {generation.codeDiagnostics.map((diagnostic, index) => (
+              <CodeDiagnostic key={`${diagnostic.line ?? "code"}-${diagnostic.column ?? "position"}-${index}`} diagnostic={diagnostic} />
+            ))}
+          </div>
+        )}
+      </div>
+      {mode === "edit" && automation && generation.generationChatId ? (
+        <div className="h-[min(38rem,70vh)] min-h-[24rem] overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+          <ChatDetails
+            key={generation.generationChatId}
+            chatId={generation.generationChatId}
+            embedded
+            isExternallyBusy={generation.isGeneratingCode}
+            onSendMessage={generation.sendGenerationMessage}
+          />
+        </div>
+      ) : (
+        <p className="rounded-md border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          Save the automation, then use Generate to start its persistent code-generation conversation.
+        </p>
+      )}
+      {(testing.isTestingCode || testing.testResult || testing.testLogs.length > 0) && (
+        <DeterministicTestOutputPanel
+          result={testing.testResult}
+          logs={testing.testLogs}
+          isRunning={testing.isTestingCode}
+        />
+      )}
+    </section>
+  );
+}
+
+function ContractList({
+  title,
+  items,
+}: {
+  title: string;
+  items: readonly string[];
+}) {
+  return (
+    <div>
+      <p className="font-medium">{title}</p>
+      <ul className="mt-1 list-disc space-y-1 pl-4">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ContractCodeBlock({ code }: { code: string }) {
+  return (
+    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-white px-3 py-2 font-mono text-[11px] leading-5 text-gray-900 dark:bg-neutral-900 dark:text-gray-100">
+      <code>{code}</code>
+    </pre>
+  );
+}
+
+function CodeDiagnostic({ diagnostic }: { diagnostic: DeterministicCodeDiagnostic }) {
+  return (
+    <p>
+      {diagnostic.line ? `Line ${diagnostic.line}: ` : ""}{diagnostic.message}
+    </p>
+  );
+}
+
+function DeterministicTestOutputPanel({
+  result,
+  logs,
+  isRunning,
+}: {
+  result: DeterministicAutomationTestResult | null;
+  logs: TaskLogEntry[];
+  isRunning: boolean;
+}) {
+  return (
+    <section className="space-y-3 rounded-md border border-gray-200 p-3 dark:border-gray-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Test output</h2>
+        <StatusBadge
+          variant={
+            isRunning
+              ? "info"
+              : result?.status === "completed"
+                ? "success"
+                : result?.status === "cancelled"
+                  ? "warning"
+                  : "error"
+          }
+          size="sm"
+        >
+          {isRunning ? "running" : result?.status ?? "failed"}
+        </StatusBadge>
+      </div>
+      {result?.error && (
+        <p className="whitespace-pre-wrap text-xs text-red-700 dark:text-red-300">{result.error}</p>
+      )}
+      {result && result.diagnostics.length > 0 && (
+        <div className="space-y-1 text-xs text-amber-700 dark:text-amber-300">
+          {result.diagnostics.map((diagnostic, index) => (
+            <CodeDiagnostic
+              key={`${diagnostic.line ?? "code"}-${diagnostic.column ?? "position"}-${index}`}
+              diagnostic={diagnostic}
+            />
+          ))}
+        </div>
+      )}
+      <DeterministicOutputStreams logs={logs} />
+    </section>
+  );
+}

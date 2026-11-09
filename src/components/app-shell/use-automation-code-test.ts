@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  AutomationEvent,
+  DeterministicAutomationTestResult,
+  TaskLogEntry,
+  Workspace,
+} from "@/shared";
+import type { TestAutomationCodeRequest } from "@/contracts/schemas";
+import { useToast } from "@pablozaiden/webapp/web";
+import { parseModelKey } from "../ModelSelector";
+import { useRealtime } from "@pablozaiden/webapp/web";
+import type { UseAutomationsResult } from "../../hooks/useAutomations";
+
+const MAX_TEST_LOGS = 1000;
+
+export interface UseAutomationCodeTestOptions {
+  name: string;
+  prompt: string;
+  code: string;
+  selectedWorkspace: Workspace | null;
+  modelKey: string;
+  workspaceSelectionsReady: boolean;
+  baseBranch: string;
+  useWorktree: boolean;
+  onTestStarted: () => void;
+  onTestAutomationCode: UseAutomationsResult["testAutomationCode"];
+}
+
+export interface UseAutomationCodeTestResult {
+  testResult: DeterministicAutomationTestResult | null;
+  testLogs: TaskLogEntry[];
+  isTestingCode: boolean;
+  resetOutput: () => void;
+  testCode: () => Promise<void>;
+  cancelTest: () => void;
+}
+
+export function useAutomationCodeTest({
+  name,
+  prompt,
+  code,
+  selectedWorkspace,
+  modelKey,
+  workspaceSelectionsReady,
+  baseBranch,
+  useWorktree,
+  onTestStarted,
+  onTestAutomationCode,
+}: UseAutomationCodeTestOptions): UseAutomationCodeTestResult {
+  const toast = useToast();
+  const toastError = toast.error;
+  const toastSuccess = toast.success;
+  const [testResult, setTestResult] = useState<DeterministicAutomationTestResult | null>(null);
+  const [testLogs, setTestLogs] = useState<TaskLogEntry[]>([]);
+  const [testStreamId, setTestStreamId] = useState<string | null>(null);
+  const [isTestingCode, setIsTestingCode] = useState(false);
+  const testAbortControllerRef = useRef<AbortController | null>(null);
+  const testLogIdsRef = useRef(new Set<string>());
+
+  useEffect(() => () => {
+    testAbortControllerRef.current?.abort();
+  }, []);
+
+  const appendTestLog = useCallback((entry: TaskLogEntry): void => {
+    if (testLogIdsRef.current.has(entry.id)) {
+      return;
+    }
+    testLogIdsRef.current.add(entry.id);
+    setTestLogs((previous) => {
+      const next = [...previous, entry];
+      const evictedEntries = next.slice(0, Math.max(0, next.length - MAX_TEST_LOGS));
+      for (const evictedEntry of evictedEntries) {
+        testLogIdsRef.current.delete(evictedEntry.id);
+      }
+      return next.slice(-MAX_TEST_LOGS);
+    });
+  }, []);
+
+  useRealtime<AutomationEvent>({
+    enabled: isTestingCode && testStreamId !== null,
+    targets: { automationRunId: testStreamId ?? undefined },
+    types: ["automation.run.log"],
+    trackLastEvent: false,
+    predicate: (event) => event.type === "automation.run.log" && event.automationRunId === testStreamId,
+    onEvent: (event) => {
+      if (event.type === "automation.run.log") {
+        appendTestLog(event.log);
+      }
+    },
+  });
+
+  const resetOutput = useCallback((): void => {
+    setTestResult(null);
+    setTestLogs([]);
+    testLogIdsRef.current.clear();
+  }, []);
+
+  const testCode = useCallback(async (): Promise<void> => {
+    const parsedTestModel = parseModelKey(modelKey);
+    if (!workspaceSelectionsReady || !selectedWorkspace || !parsedTestModel) {
+      toastError("Select a workspace, then wait for its models and branches to finish loading and choose valid options before testing code");
+      return;
+    }
+    if (!code.trim()) {
+      toastError("Enter deterministic code before testing it");
+      return;
+    }
+    onTestStarted();
+    setIsTestingCode(true);
+    setTestResult(null);
+    setTestLogs([]);
+    testLogIdsRef.current.clear();
+    const testRunId = crypto.randomUUID();
+    setTestStreamId(testRunId);
+    const controller = new AbortController();
+    testAbortControllerRef.current = controller;
+    try {
+      const result = await onTestAutomationCode({
+        name: name.trim() || undefined,
+        prompt,
+        code,
+        workspaceId: selectedWorkspace.id,
+        model: parsedTestModel,
+        baseBranch: selectedWorkspace.workspaceType === "git"
+          ? baseBranch.trim() || undefined
+          : undefined,
+        useWorktree: selectedWorkspace.workspaceType === "git" ? useWorktree : false,
+        testRunId,
+      } satisfies TestAutomationCodeRequest, {
+        signal: controller.signal,
+        onLog: appendTestLog,
+      });
+      if (!result || controller.signal.aborted) {
+        if (!result && !controller.signal.aborted) {
+          setTestResult({
+            status: "failed",
+            logs: [],
+            error: "Deterministic code test ended without a result",
+            diagnostics: [],
+          });
+        }
+        return;
+      }
+      setTestResult(result);
+      setTestLogs((previous) => result.logs.length > 0 ? result.logs : previous);
+      if (result.status === "completed") {
+        toastSuccess("Deterministic code test completed");
+      } else if (result.status === "failed") {
+        toastError(result.error ?? "Deterministic code test failed");
+      }
+    } finally {
+      if (testAbortControllerRef.current === controller) {
+        testAbortControllerRef.current = null;
+      }
+      setTestStreamId(null);
+      setIsTestingCode(false);
+    }
+  }, [
+    appendTestLog,
+    baseBranch,
+    code,
+    modelKey,
+    name,
+    onTestAutomationCode,
+    onTestStarted,
+    prompt,
+    selectedWorkspace,
+    toastError,
+    toastSuccess,
+    useWorktree,
+    workspaceSelectionsReady,
+  ]);
+
+  const cancelTest = useCallback((): void => {
+    const controller = testAbortControllerRef.current;
+    if (!controller || controller.signal.aborted) {
+      return;
+    }
+    setTestResult({
+      status: "cancelled",
+      logs: testLogs,
+      diagnostics: [],
+    });
+    setTestStreamId(null);
+    controller.abort();
+  }, [testLogs]);
+
+  return {
+    testResult,
+    testLogs,
+    isTestingCode,
+    resetOutput,
+    testCode,
+    cancelTest,
+  };
+}

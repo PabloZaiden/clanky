@@ -59,7 +59,7 @@ export interface CreateChatOptions {
   prepareWorktreeOnCreate?: boolean;
 }
 
-export interface CreateAgentRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId"> {}
+export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId"> {}
 
 export interface CreateExecutionHostChatOptions {
   name?: string;
@@ -282,7 +282,7 @@ export interface ChatInteractionPort {
 export interface ChatLifecyclePort {
   createChat(options: CreateChatOptions): Promise<Chat>;
   createChatHere(sourceChatId: string): Promise<Chat>;
-  createAgentRunChat(options: CreateAgentRunChatOptions): Promise<Chat>;
+  createAutomationRunChat(options: CreateAutomationRunChatOptions): Promise<Chat>;
   createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat>;
   updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null>;
   updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null>;

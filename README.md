@@ -24,14 +24,14 @@ https://github.com/user-attachments/assets/c5245a2d-0a66-4632-b437-a502e8629726
 
 - **Safer automation:** work in isolated branches or worktrees and review
   changes before accepting or pushing them.
-- **One control plane:** manage tasks, chats, agents, workspaces, terminals,
+- **One control plane:** manage tasks, chats, automations, workspaces, terminals,
   files, previews, and reviews from the dashboard or API.
 - **Local or remote execution:** run locally or use a remote Mesh host
   when the repository and agent should live elsewhere.
 
 ![Clanky dashboard](assets/screenshots/desktop/home-promo.png)
 
-*Active work, scheduled agents, workspaces, and execution hosts in one place.*
+*Active work, scheduled automations, workspaces, and execution hosts in one place.*
 
 <details>
 <summary><strong>More screenshots</strong></summary>

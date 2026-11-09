@@ -1,0 +1,838 @@
+/**
+ * Runs deterministic automation code on the selected workspace host.
+ *
+ * The host-side runner is a small Node.js program. It starts the user module
+ * in a child process and uses IPC for context requests and explicit output.
+ * This keeps arbitrary user stdout/stderr away from the control protocol and
+ * makes only ctx.stdout.write()/ctx.stderr.write() visible to Clanky.
+ */
+
+import type { AutomationRun } from "@/shared/automation";
+import { CONTROL_REQUEST_MAX_BYTES } from "@/contracts/schemas/control";
+import type { CommandExecutor } from "./command-executor";
+import type { DeterministicAutomationOutput } from "./deterministic-automation-output";
+import { controlToolSchemas } from "./control-tool-contracts";
+import { createLogger } from "@pablozaiden/webapp/server";
+import { requestControlTool, controlToolTransportFailure, type ExecutionControlConnection } from "./control-tool-transport";
+import { promptDeterministicAutomation } from "./deterministic-automation-prompt";
+
+const log = createLogger("deterministic-automation-runner");
+
+/** Minimum Node.js major version required on the workspace host. */
+const MIN_NODE_MAJOR_VERSION = 24;
+const RUNNER_CLEANUP_TIMEOUT_MS = 10_000;
+const HOST_TEMP_DIRECTORY_PATTERN = /^\/tmp\/clanky-automation\.[A-Za-z0-9_-]+$/;
+
+/** Runner control-message types emitted by the workspace-side Node.js process. */
+export type RunnerMessage =
+  | { type: "stdout"; text: string }
+  | { type: "stderr"; text: string }
+  | { type: "done" }
+  | { type: "error"; message: string }
+  | { type: "aborted" }
+  | { type: "control"; id: string; name: string; input: unknown }
+  | { type: "prompt"; id: string; message: string }
+  | { type: "request.cancel"; id: string };
+
+// ---------------------------------------------------------------------------
+// Runner script — embedded as a string and written to the workspace host.
+// ---------------------------------------------------------------------------
+
+/**
+ * Plain Node.js 24+ ESM runner.
+ *
+ * The controller owns execution authority; the host adapts exec and typed
+ * prompt/control requests. User code runs in a forked worker with inherited
+ * CLI credentials removed. The worker's direct stdout/stderr are drained
+ * and intentionally ignored; only explicit context output is forwarded.
+ */
+export const DETERMINISTIC_AUTOMATION_RUNNER_SCRIPT = `
+// Clanky deterministic automation runner — Node.js 24+
+// This generated file is executed on the workspace host.
+import { execFile } from "node:child_process";
+import { fork } from "node:child_process";
+import { promisify } from "node:util";
+import { pathToFileURL } from "node:url";
+import { watch, readFile, unlink } from "node:fs/promises";
+import { dirname, join } from "node:path";
+
+const execFileAsync = promisify(execFile);
+const CONTROL_MODE = process.argv[2] !== "--worker";
+const codeFilePath = CONTROL_MODE ? process.argv[2] : process.argv[3];
+const MAX_BUFFER = 16 * 1024 * 1024;
+const MAX_EXPLICIT_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_EXPLICIT_OUTPUT_CHUNK = 16 * 1024;
+const MAX_PENDING_OUTPUT_BYTES = 256 * 1024;
+const MAX_CONTROL_INPUT_BYTES = ${CONTROL_REQUEST_MAX_BYTES};
+const MAX_CONTROL_RESULT_BYTES = 1024 * 1024;
+const CONTROL_REQUEST_TIMEOUT_MS = 30_000;
+const CONTROL_TOOL_NAMES = new Set(${JSON.stringify(Object.keys(controlToolSchemas))});
+
+function sendControl(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+function sendIpc(message) {
+  if (typeof process.send !== "function") {
+    return Promise.reject(new Error("Runner worker IPC is unavailable"));
+  }
+  return new Promise((resolve, reject) => {
+    process.send(message, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+
+function errorMessage(error) {
+  return error && typeof error.message === "string" ? error.message : String(error);
+}
+
+function userEnvironment() {
+  const env = { ...process.env };
+  delete env["CLANKY_BASE_URL"];
+  delete env["CLANKY_API_KEY"];
+  delete env["CLANKY_CHAT_ID"];
+  return env;
+}
+
+function controlRequestBody(message) {
+  if (typeof message.name !== "string" || !CONTROL_TOOL_NAMES.has(message.name)) {
+    throw new Error("Unknown Clanky control tool");
+  }
+  if (!isRecord(message.input) || Array.isArray(message.input)) {
+    throw new Error("Clanky control input must be an object");
+  }
+  const body = JSON.stringify({ input: message.input });
+  if (Buffer.byteLength(body, "utf8") > MAX_CONTROL_INPUT_BYTES) {
+    throw new Error("Clanky control input exceeds 256 KiB");
+  }
+  return body;
+}
+
+class ControlRequestError extends Error {}
+
+async function executeControllerRequest(message, signal) {
+  if (message.action === "control") controlRequestBody(message);
+  else if (typeof message.message !== "string" || message.message.length === 0) {
+    throw new Error("workspace.prompt requires a message");
+  }
+  if (signal.aborted) throw new Error("Aborted");
+  const id = crypto.randomUUID();
+  const filename = "response-" + id + ".json";
+  const directory = dirname(codeFilePath);
+  const controller = new AbortController();
+  const requestSignal = AbortSignal.any([signal, controller.signal]);
+  const changes = watch(directory, { signal: requestSignal });
+  const timer = message.action === "control"
+    ? setTimeout(() => controller.abort(), CONTROL_REQUEST_TIMEOUT_MS) : undefined;
+  let completed = false;
+  try {
+    const first = changes.next();
+    sendControl(message.action === "control"
+      ? { type: "control", id, name: message.name, input: message.input }
+      : { type: "prompt", id, message: message.message });
+    let change = await first;
+    while (!change.done) {
+      if (change.value.filename === filename) {
+        const content = await readFile(join(directory, filename), "utf8");
+        if (message.action === "control" && Buffer.byteLength(content) > MAX_CONTROL_RESULT_BYTES + 8192) {
+          throw new ControlRequestError("Clanky control result exceeds 1 MiB; inspect current state before retrying");
+        }
+        const response = JSON.parse(content);
+        await unlink(join(directory, filename));
+        if (!isRecord(response) || typeof response.ok !== "boolean") {
+          throw new ControlRequestError("The controller returned an invalid response.");
+        }
+        completed = true;
+        if (!response.ok) throw new ControlRequestError(response.error);
+        return response.value;
+      }
+      change = await changes.next();
+    }
+    throw new ControlRequestError("The execution response channel closed.");
+  } catch (error) {
+    if (signal.aborted) throw new Error("Aborted");
+    if (controller.signal.aborted) {
+      throw new Error("Clanky control request timed out; outcome may be unknown, inspect current state before retrying");
+    }
+    if (error instanceof ControlRequestError) throw error;
+    throw new Error("Execution response failed; outcome may be unknown, inspect current state before retrying");
+  } finally {
+    if (!completed) sendControl({ type: "request.cancel", id });
+    await changes.return();
+    clearTimeout(timer);
+  }
+}
+
+async function sendResponse(id, response) {
+  try {
+    await sendIpc({ type: "response", id, ...response });
+  } catch {
+    // The worker may have exited while a request was being completed.
+  }
+}
+
+async function executeWorkspaceCommand(message, signal) {
+  const command = typeof message.command === "string" ? message.command : "";
+  const args = Array.isArray(message.args)
+    ? message.args.filter((arg) => typeof arg === "string")
+    : [];
+  const options = isRecord(message.options) ? message.options : {};
+  if (!command) {
+    return {
+      success: false,
+      stdout: "",
+      stderr: "workspace.exec requires a command",
+      exitCode: 2,
+    };
+  }
+  if (signal.aborted) {
+    return { success: false, stdout: "", stderr: "Aborted", exitCode: 130 };
+  }
+
+  try {
+    const result = await execFileAsync(command, args, {
+      cwd: typeof options.cwd === "string" ? options.cwd : process.cwd(),
+      timeout: typeof options.timeout === "number" ? options.timeout : undefined,
+      maxBuffer: MAX_BUFFER,
+      signal,
+      env: userEnvironment(),
+    });
+    return {
+      success: true,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: 0,
+    };
+  } catch (error) {
+    if (signal.aborted || (isRecord(error) && error.name === "AbortError")) {
+      return {
+        success: false,
+        stdout: isRecord(error) && typeof error.stdout === "string" ? error.stdout : "",
+        stderr: "Aborted",
+        exitCode: 130,
+      };
+    }
+    return {
+      success: false,
+      stdout: isRecord(error) && typeof error.stdout === "string" ? error.stdout : "",
+      stderr: isRecord(error) && typeof error.stderr === "string"
+        ? error.stderr
+        : errorMessage(error),
+      exitCode: isRecord(error) && typeof error.code === "number" ? error.code : 1,
+    };
+  }
+}
+
+async function runWorker() {
+  const abortController = new AbortController();
+  const pending = new Map();
+  let requestId = 0;
+  const outputQueue = [];
+  let outputQueueBytes = 0;
+  let outputDrainPromise;
+  let outputBytes = 0;
+
+  abortController.signal.addEventListener("abort", () => {
+    for (const [id, request] of pending) {
+      if (request.action === "exec") continue;
+      request.reject(new Error("Aborted"));
+      pending.delete(id);
+    }
+  }, { once: true });
+
+  process.on("message", (message) => {
+    if (!isRecord(message)) return;
+    if (message.type === "abort") {
+      abortController.abort();
+      return;
+    }
+    if (message.type !== "response" || typeof message.id !== "number") return;
+    const request = pending.get(message.id);
+    if (!request) return;
+    pending.delete(message.id);
+    if (message.ok) request.resolve(message.value);
+    else request.reject(new Error(typeof message.error === "string" ? message.error : "Runner request failed"));
+  });
+  process.on("disconnect", () => abortController.abort());
+
+  const request = (action, payload) => {
+    if (abortController.signal.aborted) {
+      return Promise.reject(new Error("Aborted"));
+    }
+    if (pending.size >= 128) {
+      return Promise.reject(new Error("Too many concurrent workspace context requests"));
+    }
+    const id = ++requestId;
+    return new Promise((resolve, reject) => {
+      pending.set(id, { action, resolve, reject });
+      void sendIpc({ type: "request", id, action, ...payload }).catch((error) => {
+        pending.delete(id);
+        reject(error);
+      });
+    });
+  };
+
+  const drainOutputQueue = () => {
+    if (outputDrainPromise) return outputDrainPromise;
+    outputDrainPromise = (async () => {
+      try {
+        while (outputQueue.length > 0) {
+          const item = outputQueue.shift();
+          if (!item) continue;
+          outputQueueBytes -= item.text.length;
+          await sendIpc({ type: "output", stream: item.stream, text: item.text });
+        }
+      } catch {
+        // The controller owns the output pipe and may exit during cancellation.
+        outputQueue.length = 0;
+        outputQueueBytes = 0;
+      }
+    })().finally(() => {
+      outputDrainPromise = undefined;
+    });
+    return outputDrainPromise;
+  };
+
+  const sendOutput = (type, text) => {
+    if (typeof text !== "string" || text.length === 0 || outputBytes >= MAX_EXPLICIT_OUTPUT_BYTES) {
+      return;
+    }
+    const remainingBytes = MAX_EXPLICIT_OUTPUT_BYTES - outputBytes;
+    const remainingQueueBytes = MAX_PENDING_OUTPUT_BYTES - outputQueueBytes;
+    const chunkLength = Math.min(
+      text.length,
+      MAX_EXPLICIT_OUTPUT_CHUNK,
+      remainingBytes,
+      remainingQueueBytes,
+    );
+    if (chunkLength <= 0) {
+      return;
+    }
+    const chunk = text.slice(0, chunkLength);
+    outputBytes += chunk.length;
+    outputQueueBytes += chunk.length;
+    outputQueue.push({ stream: type, text: chunk });
+    void drainOutputQueue();
+  };
+
+  const context = {
+    clanky: {
+      async call(name, input) {
+        controlRequestBody({ name, input });
+        return await request("control", { name, input });
+      },
+    },
+    workspace: {
+      async exec(command, args, options) {
+        return await request("exec", {
+          command,
+          args: args ?? [],
+          options: options ?? {},
+        });
+      },
+      async prompt(message) {
+        return await request("prompt", { message });
+      },
+    },
+    stdout: {
+      write(text) {
+        sendOutput("stdout", String(text));
+      },
+    },
+    stderr: {
+      write(text) {
+        sendOutput("stderr", String(text));
+      },
+    },
+    signal: abortController.signal,
+  };
+
+  try {
+    if (!codeFilePath) {
+      throw new Error("No user code file path specified");
+    }
+    const moduleUrl = pathToFileURL(codeFilePath).href;
+    const module = await import(moduleUrl);
+    if (typeof module.default !== "function") {
+      throw new Error("User code must export a default function");
+    }
+    await module.default(context);
+    await drainOutputQueue();
+    if (abortController.signal.aborted) {
+      await sendIpc({ type: "aborted" });
+    } else {
+      await sendIpc({ type: "done" });
+    }
+  } catch (error) {
+    await drainOutputQueue();
+    if (abortController.signal.aborted) {
+      await sendIpc({ type: "aborted" });
+    } else {
+      await sendIpc({ type: "error", message: errorMessage(error) });
+    }
+    process.exitCode = 1;
+  } finally {
+    if (process.connected) {
+      process.disconnect();
+    }
+  }
+}
+
+async function runController() {
+  if (!codeFilePath) {
+    sendControl({ type: "error", message: "No user code file path specified" });
+    process.exitCode = 1;
+    return;
+  }
+
+  const abortController = new AbortController();
+  const requestAbortController = new AbortController();
+  let terminalMessageSeen = false;
+  let workerExitCode = 1;
+  let workerStderr = "";
+  let abortTimer;
+  let promptQueue = Promise.resolve();
+  let pendingControlRequests = 0;
+
+  const worker = fork(new URL(import.meta.url), ["--worker", codeFilePath], {
+    env: userEnvironment(),
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  });
+
+  const sendWorker = (message) => {
+    if (!worker.connected) return;
+    worker.send(message, () => {});
+  };
+
+  const finishWithError = (message) => {
+    if (terminalMessageSeen) return;
+    terminalMessageSeen = true;
+    sendControl({ type: "error", message });
+  };
+  const executePromptSerially = (message) => {
+    const current = promptQueue.then(() => executeControllerRequest(message, requestAbortController.signal));
+    promptQueue = current.then(() => undefined, () => undefined);
+    return current;
+  };
+
+  worker.stdout?.on("data", () => {
+    // Direct process.stdout/console output from user code is intentionally not
+    // part of the deterministic output contract.
+  });
+  worker.stderr?.on("data", (chunk) => {
+    if (workerStderr.length < 16 * 1024) {
+      workerStderr += String(chunk).slice(0, 16 * 1024 - workerStderr.length);
+    }
+  });
+  worker.on("message", (message) => {
+    if (!isRecord(message)) return;
+    if (message.type === "output") {
+      if (message.stream === "stdout" || message.stream === "stderr") {
+        sendControl({ type: message.stream, text: String(message.text ?? "") });
+      }
+      return;
+    }
+    if (message.type === "done") {
+      terminalMessageSeen = true;
+      sendControl({ type: "done" });
+      return;
+    }
+    if (message.type === "aborted") {
+      terminalMessageSeen = true;
+      sendControl({ type: "aborted" });
+      return;
+    }
+    if (message.type === "error") {
+      finishWithError(typeof message.message === "string" ? message.message : "Deterministic automation failed");
+      return;
+    }
+    if (message.type !== "request" || !Number.isSafeInteger(message.id) || message.id <= 0) return;
+
+    const executeControl = async () => {
+      if (pendingControlRequests >= 128) {
+        throw new Error("Too many concurrent Clanky control requests");
+      }
+      pendingControlRequests += 1;
+      try {
+        return await executeControllerRequest(message, requestAbortController.signal);
+      } finally {
+        pendingControlRequests -= 1;
+      }
+    };
+    const operation = message.action === "control"
+      ? executeControl()
+      : message.action === "prompt"
+        ? executePromptSerially(message)
+        : message.action === "exec"
+          ? executeWorkspaceCommand(message, requestAbortController.signal)
+          : Promise.reject(new Error("Unknown runner request"));
+    void operation.then(
+      (value) => sendWorker({ type: "response", id: message.id, ok: true, value }),
+      (error) => sendWorker({
+        type: "response",
+        id: message.id,
+        ok: false,
+        error: errorMessage(error),
+      }),
+    );
+  });
+  worker.on("error", (error) => {
+    finishWithError(errorMessage(error));
+  });
+  worker.on("disconnect", () => requestAbortController.abort());
+
+  const onAbort = () => {
+    abortController.abort();
+    requestAbortController.abort();
+    sendWorker({ type: "abort" });
+    abortTimer = setTimeout(() => {
+      try {
+        worker.kill("SIGTERM");
+      } catch {
+        // The worker may already have exited.
+      }
+    }, 2000);
+  };
+  process.on("SIGTERM", onAbort);
+  process.on("SIGINT", onAbort);
+
+  workerExitCode = await new Promise((resolve) => {
+    worker.on("close", (code) => resolve(typeof code === "number" ? code : 1));
+  });
+  requestAbortController.abort();
+  if (abortTimer) clearTimeout(abortTimer);
+  process.off("SIGTERM", onAbort);
+  process.off("SIGINT", onAbort);
+
+  if (abortController.signal.aborted) {
+    if (!terminalMessageSeen) sendControl({ type: "aborted" });
+    return;
+  }
+  if (!terminalMessageSeen) {
+    finishWithError(workerStderr.trim() || "Deterministic automation worker exited unexpectedly");
+  }
+  if (workerExitCode !== 0) {
+    process.exitCode = 1;
+  }
+}
+
+if (CONTROL_MODE) {
+  await runController();
+} else {
+  await runWorker();
+}
+`;
+
+// ---------------------------------------------------------------------------
+// Node.js version validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify that the workspace host has Node.js >= MIN_NODE_MAJOR_VERSION.
+ * Throws if Node.js is absent or too old.
+ */
+export async function assertNodeVersionOnHost(executor: CommandExecutor): Promise<void> {
+  const result = await executor.exec("node", ["--version"], { logFailures: false });
+  if (!result.success) {
+    throw new Error(
+      `Node.js ${MIN_NODE_MAJOR_VERSION} or newer is required on the workspace host, but 'node --version' failed: ${result.stderr || result.stdout || `exit code ${result.exitCode}`}`,
+    );
+  }
+  const raw = result.stdout.trim();
+  const match = raw.match(/^v(\d+)\./);
+  const major = match?.[1] ? parseInt(match[1], 10) : 0;
+  if (major < MIN_NODE_MAJOR_VERSION) {
+    throw new Error(
+      `Node.js ${MIN_NODE_MAJOR_VERSION} or newer is required on the workspace host (found ${raw})`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Runner launch
+// ---------------------------------------------------------------------------
+
+export interface LaunchRunnerOptions {
+  run: AutomationRun;
+  /** TypeScript source for the user module, executed by Node.js type stripping. */
+  sourceCode: string;
+  chatId: string;
+  control: ExecutionControlConnection;
+  directory: string;
+  signal: AbortSignal;
+  output: DeterministicAutomationOutput;
+  executor: CommandExecutor;
+}
+
+async function createHostTempDirectory(
+  executor: CommandExecutor,
+  directory: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const result = await executor.exec(
+    "mktemp",
+    ["-d", "/tmp/clanky-automation.XXXXXX"],
+    {
+      cwd: directory,
+      timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+      logFailures: false,
+      signal,
+    },
+  );
+  if (!result.success) {
+    throw new Error(
+      `Failed to create runner temp directory on workspace host: ${result.stderr || result.stdout || result.exitCode}`,
+    );
+  }
+
+  const tempDir = result.stdout.trim();
+  if (!HOST_TEMP_DIRECTORY_PATTERN.test(tempDir)) {
+    throw new Error("Workspace host returned an invalid deterministic runner temp directory");
+  }
+
+  try {
+    const chmodResult = await executor.exec(
+      "chmod",
+      ["700", tempDir],
+      {
+        cwd: directory,
+        timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        logFailures: false,
+        signal,
+      },
+    );
+    if (!chmodResult.success) {
+      throw new Error(
+        `Failed to secure runner temp directory on workspace host: ${chmodResult.stderr || chmodResult.stdout || chmodResult.exitCode}`,
+      );
+    }
+  } catch (error) {
+    try {
+      const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {
+        cwd: directory,
+        timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        logFailures: false,
+      });
+      if (!cleanupResult.success) {
+        throw new Error(
+          cleanupResult.stderr || cleanupResult.stdout || `exit code ${cleanupResult.exitCode}`,
+        );
+      }
+    } catch (cleanupError) {
+      log.error("Failed to clean up deterministic runner directory after setup failure", {
+        tempDir,
+        error: String(cleanupError),
+      });
+      throw new AggregateError(
+        [error, cleanupError],
+        "Deterministic automation runner setup and workspace cleanup failed",
+      );
+    }
+    throw error;
+  }
+  return tempDir;
+}
+
+/**
+ * Writes the runner and user code to a temporary directory on the workspace
+ * host, launches Node.js through transport-owned long-running execution without
+ * an execution timeout, and streams explicit output from the control protocol.
+ */
+export async function launchDeterministicAutomationOnHost(
+  options: LaunchRunnerOptions,
+): Promise<AutomationRun> {
+  const {
+    run,
+    sourceCode,
+    chatId,
+    control,
+    directory,
+    signal,
+    output,
+    executor,
+  } = options;
+
+  let tempDir: string | undefined;
+  let executionError: unknown;
+  const controlLifetime = new AbortController();
+  const executionSignal = AbortSignal.any([signal, controlLifetime.signal]);
+  const controlRequests = new Map<string, { abort: AbortController; operation: Promise<void> }>();
+  try {
+    tempDir = await createHostTempDirectory(executor, directory, signal);
+    const runnerPath = `${tempDir}/runner.mjs`;
+    const codePath = `${tempDir}/code.ts`;
+
+    const [runnerOk, codeOk] = await Promise.all([
+      executor.writeFile(runnerPath, DETERMINISTIC_AUTOMATION_RUNNER_SCRIPT),
+      executor.writeFile(codePath, sourceCode),
+    ]);
+    if (!runnerOk) {
+      throw new Error("Failed to write runner script to workspace host");
+    }
+    if (!codeOk) {
+      throw new Error("Failed to write user code to workspace host");
+    }
+
+    let lineBuffer = "";
+    let runnerError: string | undefined;
+    let runnerAborted = false;
+
+    const handleChunk = (chunk: string): void => {
+      lineBuffer += chunk;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let message: RunnerMessage;
+        try {
+          message = JSON.parse(trimmed) as RunnerMessage;
+        } catch {
+          log.debug("Ignoring malformed runner control line", { runId: run.id });
+          continue;
+        }
+        switch (message.type) {
+          case "control":
+          case "prompt": {
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(message.id)
+              || controlRequests.has(message.id) || controlRequests.size >= 128) {
+              runnerError = "Invalid or excessive runner control requests";
+              controlLifetime.abort();
+              break;
+            }
+            const abort = new AbortController();
+            const requestSignal = AbortSignal.any([executionSignal, abort.signal]);
+            const operation = (async () => {
+              let response: { ok: true; value: unknown } | { ok: false; error: string };
+              try {
+                if (message.type === "control") {
+                  let result: unknown;
+                  try {
+                    result = await requestControlTool(control, {
+                      operation: "call", name: message.name, input: message.input,
+                    }, requestSignal);
+                  } catch (error) {
+                    result = controlToolTransportFailure(error);
+                  }
+                  response = { ok: true, value: result };
+                } else {
+                  response = { ok: true, value: await promptDeterministicAutomation(control.access, chatId, message.message, requestSignal) };
+                }
+              } catch (error) {
+                log.error("Runner execution request failed", { runId: run.id, type: message.type, error: String(error) });
+                response = { ok: false, error: error instanceof Error ? error.message : "The execution request failed." };
+              }
+              if (requestSignal.aborted) return;
+              const responsePath = `${tempDir}/response-${message.id}.json`;
+              const stagingPath = `${responsePath}.pending`;
+              if (!await executor.writeFile(stagingPath, JSON.stringify(response))) {
+                throw new Error("Failed to write the runner control result on its execution host.");
+              }
+              const moved = await executor.movePath(stagingPath, responsePath);
+              if (!moved.success) throw new Error("Failed to publish the runner control result on its execution host.");
+            })().catch((error: unknown) => {
+              runnerError = "The runner control response could not be delivered; inspect the target before repeating a mutation.";
+              log.error("Runner control response delivery failed", { runId: run.id, error: String(error) });
+              controlLifetime.abort();
+            }).finally(() => { controlRequests.delete(message.id); });
+            controlRequests.set(message.id, { abort, operation });
+            break;
+          }
+          case "request.cancel":
+            controlRequests.get(message.id)?.abort.abort();
+            break;
+          case "stdout":
+            output.append("stdout", message.text);
+            break;
+          case "stderr":
+            output.append("stderr", message.text);
+            break;
+          case "error":
+            runnerError = message.message;
+            break;
+          case "aborted":
+            runnerAborted = true;
+            break;
+          case "done":
+            break;
+        }
+      }
+    };
+
+    const execResult = await executor.exec(
+      "node",
+      [runnerPath, codePath],
+      {
+        cwd: directory,
+        signal: executionSignal,
+        timeout: null,
+        longRunning: true,
+        logFailures: false,
+        onStdoutChunk: handleChunk,
+      },
+    );
+
+    if (lineBuffer.trim()) {
+      try {
+        handleChunk(`${lineBuffer.trim()}\n`);
+      } catch {
+        // Ignore an incomplete trailing protocol line after process exit.
+      }
+    }
+
+    if (signal.aborted) {
+      throw Object.assign(new Error("Deterministic automation run interrupted"), { cause: "aborted" });
+    }
+    if (runnerError) {
+      throw new Error(runnerError);
+    }
+    if (runnerAborted) {
+      throw Object.assign(new Error("Deterministic automation run interrupted"), { cause: "aborted" });
+    }
+    if (!execResult.success) {
+      const detail = execResult.stderr?.trim()
+        || execResult.stdout?.trim()
+        || `exit code ${execResult.exitCode}`;
+      throw new Error(`Runner process failed: ${detail}`);
+    }
+    return output.run;
+  } catch (error) {
+    executionError = error;
+    throw error;
+  } finally {
+    controlLifetime.abort();
+    await Promise.allSettled([...controlRequests.values()].map((request) => request.operation));
+    if (tempDir) {
+      try {
+        const cleanupResult = await executor.exec("rm", ["-rf", tempDir], {
+          logFailures: false,
+          timeout: RUNNER_CLEANUP_TIMEOUT_MS,
+        });
+        if (!cleanupResult.success) {
+          throw new Error(
+            cleanupResult.stderr || cleanupResult.stdout || `exit code ${cleanupResult.exitCode}`,
+          );
+        }
+      } catch (cleanupError) {
+        log.error("Failed to clean up deterministic automation runner directory", {
+          runId: run.id,
+          tempDir,
+          error: String(cleanupError),
+        });
+        if (executionError !== undefined) {
+          throw new AggregateError(
+            [executionError, cleanupError],
+            "Deterministic automation execution and workspace cleanup failed",
+          );
+        }
+        throw cleanupError;
+      }
+    }
+  }
+}

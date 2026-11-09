@@ -3,7 +3,7 @@ import { executionHostRefFromParts, isPrivateMeshExecutionHostRef } from "@/shar
 import { readReferenceField } from "@/shared/record";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadTaskSummary } from "../persistence/tasks";
-import { listAgentsByWorkspace, loadAgent, loadAgentRunSummary, loadAgentRunSummaryByChatId } from "../persistence/agents";
+import { listAutomationsByWorkspace, loadAutomation, loadAutomationRunSummary, loadAutomationRunSummaryByChatId } from "../persistence/automations";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
 import type { PreparedOperation } from "./clanky-operation-service";
@@ -26,24 +26,24 @@ export async function resourcePrivate(resource: string, id: string): Promise<boo
     if (chat.config.scope === "task" || chat.config.taskId) {
       return !chat.config.taskId || await resourcePrivate("task", chat.config.taskId);
     }
-    if (chat.config.scope === "agent") {
-      const run = await loadAgentRunSummaryByChatId(id);
-      if (run) return await resourcePrivate("agent-run", run.id);
+    if (chat.config.scope === "automation") {
+      const run = await loadAutomationRunSummaryByChatId(id);
+      if (run) return await resourcePrivate("automation-run", run.id);
       if (!chat.config.workspaceId) return true;
-      const parent = (await listAgentsByWorkspace(chat.config.workspaceId))
-        .find((agent) => agent.config.generationChatId === id);
-      return !parent || await resourcePrivate("agent", parent.config.id);
+      const parent = (await listAutomationsByWorkspace(chat.config.workspaceId))
+        .find((automation) => automation.config.generationChatId === id);
+      return !parent || await resourcePrivate("automation", parent.config.id);
     }
     return chat.config.source?.kind === "execution_host"
       ? isPrivateMeshExecutionHostRef(chat.config.source.executionHost.host) : false;
   }
-  if (resource === "agent") {
-    const agent = await loadAgent(id);
-    return !agent || agent.config.isPrivate === true || await workspacePrivate(agent.config.workspaceId);
+  if (resource === "automation") {
+    const automation = await loadAutomation(id);
+    return !automation || automation.config.isPrivate === true || await workspacePrivate(automation.config.workspaceId);
   }
-  if (resource === "agent-run") {
-    const run = await loadAgentRunSummary(id);
-    return !run || await resourcePrivate("agent", run.agentId) || await workspacePrivate(run.configSnapshot.workspaceId);
+  if (resource === "automation-run") {
+    const run = await loadAutomationRunSummary(id);
+    return !run || await resourcePrivate("automation", run.automationId) || await workspacePrivate(run.configSnapshot.workspaceId);
   }
   if (resource === "terminal") {
     const terminal = await getTerminalSession(id);

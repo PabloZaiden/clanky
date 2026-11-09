@@ -7,14 +7,14 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
 
-export type WorkspacePersistenceResource = "workspace" | "task" | "chat" | "agent" | "agent-run" | "terminal" | "preview" | "review-comment" | "subagent";
+export type WorkspacePersistenceResource = "workspace" | "task" | "chat" | "automation" | "automation-run" | "terminal" | "preview" | "review-comment" | "subagent";
 
 const RESOURCE_BINDINGS: Record<WorkspacePersistenceResource, string> = {
   workspace: "SELECT user_id AS owner, id AS workspace FROM workspaces WHERE id = ?",
   task: "SELECT user_id AS owner, workspace_id AS workspace FROM tasks WHERE id = ?",
   chat: "SELECT user_id AS owner, workspace_id AS workspace FROM chats WHERE id = ?",
-  agent: "SELECT user_id AS owner, workspace_id AS workspace FROM agents WHERE id = ?",
-  "agent-run": "SELECT run.user_id AS owner, agent.workspace_id AS workspace FROM agent_runs run JOIN agents agent ON agent.id = run.agent_id AND agent.user_id = run.user_id WHERE run.id = ?",
+  automation: "SELECT user_id AS owner, workspace_id AS workspace FROM automations WHERE id = ?",
+  "automation-run": "SELECT run.user_id AS owner, automation.workspace_id AS workspace FROM automation_runs run JOIN automations automation ON automation.id = run.automation_id AND automation.user_id = run.user_id WHERE run.id = ?",
   terminal: "SELECT user_id AS owner, workspace_id AS workspace FROM terminal_sessions WHERE id = ?",
   preview: "SELECT user_id AS owner, workspace_id AS workspace FROM preview_sessions WHERE id = ?",
   "review-comment": "SELECT comment.user_id AS owner, task.workspace_id AS workspace FROM review_comments comment JOIN tasks task ON task.id = comment.task_id AND task.user_id = comment.user_id WHERE comment.id = ?",

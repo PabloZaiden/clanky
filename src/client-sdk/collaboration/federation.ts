@@ -207,7 +207,7 @@ export class CollaborationFederationClient {
     const { delegation } = match.operation.metadata;
     if (!delegation) {
       if (Object.values(match.params).some((value) => decodeCollaborationResourceReference(value))
-        || ["workspaceId", "taskId", "chatId", "agentId", "controllerId"].some((field) => {
+        || ["workspaceId", "taskId", "chatId", "automationId", "controllerId"].some((field) => {
           const value = url.searchParams.get(field);
           return value ? decodeCollaborationResourceReference(value) : false;
         }) || !local) {
