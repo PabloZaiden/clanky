@@ -75,19 +75,29 @@ not the simulator. Main pushes use Xcode's Debug configuration; published
 versioned releases use Release, with the project's optimized Swift settings.
 Archive paths and build metadata follow that configuration, and publication
 rejects artifacts built in the wrong mode for the event. Public archives keep
-the project's native version numbers; the separate TestFlight IPA uses its
-release tag and an Apple build number. Other server, Docker and
-release-publication jobs keep their existing behavior. The optional Linux
-cross-build commands below remain available independently of CI.
+the project's native version numbers, but their bundled frontend and Mac
+controller embed the exact distribution version: the release tag without `v`,
+or the CLI publisher's exact rolling main version. Apple builds wait for CLI
+publication so main does not independently generate a different timestamp-based
+version. Superseded main commits are skipped. Before signing and packaging,
+both connection-mode bootstraps, frontend metadata and integrity manifest must
+match that version and source, and the Mac controller must report that version.
+Build metadata records the embedded version; publication rejects a mismatch
+instead of merely relabeling an archive. Ordinary local builds retain their
+development version unless explicitly configured otherwise.
+The separate TestFlight IPA uses its release tag and an Apple build number.
+Other server, Docker and release-publication jobs keep their existing behavior.
+The optional Linux cross-build commands below remain available independently of CI.
 
 Download `apple-app-macos-arm64` or `apple-app-ios-arm64` from the workflow run's
 Actions artifacts; they use the repository's artifact retention policy.
 The Mac artifact contains `Clanky-macos-arm64-notarized.zip`, its `.sha256`
 file and `build.json`; iOS contains `Clanky-ios-arm64-unsigned.tar.gz` and the
 corresponding checksum/metadata. Metadata records the exact source revision/ref,
-target, configuration and Xcode version. Mac metadata also identifies the
-verified signing certificate, team, accepted notarization submission and
-stapled ticket. Verify and extract the Mac archive preserving bundle metadata:
+distribution version, target, configuration and Xcode version. Mac metadata
+also identifies the verified signing certificate, team, accepted notarization
+submission and stapled ticket. Verify and extract the Mac archive preserving
+bundle metadata:
 
 ```bash
 shasum -a 256 -c Clanky-macos-arm64-notarized.zip.sha256
