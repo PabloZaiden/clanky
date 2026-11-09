@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.4
+version: 0.6.6
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -155,6 +155,9 @@ in app-owned adapters, not silently convert/reset them.
   `max(spacing, inset)` rather than stacking duplicate bottom clearance.
 - Sidebar ready snapshots control pin retirement. Temporary loading/error
   must not delete pins. Async producers/consumers own explicit ready/error state.
+- Let sidebar defaults align sibling disclosure controls. Only lists containing
+  expandable items reserve a compact gutter; leaf-only lists stay compact.
+  Keep item-child indentation fixed instead of accumulating depth-based margins.
 - Opt sidebar items into `swipeActions` for a small set of quick actions.
   Webapp owns gestures and click suppression; callbacks target the item without
   activating its route. Apps own privacy/access filtering, pending state, errors,

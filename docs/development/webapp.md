@@ -133,6 +133,13 @@ workspace/server rows retain their own presentation.
 There are no type or History subsections and no subsection-level New buttons.
 Dashboard creation controls and entity context/header actions remain unchanged.
 
+Sidebar disclosure spacing is framework-owned and decided separately for each
+sibling list. Servers and Workspaces align expandable and leaf rows when that
+list contains expandable items; leaf-only lists such as Automations and Pinned
+remain compact. The disclosure column stays narrow without shrinking its
+control's hit area. Nested children use a small, fixed indent beneath their
+parent content rather than accumulating additional depth-based margins.
+
 Ordinary actions, including primary actions, are unboxed icons/clickable labels.
 Use public subtle/link/primary variants intentionally; reserve solid danger
 for irreversible confirmation. Update/restart is not deletion.
