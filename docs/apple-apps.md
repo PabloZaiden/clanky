@@ -211,9 +211,12 @@ non-exempt encryption: native hashing, client signing and transport use
 CryptoKit/Web Crypto/system networking. Reassess this declaration before adding
 cryptography not provided by the operating system.
 
-The Apple upload is followed by bounded processing and internal-group/readiness
-verification; group assignment uses only the explicitly selected internal
-group. Apple rejection, compliance/credential/signature problems or timeout
+The Apple upload is followed by bounded processing and internal-readiness
+verification. The selected internal group must still have automatic distribution
+enabled and at least one tester when the build is ready. This automatic-only
+flow does not manually assign build/group relationships, which Apple can reject
+for internal-only uploads even when the build is already available.
+Apple rejection, compliance/credential/signature problems or timeout
 fail the job, with no automatic uncertain upload retry or unsigned fallback.
 The build cannot be used for external TestFlight or public App Store submission.
 Only a non-secret result goes to the Actions summary; the IPA, temporary signing
