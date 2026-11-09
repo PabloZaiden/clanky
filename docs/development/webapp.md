@@ -114,6 +114,11 @@ heading, not the workspace menu. Git-backed workspace overviews expose
 **Pull Latest Changes** and **Open in GitHub** as page buttons; pulling retains
 its busy state and requires work access.
 
+Server **...** menus and sidebar right-click menus also expose **Code Explorer**
+for the selected local or Mesh server, without requiring or creating a workspace.
+This is a menu-only action, not a standalone page button. It is disabled when
+the server does not accept execution or lacks the required file-operation capability.
+
 In the sidebar's **Workspaces** tab, each workspace directly lists chats,
 Git-backed tasks, and terminals together, including completed chats and
 historical tasks. **Agents** is a peer section containing agents from all
