@@ -83,13 +83,16 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/ios-testflight.ts "$IOS_RELEASE_TAG" > "$RUNNER_TEMP/ios-testflight-result.json"
-          jq -e '.internalOnly == true and .processingState == "VALID"
+          jq -e --arg frontend_version "${IOS_RELEASE_TAG#v}" '
+            .frontendVersion == $frontend_version
+            and .internalOnly == true and .processingState == "VALID"
             and (.internalBuildState == "READY_FOR_BETA_TESTING" or .internalBuildState == "IN_BETA_TESTING")
             and .configuration == "Release" and .architecture == "arm64"
             and .internalTesterCount > 0
           ' "$RUNNER_TEMP/ios-testflight-result.json" > /dev/null
           jq -r '"### Internal TestFlight\n\n"
             + "iOS " + .version + " (" + .buildNumber + ") is available to **" + .internalGroupName + "**.\n\n"
+            + "Bundled frontend: `" + .frontendVersion + "`.\n\n"
             + "Source: `" + .sourceRevision + "`. Internal-only; no external testing or App Store submission."
           ' "$RUNNER_TEMP/ios-testflight-result.json" >> "$GITHUB_STEP_SUMMARY"
 

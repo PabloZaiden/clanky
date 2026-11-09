@@ -117,6 +117,11 @@ used by Apple apps:
 bun run build:pages
 ```
 
+An optional frontend-version argument packages a specific version without
+changing `package.json`, for example `bun run build:pages 9.2.1`. TestFlight's
+canonical build passes its release version this way. Without the argument,
+the existing package version is used.
+
 Publish all of `dist/pages/` at either channel path or another static URL.
 This command creates a clean single snapshot rather than
 copying accumulated files from `dist/client/`, and fails if the result exceeds

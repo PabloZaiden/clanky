@@ -12,6 +12,10 @@ import { buildClient } from "./build-client";
 import { checkPagesSize, renderPagesChooser } from "./pages-site";
 import { CLANKY_VERSION } from "./version";
 
+const [version = CLANKY_VERSION, ...extra] = process.argv.slice(2);
+if (extra.length || !version.trim()) {
+  throw new Error("Usage: bun run build:pages [frontend-version]");
+}
 const outdir = resolve("dist/pages");
 const revision = (process.env["GITHUB_SHA"] ?? await Bun.$`git rev-parse HEAD`.text()).trim();
 if (!/^[a-f0-9]{40}$/.test(revision)) {
@@ -20,10 +24,10 @@ if (!/^[a-f0-9]{40}$/.test(revision)) {
 
 await rm(outdir, { recursive: true, force: true });
 const apiDirectory = join(outdir, "api");
-await buildClient({ outdir: apiDirectory, clientMode: "remote" });
+await buildClient({ outdir: apiDirectory, clientMode: "remote", version });
 const collaborationDirectory = join(outdir, "collaboration");
 await cp(apiDirectory, collaborationDirectory, { recursive: true, errorOnExist: true, force: false });
-const collaborationBootstrap: WebAppClientBootstrap = { mode: "external", version: CLANKY_VERSION };
+const collaborationBootstrap: WebAppClientBootstrap = { mode: "external", version };
 await Bun.write(
   join(collaborationDirectory, WEB_APP_CLIENT_CONFIG_PATH.slice(1)),
   JSON.stringify(collaborationBootstrap),
@@ -50,11 +54,11 @@ for (const path of paths) {
     sha256: new Bun.CryptoHasher("sha256").update(await file.arrayBuffer()).digest("hex"),
   });
 }
-const manifest = `${JSON.stringify({ revision, version: CLANKY_VERSION, files: assets })}\n`;
+const manifest = `${JSON.stringify({ revision, version, files: assets })}\n`;
 await Bun.write(join(outdir, "frontend-update.json"), manifest);
 await Bun.write(join(outdir, "build-info.json"), `${JSON.stringify({
   revision,
-  version: CLANKY_VERSION,
+  version,
   builtAt: new Date().toISOString(),
   update: {
     manifest: "frontend-update.json",

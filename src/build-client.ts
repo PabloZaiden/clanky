@@ -7,6 +7,7 @@ export async function buildClient(options?: {
   outdir: string;
   clientMode?: "remote" | "external";
   apiBaseUrl?: string;
+  version?: string;
 }) {
   const mode = options ? options.clientMode : process.env["CLANKY_CLIENT_MODE"];
   if (mode !== undefined && mode !== "remote" && mode !== "external") {
@@ -16,7 +17,7 @@ export async function buildClient(options?: {
   return await buildWebAppClient({
     ...CLANKY_WEB_OPTIONS,
     appName: "Clanky",
-    version: CLANKY_VERSION,
+    version: options?.version ?? CLANKY_VERSION,
     outdir: options?.outdir ?? "dist/client",
     apiBaseUrl: options ? options.apiBaseUrl : process.env["CLANKY_CLIENT_API_URL"],
     clientMode: mode,

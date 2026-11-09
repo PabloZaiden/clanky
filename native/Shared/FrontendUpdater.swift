@@ -131,7 +131,11 @@ actor FrontendUpdater {
             await progress("Checking for frontend updates...")
             let info = try await deadline(seconds: 5) { try await self.deployment() }
             let development = current.info.version.hasSuffix("-development")
-            let samePublishedRevision = !development && info.revision == current.info.revision
+            let newerStableVersion = info.version.range(
+                of: #"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"#,
+                options: .regularExpression
+            ) != nil && info.version.compare(current.info.version, options: .numeric) == .orderedDescending
+            let samePublishedRevision = !development && info.revision == current.info.revision && !newerStableVersion
             if info.update.sha256 != current.info.update.sha256 && !samePublishedRevision {
                 if development {
                     let offer = FrontendUpdateOffer(

@@ -190,7 +190,8 @@ A Developer-role key can upload builds; it must actually have access to the app,
 group and build APIs. Keep unrelated signing/OTA credentials and profiles intact.
 
 `bun scripts/ios-testflight.ts vX.Y.Z[-prerelease]` owns the publication:
-it reuses the canonical bundled-web build, creates a native Release
+it passes the full release version to the canonical bundled-web build without
+changing `package.json`, creates a native Release
 `xcodebuild archive`, and exports with `app-store-connect` and
 `testFlightInternalTestingOnly=true`. Native marketing version is the numeric
 release core; the next major build number comes from Apple's existing builds
@@ -200,7 +201,11 @@ Xcode's automatic version/build management is disabled.
 
 Both archive and extracted IPA must match the actual iOS Bundle ID, release
 version/build, arm64 device platform, exact profile and signing certificate,
-and authorized non-development entitlements. The exported app declares no
+and authorized non-development entitlements. Their bundled frontend metadata,
+integrity manifest and both connection bootstraps must match the checked-out
+source and full release version, including any prerelease suffix. TestFlight
+never ships the default development frontend merely because the checked-in
+package version has that marker. The exported app declares no
 non-exempt encryption: native hashing, client signing and transport use
 CryptoKit/Web Crypto/system networking. Reassess this declaration before adding
 cryptography not provided by the operating system.
@@ -1163,7 +1168,10 @@ The old root update URL is not retained; older app builds need replacement.
 An unchanged frontend manifest digest needs no asset download, installation
 or confirmation.
 A published frontend also skips rebuilds of its already installed source
-revision, even if bundler details or the resolved version/timestamp change.
+revision when the stable release version has not advanced, even if bundler
+details or the latest/main version timestamp change. A newer stable release
+version updates even at the same source revision; an old saved release cannot
+block that upgrade merely because the commit matches.
 Development frontends do not use that shortcut because they may include
 uncommitted changes. `builtAt` alone never triggers an update. Returning from the background,
 reloading the web page, opening another scene and retrying the local asset
@@ -1172,11 +1180,14 @@ server do not initiate another update check in that process.
 When a different frontend is available, the app prepares it during that same
 startup and opens the updated UI. The version used to detect development
 builds is the frontend version shown in the sidebar, not the backend or native
-bundle version. It originates in `package.json.version`, is passed through
-`CLANKY_VERSION`, and is embedded in each mode's `webapp-client.json` and the
+bundle version. By default it originates in `package.json.version`, is passed
+through `CLANKY_VERSION`, and is embedded in each mode's `webapp-client.json` and the
 site's build metadata. The checked-in `0.0.0-development` version retains its
-`-development` marker in local builds; Pages CI resolves a published version
-before packaging. An active version with that development marker offers
+`-development` marker in default local builds; Pages CI resolves a published
+version before packaging, and TestFlight passes its release version explicitly.
+Apple asset/native builds can set `--frontend-version` without changing the
+package version; this build parameter does not select or change update channels.
+An active version with the development marker offers
 **Update** or **Keep Current** before downloading the update. Keeping it asks
 again on a later cold launch if a different deployment is still available.
 Once the active frontend is a published version, updates are automatic.
