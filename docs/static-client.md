@@ -80,20 +80,34 @@ or API compatibility. Browser clients still require a reload after deployment to
 up the new frontend; they do not install the native app's downloaded snapshots.
 
 The `Publish browser clients` workflow builds PRs without publishing them.
-Main pushes, stable release publication, and manual runs on `main` deploy
-through the `github-pages` environment. Both channels are built from immutable
+Main pushes and manual runs on `main` deploy through the `github-pages`
+environment. Every stable release automatically dispatches one run on `main`
+instead of deploying directly under the release event. This avoids a
+[GitHub Pages release-event bug](https://github.com/actions/deploy-pages/issues/383)
+that can report success while continuing to serve the previous artifact.
+The dispatched run resolves the highest stable release and current main itself;
+it does not dispatch again. Only the release-dispatch job receives
+`actions: write`. Both channels are built from immutable
 source revisions and combined into one complete artifact, because a Pages
 deployment replaces the whole site. Drafts, prereleases, and the rolling
 `latest` release do not select the stable channel. Publication shares one
 serialization group across triggers and skips artifacts whose main revision
 or stable release selection has been superseded.
-Ineligible events use isolated concurrency groups and cannot displace a
-pending publication.
+Release dispatches and ineligible events use isolated concurrency groups and
+cannot displace a pending publication. Each snapshot records its checked-out
+source SHA, not the triggering event's reserved `GITHUB_SHA`; assembly rejects
+source/version metadata that disagrees with the selected channels.
+After deployment, publication checks the actual public metadata, manifest
+digests, connection bootstrap versions/modes, and root channel links against the
+built artifact. It allows up to 15 minutes for Pages cache propagation and
+fails explicitly if the expected content is not served. Workflow success
+therefore includes observed delivery, not just deployment admission.
 Configure repository **Settings > Pages > Source** to
 **GitHub Actions** before the first deployment. Both clients are packaged from
 one frontend build per channel; only their `webapp-client.json` modes differ.
-The `github-pages` environment's deployment rules must allow the `main` branch
-and `v*` tags for release-triggered publication. No API URL, invitation or
+The `github-pages` environment's deployment rules must allow the `main` branch.
+Stable releases dispatch publication on main, so tag deployment rules are no
+longer required; existing tag permissions can remain. No API URL, invitation or
 credentials are preconfigured.
 
 To generate one complete frontend snapshot locally, including the resources
