@@ -65,7 +65,7 @@ actor FrontendUpdater {
     private let session: URLSession
     private let files = FileManager.default
 
-    init(storage: URL, source: URL = URL(string: "https://pablozaiden.github.io/clanky/")!) {
+    init(storage: URL, source: URL) {
         self.storage = storage
         self.source = source
         let configuration = URLSessionConfiguration.ephemeral

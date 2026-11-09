@@ -40,17 +40,27 @@ authentication contract.
 
 ### Continuous GitHub Pages deployments
 
-Every push to `main` publishes both clients together:
+Pages publishes two frontend channels together:
 
-| URL | Connection |
+| Channel | URL | Source |
+| --- | --- | --- |
+| Stable | https://pablozaiden.github.io/clanky/stable/ | Highest published stable `vX.Y.Z` release |
+| Latest | https://pablozaiden.github.io/clanky/latest/ | Current `main` revision |
+
+Each channel contains both connection modes:
+
+| Relative URL | Connection |
 | --- | --- |
-| https://pablozaiden.github.io/clanky/api/ | Select an HTTPS API and authorize a device session |
-| https://pablozaiden.github.io/clanky/collaboration/ | Upload an invitation file for Direct or Relay collaboration |
+| `api/` | Select an HTTPS API and authorize a device session |
+| `collaboration/` | Upload an invitation file for Direct or Relay collaboration |
 
 The [site root](https://pablozaiden.github.io/clanky/) is a lightweight,
-mobile-friendly connection chooser with dark and light system themes. It links
-both clients and the deployed commit without JavaScript or external resources.
-Its `build-info.json` records the full source revision (`revision`),
+mobile-friendly channel chooser with dark and light system themes. Each channel
+has its own connection chooser and deployed commit link, without JavaScript or
+external resources. The old root `api/`, `collaboration/`, and update metadata
+URLs are not retained.
+
+Each channel's `build-info.json` records the full source revision (`revision`),
 client version (`version`) and UTC build timestamp (`builtAt`). Its `update`
 entry identifies `frontend-update.json` by path, byte size and SHA-256.
 That manifest lists every application asset with its relative path, byte size
@@ -63,35 +73,47 @@ The [iPhone/iPad app](apple-apps.md#frontend-updates-on-iphone-and-ipad)
 uses this metadata for frontend-only updates.
 Sidebar and Settings / About show the
 client's own embedded build version, including in collaboration mode without
-a server connection. These deployments follow `main`, not the latest stable release;
-compare the deployed commit when investigating browser behavior or API
-compatibility. Browser clients still require a reload after deployment to pick
+a server connection. Stable uses the exact release version and source revision;
+latest uses a main build version based on the selected stable release.
+Compare the channel and deployed commit when investigating browser behavior
+or API compatibility. Browser clients still require a reload after deployment to pick
 up the new frontend; they do not install the native app's downloaded snapshots.
 
 The `Publish browser clients` workflow builds PRs without publishing them.
-Main pushes and manual runs on `main` deploy through the `github-pages`
-environment. Deployments are serialized and superseded revisions are skipped.
+Main pushes, stable release publication, and manual runs on `main` deploy
+through the `github-pages` environment. Both channels are built from immutable
+source revisions and combined into one complete artifact, because a Pages
+deployment replaces the whole site. Drafts, prereleases, and the rolling
+`latest` release do not select the stable channel. Publication shares one
+serialization group across triggers and skips artifacts whose main revision
+or stable release selection has been superseded.
 Configure repository **Settings > Pages > Source** to
 **GitHub Actions** before the first deployment. Both clients are packaged from
-one frontend build; only their `webapp-client.json` modes differ. No API URL,
-invitation or credentials are preconfigured.
+one frontend build per channel; only their `webapp-client.json` modes differ.
+The `github-pages` environment's deployment rules must allow the `main` branch
+and `v*` tags for release-triggered publication. No API URL, invitation or
+credentials are preconfigured.
 
-To generate the same complete site locally:
+To generate one complete frontend snapshot locally, including the resources
+used by Apple apps:
 
 ```bash
 bun run build:pages
 ```
 
-Publish all of `dist/pages/`. This command creates a clean site rather than
+Publish all of `dist/pages/` at either channel path or another static URL.
+This command creates a clean single snapshot rather than
 copying accumulated files from `dist/client/`, and fails if the result exceeds
 GitHub Pages' 1 GB site limit. Normal `build`, `build:client` and binary
-packaging are unchanged.
+packaging are unchanged. The Pages workflow assembles two separately built
+snapshots with `scripts/assemble-pages.ts`; the combined artifact is also
+checked against the 1 GB limit.
 
 Pages is a different origin from localhost or your controller. Authenticate
 again for the API client, or create and accept a new invitation for the
 collaboration client; existing origin-bound credentials and pairing keys are
-not migrated. The two directory paths share the same Pages origin and are not
-security isolation boundaries. Trust the public site's code as you would any
+not migrated. All channel and connection directory paths share the same Pages
+origin and are not security isolation boundaries. Trust the public site's code as you would any
 other client deployment. Hosting on Pages does not bypass Safari policies or
 guarantee a fix for browser-specific connection failures.
 

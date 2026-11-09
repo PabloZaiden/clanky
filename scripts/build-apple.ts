@@ -8,6 +8,10 @@ if (!["assets", "macos", "macos-linux", "ios", "ios-device", "ios-linux", "ios-s
   throw new Error(usage);
 }
 let configuration: "Debug" | "Release" = "Debug";
+const frontendUpdateChannel = process.env["CLANKY_FRONTEND_UPDATE_CHANNEL"] ?? "latest";
+if (frontendUpdateChannel !== "stable" && frontendUpdateChannel !== "latest") {
+  throw new Error("CLANKY_FRONTEND_UPDATE_CHANNEL must be stable or latest.");
+}
 if (options.length > 0) {
   const [flag, value] = options;
   if (options.length !== 2 || flag !== "--configuration" || (value !== "Debug" && value !== "Release")) {
@@ -162,7 +166,8 @@ if (linux) {
     await cp(resolve("native/Shared"), `${staging}/Shared`, { recursive: true });
     const plist = (await Bun.file("native/Configuration/iOS.plist").text()).replace(
       /\$\(([^)]+)\)/g,
-      (_, name: string) => Bun.escapeHTML(name === "EXECUTABLE_NAME" ? product : setting(name)),
+      (_, name: string) => Bun.escapeHTML(name === "EXECUTABLE_NAME" ? product
+        : name === "CLANKY_FRONTEND_UPDATE_CHANNEL" ? frontendUpdateChannel : setting(name)),
     );
     await Bun.write(`${staging}/Info.plist`, plist);
     // Preserve linked-SDK behavior: xtool otherwise uses the deployment target as the SDK version.
@@ -208,6 +213,7 @@ skipLSP: true
     ...(mac ? ["ARCHS=" + (process.arch === "x64" ? "x86_64" : process.arch), "ONLY_ACTIVE_ARCH=YES"]
       : ["CODE_SIGNING_ALLOWED=NO"]),
     ...(device ? ["ARCHS=arm64"] : []),
+    ...(!mac ? [`CLANKY_FRONTEND_UPDATE_CHANNEL=${frontendUpdateChannel}`] : []),
     "build",
   ]);
   const product = mac ? configuration : `${configuration}-${device ? "iphoneos" : "iphonesimulator"}`;

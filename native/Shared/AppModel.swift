@@ -65,12 +65,19 @@ final class AppModel: ObservableObject {
             } else {
                 if startup == nil {
                     let bundledRoot = root
+                    guard let channel = Bundle.main.object(forInfoDictionaryKey: "ClankyFrontendUpdateChannel") as? String,
+                          channel == "stable" || channel == "latest",
+                          let source = URL(string: "https://pablozaiden.github.io/clanky/\(channel)/") else {
+                        throw NSError(domain: "Clanky", code: 6, userInfo: [
+                            NSLocalizedDescriptionKey: "The app's frontend update channel is missing or invalid."
+                        ])
+                    }
                     startup = Task { [weak self] in
                         let directory = try FileManager.default.url(
                             for: .applicationSupportDirectory, in: .userDomainMask,
                             appropriateFor: nil, create: false
-                        ).appendingPathComponent("FrontendUpdates")
-                        return try await FrontendUpdater(storage: directory).prepare(
+                        ).appendingPathComponent("FrontendUpdates").appendingPathComponent(channel)
+                        return try await FrontendUpdater(storage: directory, source: source).prepare(
                             bundledRoot: bundledRoot,
                             progress: { [weak self] message in self?.startupMessage = message },
                             confirm: { [weak self] offer in
