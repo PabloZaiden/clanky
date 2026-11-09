@@ -3,24 +3,34 @@ import { resolve } from "node:path";
 
 const [platform, ...options] = process.argv.slice(2);
 const linux = platform === "macos-linux" || platform === "ios-linux" || platform === "ios-simulator-linux";
-const usage = "Usage: bun scripts/build-apple.ts assets|macos|macos-linux|ios|ios-device|ios-linux|ios-simulator-linux [--configuration Debug|Release]";
+const usage = "Usage: bun scripts/build-apple.ts assets|macos|macos-linux|ios|ios-device|ios-linux|ios-simulator-linux [--configuration Debug|Release] [--frontend-version version]";
 if (!["assets", "macos", "macos-linux", "ios", "ios-device", "ios-linux", "ios-simulator-linux"].includes(platform ?? "")) {
   throw new Error(usage);
 }
 let configuration: "Debug" | "Release" = "Debug";
+let frontendVersion: string | undefined;
 const frontendUpdateChannel = process.env["CLANKY_FRONTEND_UPDATE_CHANNEL"] ?? "latest";
 if (frontendUpdateChannel !== "stable" && frontendUpdateChannel !== "latest") {
   throw new Error("CLANKY_FRONTEND_UPDATE_CHANNEL must be stable or latest.");
 }
-if (options.length > 0) {
-  const [flag, value] = options;
-  if (options.length !== 2 || flag !== "--configuration" || (value !== "Debug" && value !== "Release")) {
+const seenOptions = new Set<string>();
+for (let index = 0; index < options.length; index += 2) {
+  const flag = options[index];
+  const value = options[index + 1];
+  if (!flag || !value?.trim() || value.startsWith("--") || seenOptions.has(flag)) {
     throw new Error(usage);
   }
-  if (linux || platform === "assets") {
-    throw new Error("--configuration is only supported for native macos, ios and ios-device builds.");
+  seenOptions.add(flag);
+  if (flag === "--frontend-version") {
+    frontendVersion = value;
+  } else if (flag === "--configuration" && (value === "Debug" || value === "Release")) {
+    if (linux || platform === "assets") {
+      throw new Error("--configuration is only supported for native macos, ios and ios-device builds.");
+    }
+    configuration = value;
+  } else {
+    throw new Error(usage);
   }
-  configuration = value;
 }
 if (linux && process.platform !== "linux") {
   throw new Error("The xtool cross-build requires Linux.");
@@ -35,7 +45,7 @@ async function run(command: string[], cwd?: string): Promise<void> {
 }
 
 // Use the existing two-mode site, including its chooser, without a second frontend.
-await run([process.execPath, "run", "build:pages"]);
+await run([process.execPath, "run", "build:pages", ...(frontendVersion ? [frontendVersion] : [])]);
 const directory = resolve("dist/apple");
 await mkdir(directory, { recursive: true });
 const web = `${directory}/Web`;
