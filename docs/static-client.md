@@ -87,6 +87,8 @@ deployment replaces the whole site. Drafts, prereleases, and the rolling
 `latest` release do not select the stable channel. Publication shares one
 serialization group across triggers and skips artifacts whose main revision
 or stable release selection has been superseded.
+Ineligible events use isolated concurrency groups and cannot displace a
+pending publication.
 Configure repository **Settings > Pages > Source** to
 **GitHub Actions** before the first deployment. Both clients are packaged from
 one frontend build per channel; only their `webapp-client.json` modes differ.
