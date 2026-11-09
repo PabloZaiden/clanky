@@ -283,7 +283,6 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   await run(["xcrun", "altool", "--upload-package", ipa, "--api-key", keyId, "--api-issuer", issuer],
     false, { ...process.env, API_PRIVATE_KEYS_DIR: keys });
   const deadline = Date.now() + 30 * 60_000;
-  let assigned = false;
   while (Date.now() < deadline) {
     const builds = await list("/v1/builds", buildSchema, { ...filters, "filter[version]": buildNumber });
     if (builds.length > 1) throw new Error("Apple returned multiple builds for the same marketing/build version.");
@@ -300,28 +299,26 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
         attributes: z.object({ version: z.literal(version!), platform: z.literal("IOS") }),
       }) }).parse(await api(`/v1/builds/${build.id}/preReleaseVersion`));
       if (!prerelease.data.id) throw new Error("Missing processed iOS prerelease version.");
-      const membership = await list(`/v1/betaGroups/${group.id}/relationships/builds`, resourceId);
-      if (!membership.some((member) => member.id === build.id)) {
-        if (!assigned) {
-          assigned = true;
-          await api(`/v1/betaGroups/${group.id}/relationships/builds`, "POST",
-            { data: [{ type: "builds", id: build.id }] });
+      const detail = z.object({ data: resourceId.extend({
+        attributes: z.object({ internalBuildState: z.string() }),
+      }) }).parse(await api(`/v1/builds/${build.id}/buildBetaDetail`));
+      if (["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].includes(detail.data.attributes.internalBuildState)) {
+        const currentGroup = z.object({ data: groupSchema }).parse(await api(`/v1/betaGroups/${group.id}`)).data;
+        if (currentGroup.attributes.name !== groupName
+          || !currentGroup.attributes.isInternalGroup || !currentGroup.attributes.hasAccessToAllBuilds) {
+          throw new Error("The selected automatic internal TestFlight group changed or is no longer available.");
         }
-      } else {
-        const detail = z.object({ data: resourceId.extend({
-          attributes: z.object({ internalBuildState: z.string() }),
-        }) }).parse(await api(`/v1/builds/${build.id}/buildBetaDetail`));
-        if (["READY_FOR_BETA_TESTING", "IN_BETA_TESTING"].includes(detail.data.attributes.internalBuildState)) {
-          return { appId: app.id, appName: app.attributes.name, bundleId, releaseTag: tag, version, frontendVersion,
-            buildNumber, buildId: build.id, sourceRevision, configuration: "Release", architecture: "arm64",
-            signingCertificateSHA1: identity, teamId: team, profileUUID: profile.UUID,
-            internalOnly: true, internalGroupId: group.id, internalGroupName: groupName,
-            internalTesterCount: testers.length, processingState: "VALID",
-            internalBuildState: detail.data.attributes.internalBuildState };
-        }
-        if (["EXPIRED", "INVALID", "MISSING_EXPORT_COMPLIANCE"].includes(detail.data.attributes.internalBuildState)) {
-          throw new Error(`Internal TestFlight is unavailable: ${detail.data.attributes.internalBuildState}.`);
-        }
+        const currentTesters = await list(`/v1/betaGroups/${group.id}/betaTesters`, resourceId);
+        if (!currentTesters.length) throw new Error("The internal group has no testers.");
+        return { appId: app.id, appName: app.attributes.name, bundleId, releaseTag: tag, version, frontendVersion,
+          buildNumber, buildId: build.id, sourceRevision, configuration: "Release", architecture: "arm64",
+          signingCertificateSHA1: identity, teamId: team, profileUUID: profile.UUID,
+          internalOnly: true, internalGroupId: group.id, internalGroupName: groupName,
+          internalTesterCount: currentTesters.length, processingState: "VALID",
+          internalBuildState: detail.data.attributes.internalBuildState };
+      }
+      if (["EXPIRED", "INVALID", "MISSING_EXPORT_COMPLIANCE"].includes(detail.data.attributes.internalBuildState)) {
+        throw new Error(`Internal TestFlight is unavailable: ${detail.data.attributes.internalBuildState}.`);
       }
     }
     await Bun.sleep(15_000);
