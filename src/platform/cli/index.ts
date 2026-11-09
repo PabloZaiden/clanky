@@ -8,3 +8,4 @@ export * from "./server-logs-command";
 export * from "./serve-options";
 export * from "./websocket-command";
 export * from "./create-web-app-cli";
+export { createDeviceAuthCliCommand } from "./built-in-commands";

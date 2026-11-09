@@ -119,11 +119,7 @@ export function createAccountRoutes(options: {
         if (!target) return notFound();
         if (target.role === "owner") return errorResponse(409, "owner_immutable", "Owner cannot be reset");
         const timestamp = nowIso();
-        store.deletePendingSetupLinksForUser(userId, timestamp);
-        store.deletePasskeysForUser(userId);
-        store.deleteApiKeysForUser(userId);
-        store.revokeRefreshSessionsForUser(userId, timestamp);
-        store.incrementUserAuthVersion(userId, timestamp);
+        store.resetUserCredentials(userId, timestamp);
         const setupLink = createSetupLink(req, userId, "reset", actor.id);
         audit(store, { eventType: "user_reset", actorUserId: actor.id, targetUserId: userId });
         return jsonResponse({ user: summarizeUser(store.getUserById(userId) ?? target), setupLink });

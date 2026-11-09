@@ -75,6 +75,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("webapp_api_keys", "clanky"),
   currentTable("webapp_passkeys", "clanky"),
   internalAccountTable("webapp_signing_keys"),
+  internalAccountTable("webapp_passwords"),
   currentTable("webapp_users", "clanky"),
 
   currentTable("collaboration_interactive_resources", "clanky"),

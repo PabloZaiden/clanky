@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { VALID_LOG_LEVELS } from "../contracts";
+import type { PasswordChangeRequest, PasswordEnrollmentRequest, PasswordLoginRequest } from "../contracts";
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@pablozaiden/webapp/auth";
 
 const nonEmptyString = z.string().min(1);
@@ -69,6 +70,21 @@ export const apiKeyAuthenticationRequestSchema = z.object({
   apiKey: nonEmptyString.max(512),
 });
 
+const passwordInput = z.string().max(1024).refine(
+  value => new TextEncoder().encode(value).byteLength <= 1024,
+  "Passwords must contain at most 1024 bytes.",
+);
+export const passwordLoginRequestSchema: z.ZodType<PasswordLoginRequest> = z.object({
+  username: z.string().min(1).max(32),
+  password: passwordInput,
+}).strict();
+export const passwordEnrollmentRequestSchema: z.ZodType<PasswordEnrollmentRequest> = z.object({
+  password: passwordInput,
+}).strict();
+export const passwordChangeRequestSchema: z.ZodType<PasswordChangeRequest> = z.object({
+  currentPassword: passwordInput,
+  nextPassword: passwordInput,
+}).strict();
 export const deviceAuthorizationRequestSchema = z.object({
   client_id: optionalClientId,
   clientId: optionalClientId,

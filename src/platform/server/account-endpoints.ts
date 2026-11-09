@@ -33,6 +33,7 @@ import {
   passkeyStatus,
 } from "./auth/passkeys";
 import type { ClankyAccountStore } from "./auth/store";
+import { changePassword, enrollPassword, loginWithPassword } from "./auth/passwords";
 import { getRequestOriginInfo } from "@pablozaiden/webapp/server";
 import type { Authentication } from "./authentication";
 import { authErrorResponse, scopesFromBearer, tokenError } from "./authentication";
@@ -47,6 +48,9 @@ import {
   serverLogSettingsRequestSchema,
   logLevelPreferenceRequestSchema,
   passkeyBootstrapOptionsSchema,
+  passwordChangeRequestSchema,
+  passwordEnrollmentRequestSchema,
+  passwordLoginRequestSchema,
   refreshTokenRequestSchema,
   registrationResponseSchema,
   revokeRefreshTokenRequestSchema,
@@ -71,6 +75,7 @@ import { defineRoutes, type RouteContext } from "./routes";
 import { createAccountRoutes } from "./account-routes";
 
 const MAX_API_KEY_AUTH_BODY_BYTES = 4 * 1024;
+const MAX_PASSWORD_AUTH_BODY_BYTES = 16 * 1024;
 
 export interface AccountEndpointDependencies {
   config: RuntimeConfig;
@@ -126,7 +131,7 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
     const auth = context.auth;
     if (auth.kind === "api-key") assertScopes(auth.scopes, []);
     const user = authentication.currentUser(auth) ?? authentication.configUser(req);
-    const passkeyAuth = passkeyStatus(req, store, config, passkeysEnabled);
+    const passkeyAuth = passkeyStatus(req, store, config, passkeysEnabled, user?.id);
     if (auth.kind === "bearer" || auth.kind === "api-key" || auth.kind === "server") {
       passkeyAuth.authenticated = true;
       passkeyAuth.passkeyRequired = false;
@@ -302,6 +307,36 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
       if (path === "/api/passkey-auth/status" && req.method === "GET") {
         return jsonResponse(passkeyStatus(req, store, config, passkeysEnabled));
       }
+      // Public login only authenticates existing accounts; owner enrollment remains local.
+      if (passkeysEnabled && !config.passkeyDisabled && path === "/api/auth/password/login" && req.method === "POST") {
+        const body = await parseJson(req, passwordLoginRequestSchema, { maxBytes: MAX_PASSWORD_AUTH_BODY_BYTES });
+        const user = await loginWithPassword(req, store, getRequestOriginInfo(req, config).origin, body.username, body.password);
+        return addHeaders(successResponse(undefined, { headers: { "cache-control": "no-store" } }), createBrowserSessionHeaders(req, store, config, user));
+      }
+      if (passkeysEnabled && !config.passkeyDisabled && path === "/api/auth/password") {
+        const auth = await authorize(req, true);
+        if (auth instanceof Response) return auth;
+        const user = authentication.requireUser(auth);
+        if (req.method === "GET") {
+          return jsonResponse({ configured: Boolean(store.getPassword(user.id)) }, { headers: { "cache-control": "no-store" } });
+        }
+        if (req.method === "POST" || req.method === "PUT") {
+          const originFailure = checkSameOrigin(req, config, auth, "mutations");
+          if (originFailure) return originFailure;
+          const origin = getRequestOriginInfo(req, config).origin;
+          const authorizedUser = store.getUserById(user.id);
+          if (!authorizedUser || authorizedUser.disabledAt) return errorResponse(401, "authentication_required", "Authentication is required");
+          let updated;
+          if (req.method === "POST") {
+            const body = await parseJson(req, passwordEnrollmentRequestSchema, { maxBytes: MAX_PASSWORD_AUTH_BODY_BYTES });
+            updated = await enrollPassword(req, store, origin, user.id, body.password, authorizedUser.authVersion);
+          } else {
+            const body = await parseJson(req, passwordChangeRequestSchema, { maxBytes: MAX_PASSWORD_AUTH_BODY_BYTES });
+            updated = await changePassword(req, store, origin, user.id, body.currentPassword, body.nextPassword, authorizedUser.authVersion);
+          }
+          return addHeaders(jsonResponse({ configured: true }, { headers: { "cache-control": "no-store" } }), createBrowserSessionHeaders(req, store, config, updated));
+        }
+      }
       if (passkeysEnabled && path === "/api/passkey-auth/bootstrap/options" && req.method === "POST") {
         const body = await parseJson(req, passkeyBootstrapOptionsSchema);
         const result = await beginBootstrapRegistration(req, store, config, body.username ?? "");
@@ -317,15 +352,24 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
         return addHeaders(successResponse(), headers);
       }
       if (passkeysEnabled && path === "/api/passkey-auth/owner-setup/options" && req.method === "POST") {
-        const result = await beginOwnerPasskeySetup(req, store, config);
+        const auth = await authorize(req, false);
+        if (auth instanceof Response) return auth;
+        const originFailure = checkSameOrigin(req, config, auth, "mutations");
+        if (originFailure) return originFailure;
+        const result = await beginOwnerPasskeySetup(req, store, config, authentication.currentUser(auth)?.id);
         return addHeaders(jsonResponse(result.options), result.headers);
       }
       if (passkeysEnabled && path === "/api/passkey-auth/owner-setup/verify" && req.method === "POST") {
+        const auth = await authorize(req, false);
+        if (auth instanceof Response) return auth;
+        const originFailure = checkSameOrigin(req, config, auth, "mutations");
+        if (originFailure) return originFailure;
         const headers = await completeOwnerPasskeySetup(
           req,
           store,
           config,
           await parseJson(req, registrationResponseSchema, { maxBytes: MAX_WEBAUTHN_JSON_BODY_BYTES }),
+          authentication.currentUser(auth)?.id,
         );
         return addHeaders(successResponse(), headers);
       }

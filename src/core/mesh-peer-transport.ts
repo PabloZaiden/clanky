@@ -1,5 +1,7 @@
 import { isMeshOutboundRoute, type MeshPeerRoute } from "@/shared/mesh";
-import { assertMeshWorkerTlsCertificate } from "../persistence/mesh-worker-tls";
+import { assertSelfSignedTlsCertificate } from "../lib/tls-certificate";
+import { checkServerIdentity, type ConnectionOptions } from "node:tls";
+import { meshTargetTlsTrust } from "./mesh-tls-trust";
 import { DomainError } from "../domain/domain-error";
 import { resolveMeshRoute } from "./mesh-transport-config";
 import { assertMeshTransportSecurity } from "./mesh-transport-security";
@@ -74,9 +76,9 @@ export interface MeshPeerTransport {
   ): MeshDuplexSocket;
 }
 
-function directTlsOptions(
+export function getMeshDirectTlsOptions(
   route: Extract<MeshPeerRoute, { kind: "direct" }>,
-): Bun.TLSOptions | undefined {
+): (Bun.TLSOptions & Pick<ConnectionOptions, "checkServerIdentity">) | undefined {
   if (route.transport === "http") {
     throw new DomainError("mesh_tls_required", "Mesh peer routes require HTTPS.");
   }
@@ -99,15 +101,48 @@ function directTlsOptions(
       "The pinned HTTPS Mesh route has no complete trusted TLS identity.",
     );
   }
-  assertMeshWorkerTlsCertificate(
-    route.tlsCertificate,
-    route.endpoint,
-    route.tlsFingerprint,
-  );
+  try {
+    assertSelfSignedTlsCertificate(route.tlsCertificate, new URL(route.endpoint).hostname, route.tlsFingerprint);
+  } catch (error) {
+    throw new DomainError("mesh_peer_tls_certificate_invalid", "The trusted Mesh certificate is invalid, expired or does not match its endpoint.", { cause: error });
+  }
   return {
     ca: route.tlsCertificate,
     rejectUnauthorized: true,
+    checkServerIdentity: (hostname, certificate) => checkServerIdentity(
+      hostname.replace(/^\[|\]$/g, ""), certificate,
+    ),
   };
+}
+
+export function openMeshDirectSocket(
+  route: Extract<MeshPeerRoute, { kind: "direct" }>,
+  url: string,
+  headers: Record<string, string> = {},
+): WebSocket {
+  if (new URL(url).origin !== new URL(route.endpoint).origin.replace(/^https:/, "wss:")) {
+    throw new DomainError("mesh_transport_route_invalid", "The socket target does not match its trusted Mesh route.");
+  }
+  const BunWebSocket = WebSocket as unknown as {
+    new (
+      socketUrl: string,
+      options: { headers: Record<string, string>; tls?: Bun.TLSOptions },
+    ): WebSocket;
+  };
+  return new BunWebSocket(url, { headers, tls: getMeshDirectTlsOptions(route) });
+}
+
+export function createMeshTlsFetch(target: string, certificate?: string): typeof fetch {
+  const endpoint = new URL(target).origin;
+  const tls = getMeshDirectTlsOptions({
+    kind: "direct", endpoint, transport: "https",
+    ...meshTargetTlsTrust(endpoint, certificate),
+  });
+  return Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (url.origin !== endpoint) throw new DomainError("mesh_transport_route_invalid", "Discovery must use its trusted target origin.");
+    return fetch(input, { ...init, tls, redirect: "error" });
+  }, { preconnect: fetch.preconnect });
 }
 
 const directTransport: MeshPeerTransport = {
@@ -120,7 +155,7 @@ const directTransport: MeshPeerTransport = {
     }
     const { fetch: fetchImpl = globalThis.fetch, onDispatch, ...init } = request;
     const url = resolveMeshRoute(route.endpoint, path);
-    const tls = directTlsOptions(route);
+    const tls = getMeshDirectTlsOptions(route);
     onDispatch?.();
     return fetchImpl(url, {
       ...init,
@@ -137,16 +172,7 @@ const directTransport: MeshPeerTransport = {
       );
     }
     const url = resolveMeshRoute(route.endpoint, path).replace(/^http/, "ws");
-    const BunWebSocket = WebSocket as unknown as {
-      new (
-        socketUrl: string,
-        options: { headers: Record<string, string>; tls?: Bun.TLSOptions },
-      ): WebSocket;
-    };
-    return new BunWebSocket(url, {
-      headers,
-      tls: directTlsOptions(route),
-    });
+    return openMeshDirectSocket(route, url, headers);
   },
 };
 

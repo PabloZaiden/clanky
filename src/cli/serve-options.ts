@@ -2,6 +2,12 @@ import type { WebAppServeOptionDefinition } from "@/platform/cli";
 
 export const CLANKY_SERVE_OPTIONS = [
   {
+    name: "managed-tls",
+    type: "boolean",
+    description: "Use the optional controller-generated HTTPS identity. Configure with controller tls enable.",
+    defaultValue: false,
+  },
+  {
     name: "api-only",
     type: "boolean",
     description: "Serve the API and server-origin sign-in pages without the Clanky UI.",

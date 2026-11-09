@@ -47,10 +47,20 @@ export function createUserRecord(input: { username: string; role: WebAppUserRole
     username: assertValidUsername(input.username),
     role: input.role,
     authVersion: 1,
+    authInitialized: false,
     passkeyConfigured: false,
     createdAt,
     updatedAt: createdAt,
   };
+}
+
+export function isOwnerInitialized(store: ClankyAccountStore): boolean {
+  const owner = store.getOwnerUser();
+  return Boolean(owner && !owner.disabledAt && owner.authInitialized && (
+    owner.passkeyConfigured || store.getPassword(owner.id) || store.listApiKeys(owner.id).some(
+      key => key.scopes.includes("*") && (!key.expiresAt || Date.parse(key.expiresAt) > Date.now()),
+    )
+  ));
 }
 
 export function createSetupLinkRecord(input: {

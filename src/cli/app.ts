@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { createClankyCommandRuntime } from "@/platform/cli";
+import { createClankyCommandRuntime, createDeviceAuthCliCommand } from "@/platform/cli";
 import { createRouteCatalog } from "@/platform/server";
 import { CLANKY_VERSION } from "../version";
 import { createMeshCommand, type ClankyCliContext } from "./mesh";
@@ -7,6 +7,8 @@ import { parsePreviewCommandArgs, runPreviewCommand } from "./preview";
 import { createWorkspaceCommand } from "./workspace";
 import { createServerCommand } from "./server";
 import { createWorkerCommand } from "./worker";
+import { createControllerCommand } from "./controller";
+import { createAuthCommand } from "./auth-setup";
 import { CLANKY_SERVE_OPTIONS } from "./serve-options";
 import { createRelayCommand } from "./relay";
 import { parseCodeCommandArgs } from "./code";
@@ -83,11 +85,18 @@ export function createClankyCli() {
           ? options["worker-directory"]
           : undefined,
         workerExecutionEnabled: options["worker-execution-enabled"] !== false,
+        managedTls: options["managed-tls"] === true,
       });
       await server.start();
     },
     appContext,
     commands: {
+      auth: {
+        ...createAuthCommand(createDeviceAuthCliCommand<ClankyCliContext>({
+          commandName: "clanky", envPrefix: "CLANKY",
+        })),
+        override: true,
+      },
       mesh: createMeshCommand(),
       code: {
         description: "Open an existing workspace, chat, or task directory in a VS Code web preview.",
@@ -102,6 +111,7 @@ export function createClankyCli() {
       workspace: createWorkspaceCommand(),
       server: createServerCommand(),
       worker: createWorkerCommand(),
+      controller: createControllerCommand(),
       relay: createRelayCommand(),
     },
   });

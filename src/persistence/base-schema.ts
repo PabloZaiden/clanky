@@ -531,6 +531,8 @@ export function createBaseSchema(
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         controller_endpoint TEXT,
+        controller_tls_certificate TEXT,
+        controller_tls_fingerprint TEXT,
         route_kind TEXT NOT NULL DEFAULT 'direct',
         relay_url TEXT,
         relay_fingerprint TEXT,

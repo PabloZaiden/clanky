@@ -74,9 +74,9 @@ export interface MeshOutboundPeerRoute {
   endpoint: string;
   targetNodeId: string;
   transport: "https";
-  tlsTrust: "system";
-  tlsCertificate: null;
-  tlsFingerprint: null;
+  tlsTrust: "system" | "pinned";
+  tlsCertificate: string | null;
+  tlsFingerprint: string | null;
 }
 
 export type MeshDirectPeerRoute = MeshListenerPeerRoute | MeshOutboundPeerRoute;

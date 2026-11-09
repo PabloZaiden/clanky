@@ -228,13 +228,13 @@ export function createAuthentication(dependencies: AuthenticationDependencies): 
     if (passkeysEnabled && isPasskeyAuthRequired(store, config)) {
       const user = getPasskeySessionUser(req, store, config);
       if (!user) {
-        return required ? errorResponse(401, "authentication_required", "Passkey authentication is required", undefined, {
+        return required ? errorResponse(401, "authentication_required", "Authentication is required", undefined, {
           headers: { "x-webapp-passkey-required": "true" },
         }) : { kind: "anonymous" };
       }
     }
     if (required && passkeysEnabled && !config.passkeyDisabled && store.countUsers() === 0) {
-      return errorResponse(401, "authentication_required", "Passkey authentication is required", undefined, {
+      return errorResponse(401, "authentication_required", "Authentication is required", undefined, {
         headers: { "x-webapp-passkey-required": "true" },
       });
     }

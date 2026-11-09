@@ -114,8 +114,10 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(selectedPort, forKey: "assetServerPort")
             error = nil
             #if os(macOS)
+            await controller.refreshConnection()
             await controller.startIfEnabled()
             guard assets === server else { throw CancellationError() }
+            await server.updateLocalAPI(controller.endpoint)
             #endif
             self.origin = origin
             #if os(iOS)
@@ -141,7 +143,7 @@ final class AppModel: ObservableObject {
             }
         }
         #if os(macOS)
-        return AssetServer(root: root, port: port, localAPI: LocalController.endpoint, onFailure: failureHandler)
+        return AssetServer(root: root, port: port, localAPI: controller.endpoint, onFailure: failureHandler)
         #else
         return AssetServer(root: root, port: port, onFailure: failureHandler)
         #endif
@@ -373,6 +375,12 @@ final class AppModel: ObservableObject {
         origin = nil
         await server?.stop()
     }
+
+    #if os(macOS)
+    func localControllerChanged() async {
+        await assets?.updateLocalAPI(controller.endpoint)
+    }
+    #endif
 }
 
 @MainActor
@@ -409,17 +417,32 @@ final class BrowserModel: ObservableObject {
     // WebKit terminated it or a local load failed; retried on activation.
     private var needsReload = false
     private var initialURL: URL?
+    private let controllerTrust: (@MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?)?
 
-    init(origin: URL, initialURL: URL? = nil, ensureAssets: @escaping @MainActor () async throws -> Void) {
+    init(origin: URL, initialURL: URL? = nil,
+         controllerTrust: (@MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?)? = nil,
+         ensureAssets: @escaping @MainActor () async throws -> Void) {
         self.origin = origin
         self.initialURL = initialURL
         self.ensureAssets = ensureAssets
+        self.controllerTrust = controllerTrust
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
         webView = Self.makeWebView(origin: origin)
         connectNativeToolbar()
     }
+
+    func controllerTrustDecision(_ challenge: URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)? {
+        controllerTrust?(challenge)
+    }
+
+    #if os(macOS)
+    func localControllerChanged() {
+        guard let path = webView.url?.path, path == "/local" || path.hasPrefix("/local/") else { return }
+        withAssetsReady { $0.reloadFromOrigin() }
+    }
+    #endif
 
     private static func makeWebView(origin: URL) -> WKWebView {
         let configuration = WKWebViewConfiguration()

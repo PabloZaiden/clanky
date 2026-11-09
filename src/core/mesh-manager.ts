@@ -77,6 +77,7 @@ import {
   ensureLocalMeshNodeIdentity,
   requireMeshInstanceName,
   setLocalMeshEndpoint,
+  reconcileLocalMeshEndpoint,
   setLocalMeshInstanceName,
   signMeshPayload,
   verifyMeshPayloadSignature,
@@ -106,6 +107,7 @@ import {
 } from "./mesh-protocol";
 import {
   assertMeshEndpointAllowed,
+  getMeshTransport,
   resolveAdvertisedMeshEndpoint,
 } from "./mesh-transport-config";
 import { DomainError, isDomainError } from "../domain/domain-error";
@@ -123,6 +125,9 @@ import {
   decideAcceptEnrollment,
 } from "../domain/mesh-transitions";
 import { buildWorkerJoinCommand } from "./mesh-join-command";
+import { getControllerEnrollmentCertificate } from "./controller-tls";
+import { meshTargetTlsTrust } from "./mesh-tls-trust";
+import { createMeshTlsFetch } from "./mesh-peer-transport";
 import { controllerRelayService } from "./controller-relay-service";
 import {
   createMeshRelayEnrollmentAdmission,
@@ -173,7 +178,8 @@ async function ensureLocalMeshIdentityWithEndpoint(): Promise<MeshNodeIdentity> 
     return identity;
   }
   const endpoint = resolveAdvertisedMeshEndpoint();
-  const updatedIdentity = await setLocalMeshEndpoint(endpoint);
+  if (getMeshTransport(endpoint) !== "https") return identity;
+  const updatedIdentity = await reconcileLocalMeshEndpoint(endpoint);
   log.info("Materialized the configured public base URL as the local Mesh endpoint", {
     endpoint,
   });
@@ -254,6 +260,7 @@ export class MeshManager {
         target: invitation.target,
         enrollmentToken: created.token,
         controllerFingerprint: identity.fingerprint,
+        tlsCertificate: route === "direct" ? getControllerEnrollmentCertificate(invitation.target) : undefined,
       }),
     };
   }
@@ -300,6 +307,7 @@ export class MeshManager {
         target: invitation.target,
         enrollmentToken: created.token,
         controllerFingerprint: identity.fingerprint,
+        tlsCertificate: route === "direct" ? getControllerEnrollmentCertificate(invitation.target) : undefined,
       }),
     };
   }
@@ -1346,15 +1354,23 @@ export class MeshManager {
     target: string;
     enrollmentToken: string;
     expectedFingerprint: string;
+    tlsCertificate?: string;
   }): Promise<MeshControllerGrant> {
     requireMeshRuntimeRole("worker");
     log.info("Discovering Mesh enrollment target");
     const discovered = await discoverMeshEnrollmentTarget(input.target, {
       outboundWorker: isMeshWorkerRelayOnly(),
+      fetchFn: createMeshTlsFetch(input.target, input.tlsCertificate),
     });
     log.info("Mesh enrollment target discovered", {
       role: discovered.descriptor.role,
     });
+    if (input.tlsCertificate && discovered.descriptor.role !== "controller") {
+      throw new DomainError(
+        "mesh_controller_tls_trust_unsupported",
+        "Controller certificate trust requires a direct controller target, not a relay.",
+      );
+    }
     const outbound = discovered.descriptor.role === "controller" && isMeshWorkerRelayOnly();
     const identity = discovered.descriptor.role === "controller" && !outbound
       ? await ensureLocalMeshIdentityWithEndpoint()
@@ -1429,9 +1445,7 @@ export class MeshManager {
         kind: "direct" as const,
         endpoint: discovered.target,
         transport: "https" as const,
-        tlsTrust: "system" as const,
-        tlsCertificate: null,
-        tlsFingerprint: null,
+        ...meshTargetTlsTrust(discovered.target, input.tlsCertificate),
       };
       controllerRoute = outbound ? {
           ...directControllerRoute,
@@ -1522,7 +1536,7 @@ export class MeshManager {
         const response = await postMeshControlMessage(
           {
             kind: "direct", endpoint: discovered.target, transport: "https",
-            tlsTrust: "system", tlsCertificate: null, tlsFingerprint: null,
+            ...meshTargetTlsTrust(discovered.target, input.tlsCertificate),
           },
           "api/mesh/internal/enrollment",
           envelope,

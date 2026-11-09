@@ -29,6 +29,7 @@ interface ChallengePayload extends SignedCookiePayload {
   userId?: string;
   username?: string;
   setupTokenHash?: string;
+  authVersion?: number;
 }
 
 interface SessionPayload extends SignedCookiePayload {
@@ -138,7 +139,7 @@ function registrationUserId(userId: string): Uint8Array<ArrayBuffer> {
 }
 
 function webauthnRpId(hostname: string): string {
-  if (isIP(hostname)) {
+  if (isIP(hostname.replace(/^\[|\]$/g, ""))) {
     throw new AuthError("invalid_passkey_host", "Passkeys require a hostname such as localhost, not an IP address", 400);
   }
   return hostname;
@@ -191,8 +192,8 @@ async function verifyPasskey(req: Request, config: RuntimeConfig, response: Regi
   };
 }
 
-function persistPasskey(store: ClankyAccountStore, passkey: StoredPasskey, updatedAt: string): UserRecord {
-  const result = store.savePasskeyAndIncrementUserAuthVersion(passkey, updatedAt);
+function persistPasskey(store: ClankyAccountStore, passkey: StoredPasskey, updatedAt: string, expectedAuthVersion?: number, requireUninitialized = false): UserRecord {
+  const result = store.savePasskeyAndIncrementUserAuthVersion(passkey, updatedAt, expectedAuthVersion, requireUninitialized);
   if (result.kind === "saved") {
     return result.user;
   }
@@ -240,19 +241,22 @@ export function isPasskeyAuthRequired(store: ClankyAccountStore, config: Runtime
   return !config.passkeyDisabled && store.countUsers() > 0;
 }
 
-export function passkeyStatus(req: Request, store: ClankyAccountStore, config: RuntimeConfig, enabled = true): PasskeyAuthStatusResponse {
+export function passkeyStatus(req: Request, store: ClankyAccountStore, config: RuntimeConfig, enabled = true, userId = getPasskeySessionUser(req, store, config)?.id): PasskeyAuthStatusResponse {
   const users = store.countUsers();
   const owner = store.getOwnerUser();
   const passkeyConfigured = store.listPasskeys().length > 0;
-  const ownerPasskeySetupRequired = enabled && !config.passkeyDisabled && users > 0 && Boolean(owner && !owner.passkeyConfigured);
+  const ownerPasskeySetupRequired = enabled && !config.passkeyDisabled && users > 0 && Boolean(owner && !owner.authInitialized);
   return {
     enabled,
     passkeyConfigured,
+    accountPasskeyConfigured: Boolean(userId && store.getPasskeyByUserId(userId)),
     passkeyDisabled: config.passkeyDisabled,
     passkeyRequired: enabled && users > 0 && !config.passkeyDisabled,
     authenticated: !enabled || config.passkeyDisabled || Boolean(getPasskeySessionUser(req, store, config)),
     bootstrapRequired: enabled && !config.passkeyDisabled && users === 0,
     ownerPasskeySetupRequired,
+    passkeyAvailable: !isIP(getRequestOriginInfo(req, config).hostname.replace(/^\[|\]$/g, "")),
+    passwordEnabled: enabled && !config.passkeyDisabled,
   };
 }
 
@@ -275,29 +279,37 @@ export async function completeBootstrapRegistration(req: Request, store: ClankyA
   const owner = createUserRecord({ username: challenge.username, role: "owner" });
   owner.id = challenge.userId;
   const passkey = await verifyPasskey(req, config, response, owner, challenge);
-  store.createUser(owner);
-  const updatedUser = persistPasskey(store, passkey, passkey.updatedAt);
+  if (!store.createOwnerWithCredential(owner, passkey)) {
+    throw new AuthError("owner_exists", "Owner user is already configured", 409);
+  }
+  const updatedUser = store.getUserById(owner.id)!;
   const headers = createBrowserSessionHeaders(req, store, config, updatedUser, passkey.id);
   audit(store, { eventType: "owner_created", targetUserId: owner.id });
   return headers;
 }
 
-export async function beginOwnerPasskeySetup(req: Request, store: ClankyAccountStore, config: RuntimeConfig) {
+export async function beginOwnerPasskeySetup(req: Request, store: ClankyAccountStore, config: RuntimeConfig, authorizedOwnerId?: string) {
   const owner = store.getOwnerUser();
-  if (!owner || owner.passkeyConfigured) {
+  if (!owner || owner.disabledAt || owner.passkeyConfigured || (owner.authInitialized && authorizedOwnerId !== owner.id)) {
     throw new AuthError("owner_setup_unavailable", "Owner passkey setup is not available", 409);
   }
-  return beginRegistrationForUser(req, store, config, owner, "owner-reset");
+  const options = await ceremonyResult(() => passkeyCeremonies(req, config).beginRegistration({
+    userHandle: registrationUserId(owner.id),
+    username: owner.username,
+  }));
+  return { options, headers: setChallengeHeaders(req, store, config, {
+    challenge: options.challenge, type: "owner-reset", userId: owner.id, username: owner.username, authVersion: owner.authVersion,
+  }) };
 }
 
-export async function completeOwnerPasskeySetup(req: Request, store: ClankyAccountStore, config: RuntimeConfig, response: RegistrationResponseJSON) {
+export async function completeOwnerPasskeySetup(req: Request, store: ClankyAccountStore, config: RuntimeConfig, response: RegistrationResponseJSON, authorizedOwnerId?: string) {
   const challenge = readChallenge(req, store, "owner-reset");
   const owner = challenge.userId ? store.getUserById(challenge.userId) : undefined;
-  if (!owner || owner.role !== "owner" || owner.passkeyConfigured) {
+  if (!owner || owner.disabledAt || owner.role !== "owner" || owner.passkeyConfigured || (owner.authInitialized && authorizedOwnerId !== owner.id) || challenge.authVersion !== owner.authVersion) {
     throw new AuthError("owner_setup_unavailable", "Owner passkey setup is not available", 409);
   }
   const passkey = await verifyPasskey(req, config, response, owner, challenge);
-  const updatedUser = persistPasskey(store, passkey, passkey.updatedAt);
+  const updatedUser = persistPasskey(store, passkey, passkey.updatedAt, owner.authVersion, authorizedOwnerId !== owner.id);
   const headers = createBrowserSessionHeaders(req, store, config, updatedUser, passkey.id);
   audit(store, { eventType: "owner_passkey_configured", targetUserId: owner.id });
   return headers;

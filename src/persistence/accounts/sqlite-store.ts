@@ -13,6 +13,7 @@ import type {
   RefreshSessionRotationResult,
   SetupLinkCompletionResult,
   StoredPasskey,
+  StoredPassword,
   UserRecord,
   UserSetupLinkRecord,
   ClankyAccountStore,
@@ -81,6 +82,7 @@ export function createAccountStore(db: Database): ClankyAccountStore {
         username TEXT NOT NULL UNIQUE,
         role TEXT NOT NULL,
         auth_version INTEGER NOT NULL,
+        auth_initialized INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_login_at TEXT,
@@ -142,6 +144,12 @@ export function createAccountStore(db: Database): ClankyAccountStore {
         expires_at TEXT,
         kind TEXT NOT NULL DEFAULT 'user',
         managed_by TEXT,
+        FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS webapp_passwords (
+        user_id TEXT PRIMARY KEY,
+        hash TEXT NOT NULL,
+        version INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
       );
       CREATE TABLE IF NOT EXISTS webapp_device_auth_requests (
@@ -258,6 +266,7 @@ export function createAccountStore(db: Database): ClankyAccountStore {
           INSERT INTO webapp_users (id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(owner.id, owner.username, owner.role, owner.authVersion, owner.createdAt, owner.updatedAt, owner.lastLoginAt ?? null, owner.disabledAt ?? null);
+        db.query("UPDATE webapp_users SET auth_initialized = 1 WHERE id = ?").run(owner.id);
       }
 
       if (tableExists(legacyName("webapp_preferences"))) {
@@ -323,6 +332,13 @@ export function createAccountStore(db: Database): ClankyAccountStore {
   function initialize(): void {
     migrateSingleUserSchema();
     createSchema();
+    immediateTransaction(() => {
+      if (!hasColumn("webapp_users", "auth_initialized")) {
+        db.exec("ALTER TABLE webapp_users ADD COLUMN auth_initialized INTEGER NOT NULL DEFAULT 0;");
+        // Existing accounts must never become anonymously claimable after credential removal.
+        db.exec("UPDATE webapp_users SET auth_initialized = 1;");
+      }
+    });
     migrateApiKeySchema();
     migrateSigningKeySchema();
     oauth.initialize();
@@ -355,6 +371,7 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       username: text(row["username"]),
       role: text(row["role"]) as WebAppUserRole,
       authVersion: Number(row["auth_version"] ?? 0),
+      authInitialized: Number(row["auth_initialized"] ?? 0) === 1,
       passkeyConfigured: Number(row["passkey_configured"] ?? 0) > 0,
       createdAt: text(row["created_at"]),
       updatedAt: text(row["updated_at"]),
@@ -505,6 +522,7 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       passkey.updatedAt,
       passkey.lastUsedAt ?? null,
     );
+    db.query("UPDATE webapp_users SET auth_initialized = 1 WHERE id = ?").run(passkey.userId);
   }
 
   function passkeyCredentialOwner(credentialId: string): string | undefined {
@@ -512,10 +530,14 @@ export function createAccountStore(db: Database): ClankyAccountStore {
     return optionalText(row?.["user_id"]);
   }
 
-  function savePasskeyAndIncrementUserAuthVersion(passkey: StoredPasskey, updatedAt: string): PasskeyPersistenceResult {
+  function savePasskeyAndIncrementUserAuthVersion(passkey: StoredPasskey, updatedAt: string, expectedAuthVersion?: number, requireUninitialized = false): PasskeyPersistenceResult {
     return immediateTransaction(() => {
-      if (!readUserById(passkey.userId)) {
+      const existing = readUserById(passkey.userId);
+      if (!existing || existing.disabledAt) {
         return { kind: "missing_user" };
+      }
+      if ((requireUninitialized && existing.authInitialized) || (expectedAuthVersion !== undefined && existing.authVersion !== expectedAuthVersion)) {
+        return { kind: "conflict" };
       }
       const credentialOwner = passkeyCredentialOwner(passkey.credentialId);
       if (credentialOwner && credentialOwner !== passkey.userId) {
@@ -529,6 +551,48 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       }
       const user = readUserById(passkey.userId);
       return user ? { kind: "saved", user } : { kind: "conflict" };
+    });
+  }
+
+  function createUser(user: UserRecord): void {
+    db.query(`
+      INSERT INTO webapp_users (id, username, role, auth_version, auth_initialized, created_at, updated_at, last_login_at, disabled_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(user.id, user.username, user.role, user.authVersion, user.authInitialized ? 1 : 0, user.createdAt, user.updatedAt, user.lastLoginAt ?? null, user.disabledAt ?? null);
+  }
+
+  function getPassword(userId: string): StoredPassword | undefined {
+    const row = db.query("SELECT * FROM webapp_passwords WHERE user_id = ?").get(userId) as Row | null;
+    return row ? { identityId: text(row["user_id"]), hash: text(row["hash"]), version: Number(row["version"]) } : undefined;
+  }
+
+  function setPassword(userId: string, expectedVersion: number | undefined, credential: Omit<StoredPassword, "identityId">, expectedAuthVersion: number): boolean {
+    return immediateTransaction(() => {
+      const user = readUserById(userId);
+      if (!user || user.disabledAt || user.authVersion !== expectedAuthVersion || getPassword(userId)?.version !== expectedVersion) return false;
+      db.query(`
+        INSERT INTO webapp_passwords (user_id, hash, version) VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET hash = excluded.hash, version = excluded.version
+      `).run(userId, credential.hash, credential.version);
+      db.query("UPDATE webapp_users SET auth_version = auth_version + 1, auth_initialized = 1, updated_at = ? WHERE id = ?")
+        .run(nowIso(), userId);
+      return true;
+    });
+  }
+
+  function createOwnerWithCredential(user: UserRecord, credential: StoredPassword | StoredPasskey): boolean {
+    return immediateTransaction(() => {
+      if (user.role !== "owner" || user.disabledAt || countRows("webapp_users") > 0) return false;
+      if (("identityId" in credential ? credential.identityId : credential.userId) !== user.id) return false;
+      createUser(user);
+      if ("identityId" in credential) {
+        if (!setPassword(user.id, undefined, credential, user.authVersion)) throw new Error("Owner password initialization failed");
+      } else {
+        savePasskeyRecord(credential);
+        db.query("UPDATE webapp_users SET auth_version = auth_version + 1, updated_at = ? WHERE id = ?")
+          .run(credential.updatedAt, user.id);
+      }
+      return true;
     });
   }
 
@@ -826,12 +890,8 @@ export function createAccountStore(db: Database): ClankyAccountStore {
 
     countUsers: () => Number((db.query("SELECT COUNT(*) AS count FROM webapp_users").get() as Row | null)?.["count"] ?? 0),
     listUsers: () => (db.query(`${userSelect()} ORDER BY u.created_at ASC`).all() as Row[]).map(mapUser),
-    createUser: (user) => {
-      db.query(`
-        INSERT INTO webapp_users (id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(user.id, user.username, user.role, user.authVersion, user.createdAt, user.updatedAt, user.lastLoginAt ?? null, user.disabledAt ?? null);
-    },
+    createUser,
+    createOwnerWithCredential,
     getUserById: readUserById,
     getUserByUsername: (username) => {
       const row = db.query(`${userSelect()} WHERE lower(u.username) = lower(?)`).get(username) as Row | null;
@@ -850,6 +910,16 @@ export function createAccountStore(db: Database): ClankyAccountStore {
     },
     incrementUserAuthVersion: (id, updatedAt) => {
       db.query("UPDATE webapp_users SET auth_version = auth_version + 1, updated_at = ? WHERE id = ?").run(updatedAt, id);
+    },
+    resetUserCredentials: (id, updatedAt) => {
+      immediateTransaction(() => {
+        db.query("UPDATE webapp_user_setup_links SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL").run(updatedAt, id);
+        db.query("DELETE FROM webapp_passkeys WHERE user_id = ?").run(id);
+        db.query("DELETE FROM webapp_passwords WHERE user_id = ?").run(id);
+        db.query("DELETE FROM webapp_api_keys WHERE user_id = ?").run(id);
+        db.query("UPDATE webapp_refresh_sessions SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL").run(updatedAt, updatedAt, id);
+        db.query("UPDATE webapp_users SET auth_version = auth_version + 1, updated_at = ? WHERE id = ?").run(updatedAt, id);
+      });
     },
     deleteUser: (id) => {
       const result = db.query("DELETE FROM webapp_users WHERE id = ? AND role != 'owner'").run(id);
@@ -903,7 +973,8 @@ export function createAccountStore(db: Database): ClankyAccountStore {
     deletePasskeysForUser: (userId) => {
       db.query("DELETE FROM webapp_passkeys WHERE user_id = ?").run(userId);
     },
-
+    getPassword,
+    setPassword,
     listApiKeys: (userId) => {
       // Date values have millisecond precision; use insertion order for ties.
       const rows = userId
@@ -916,23 +987,26 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       return row ? mapApiKey(row) : undefined;
     },
     saveApiKey: (record) => {
-      db.query(`
-        INSERT INTO webapp_api_keys
-        (id, user_id, name, prefix, token_hash, scopes, created_at, last_used_at, expires_at, kind, managed_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        record.id,
-        record.userId,
-        record.name,
-        record.prefix,
-        record.tokenHash,
-        JSON.stringify(record.scopes),
-        record.createdAt,
-        record.lastUsedAt ?? null,
-        record.expiresAt ?? null,
-        record.kind,
-        record.managedBy ?? null,
-      );
+      immediateTransaction(() => {
+        db.query(`
+          INSERT INTO webapp_api_keys
+          (id, user_id, name, prefix, token_hash, scopes, created_at, last_used_at, expires_at, kind, managed_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.id,
+          record.userId,
+          record.name,
+          record.prefix,
+          record.tokenHash,
+          JSON.stringify(record.scopes),
+          record.createdAt,
+          record.lastUsedAt ?? null,
+          record.expiresAt ?? null,
+          record.kind,
+          record.managedBy ?? null,
+        );
+        db.query("UPDATE webapp_users SET auth_initialized = 1 WHERE id = ?").run(record.userId);
+      });
     },
     touchApiKey: (id, lastUsedAt) => {
       db.query("UPDATE webapp_api_keys SET last_used_at = ? WHERE id = ?").run(lastUsedAt, id);

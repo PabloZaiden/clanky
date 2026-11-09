@@ -13,20 +13,25 @@ export function PasskeyAuthScreen({ status, apiKeysEnabled, refresh }: { status:
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [username, setUsername] = useState("");
-  const [apiKeyMode, setApiKeyMode] = useState(false);
+  const [mode, setMode] = useState<"passkey" | "api-key" | "password">(
+    status.passkeyAvailable ? "passkey" : "password",
+  );
   const [apiKey, setApiKey] = useState("");
-  const canAuthenticateWithApiKey = apiKeysEnabled
-    && status.passkeyRequired
+  const [password, setPassword] = useState("");
+  const canLogin = status.passkeyRequired
     && !status.authenticated
     && !status.bootstrapRequired
     && !status.ownerPasskeySetupRequired;
+  const canAuthenticateWithApiKey = apiKeysEnabled && canLogin;
+  const canAuthenticateWithPassword = status.passwordEnabled && canLogin;
   useEffect(() => {
-    if (!canAuthenticateWithApiKey) {
-      setApiKeyMode(false);
+    if (!canLogin) {
+      setMode(status.passkeyAvailable ? "passkey" : "password");
       setApiKey("");
+      setPassword("");
       setError(undefined);
     }
-  }, [canAuthenticateWithApiKey]);
+  }, [canLogin, status.passkeyAvailable]);
 
   async function register(endpoint: "bootstrap" | "owner-setup") {
     setBusy(true);
@@ -80,42 +85,73 @@ export function PasskeyAuthScreen({ status, apiKeysEnabled, refresh }: { status:
     }
   }
 
-  function chooseApiKeyMode() {
-    setApiKeyMode(true);
+  async function loginWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(undefined);
+    try {
+      await appJson("/api/auth/password/login", {
+        method: "POST", body: JSON.stringify({ username, password }),
+      });
+      setPassword("");
+      await refresh();
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function chooseMode(next: typeof mode) {
+    setMode(next);
     setApiKey("");
+    setPassword("");
     setError(undefined);
   }
 
-  function choosePasskeyMode() {
-    setApiKeyMode(false);
-    setApiKey("");
-    setError(undefined);
-  }
+  const alternatives = <>
+    {status.passkeyAvailable && mode !== "passkey" ? <Button type="button" variant="ghost" disabled={busy} onClick={() => chooseMode("passkey")}>Use Passkey instead</Button> : null}
+    {canAuthenticateWithPassword && mode !== "password" ? <Button type="button" variant="ghost" disabled={busy} onClick={() => chooseMode("password")}>Use Password instead</Button> : null}
+    {canAuthenticateWithApiKey && mode !== "api-key" ? <Button type="button" variant="ghost" disabled={busy} onClick={() => chooseMode("api-key")}>Use API Key instead</Button> : null}
+  </>;
 
   return (
     <main className="wapp-auth-screen">
       <Dialog
         className="wapp-auth-dialog"
-        title={status.bootstrapRequired ? "Create owner user" : status.ownerPasskeySetupRequired ? "Set up owner passkey" : "Passkey required"}
-        actions={status.bootstrapRequired ? (
+        title={status.bootstrapRequired ? "Create owner user" : status.ownerPasskeySetupRequired ? "Set up owner passkey" : "Sign in"}
+        actions={status.bootstrapRequired && status.passkeyAvailable ? (
           <Button type="button" variant="primary" loading={busy} disabled={!username.trim()} onClick={() => void register("bootstrap")}>Create owner</Button>
-        ) : status.ownerPasskeySetupRequired ? (
+        ) : status.ownerPasskeySetupRequired && status.passkeyAvailable ? (
           <Button type="button" variant="primary" loading={busy} onClick={() => void register("owner-setup")}>Set up owner passkey</Button>
-        ) : canAuthenticateWithApiKey && apiKeyMode ? (
+        ) : status.bootstrapRequired || status.ownerPasskeySetupRequired ? undefined : canAuthenticateWithApiKey && mode === "api-key" ? (
           <>
-            <Button type="button" variant="ghost" disabled={busy} onClick={choosePasskeyMode}>Use Passkey instead</Button>
+            {alternatives}
             <Button type="submit" form="wapp-api-key-auth-form" variant="primary" loading={busy} disabled={!apiKey.trim()}>Authenticate with API key</Button>
+          </>
+        ) : canAuthenticateWithPassword && mode === "password" ? (
+          <>
+            {alternatives}
+            <Button type="submit" form="wapp-password-auth-form" variant="primary" loading={busy} disabled={!username.trim() || !password}>Sign in with password</Button>
           </>
         ) : (
           <>
-            {canAuthenticateWithApiKey ? <Button type="button" variant="ghost" disabled={busy} onClick={chooseApiKeyMode}>Use API Key instead</Button> : null}
-            <Button type="button" variant="primary" loading={busy} onClick={() => void login()}>Authenticate</Button>
+            {alternatives}
+            {status.passkeyAvailable ? <Button type="button" variant="primary" loading={busy} onClick={() => void login()}>Authenticate</Button> : null}
           </>
         )}
       >
         {error ? <p className="wapp-error">{error}</p> : null}
-        {status.bootstrapRequired ? <TextField label="Username" value={username} onChange={(event) => setUsername(event.currentTarget.value)} placeholder="owner" /> : null}
-        {canAuthenticateWithApiKey && apiKeyMode ? (
+        {(status.bootstrapRequired || status.ownerPasskeySetupRequired) && !status.passkeyAvailable ? <p>Initialize the owner locally with <code>clanky auth setup --username &lt;name&gt; --password-stdin</code>.</p> : null}
+        {status.bootstrapRequired && status.passkeyAvailable ? <TextField label="Username" value={username} onChange={(event) => setUsername(event.currentTarget.value)} placeholder="owner" /> : null}
+        {canAuthenticateWithPassword && mode === "password" ? (
+          <form id="wapp-password-auth-form" onSubmit={(event) => void loginWithPassword(event)}>
+            <TextField label="Username" value={username} required maxLength={32} autoComplete="username" disabled={busy} onChange={(event) => setUsername(event.currentTarget.value)} />
+            <TextField label="Password" type="password" value={password} required maxLength={1024} autoComplete="current-password" disabled={busy} onChange={(event) => setPassword(event.currentTarget.value)} />
+          </form>
+        ) : null}
+        {canAuthenticateWithApiKey && mode === "api-key" ? (
           <>
             <form id="wapp-api-key-auth-form" onSubmit={(event) => void loginWithApiKey(event)}>
               <TextField

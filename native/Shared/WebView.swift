@@ -171,6 +171,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
                 popup.navigationDelegate = nil
                 popup.uiDelegate = nil
             }
+
             browser.popup = nil
         }
         for (id, download) in downloads {
@@ -182,6 +183,19 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
         downloads.removeAll()
         requestedNames.removeAll()
         transfers.removeAll()
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard !stopped else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        if let decision = browser.controllerTrustDecision(challenge) {
+            completionHandler(decision.0, decision.1)
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
     }
 
     func userContentController(_ userContentController: WKUserContentController,

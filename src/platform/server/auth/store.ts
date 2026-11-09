@@ -3,7 +3,14 @@ import type { OAuthStore } from "./oauth-types";
 
 export interface UserRecord extends WebAppUserSummary {
   authVersion: number;
+  authInitialized: boolean;
   disabledAt?: string;
+}
+
+export interface StoredPassword {
+  identityId: string;
+  hash: string;
+  version: number;
 }
 
 export interface UserSetupLinkRecord {
@@ -150,9 +157,11 @@ export interface ClankyAccountStore {
   getUserById(id: string): UserRecord | undefined;
   getUserByUsername(username: string): UserRecord | undefined;
   getOwnerUser(): UserRecord | undefined;
+  createOwnerWithCredential(user: UserRecord, credential: StoredPassword | StoredPasskey): boolean;
   setUserRole(id: string, role: WebAppUserRole, updatedAt: string): boolean;
   markUserLogin(id: string, lastLoginAt: string): void;
   incrementUserAuthVersion(id: string, updatedAt: string): void;
+  resetUserCredentials(id: string, updatedAt: string): void;
   deleteUser(id: string): boolean;
 
   createSetupLink(record: UserSetupLinkRecord): void;
@@ -167,10 +176,12 @@ export interface ClankyAccountStore {
   getPasskeyByUserId(userId: string): StoredPasskey | undefined;
   getPasskeyByCredentialId(credentialId: string): StoredPasskey | undefined;
   savePasskey(passkey: StoredPasskey): void;
-  savePasskeyAndIncrementUserAuthVersion(passkey: StoredPasskey, updatedAt: string): PasskeyPersistenceResult;
+  savePasskeyAndIncrementUserAuthVersion(passkey: StoredPasskey, updatedAt: string, expectedAuthVersion?: number, requireUninitialized?: boolean): PasskeyPersistenceResult;
   updatePasskeyUsage(credentialId: string, counter: number, lastUsedAt: string): void;
   deletePasskeysForUser(userId: string): void;
 
+  getPassword(userId: string): StoredPassword | undefined;
+  setPassword(userId: string, expectedVersion: number | undefined, credential: Omit<StoredPassword, "identityId">, expectedAuthVersion: number): boolean;
   listApiKeys(userId?: string): ApiKeyRecord[];
   getApiKeyByHash(tokenHash: string): ApiKeyRecord | undefined;
   saveApiKey(record: ApiKeyRecord): void;

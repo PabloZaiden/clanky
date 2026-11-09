@@ -3,7 +3,7 @@
  */
 
 import { createLogger } from "@pablozaiden/webapp/server";
-import { isMeshOutboundRoute, type MeshControllerGrant, type MeshRelayPeerRoute } from "@/shared/mesh";
+import { isMeshOutboundRoute, type MeshControllerGrant, type MeshOutboundPeerRoute, type MeshRelayPeerRoute } from "@/shared/mesh";
 import { normalizeMeshRelayOrigin } from "@/shared/mesh-relay";
 import { listControllerGrants } from "../persistence/mesh";
 import { DomainError } from "../domain/domain-error";
@@ -12,7 +12,8 @@ import { requireMeshRuntimeRole } from "./mesh-runtime";
 import { discoverMeshEnrollmentTarget } from "./mesh-target-discovery";
 import { negotiateMeshDescriptorGeneration } from "./mesh-protocol-version";
 import { MESH_PROTOCOL_VERSION, meshTransportProtocolVersions } from "@/shared/mesh-protocol";
-import { setMeshOutboundTransport } from "./mesh-peer-transport";
+import { createMeshTlsFetch, openMeshDirectSocket, setMeshOutboundTransport } from "./mesh-peer-transport";
+import { sameMeshTlsTrust } from "./mesh-tls-trust";
 import { createMeshStreamPeerTransport } from "./mesh-relay-transport";
 
 type RelayDispatch = (request: Request) => Promise<Response | undefined>;
@@ -81,6 +82,7 @@ export class WorkerRelayService {
     manager: MeshRelayConnectorManager;
     endpoint: string;
     fingerprint: string;
+    route: MeshOutboundPeerRoute;
   }>();
 
   constructor(
@@ -218,7 +220,8 @@ export class WorkerRelayService {
       const grant = active.find((candidate) => candidate.controllerNodeId === id);
       if (!runtime.manager.activeConfig || !grant || !isMeshOutboundRoute(grant.controllerRoute)
         || grant.controllerRoute.endpoint !== runtime.endpoint
-        || grant.controllerFingerprint !== runtime.fingerprint) {
+        || grant.controllerFingerprint !== runtime.fingerprint
+        || !sameMeshTlsTrust(grant.controllerRoute, runtime.route)) {
         await runtime.manager.stop();
         this.directManagers.delete(id);
       }
@@ -230,9 +233,12 @@ export class WorkerRelayService {
         throw new DomainError("mesh_enrollment_controller_mismatch", "The outbound route targets a different controller than its grant.");
       }
       if (this.directManagers.has(grant.controllerNodeId)) continue;
-      const manager = new MeshRelayConnectorManager({ manageTransport: false });
+      const manager = new MeshRelayConnectorManager({
+        manageTransport: false,
+        socketFactory: (url) => openMeshDirectSocket(route, url),
+      });
       this.directManagers.set(grant.controllerNodeId, {
-        manager, endpoint: route.endpoint, fingerprint: grant.controllerFingerprint,
+        manager, endpoint: route.endpoint, fingerprint: grant.controllerFingerprint, route,
       });
       manager.start({
         config: {
@@ -242,7 +248,10 @@ export class WorkerRelayService {
         },
         dispatch: this.dispatch!,
         refreshProtocol: async () => {
-          const discovered = await discoverMeshEnrollmentTarget(route.endpoint, { outboundWorker: true });
+          const discovered = await discoverMeshEnrollmentTarget(route.endpoint, {
+            outboundWorker: true,
+            fetchFn: createMeshTlsFetch(route.endpoint, route.tlsCertificate ?? undefined),
+          });
           if (discovered.descriptor.role !== "controller"
             || discovered.descriptor.outboundWorker !== 1
             || discovered.descriptor.nodeId !== grant.controllerNodeId
@@ -257,13 +266,14 @@ export class WorkerRelayService {
           && candidate.controllerFingerprint === grant.controllerFingerprint
           && isMeshOutboundRoute(candidate.controllerRoute)
           && candidate.controllerRoute.endpoint === route.endpoint
+          && sameMeshTlsTrust(candidate.controllerRoute, route)
         )),
       });
     }
     setMeshOutboundTransport(this.directManagers.size ? createMeshStreamPeerTransport((route) => {
       if (!isMeshOutboundRoute(route)) throw new DomainError("mesh_transport_route_invalid", "An outbound controller route is required.");
       const runtime = this.directManagers.get(route.targetNodeId);
-      if (!runtime || runtime.endpoint !== route.endpoint) {
+      if (!runtime || runtime.endpoint !== route.endpoint || !sameMeshTlsTrust(runtime.route, route)) {
         throw new DomainError("mesh_worker_connection_unavailable", "The outbound controller connection is not available.");
       }
       return runtime.manager.resolveConnector({

@@ -19,6 +19,7 @@ import {
   resolveAdvertisedMeshEndpoint,
 } from "../core/mesh-transport-config";
 import { normalizeMeshEnrollmentTarget } from "../core/mesh-target-discovery";
+import { meshTargetTlsTrust } from "../core/mesh-tls-trust";
 import { meshManager } from "../core/mesh-manager";
 import type { ClankyCliContext } from "./mesh";
 import { createWorkerServiceCommand } from "./worker-service";
@@ -222,6 +223,7 @@ async function bootstrapWorker(
       username: "worker",
       role: "owner",
       passkeyConfigured: false,
+      authInitialized: true,
       authVersion: 1,
       createdAt: now,
       updatedAt: now,
@@ -274,6 +276,7 @@ interface WorkerJoinOptions {
   target: string;
   enrollmentToken: string;
   controllerFingerprint: string;
+  tlsCertificate?: string;
 }
 
 export function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions {
@@ -290,6 +293,7 @@ export function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions 
     if (
       arg !== "--token"
       && arg !== "--fingerprint"
+      && arg !== "--controller-cert"
     ) {
       throw new Error(`Unknown worker option: ${String(arg)}`);
     }
@@ -304,10 +308,20 @@ export function parseWorkerJoinArgs(args: readonly string[]): WorkerJoinOptions 
   const controllerFingerprint = values["--fingerprint"];
   if (!enrollmentToken) throw new Error("worker join requires --token");
   if (!controllerFingerprint) throw new Error("worker join requires --fingerprint");
+  let tlsCertificate: string | undefined;
+  if (values["--controller-cert"] !== undefined) {
+    const encoded = values["--controller-cert"]!;
+    if (encoded.length > 48 * 1024 || Buffer.from(encoded, "base64").toString("base64") !== encoded) {
+      throw new Error("--controller-cert must be a base64-encoded public PEM certificate (at most 32 KiB).");
+    }
+    tlsCertificate = Buffer.from(encoded, "base64").toString("utf8");
+    meshTargetTlsTrust(normalizeMeshEnrollmentTarget(targetValue), tlsCertificate);
+  }
   return {
     target: normalizeMeshEnrollmentTarget(targetValue),
     enrollmentToken,
     controllerFingerprint,
+    tlsCertificate,
   };
 }
 
@@ -343,6 +357,7 @@ async function joinWorker(
     target: options.target,
     enrollmentToken: options.enrollmentToken,
     expectedFingerprint: options.controllerFingerprint,
+    tlsCertificate: options.tlsCertificate,
   });
   log.info("Worker enrollment completed", {
     elapsedMs: Math.round(performance.now() - startedAt),
@@ -397,7 +412,7 @@ export function createWorkerCommand(): WebAppCliCommandDefinition<ClankyCliConte
       "worker <bootstrap|join|channel|service|ssh-agent> [options]",
       "",
       "The invitation selects a controller or relay; the worker connects outward in both cases.",
-      "  clanky worker join HTTPS_TARGET --token TOKEN --fingerprint CONTROLLER_FINGERPRINT",
+      "  clanky worker join HTTPS_TARGET --token TOKEN --fingerprint CONTROLLER_FINGERPRINT [--controller-cert BASE64_PUBLIC_PEM]",
       "Fresh join initializes an outbound-only worker. Install/start its service explicitly afterward.",
       "",
       "Bootstrap (optional before join):",

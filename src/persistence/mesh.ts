@@ -667,11 +667,12 @@ export async function saveControllerGrant(
       controller_public_key, controller_fingerprint,
       controller_encryption_public_key,
       controller_endpoint, route_kind, relay_url, relay_fingerprint,
+      controller_tls_certificate, controller_tls_fingerprint,
       controller_binary_version, controller_supported_protocol_versions_json,
       controller_preferred_protocol_version, controller_negotiated_protocol_version,
       controller_protocol_updated_at,
       grant_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
     ON CONFLICT(controller_node_id) DO UPDATE SET
       controller_instance_name = excluded.controller_instance_name,
       controller_public_key = excluded.controller_public_key,
@@ -681,6 +682,8 @@ export async function saveControllerGrant(
       route_kind = excluded.route_kind,
       relay_url = excluded.relay_url,
       relay_fingerprint = excluded.relay_fingerprint,
+      controller_tls_certificate = excluded.controller_tls_certificate,
+      controller_tls_fingerprint = excluded.controller_tls_fingerprint,
       controller_binary_version = excluded.controller_binary_version,
       controller_supported_protocol_versions_json = excluded.controller_supported_protocol_versions_json,
       controller_preferred_protocol_version = excluded.controller_preferred_protocol_version,
@@ -706,6 +709,8 @@ export async function saveControllerGrant(
         input.controllerRoute?.kind === "relay"
           ? input.controllerRoute.relayFingerprint
           : null,
+        input.controllerRoute?.kind === "direct" ? input.controllerRoute.tlsCertificate : null,
+        input.controllerRoute?.kind === "direct" ? input.controllerRoute.tlsFingerprint : null,
         input.controllerBinaryVersion ?? null,
         JSON.stringify(
           input.controllerSupportedProtocolVersions
@@ -1100,6 +1105,8 @@ interface ControllerGrantRow {
   controller_fingerprint: string;
   controller_encryption_public_key: string;
   controller_endpoint: string | null;
+  controller_tls_certificate: string | null;
+  controller_tls_fingerprint: string | null;
   route_kind: string;
   relay_url: string | null;
   relay_fingerprint: string | null;
@@ -1134,9 +1141,9 @@ function mapControllerGrantRow(
       endpoint: row.controller_endpoint,
       targetNodeId: row.controller_node_id,
       transport: "https",
-      tlsTrust: "system",
-      tlsCertificate: null,
-      tlsFingerprint: null,
+      tlsTrust: row.controller_tls_certificate === null ? "system" : "pinned",
+      tlsCertificate: row.controller_tls_certificate,
+      tlsFingerprint: row.controller_tls_fingerprint,
     };
   } else {
     controllerRoute = row.controller_endpoint
@@ -1147,10 +1154,10 @@ function mapControllerGrantRow(
           ? "https"
           : "http",
         tlsTrust: row.controller_endpoint.startsWith("https:")
-          ? "system"
+          ? row.controller_tls_certificate === null ? "system" : "pinned"
           : "none",
-        tlsCertificate: null,
-        tlsFingerprint: null,
+        tlsCertificate: row.controller_tls_certificate,
+        tlsFingerprint: row.controller_tls_fingerprint,
       }
       : null;
   }

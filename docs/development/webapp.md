@@ -22,8 +22,19 @@ API keys, device sessions, OAuth, account/administration screens, CLI, and
 remote-client authorization. Connect those services to the framework's explicit
 request, transport, session, and preference interfaces. Passkey verification
 uses the optional framework ceremony helpers. Clanky retains its existing signed
-browser-session protocol to preserve active sessions; password support is not
-enabled. Do not add Clanky policies or storage to webapp.
+browser-session protocol to preserve active sessions. Password credentials use
+the optional framework enrollment, verification and change helpers with Bun
+Argon2id; Clanky stores encoded hashes and credential versions. Password changes
+advance the existing browser-session epoch and renew the caller's cookie without
+revoking unrelated API keys or device sessions. Passkeys remain the preferred
+hostname login; passwords also work on HTTPS IP addresses and can be created or
+changed by authenticated accounts in existing Security settings. There is no
+public password signup, recovery or removal. Password attempt admission is
+deliberately unrestricted: Clanky does not apply a limiter or lockout. The
+framework's 12-character minimum and 1024-byte maximum remain enforced.
+Security settings use the authenticated account's passkey status, independently
+of the server-wide flag used to offer passkey login.
+Do not add Clanky policies or storage to webapp.
 
 All persistence is selected explicitly, including browser preferences.
 Clanky's adapters preserve its existing database and credential/preference
@@ -132,7 +143,7 @@ Clanky-owned compositions. Keep their policy and data loading out of webapp.
 Use the public theme state, Settings layout and fields; do not restyle native
 selects or duplicate generic layout behavior.
 User-access resets require a destructive confirmation naming the account and
-its passkey, API-key and session revocation consequences.
+its passkey, password, API-key and session revocation consequences.
 
 Settings have two zones with controls/actions vertically centered and
 right-aligned. Keep short fields compact, related fields together, and ordinary
