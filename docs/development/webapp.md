@@ -114,8 +114,8 @@ The workspace overview promotes **New Chat** to a primary header action when
 space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.
 
-Workspace menus group creation actions as **New Task** (Git workspaces only),
-**New Terminal**, **New Chat**, and **New Automation**. **Import Automation** belongs to
+Workspace menus list **New Chat** first, followed by **New Task** (Git workspaces
+only), **New Terminal**, and **New Automation**. **Import Automation** belongs to
 the New Automation page and imports into its selected workspace. File-opening
 actions use the label **Code Explorer**. Scratchpad opens from its overview
 heading, not the workspace menu. Git-backed workspace overviews expose
