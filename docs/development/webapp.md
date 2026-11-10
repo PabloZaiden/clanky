@@ -68,6 +68,14 @@ or shell CSS override.
 The code explorer places its file tree beside the editor from 768 CSS pixels,
 so an unfolded Duo in landscape can use both panels with the app sidebar
 collapsed. Narrower views keep the stacked layout.
+In the side-by-side layout, drag the existing gap between the expanded tree
+and content pane to resize the tree. The gap stays invisible and shows a
+horizontal-resize cursor on hover. Its keyboard-focusable separator supports
+Left/Right (Shift for larger steps) and Home/End for the available limits.
+The width stays within the available space and is retained across collapse
+and Files/Terminals switches while the explorer remains mounted; leaving or
+reloading the explorer resets it. Collapsed and stacked layouts are not
+resizable.
 
 Settings category navigation follows the width available after the sidebar and
 safe areas: at 800 CSS pixels or less it uses the Category dropdown; wider layouts
