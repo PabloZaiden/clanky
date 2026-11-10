@@ -1209,6 +1209,20 @@ identity may lose sessions and pairings.
 
 External top-level links open in the system browser. File selection uses WebKit's
 native picker; downloads use the Mac save panel or iPhone/iPad export sheet.
+
+On iPhone/iPad, STT and Live Voice use the app's normal iOS microphone permission
+without additional website permission dialogs for `127.0.0.1`. The native shell
+authorizes only microphone capture from its current main WebView's main frame
+at the installation's exact saved frontend origin after checking the app's
+iOS recording permission. Denied or revoked permission rejects capture rather
+than starting a silent recording. Popups, embedded frames, other origins, camera
+capture and combined camera/microphone requests are not authorized by this
+policy. The iOS permission dialog and privacy indicators still apply.
+Camera attachments continue to use the native
+file picker. This native permission policy requires an updated app binary;
+downloaded frontend updates cannot change it. Mac and ordinary browser
+permission behavior is unchanged.
+
 API resource downloads use the framework's explicit native-save handoff after
 the existing selected-server validation and ticket acquisition. The native host
 checks the calling main-frame API or Mac local-controller frontend document,
