@@ -363,7 +363,7 @@ updater-enabled build manually; older app versions cannot acquire an updater
 through their web UI or CLI self-update.
 
 **Clanky > Check for Updates...** checks immediately. **Clanky > Settings...**
-shows the installed distribution version, native build, source revision,
+shows the installed distribution version, source revision,
 update channel, and automatic-update preferences. The initial channel matches
 the downloaded app; a saved **Stable/Latest** selection overrides it. Stable
 checks every 24 hours and latest every hour. Automatic checks, downloads and

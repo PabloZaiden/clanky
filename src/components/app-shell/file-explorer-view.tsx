@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useCallback, useEffect, useId, useMemo, useRef, useState,
+  type ChangeEvent, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent,
+} from "react";
 import { getWebAppClientMode, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileEntry, WorkspaceFileNode, TerminalSession } from "@/shared";
 import {
@@ -62,6 +65,10 @@ function getFileExplorerOperationFallback(operation: FileExplorerOperation): str
 }
 
 const FILE_EXPLORER_MOBILE_MEDIA_QUERY = "(max-width: 1023px)";
+const EXPLORER_DEFAULT_WIDTH = 280;
+const EXPLORER_MIN_WIDTH = 200;
+const EXPLORER_CONTENT_MIN_WIDTH = 320;
+const EXPLORER_DIVIDER_WIDTH = 16;
 
 function getAutoOpenRouteKey(
   target: FileExplorerTarget,
@@ -136,6 +143,21 @@ export function FileExplorerView({
   });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const explorerColumnId = useId();
+  const explorerLayoutRef = useRef<HTMLDivElement>(null);
+  const explorerDragRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const [explorerPreferredWidth, setExplorerPreferredWidth] = useState(EXPLORER_DEFAULT_WIDTH);
+  const [explorerLayoutWidth, setExplorerLayoutWidth] = useState<number | null>(null);
+  const [resizingExplorer, setResizingExplorer] = useState(false);
+  const availablePaneWidth = Math.max(0, (explorerLayoutWidth ?? 0) - EXPLORER_DIVIDER_WIDTH);
+  const explorerMaxWidth = explorerLayoutWidth === null
+    ? EXPLORER_DEFAULT_WIDTH
+    : Math.floor(availablePaneWidth - Math.min(EXPLORER_CONTENT_MIN_WIDTH, availablePaneWidth / 2));
+  const explorerMinWidth = Math.min(EXPLORER_MIN_WIDTH, explorerMaxWidth);
+  const explorerWidth = Math.min(explorerMaxWidth, Math.max(explorerMinWidth, explorerPreferredWidth));
+  const explorerLayoutStyle: CSSProperties & { "--clanky-explorer-width": string } = {
+    "--clanky-explorer-width": `${explorerWidth}px`,
+  };
   const lastHandledExplorerFailureRef = useRef<FileExplorerOperationFailure | null>(null);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<WorkspaceFileNode | null>(null);
@@ -183,6 +205,59 @@ export function FileExplorerView({
     () => sessions.find((session) => session.config.id === selectedSessionId),
     [selectedSessionId, sessions],
   );
+
+  useEffect(() => {
+    const layout = explorerLayoutRef.current;
+    if (!layout) return;
+    const updateWidth = () => setExplorerLayoutWidth(layout.getBoundingClientRect().width);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(layout);
+    return () => observer.disconnect();
+  }, []);
+
+  function resizeExplorer(width: number) {
+    setExplorerPreferredWidth(Math.min(explorerMaxWidth, Math.max(explorerMinWidth, width)));
+  }
+
+  function handleExplorerResizeStart(event: PointerEvent<HTMLDivElement>) {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    explorerDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: explorerWidth,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingExplorer(true);
+  }
+
+  function handleExplorerResizeMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = explorerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    resizeExplorer(drag.startWidth + event.clientX - drag.startX);
+  }
+
+  function handleExplorerResizeEnd(event: PointerEvent<HTMLDivElement>) {
+    if (explorerDragRef.current?.pointerId !== event.pointerId) return;
+    explorerDragRef.current = null;
+    setResizingExplorer(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function handleExplorerResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 40 : 10;
+    switch (event.key) {
+      case "ArrowLeft": resizeExplorer(explorerWidth - step); break;
+      case "ArrowRight": resizeExplorer(explorerWidth + step); break;
+      case "Home": resizeExplorer(explorerMinWidth); break;
+      case "End": resizeExplorer(explorerMaxWidth); break;
+      default: return;
+    }
+    event.preventDefault();
+  }
 
   useEffect(() => {
     if (!selectableSessions.some((session) => session.id === selectedSessionId)) {
@@ -689,14 +764,20 @@ export function FileExplorerView({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
       >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden md:flex-row">
         <div
+          ref={explorerLayoutRef}
+          style={explorerLayoutStyle}
+          className={`flex h-full min-h-0 flex-col gap-4 overflow-hidden md:flex-row${explorerCollapsed ? "" : " md:gap-0"}`}
+        >
+        <div
+          id={explorerColumnId}
           data-testid={`${testIdPrefix}-explorer-column`}
           className={[
-            "min-h-0 transition-[max-height,width] duration-200 ease-out",
+            "min-h-0 min-w-0 md:shrink-0",
+            resizingExplorer ? "" : "transition-[max-height,width] duration-200 ease-out",
             explorerCollapsed
               ? "max-h-none overflow-visible md:h-full md:w-14 md:max-h-none md:overflow-hidden"
-              : "max-h-[35vh] overflow-hidden md:h-full md:w-[280px] md:max-h-none",
+              : "max-h-[35vh] overflow-hidden md:h-full md:w-[var(--clanky-explorer-width)] md:max-h-none",
           ].join(" ")}
         >
           <div className="flex h-full min-h-0 flex-col gap-3">
@@ -780,6 +861,26 @@ export function FileExplorerView({
             </div>
           </div>
         </div>
+
+        {!explorerCollapsed ? (
+          <div
+            role="separator"
+            aria-label="File explorer width"
+            aria-orientation="vertical"
+            aria-controls={explorerColumnId}
+            aria-valuemin={explorerMinWidth}
+            aria-valuemax={explorerMaxWidth}
+            aria-valuenow={explorerWidth}
+            tabIndex={0}
+            className="hidden w-4 shrink-0 touch-none select-none cursor-col-resize rounded focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500 md:block"
+            onPointerDown={handleExplorerResizeStart}
+            onPointerMove={handleExplorerResizeMove}
+            onPointerUp={handleExplorerResizeEnd}
+            onPointerCancel={handleExplorerResizeEnd}
+            onLostPointerCapture={handleExplorerResizeEnd}
+            onKeyDown={handleExplorerResizeKeyDown}
+          />
+        ) : null}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {activePane === "editor" || readOnly ? (
