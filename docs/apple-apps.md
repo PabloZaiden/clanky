@@ -1288,6 +1288,12 @@ manual retry. Failed local loads retry automatically on the next activation.
 This does not replay remote API operations or recover a lost authenticated
 session, and it does not provide background execution.
 
+The shared web frontend also recovers failed workspace images and the web
+sidebar logo after temporary loading errors, without reloading the page.
+Healthy images are left alone. See [icon loading recovery](workspace-icons.md)
+for the bounded retry behavior; it does not bypass authentication or change
+the native listener's recovery policy.
+
 The iPhone sign-in screen includes local session diagnostics for intermittent
 sign-outs. It retains at most ten structured restoration, renewal, removal,
 foreground/background, and connectivity-hint events, with timestamps and

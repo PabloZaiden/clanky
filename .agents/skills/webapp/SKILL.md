@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.7
+version: 0.6.8
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -112,6 +112,11 @@ in app-owned adapters, not silently convert/reset them.
   Authorize private HTTP image endpoints and permit the client origin through
   CORS; do not make resources public or relax resource-policy headers to embed
   them. Explicit `crossOrigin` options and direct blob/data sources are preserved.
+- Failed resource images reacquire their URL for one automatic retry while
+  visible and online, including lazy images whose original capability expired.
+  Failed images and the shell's public logo also retry on later foreground,
+  focus or online events. Successful images are not reloaded. Do not add app
+  retry loops, extend capabilities, or reload the whole page for image recovery.
 - Runtime supplies stable snapshots `{scope,generation,ready,error?,logLevel,
   logLevelFromEnv?}`. Scope is a cache namespace, not identity authority.
   Advance generation on identity, credential and endpoint changes. Gate private

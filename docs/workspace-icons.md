@@ -51,6 +51,12 @@ saved icon. Select or import it again to refresh the copy. SVG uploads,
 candidates, and URL imports are sanitized before storage. The saved image is
 available only to users authorized for that workspace.
 
+Temporary icon-loading failures are retried without restarting the app or
+reselecting the image. Failed images get one automatic retry while the app is
+visible and online, then another opportunity when it returns to the foreground,
+regains focus, or comes online. Recovery renews the image resource when needed;
+it does not change the stored icon or extend its authorization.
+
 Clanky discards SVG metadata and Inkscape named-view settings while
 preserving the drawing. Simple inline presentation styles,
 including fill and stroke colors, opacity, and stroke widths, are converted
