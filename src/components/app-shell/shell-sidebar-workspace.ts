@@ -52,6 +52,15 @@ function getWorkspaceSidebarActions(
   const workspaceId = workspaceNode.workspace.id;
   const isGitBacked = workspaceNode.workspace.workspaceType === "git";
   const actions = sidebarActionItems([
+      {
+        id: "new-chat",
+        label: "New Chat",
+        onClick: () => context.navigateWithinShell({
+          view: "compose",
+          kind: "chat",
+          scopeId: workspaceId,
+        }),
+      },
       ...(isGitBacked ? [{
           id: "new-task",
           label: "New Task",
@@ -68,15 +77,6 @@ function getWorkspaceSidebarActions(
           view: "compose",
           kind: "terminal-session",
           workspaceId,
-        }),
-      },
-      {
-        id: "new-chat",
-        label: "New Chat",
-        onClick: () => context.navigateWithinShell({
-          view: "compose",
-          kind: "chat",
-          scopeId: workspaceId,
         }),
       },
       {
