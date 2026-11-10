@@ -175,7 +175,6 @@ export function buildSidebarDomainNodes({
     remoteOnly,
     chats,
     terminalSessions,
-    workspaces,
     context: contexts.server,
   });
 
