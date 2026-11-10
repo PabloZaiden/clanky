@@ -191,6 +191,17 @@ The chat transcript and chat ID remain unchanged. History continuation is
 blocked while the chat has an active run, queued input, unresolved delivery,
 question, or permission request.
 
+For workspace chats, history continuation uses the workspace's current execution
+host, even if the old session belongs to a previous host. The replacement session
+and saved chat binding use that current host. Direct execution-host chats keep
+their explicitly selected host.
+
+The chat directory must already exist on the destination host. A managed chat
+worktree must be registered there and retain its recorded branch; recovery fails
+explicitly if these resources are missing or the branch differs. History
+continuation does not clone repositories or transfer worktrees or uncommitted
+files between hosts.
+
 Before the new session handles its first message, Clanky writes the persisted,
 user-visible transcript as JSON Lines to
 `<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`

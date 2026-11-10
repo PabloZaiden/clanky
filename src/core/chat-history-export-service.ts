@@ -54,6 +54,8 @@ interface ExportedAttachment {
 }
 
 interface CreateChatHistoryExportOptions {
+  executionHost: ExecutionHostBinding;
+  directory: string;
   signal?: AbortSignal;
   previousSession?: HarnessHistoryRecovery["previousSession"];
   onAllocated?: (recovery: HarnessHistoryRecovery) => Promise<void>;
@@ -170,14 +172,6 @@ function attachmentExtension(attachment: MessageAttachment): string {
   }
 }
 
-function getChatExecutionDirectory(chat: Chat): string {
-  return chat.state.session?.binding?.directory
-    ?? chat.state.worktree?.worktreePath
-    ?? (chat.config.source?.kind === "execution_host"
-      ? chat.config.source.directory
-      : chat.config.directory);
-}
-
 export async function getChatExecutionHostBinding(
   state: Pick<ChatStatePort, "getWorkspace">,
   chat: Chat,
@@ -233,7 +227,7 @@ export class ChatHistoryExportService {
 
   async create(
     chat: Chat,
-    options: CreateChatHistoryExportOptions = {},
+    options: CreateChatHistoryExportOptions,
   ): Promise<HarnessHistoryRecovery> {
     const transcriptMeta = await this.state.getChatTranscriptExportMeta(
       chat.config.id,
@@ -251,11 +245,11 @@ export class ChatHistoryExportService {
     const expiresAt = new Date(
       createdAtMs + CHAT_HISTORY_EXPORT_TTL_MS,
     ).toISOString();
-    const executionHost = await getChatExecutionHostBinding(this.state, chat);
+    const executionHost = options.executionHost;
     const executor = await this.getExecutor(
       chat,
       executionHost,
-      getChatExecutionDirectory(chat),
+      options.directory,
       recoveryId,
     );
     let exportDirectory: string | undefined;
@@ -266,8 +260,31 @@ export class ChatHistoryExportService {
       options.signal?.throwIfAborted();
       const directory = await resolveCommandExecutorDirectory(
         executor,
-        getChatExecutionDirectory(chat),
+        options.directory,
       );
+      if (!await executor.directoryExists(directory)) {
+        throw new DomainError(
+          "chat_directory_unavailable",
+          "The chat directory does not exist on the selected execution host. Restore it there before continuing from history.",
+        );
+      }
+      const git = GitService.withExecutor(executor);
+      const isGitRepo = await git.isGitRepo(directory);
+      if (chat.config.useWorktree) {
+        if (!isGitRepo || !await git.worktreeExists(chat.config.directory, directory)) {
+          throw new DomainError(
+            "chat_directory_unavailable",
+            "The chat worktree is not registered on the selected execution host. Restore it there before continuing from history.",
+          );
+        }
+        const expectedBranch = chat.state.worktree?.workingBranch;
+        if (expectedBranch && await git.getCurrentBranch(directory) !== expectedBranch) {
+          throw new DomainError(
+            "chat_directory_unavailable",
+            "The chat worktree is on a different branch on the selected execution host. Restore its original branch before continuing from history.",
+          );
+        }
+      }
       const managedPaths = new ManagedPathService(executor.pathStyle);
       exportDirectory = managedPaths.getChatHistoryExportDirectoryPath(
         directory,
@@ -294,8 +311,7 @@ export class ChatHistoryExportService {
       };
       await options.onAllocated?.(allocatedRecovery);
 
-      const git = GitService.withExecutor(executor);
-      if (await git.isGitRepo(directory)) {
+      if (isGitRepo) {
         await git.ensureWorktreeExcluded(directory);
       }
 

@@ -16,6 +16,7 @@ import {
   isExecutionHostChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
+import { executionHostBindingsEqual } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
@@ -25,7 +26,7 @@ import { requireExecutionOwnerUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
 import { harnessActivityService } from "./harness-activity-service";
-import { isDomainError } from "../domain/domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import type { HarnessCapabilities, HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEvent } from "@/shared/harness-events";
 import { closeOpenQuestions, isQuestionOpen } from "@/shared/harness-questions";
@@ -333,11 +334,12 @@ export class ChatSessionService implements ChatSessionPort {
     chat: Chat,
     options: ReconnectChatOptions & { directory: string },
   ): Promise<Chat> {
-    const recoveryId = chat.state.harness?.historyRecovery?.id;
+    const recovery = chat.state.harness?.historyRecovery;
+    const recoveryId = recovery?.id;
     if (
       chat.state.status !== "starting"
       || !recoveryId
-      || chat.state.harness?.historyRecovery?.status !== "exporting"
+      || recovery?.status !== "exporting"
     ) {
       throw new HarnessError(
         "harness_runtime_unavailable",
@@ -345,7 +347,35 @@ export class ChatSessionService implements ChatSessionPort {
       );
     }
 
+    const originalExecutionHost = chat.config.executionHostBinding;
+    const originalSessionId = chat.state.session?.id;
+    let hostUpdated = false;
     try {
+      const source = chat.config.source;
+      const currentHost = source?.kind === "execution_host"
+        ? source.executionHost
+        : (await this.state.getWorkspace(getChatWorkspaceId(chat)))?.executionHostBinding;
+      if (!currentHost || !executionHostBindingsEqual(currentHost, recovery.executionHost)) {
+        throw new DomainError(
+          "chat_history_recovery_conflict",
+          "The chat's execution host changed while its recovery history was being exported. Continue from history again.",
+        );
+      }
+      if (
+        !originalExecutionHost
+        || !executionHostBindingsEqual(originalExecutionHost, recovery.executionHost)
+      ) {
+        const updated = await this.state.updateConfig(chat.config.id, {
+          ...chat.config,
+          executionHostBinding: recovery.executionHost,
+          updatedAt: createTimestamp(),
+        });
+        if (!updated) {
+          throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
+        }
+        hostUpdated = true;
+        chat = updated;
+      }
       const workingDirectory: ChatDirectoryResolution = {
         chat,
         directory: options.directory,
@@ -378,6 +408,16 @@ export class ChatSessionService implements ChatSessionPort {
       }
       return created;
     } catch (error) {
+      if (hostUpdated) {
+        const latest = await this.state.getChat(chat.config.id);
+        if (latest && latest.state.session?.id === originalSessionId) {
+          await this.state.updateConfig(chat.config.id, {
+            ...latest.config,
+            executionHostBinding: originalExecutionHost,
+            updatedAt: createTimestamp(),
+          });
+        }
+      }
       if (!options.signal?.aborted) {
         const latest = await this.state.getChat(chat.config.id);
         if (latest) {

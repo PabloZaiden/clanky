@@ -111,8 +111,11 @@ and reconciles completed messages by native ID; a partial checkpoint does not
 mean the principal is still running or that its completion must exist. Do not
 clear checkpoints, merge equal text, or resend an interrupted/uncertain request
 to bypass a failure. Use **Continue from history** only when intentionally
-starting a replacement native session. See
-[native recovery](../../docs/harnesses.md#activity-and-individual-stop).
+starting a replacement native session. Workspace chats recover on their current
+workspace host; the chat directory/worktree must already exist there. Recovery
+does not transfer uncommitted files from an old host. See
+[native recovery](../../docs/harnesses.md#activity-and-individual-stop) and
+[history continuation](../../docs/harnesses.md#continue-from-history).
 
 An idle native Mesh chat can be disconnected after its worker restarts without
 having failed. Unavailable background activity is unknown, not an empty or
