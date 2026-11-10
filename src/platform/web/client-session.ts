@@ -6,6 +6,12 @@ import {
 import { readStorage, writeStorage } from "./storage";
 import { recordClientSessionDiagnostic, startClientSessionDiagnostics } from "./client-session-diagnostics";
 
+declare global {
+  interface Window {
+    clankyLocalController?: boolean;
+  }
+}
+
 export interface WebAppRemoteClientOptions {
   credentialStore?: WebAppClientCredentialStore;
   openAuthorizationUrl?: (url: string) => void | Promise<void>;
@@ -14,13 +20,14 @@ export interface WebAppRemoteClientOptions {
 export interface WebAppClientSession {
   enabled: boolean;
   ready: boolean;
+  localController: boolean;
   endpoint?: string;
   authenticated: boolean;
   generation: number;
   error?: Error;
 }
 
-let state: WebAppClientSession = { enabled: false, ready: true, authenticated: false, generation: 0 };
+let state: WebAppClientSession = { enabled: false, ready: true, localController: false, authenticated: false, generation: 0 };
 let credentials: WebAppClientCredentials | undefined;
 let store = browserClientCredentialStore;
 let nativeOpen: WebAppRemoteClientOptions["openAuthorizationUrl"];
@@ -55,20 +62,26 @@ export function configureRemoteClient(defaultEndpoint?: string, options: WebAppR
   }
   if (options.openAuthorizationUrl) nativeOpen = options.openAuthorizationUrl;
   if (state.enabled) return;
+  const localController = window.clankyLocalController === true;
   try {
-    const saved = readStorage(clientStorageKey("endpoint"));
-    if (!saved.ok) throw saved.error;
-    const endpoint = saved.value ?? defaultEndpoint;
-    update({ enabled: true, ready: false, endpoint: endpoint ? normalizeClientEndpoint(endpoint) : undefined });
+    let endpoint = defaultEndpoint;
+    if (localController) {
+      if (!endpoint) throw new Error("The local controller endpoint is missing.");
+    } else {
+      const saved = readStorage(clientStorageKey("endpoint"));
+      if (!saved.ok) throw saved.error;
+      endpoint = saved.value ?? endpoint;
+    }
+    update({ enabled: true, ready: false, localController, endpoint: endpoint ? normalizeClientEndpoint(endpoint) : undefined });
   } catch (error) {
-    update({ enabled: true, ready: true, error: error instanceof Error ? error : new Error(String(error)) });
+    update({ enabled: true, ready: true, localController, error: error instanceof Error ? error : new Error(String(error)) });
   }
 }
 
 export function getClientSession(): WebAppClientSession { return state; }
 function storageChanged(event: StorageEvent): void {
   if (event.storageArea !== window.localStorage) return;
-  if (event.key === null || event.key === clientStorageKey("endpoint")) {
+  if (event.key === null || !state.localController && event.key === clientStorageKey("endpoint")) {
     window.location.reload();
     return;
   }
@@ -128,6 +141,7 @@ export async function initializeClientSession(): Promise<void> {
 }
 
 export async function selectClientEndpoint(endpoint: string): Promise<void> {
+  if (state.localController) throw new Error("Use the API connection mode to choose a different server.");
   const normalized = normalizeClientEndpoint(endpoint);
   const previous = state.endpoint;
   if (previous) await withClientCredentialLock(previous, async () => { await store.remove(previous); });

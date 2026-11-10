@@ -452,6 +452,12 @@ final class BrowserModel: ObservableObject {
           saveResource: resource => window.webkit.messageHandlers.clankyDownloads.postMessage(resource)
         };
         """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #if os(macOS)
+        configuration.userContentController.addUserScript(WKUserScript(source: """
+        window.clankyLocalController = window.location.origin === new URL("\(origin.absoluteString)").origin
+          && (window.location.pathname === "/local" || window.location.pathname.startsWith("/local/"));
+        """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        #endif
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
         if UIDevice.current.userInterfaceIdiom == .phone {
