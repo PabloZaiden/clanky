@@ -42,6 +42,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function changeServer(edit: () => void): void {
+  if (getClientSession().localController) {
+    window.location.assign(new URL("../api/", document.baseURI));
+  } else {
+    edit();
+  }
+}
+
 function EndpointForm({ endpoint, onConnected }: { endpoint?: string; onConnected?: () => void }) {
   const [value, setValue] = useState(endpoint ?? "");
   const [error, setError] = useState<string>();
@@ -104,16 +112,16 @@ export function RemoteClientBoundary({ children }: { children: ReactNode }) {
       setVerification(undefined);
     }
   }
-  const chooseEndpoint = !session.endpoint || editing || Boolean(session.error);
+  const chooseEndpoint = !session.localController && (!session.endpoint || editing || Boolean(session.error));
   return (
     <ThemeProvider><main className="wapp-auth-screen">
       <Dialog title={chooseEndpoint ? "Connect to server" : "Sign in"}
         actions={!chooseEndpoint || connectionPickerUrl ? <>
           {connectionPickerUrl ? <a href={connectionPickerUrl}>Change connection</a> : null}
           {!chooseEndpoint ? <>
-            <Button type="button" disabled={busy} onClick={() => setEditing(true)}>Change server</Button>
+            <Button type="button" disabled={busy} onClick={() => changeServer(() => setEditing(true))}>Change server</Button>
             {busy ? <Button type="button" onClick={cancelClientLogin}>Cancel</Button>
-              : <Button type="button" disabled={!session.ready} onClick={() => void startLogin()}>Sign in</Button>}
+              : <Button type="button" disabled={!session.ready || !session.endpoint} onClick={() => void startLogin()}>Sign in</Button>}
           </> : null}
         </> : undefined}>
         {chooseEndpoint ? <EndpointForm endpoint={session.endpoint} onConnected={() => setEditing(false)} />
@@ -146,7 +154,7 @@ export function RemoteClientSettings() {
   return (
     <FormSection title="Connection">
       {session.enabled ? <SettingsFieldRow title="API server" content={<span>{session.endpoint}</span>} actions={<>
-        <Button onClick={() => setEditing(!editing)}>Change server</Button>
+        <Button onClick={() => changeServer(() => setEditing(!editing))}>Change server</Button>
         <Button onClick={() => void signOut()}>Sign out</Button>
       </>} /> : null}
       {session.enabled && editing ? <EndpointForm endpoint={session.endpoint} /> : null}

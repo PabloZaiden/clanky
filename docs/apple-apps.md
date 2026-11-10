@@ -534,7 +534,11 @@ bundled existing CLI with `serve --api-only true`, then connects the API client
 to it after its health check succeeds. **Connect to Local Controller** connects
 the active window to the running controller. Commands require an active Clanky window and are disabled
 while the controller starts or stops. It is optional and stays off on a fresh
-installation. A successful **Start Local Controller** is remembered: the next
+installation. Local mode always uses the app-owned controller's current endpoint,
+not a previously selected API server, including after signing out or changing
+Network Access. **Change server** opens the separate API connection mode; its
+saved server and session remain independent of local mode.
+A successful **Start Local Controller** is remembered: the next
 app launch starts it automatically after the bundled UI is ready. Opening
 another window or returning to the app does not start another process.
 The first window waits for remembered controller startup to finish before
