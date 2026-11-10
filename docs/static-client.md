@@ -82,8 +82,12 @@ or API compatibility. Browser clients still require a reload after deployment to
 up the new frontend; they do not install the native app's downloaded snapshots.
 
 The `Publish browser clients` workflow builds PRs without publishing them.
-Main pushes and manual runs on `main` deploy through the `github-pages`
-environment. Every stable release automatically dispatches one run on `main`
+Main merges do not deploy. The [nightly/manual main publication](binary-updates.md)
+calls this workflow after Docker and native assets succeed, selecting the same
+main source revision and deploying through the `github-pages` environment.
+Its verified delivery is required for the main publication to count as complete;
+failed or superseded publication does not advance the nightly skip baseline.
+Every stable release automatically dispatches one run on `main`
 instead of deploying directly under the release event. This avoids a
 [GitHub Pages release-event bug](https://github.com/actions/deploy-pages/issues/383)
 that can report success while continuing to serve the previous artifact.

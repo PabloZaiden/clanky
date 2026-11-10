@@ -1,8 +1,16 @@
 name: Publish browser clients
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      source_revision:
+        description: Exact main source selected by the publication workflow.
+        required: true
+        type: string
+    outputs:
+      published:
+        description: Whether the complete selected site was deployed and verified.
+        value: ${{ jobs.deploy.outputs.published }}
   pull_request:
     branches: [main]
   release:
@@ -43,7 +51,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+          ref: ${{ github.event_name == 'pull_request' && github.ref || inputs.source_revision || 'main' }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -139,6 +147,8 @@ jobs:
     if: github.event_name != 'pull_request' && github.event_name != 'release' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.revision.outputs.publish }}
     permissions:
       contents: read
       pages: write
