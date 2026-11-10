@@ -3,6 +3,7 @@ import WebKit
 #if os(macOS)
 import AppKit
 #else
+import AVFAudio
 import UIKit
 #endif
 
@@ -197,6 +198,32 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
             completionHandler(.performDefaultHandling, nil)
         }
     }
+
+    #if os(iOS)
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
+        guard !stopped, webView === self.webView, webView === browser.webView,
+              frame.isMainFrame, frame.webView === webView, type == .microphone,
+              origin.protocol == browser.origin.scheme, origin.host == browser.origin.host,
+              origin.port == browser.origin.port,
+              frame.securityOrigin.protocol == origin.protocol,
+              frame.securityOrigin.host == origin.host,
+              frame.securityOrigin.port == origin.port else {
+            decisionHandler(.deny)
+            return
+        }
+        Task { @MainActor [weak self] in
+            let allowed = await AVAudioApplication.requestRecordPermission()
+            guard allowed, let self, !self.stopped,
+                  webView === self.browser.webView, webView.uiDelegate === self else {
+                decisionHandler(.deny)
+                return
+            }
+            decisionHandler(.grant)
+        }
+    }
+    #endif
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage,
