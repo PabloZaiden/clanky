@@ -91,7 +91,9 @@ The dispatched run resolves the highest stable release and current main itself;
 it does not dispatch again. Only the release-dispatch job receives
 `actions: write`. Both channels are built from immutable
 source revisions and combined into one complete artifact, because a Pages
-deployment replaces the whole site. Drafts, prereleases, and the rolling
+deployment replaces the whole site. Each deployment attempt uploads and selects
+an attempt-specific Pages artifact, so reruns cannot select artifacts retained
+from an earlier attempt. Drafts, prereleases, and the rolling
 `latest` release do not select the stable channel. Publication shares one
 serialization group across triggers and skips artifacts whose main revision
 or stable release selection has been superseded.
