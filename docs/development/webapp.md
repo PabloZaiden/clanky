@@ -123,10 +123,10 @@ In the sidebar's **Workspaces** tab, each workspace directly lists chats,
 Git-backed tasks, and terminals together, including completed chats and
 historical tasks. **Automations** is a peer section containing automations from all
 workspaces, with their workspace names and inherited privacy/access rules.
-In **Servers**, each server directly lists its workspaces, host chats, and host
-terminals together. Mixed lists sort by most recent interaction (chat/task user
-message or terminal connection, falling back to creation); server workspace
-entries use the workspace's last update. Chats, tasks, and terminals reuse
+In **Servers**, each server directly lists only its host chats and host terminals;
+workspaces remain in the **Workspaces** tab rather than appearing under servers.
+Mixed lists sort by most recent interaction (chat/task user message or terminal
+connection, falling back to creation). Chats, tasks, and terminals reuse
 Active's rich rows: workspace/host and textual status above the title, with
 relative interaction time and type/provider metadata below. Automations and
 workspace/server rows retain their own presentation.

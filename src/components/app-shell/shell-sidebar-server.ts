@@ -3,7 +3,6 @@ import type {
   Chat,
   ExecutionHostDescriptor,
   TerminalSession,
-  Workspace,
 } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
 import {
@@ -50,7 +49,6 @@ export interface BuildServerSidebarNodesOptions {
   remoteOnly: boolean;
   chats: Chat[];
   terminalSessions: TerminalSession[];
-  workspaces: Workspace[];
   context: ServerSidebarContext;
 }
 
@@ -59,7 +57,6 @@ export function buildServerSidebarNodes({
   remoteOnly,
   chats,
   terminalSessions,
-  workspaces,
   context,
 }: BuildServerSidebarNodesOptions): SidebarNode[] {
   return executionHosts
@@ -79,9 +76,6 @@ export function buildServerSidebarNodes({
       });
       const hostTerminals = terminalSessions.filter((session) => (
         !session.config.workspaceId && belongsToHost(session.config.executionHostBinding.host)
-      ));
-      const hostWorkspaces = workspaces.filter((workspace) => (
-        belongsToHost(workspace.executionHostBinding.host)
       ));
       const hostPrivateHidden = getPrivateHidden(
         host,
@@ -111,18 +105,6 @@ export function buildServerSidebarNodes({
         pinnable: true,
         pinId: `execution-host:${host.ref.kind}:${hostId}`,
         children: sortSidebarNodesByActivity([
-          ...hostWorkspaces.map((workspace) => ({
-            lastActivityAt: workspace.updatedAt,
-            node: {
-              type: "item",
-              id: `workspace:${workspace.id}`,
-              title: workspace.name,
-              subtitle: "Workspace",
-              route: { view: "workspace", workspaceId: workspace.id },
-              pinnable: true,
-              pinId: `workspace:${workspace.id}`,
-            } satisfies SidebarNode,
-          })),
           ...hostTerminals.map((session) => ({
             lastActivityAt: getTerminalLastInteractionAt(session),
             node: createTerminalSessionSidebarNode({
