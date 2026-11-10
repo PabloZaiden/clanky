@@ -1,9 +1,9 @@
+import AVFAudio
 import SwiftUI
 import WebKit
 #if os(macOS)
 import AppKit
 #else
-import AVFAudio
 import UIKit
 #endif
 
@@ -199,7 +199,6 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
         }
     }
 
-    #if os(iOS)
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
                  initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
                  decisionHandler: @escaping @MainActor @Sendable (WKPermissionDecision) -> Void) {
@@ -223,7 +222,6 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
             decisionHandler(.grant)
         }
     }
-    #endif
 
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage,
