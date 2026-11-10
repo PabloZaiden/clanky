@@ -8,12 +8,18 @@ import { isAbortError } from "./request-lifecycle";
 
 const listeners = new Set<() => void>();
 const log = createLogger("useDocumentVisibility");
+let announcedVisibility: boolean | undefined;
 
 export function isDocumentVisible(): boolean {
   return !document.hidden;
 }
 
+function getVisibilitySnapshot(): boolean {
+  return announcedVisibility ?? isDocumentVisible();
+}
+
 function notifyVisibilityChange(): void {
+  announcedVisibility = isDocumentVisible();
   for (const listener of listeners) {
     listener();
   }
@@ -21,6 +27,7 @@ function notifyVisibilityChange(): void {
 
 function subscribe(listener: () => void): () => void {
   if (listeners.size === 0) {
+    announcedVisibility = isDocumentVisible();
     document.addEventListener("visibilitychange", notifyVisibilityChange);
   }
   listeners.add(listener);
@@ -28,6 +35,7 @@ function subscribe(listener: () => void): () => void {
     listeners.delete(listener);
     if (listeners.size === 0) {
       document.removeEventListener("visibilitychange", notifyVisibilityChange);
+      announcedVisibility = undefined;
     }
   };
 }
@@ -37,7 +45,7 @@ function getServerSnapshot(): boolean {
 }
 
 export function useDocumentVisibility(): boolean {
-  return useSyncExternalStore(subscribe, isDocumentVisible, getServerSnapshot);
+  return useSyncExternalStore(subscribe, getVisibilitySnapshot, getServerSnapshot);
 }
 
 export function useRefreshOnForeground(refresh: () => void | Promise<void>): void {
