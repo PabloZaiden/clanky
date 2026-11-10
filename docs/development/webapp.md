@@ -198,6 +198,11 @@ cadence, and refresh the displayed day at local midnight and when returning to
 the foreground. Job lists/progress use compact title/date/status composition;
 console output combines streams without extra stream-name prefixes.
 
+Returning to a conversation preserves its scroll intent: follow the bottom
+when pinned, otherwise restore the last visible reading position. Platform
+scroll restoration during app switching must not be interpreted as user input,
+including notifications delivered before foreground visibility is announced.
+
 Work-item lists and sidebar Active work share a composition: workspace/host
 name and status, then item name, then relative interaction time and type/provider.
 Keep framework controls and compact descriptions rather than screen-specific

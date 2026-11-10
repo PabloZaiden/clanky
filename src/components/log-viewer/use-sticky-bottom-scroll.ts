@@ -12,6 +12,8 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const isPinnedToBottomRef = useRef(true);
+  const wasVisibleRef = useRef(visible);
+  const lastVisibleScrollTopRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   const scheduledScrollTopRef = useRef(0);
   const pendingPrependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
@@ -25,7 +27,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, []);
 
   const scrollToBottomIfPinned = useCallback(() => {
-    if (!isDocumentVisible()) {
+    if (!wasVisibleRef.current || !isDocumentVisible()) {
       return;
     }
     const currentContainer = containerRef.current;
@@ -43,7 +45,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     cancelScheduledScroll();
     animationFrameRef.current = requestAnimationFrame(() => {
       animationFrameRef.current = null;
-      if (!isDocumentVisible()) {
+      if (!wasVisibleRef.current || !isDocumentVisible()) {
         return;
       }
       const container = containerRef.current;
@@ -74,6 +76,9 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
 
   const releaseBottomPin = useCallback(() => {
     isPinnedToBottomRef.current = false;
+    if (containerRef.current) {
+      lastVisibleScrollTopRef.current = containerRef.current.scrollTop;
+    }
     cancelScheduledScroll();
   }, [cancelScheduledScroll]);
 
@@ -82,6 +87,10 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, []);
 
   useLayoutEffect(() => {
+    // WebKit can deliver a resumed scroll before its visibility event.
+    if (!visible) {
+      return;
+    }
     const container = containerRef.current;
     if (!container) {
       return;
@@ -91,6 +100,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
       if (!isDocumentVisible()) {
         return;
       }
+      lastVisibleScrollTopRef.current = container.scrollTop;
       const isCurrentlyNearBottom = isNearBottom(container);
       if (
         animationFrameRef.current !== null &&
@@ -107,9 +117,11 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     return () => {
       container.removeEventListener("scroll", updatePinnedState);
     };
-  }, [cancelScheduledScroll]);
+  }, [visible, cancelScheduledScroll]);
 
   useLayoutEffect(() => {
+    const resuming = visible && !wasVisibleRef.current;
+    wasVisibleRef.current = visible;
     if (!visible) {
       return cancelScheduledScroll;
     }
@@ -123,6 +135,12 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
       container.scrollTop = pendingPrependScroll.scrollTop
         + container.scrollHeight
         - pendingPrependScroll.scrollHeight;
+      return cancelScheduledScroll;
+    }
+    if (resuming && !isPinnedToBottomRef.current) {
+      if (container.scrollTop !== lastVisibleScrollTopRef.current) {
+        container.scrollTop = lastVisibleScrollTopRef.current;
+      }
       return cancelScheduledScroll;
     }
     scrollToBottomIfPinned();
