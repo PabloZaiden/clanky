@@ -17,6 +17,7 @@ struct ClankyApp: App {
     #endif
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var updater = AppUpdater()
     #endif
 
     var body: some Scene {
@@ -43,6 +44,12 @@ struct ClankyApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             ControllerCommands(controller: model.controller)
+            AppUpdateCommands(updater: updater)
+        }
+        #endif
+        #if os(macOS)
+        Settings {
+            AppUpdateSettings(updater: updater)
         }
         #endif
     }

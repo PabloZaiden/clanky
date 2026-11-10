@@ -151,6 +151,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
       APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
+      CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
     defaults:
       run:
         shell: bash
@@ -288,6 +289,14 @@ jobs:
               > "$output/build.json"
           done
 
+      - name: Generate signed Mac update appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.CLANKY_SPARKLE_PRIVATE_KEY }}
+        run: |
+          bun scripts/macos-appcast.ts \
+            "$RUNNER_TEMP/apple-apps/macos/Clanky-macos-arm64-notarized.zip" \
+            "$RUNNER_TEMP/apple-apps/macos"
+
       - name: Upload macOS app build
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -330,12 +339,26 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     concurrency:
       group: binary-release-${{ github.repository }}-${{ github.event_name == 'push' && 'latest' || 'stable' }}
       cancel-in-progress: false
       queue: max
 
     steps:
+      - name: Checkout exact publication tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install publication dependencies
+        run: bun install --frozen-lockfile
+
       - name: Download macOS app build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -356,6 +379,7 @@ jobs:
           APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
           APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
           MACOS_SIGNING_CERTIFICATE_SHA1: ${{ needs.apple-apps.outputs.signing_certificate_sha1 }}
+          CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -446,3 +470,39 @@ jobs:
             fi
           fi
           gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber --repo "$GH_REPO"
+          prefix="Clanky-v$version-macos-arm64"
+          cp "$RUNNER_TEMP/apple-release-inputs/macos/appcast.xml" "$output/$prefix-appcast.xml"
+          cp "$RUNNER_TEMP/apple-release-inputs/macos/update.json" "$output/$prefix-update.json"
+          bun -e '
+            const { updateMetadata, sha256, readAppcast } = await import("./scripts/macos-update-metadata");
+            const { macOSBuildSettings } = await import("./scripts/sparkle");
+            const root = process.env.RUNNER_TEMP + "/apple-release-inputs/macos";
+            const metadata = updateMetadata.parse(await Bun.file(root + "/update.json").json());
+            const xml = await Bun.file(root + "/appcast.xml").text();
+            const item = readAppcast(xml);
+            const archive = await Bun.file(root + "/Clanky-macos-arm64-notarized.zip").arrayBuffer();
+            const channel = process.env.RELEASE_TAG === "latest" ? "latest" : "stable";
+            if (metadata.version !== process.env.APPLE_BUILD_VERSION
+              || metadata.revision !== process.env.GITHUB_SHA || metadata.channel !== channel
+              || metadata.buildNumber !== macOSBuildSettings().CURRENT_PROJECT_VERSION
+              || metadata.sha256 !== sha256(archive) || metadata.bytes !== archive.byteLength
+              || metadata.appcastSha256 !== sha256(xml) || item.buildNumber !== metadata.buildNumber)
+              throw new Error("Mac update metadata does not match the published build.");
+          '
+          gh release upload "$RELEASE_TAG" "$output/$prefix-appcast.xml" --clobber --repo "$GH_REPO"
+          # Publish readiness only after the archive and appcast are uploaded.
+          gh release upload "$RELEASE_TAG" "$output/$prefix-update.json" --clobber --repo "$GH_REPO"
+          for file in "$output/$prefix-notarized.zip" "$output/$prefix-appcast.xml" "$output/$prefix-update.json"; do
+            expected="sha256:$(sha256sum "$file" | cut -d ' ' -f 1)"
+            actual="$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG" \
+              --jq ".assets[] | select(.name == \"$(basename "$file")\") | .digest")"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::Uploaded Mac update asset digest mismatch." >&2
+              exit 1
+            fi
+          done
+
+      - name: Publish completed Mac update feeds through Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main

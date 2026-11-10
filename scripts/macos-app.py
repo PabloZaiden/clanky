@@ -4,10 +4,11 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import plistlib
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -155,20 +156,154 @@ def app_info(app):
     return bundle_info(lambda name: (parent / name).read_bytes(), lambda name: (parent / name).open("rb"))
 
 
+def archive_members(entries):
+    nodes = {}
+    for raw, kind, link in entries:
+        name = PurePosixPath(raw)
+        require(raw and "\0" not in raw and "\\" not in raw and not name.is_absolute()
+                and all(part not in ("", ".", "..") for part in raw.rstrip("/").split("/"))
+                and name.parts[0] == "Clanky.app" and kind in ("file", "directory", "link"),
+                "Unsafe app archive member")
+        key = str(name)
+        require(key not in nodes, "Duplicate app archive member")
+        nodes[key] = (kind, link)
+    require(nodes, "Empty app archive")
+    for key in list(nodes):
+        for parent in PurePosixPath(key).parents:
+            if str(parent) == ".":
+                continue
+            require(nodes.setdefault(str(parent), ("directory", None))[0] == "directory",
+                    "App archive member has a non-directory parent")
+    require(nodes["Clanky.app"][0] == "directory", "App archive root must be a directory")
+
+    def follow(parts, pending, active):
+        for part in pending:
+            if parts:
+                require(nodes["/".join(parts)][0] == "directory", "App archive link traverses a file")
+            if part in ("", "."):
+                continue
+            if part == "..":
+                require(len(parts) > 1, "App archive link escapes bundle")
+                parts.pop()
+                continue
+            parts.append(part)
+            key = "/".join(parts)
+            require(key in nodes, "Dangling app archive link")
+            kind, link = nodes[key]
+            if kind == "link":
+                require(key not in active and isinstance(link, str) and link
+                        and "\0" not in link and "\\" not in link and not PurePosixPath(link).is_absolute(),
+                        "Unsafe app archive link")
+                parts = follow(parts[:-1], link.split("/"), active | {key})
+        return parts
+
+    for key, (kind, _) in nodes.items():
+        if kind == "link":
+            follow([], PurePosixPath(key).parts, set())
+
+
+def extract_app(archive, payload):
+    members = archive.getmembers()
+    archive_members([
+        (member.name, "link" if member.issym() else "directory" if member.isdir()
+         else "file" if member.isfile() else "unsupported", member.linkname)
+        for member in members
+    ])
+    # No member may write through a link; create links only after all regular entries.
+    archive.extractall(payload, members=[member for member in members if not member.issym()]
+                       + [member for member in members if member.issym()])
+
+
 def zip_info(path):
     with zipfile.ZipFile(path) as archive:
+        entries = []
         for member in archive.infolist():
-            name = Path(member.filename)
-            require(
-                not name.is_absolute() and ".." not in name.parts and name.parts
-                and name.parts[0] == "Clanky.app"
-                and (member.external_attr >> 16) & 0o170000 != 0o120000,
-                "Unexpected signed archive member",
-            )
+            mode = stat.S_IFMT(member.external_attr >> 16)
+            kind = "link" if mode == stat.S_IFLNK else "directory" if member.is_dir() else "file"
+            require(mode in (0, stat.S_IFREG, stat.S_IFDIR, stat.S_IFLNK)
+                    and (mode != stat.S_IFDIR or member.is_dir()), "Unexpected signed archive member")
+            link = archive.read(member).decode("utf-8") if kind == "link" else None
+            entries.append((member.filename, kind, link))
+        archive_members(entries)
         for name in ["MacOS/Clanky", "Helpers/clanky"]:
             require(archive.getinfo("Clanky.app/Contents/" + name).external_attr >> 16 & 0o111,
                     "Packaged executable permissions missing")
         return bundle_info(archive.read, archive.open)
+
+
+def signing_targets(app):
+    require(not app.is_symlink() and app.is_dir(), "App bundle root must be a directory, not a link")
+    app = app.resolve(strict=True)
+    files, bundles = [], []
+    magic = {bytes.fromhex(value) for value in [
+        "feedface", "cefaedfe", "feedfacf", "cffaedfe", "cafebabe", "bebafeca", "cafebabf", "bfbafeca",
+    ]}
+
+    def visit(directory):
+        for path in sorted(directory.iterdir()):
+            if path.is_symlink():
+                link = os.readlink(path)
+                require(not Path(link).is_absolute()
+                        and Path(os.path.abspath(path.parent / link)).is_relative_to(app)
+                        and path.resolve(strict=True).is_relative_to(app),
+                        "Unsafe app bundle symlink: " + str(path))
+                require(path.is_file() or path.is_dir(), "Unsupported app bundle link")
+            elif path.is_dir():
+                visit(path)
+            elif path.is_file():
+                with path.open("rb") as source:
+                    if source.read(4) in magic:
+                        files.append(path)
+            else:
+                raise RuntimeError("Unsupported app bundle entry: " + str(path))
+        if directory.suffix in (".app", ".framework", ".xpc"):
+            bundles.append(directory)
+
+    visit(app)
+    executables = set()
+    for bundle in bundles:
+        framework = bundle.suffix == ".framework"
+        info = bundle / ("Resources/Info.plist" if framework else "Contents/Info.plist")
+        name = plistlib.loads(info.read_bytes())["CFBundleExecutable"]
+        require(isinstance(name, str) and name not in ("", ".", "..") and Path(name).name == name,
+                "Invalid bundle executable")
+        executable = (bundle / (name if framework else "Contents/MacOS/" + name)).resolve(strict=True)
+        require(executable.is_relative_to(bundle) and executable in files, "Missing bundle Mach-O executable")
+        executables.add(executable)
+    return [path for path in files if path not in executables] + bundles
+
+
+def sign_bundle(config, work, app):
+    sparkle = app / "Contents/Frameworks/Sparkle.framework"
+    for index, target in enumerate(signing_targets(app)):
+        helper = target != sparkle and target.is_relative_to(sparkle) and (
+            target.suffix in (".app", ".xpc") or target.name == "Autoupdate"
+        )
+        options = []
+        expected = None
+        if helper:
+            # Keep each Sparkle helper's own entitlements, never the host app's media permissions.
+            xml = run("codesign", "-d", "--entitlements", "-", "--xml", target)
+            expected = plistlib.loads(xml) if xml.strip() else {}
+            require(isinstance(expected, dict), "Invalid Sparkle helper entitlements")
+            expected.pop("com.apple.security.get-task-allow", None)
+            entitlements = work / ("sparkle-" + str(index) + ".entitlements")
+            with entitlements.open("xb") as destination:
+                plistlib.dump(expected, destination)
+            options = ["--options", "runtime", "--entitlements", entitlements]
+        elif target.is_relative_to(sparkle):
+            options = ["--options", "runtime"]
+        run("codesign", "--force", "--sign", config["signingIdentity"], "--timestamp=none", *options, target)
+        run("codesign", "--verify", "--strict", "--verbose=2", target)
+        prefix = work / ("signer-" + str(index) + "-")
+        run("codesign", "-d", "--extract-certificates=" + str(prefix), target)
+        require(digest(str(prefix) + "0", "sha1").upper() == config["signingIdentity"].upper(),
+                "Actual signing identity mismatch")
+        if expected is not None:
+            xml = run("codesign", "-d", "--entitlements", "-", "--xml", target)
+            require((plistlib.loads(xml) if xml.strip() else {}) == expected,
+                    "Sparkle helper entitlements changed")
+    run("codesign", "--verify", "--deep", "--strict", "--verbose=2", app)
 
 
 def signing_identity(config):
@@ -198,6 +333,7 @@ def prepare(config, work):
         run("bun", "run", command, capture=False, cwd=repository)
     app = repository / "dist/apple/macos-linux/Clanky.app"
     info = app_info(app)
+    signing_targets(app)
     require(info["bundleIdentifier"] == config["bundleIdentifier"], "App identity differs from configuration")
     archive_path = work / "Clanky.tar.gz"
     with archive_path.open("xb") as destination, tarfile.open(fileobj=destination, mode="w:gz") as archive:
@@ -223,25 +359,11 @@ def sign(config, work):
     payload = work / "Payload"
     payload.mkdir()
     with tarfile.open(archive_path, "r:gz") as archive:
-        members = archive.getmembers()
-        require(members, "Empty app archive")
-        for member in members:
-            name = Path(member.name)
-            require(not name.is_absolute() and ".." not in name.parts and name.parts
-                    and name.parts[0] == "Clanky.app" and (member.isfile() or member.isdir()),
-                    "Unsafe app archive member")
-        archive.extractall(payload, members=members)
+        extract_app(archive, payload)
     app = payload / "Clanky.app"
     require(app_info(app) == build["bundle"]
             and build["bundle"]["bundleIdentifier"] == config["bundleIdentifier"], "Transferred bundle changed")
-    for label, target in [("helper", app / "Contents/Helpers/clanky"), ("app", app)]:
-        run("codesign", "--force", "--sign", config["signingIdentity"], "--timestamp=none", target)
-        run("codesign", "--verify", "--strict", "--verbose=2", target)
-        prefix = work / ("signer-" + label + "-")
-        run("codesign", "-d", "--extract-certificates=" + str(prefix), target)
-        require(digest(str(prefix) + "0", "sha1").upper() == config["signingIdentity"].upper(),
-                "Actual signing identity mismatch")
-    run("codesign", "--verify", "--deep", "--strict", "--verbose=2", app)
+    sign_bundle(config, work, app)
     archive_path = work / ZIP
     require(not archive_path.exists(), "Signed archive already exists; inspect state instead of replaying")
     run("ditto", "-c", "-k", "--keepParent", "--norsrc", app, archive_path)

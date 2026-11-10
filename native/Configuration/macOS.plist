@@ -11,6 +11,15 @@
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>ClankyDistributionChannel</key><string>$(CLANKY_DISTRIBUTION_CHANNEL)</string>
+    <key>ClankyDistributionVersion</key><string>$(CLANKY_DISTRIBUTION_VERSION)</string>
+    <key>ClankySourceRevision</key><string>$(CLANKY_SOURCE_REVISION)</string>
+    <key>SUFeedURL</key><string>$(CLANKY_UPDATE_FEED)</string>
+    <key>SUPublicEDKey</key><string>$(CLANKY_SPARKLE_PUBLIC_KEY)</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SUScheduledCheckInterval</key><string>$(CLANKY_UPDATE_INTERVAL)</string>
     <key>LSMinimumSystemVersion</key><string>$(MACOSX_DEPLOYMENT_TARGET)</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Use the microphone for Clanky voice conversations.</string>

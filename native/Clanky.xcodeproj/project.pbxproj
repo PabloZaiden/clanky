@@ -29,6 +29,8 @@
 				A00000000000000000000005,
 				A00000000000000000000006,
 				A00000000000000000000007,
+				A00000000000000000000040,
+				A00000000000000000000045,
 				A00000000000000000000003,
 			);
 			sourceTree = "<group>";
@@ -101,6 +103,8 @@
 				A00000000000000000000021,
 				A00000000000000000000022,
 				A00000000000000000000023,
+				A00000000000000000000042,
+				A00000000000000000000043,
 			);
 			buildRules = ();
 			dependencies = ();
@@ -148,13 +152,16 @@
 		};
 		A00000000000000000000026 = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000045;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Configuration/macOS.plist;
+				INFOPLIST_FILE = ../dist/apple/macOS.plist;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../dist/apple/Sparkle";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.clanky.app;
@@ -165,13 +172,16 @@
 		};
 		A00000000000000000000027 = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A00000000000000000000045;
 			buildSettings = {
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Configuration/macOS.plist;
+				INFOPLIST_FILE = ../dist/apple/macOS.plist;
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(SRCROOT)/../dist/apple/Sparkle";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.clanky.app;
 				PRODUCT_NAME = Clanky;
@@ -259,6 +269,44 @@
 		A00000000000000000000038 = {
 			isa = PBXBuildFile;
 			fileRef = A00000000000000000000006;
+		};
+		A00000000000000000000040 = {
+			isa = PBXFileReference;
+			lastKnownFileType = wrapper.framework;
+			name = Sparkle.framework;
+			path = ../dist/apple/Sparkle/Sparkle.framework;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000041 = {
+			isa = PBXBuildFile;
+			fileRef = A00000000000000000000040;
+		};
+		A00000000000000000000042 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A00000000000000000000041);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000043 = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (A00000000000000000000044);
+			name = "Embed Sparkle";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000044 = {
+			isa = PBXBuildFile;
+			fileRef = A00000000000000000000040;
+			settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);};
+		};
+		A00000000000000000000045 = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			name = Sparkle.xcconfig;
+			path = ../dist/apple/Sparkle.xcconfig;
+			sourceTree = "<group>";
 		};
 	};
 	rootObject = A00000000000000000000001;
