@@ -94,8 +94,9 @@ Swift + WKWebView for macOS and iPhone/iPad. Use `bun run build:apple:macos`
 for a Mac `.app` including the existing standalone CLI/controller, or
 `bun run build:apple:ios` for the client-only iOS simulator app.
 `bun run build:apple:ios:device` builds the unsigned physical-device app on a Mac.
-The main/release workflow builds both Mac and iOS device apps on hosted Mac
-runners, saving app archives, checksums and source metadata as Actions artifacts
+The nightly/manual main and versioned-release workflow builds both Mac and iOS
+device apps on hosted Mac runners, saving app archives, checksums and source
+metadata as Actions artifacts
 and attaching versioned copies to the rolling `latest` and published versioned
 releases after the CLI publisher succeeds. Both channels sign and notarize the
 Mac app, bundled controller and standalone Darwin binaries with one Developer
@@ -183,8 +184,11 @@ The tag and title are identical `vX.Y.Z` strings, notes are GitHub-generated,
 and existing remote tags are rejected. Publication triggers binary and Docker
 release workflows.
 
-Every main push separately updates the rolling `latest` binary prerelease with
-a unique embedded build version, checksums, and macOS signing. See
+Main merges do not publish distributions. A daily 03:00 `America/New_York`
+publication updates the rolling `latest` binaries, signed apps, Docker images
+and Pages when main has changed or a later publication attempt failed.
+Manual execution forces generation from current main. Existing
+version formats, tags and signing remain unchanged. See
 [Binary installation and update channels](binary-updates.md).
 
 ## Release metadata

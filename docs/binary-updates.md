@@ -45,8 +45,26 @@ channel, then verifies that its full build version is running. This also applies
 when the previous binary already used that channel. See
 [Mesh worker maintenance](mesh-worker.md#update-servers-and-automatic-workspaces-together).
 
-Every main push builds the supported Linux and macOS targets. After
-all target builds succeed, the shared installer workflow replaces assets in
+Main merges do not publish distributions. The **Build and Release Binaries**
+workflow runs daily at 03:00 `America/New_York`, following Eastern daylight
+saving changes. Scheduled runs skip only when the most recently completed main
+publication attempt succeeded for the current main revision, including manual
+runs. A later failed or partial attempt forces recovery on the next nightly
+even if the revision is unchanged.
+Use **Run workflow** on `main` to force a complete rolling publication even
+without new commits, or run:
+
+```bash
+gh workflow run binary-release.yml --repo pablozaiden/clanky --ref main
+```
+
+The workflow builds the supported Linux and macOS targets from its selected main
+revision, together with the existing Docker images and native apps. Final Pages
+publication waits for Docker and native assets and verifies actual delivery.
+Scheduled/manual main runs serialize; PR checks and explicit versioned releases
+keep their existing triggers. The binary workflow identity and native build
+counter are retained, and names, version formats and Docker tags do not change.
+After all target builds succeed, the shared installer workflow replaces assets in
 one prerelease tagged `latest`. A unique version and source revision identify
 each build; `release.json` selects its binaries and checksum files. The workflow
 skips superseded main commits, preserves macOS signing, and removes obsolete

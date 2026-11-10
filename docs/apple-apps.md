@@ -60,8 +60,10 @@ Clanky CLI.
 ## CI builds for main and releases
 
 The [binary build workflow](../.github/workflows/binary-release.yml) also builds
-both Apple apps on main pushes and published releases, excluding the rolling
-`latest` release event. The Apple job uses GitHub's Apple Silicon `xcode-27`
+both Apple apps during nightly/manual main publication and published releases,
+excluding the rolling `latest` release event. Ordinary main merges do not build,
+sign or publish apps. See the [nightly/manual publication entrypoint](binary-updates.md).
+The Apple job uses GitHub's Apple Silicon `xcode-27`
 runner and selects its installed Xcode 27.1. That runner image is currently in
 preview; ordinary `macos-26` images do not provide the required iOS 27.1 SDK.
 The SDK stays on the runner: no private SDK archive, Apple login, provisioning
@@ -71,8 +73,9 @@ signing and notarization run afterward with protected CI credentials.
 The job runs `bun run build:apple:macos` and
 `bun run build:apple:ios:device`. The Mac bundle includes the standalone
 controller and shared web UI; the iOS bundle targets physical iPhones/iPads,
-not the simulator. Main pushes use Xcode's Debug configuration; published
-versioned releases use Release, with the project's optimized Swift settings.
+not the simulator. Nightly/manual main runs use Xcode's Debug configuration;
+published versioned releases use Release, with the project's optimized Swift
+settings.
 Archive paths and build metadata follow that configuration, and publication
 rejects artifacts built in the wrong mode for the event. Public Mac archives
 embed an increasing native build number and their distribution channel/version;
@@ -87,7 +90,7 @@ Build metadata records the embedded version; publication rejects a mismatch
 instead of merely relabeling an archive. Ordinary local builds retain their
 development version unless explicitly configured otherwise.
 The separate TestFlight IPA uses its release tag and an Apple build number.
-Other server, Docker and release-publication jobs keep their existing behavior.
+Explicit stable-release and TestFlight publication keep their existing behavior.
 The optional Linux cross-build commands below remain available independently of CI.
 
 Download `apple-app-macos-arm64` or `apple-app-ios-arm64` from the workflow run's
@@ -109,7 +112,8 @@ Use `tar -xzf Clanky-ios-arm64-unsigned.tar.gz` for the device app after
 verifying its checksum. Once both Apple and
 CLI builds succeed, the same app archives are also attached to the rolling
 [`latest` prerelease](https://github.com/pablozaiden/clanky/releases/tag/latest)
-for main pushes and to the exact versioned release for published-release events.
+for nightly/manual main publication and to the exact versioned release for
+published-release events.
 Each platform has three assets: its versioned archive, `.sha256` file and
 `Clanky-v<version>-<platform>-arm64-build.json`. Mac archives are named
 `Clanky-v<version>-macos-arm64-notarized.zip`; iOS archives retain
@@ -183,7 +187,8 @@ there is no unsigned or unnotarized fallback.
 Both main and versioned releases currently notarize. Each workflow makes two
 submissions: one Mac app (including its controller) and one batch containing
 both standalone Darwin architectures. Apple recommends limiting submissions
-to 75 per day; frequent main pushes consume this budget too. See Apple's
+to 75 per day; nightly/manual main publication and versioned releases consume
+this budget, but ordinary main merges do not. See Apple's
 [notarization guidance](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow).
 
 ### CI internal TestFlight

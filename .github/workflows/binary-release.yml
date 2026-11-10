@@ -1,11 +1,18 @@
 name: Build and Release Binaries
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+      timezone: America/New_York
+  workflow_dispatch:
   release:
     types:
       - published
+
+concurrency:
+  group: ${{ github.event_name == 'release' && format('release-publication-{0}', github.run_id) || 'main-publication' }}
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   metadata:
@@ -13,7 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     outputs:
+      publish: ${{ github.event_name == 'release' && 'true' || steps.publication.outputs.publish }}
       apple_configuration: ${{ github.event_name == 'release' && 'Release' || 'Debug' }}
       targets: ${{ steps.release_metadata.outputs.targets }}
       binaries: ${{ steps.release_metadata.outputs.binaries }}
@@ -28,10 +37,19 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Check for unpublished main commits
+        if: github.event_name != 'release'
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/nightly-publication.ts binary-release.yml
+
       - name: Validate release metadata
+        if: github.event_name == 'release' || steps.publication.outputs.publish == 'true'
         run: bun run release:metadata:check
 
       - name: Export installer workflow inputs
+        if: github.event_name == 'release' || steps.publication.outputs.publish == 'true'
         id: release_metadata
         run: |
           {
@@ -113,7 +131,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          if [[ "$GITHUB_EVENT_NAME" != release ]]; then
             default_branch="$(gh api "repos/$GH_REPO" --jq '.default_branch')"
             head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
             if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
@@ -151,7 +169,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
       APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
-      CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
+      CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'release' && 'stable' || 'latest' }}
     defaults:
       run:
         shell: bash
@@ -315,6 +333,7 @@ jobs:
 
   binaries:
     needs: metadata
+    if: needs.metadata.outputs.publish == 'true'
     uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@a60b4b71e8add6dcdf1aa89f71f132b742c326e7
     permissions:
       contents: write
@@ -325,7 +344,7 @@ jobs:
       macos_notarization_key_id: ${{ secrets.CLANKY_APPLE_NOTARY_KEY_ID }}
       macos_notarization_issuer_id: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
     with:
-      release_channel: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
+      release_channel: ${{ github.event_name == 'release' && 'stable' || 'latest' }}
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
       macos_finalize_command: bun scripts/macos-distribution.ts --notarize
@@ -340,8 +359,10 @@ jobs:
     permissions:
       contents: write
       actions: write
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
     concurrency:
-      group: binary-release-${{ github.repository }}-${{ github.event_name == 'push' && 'latest' || 'stable' }}
+      group: binary-release-${{ github.repository }}-${{ github.event_name == 'release' && 'stable' || 'latest' }}
       cancel-in-progress: false
       queue: max
 
@@ -372,21 +393,22 @@ jobs:
           path: ${{ runner.temp }}/apple-release-inputs/ios
 
       - name: Validate and publish Apple app assets
+        id: publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event_name == 'push' && 'latest' || github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || 'latest' }}
           APPLE_BUILD_CONFIGURATION: ${{ needs.metadata.outputs.apple_configuration }}
           APPLE_BUILD_VERSION: ${{ needs.apple-version.outputs.version }}
           MACOS_SIGNING_CERTIFICATE_SHA1: ${{ needs.apple-apps.outputs.signing_certificate_sha1 }}
-          CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'push' && 'latest' || 'stable' }}
+          CLANKY_MACOS_CHANNEL: ${{ github.event_name == 'release' && 'stable' || 'latest' }}
         shell: bash
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/apple-release-assets"
           mkdir -p "$output"
 
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          if [[ "$GITHUB_EVENT_NAME" != release ]]; then
             default_branch="$(gh api "repos/$GH_REPO" --jq '.default_branch')"
             head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
             if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
@@ -462,7 +484,7 @@ jobs:
             assets+=("$output/$name" "$output/$name.sha256" "$output/$metadata")
           done
 
-          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+          if [[ "$GITHUB_EVENT_NAME" != release ]]; then
             head_sha="$(gh api "repos/$GH_REPO/commits/$default_branch" --jq '.sha')"
             if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
               echo "::notice::Skipping superseded Apple main build $GITHUB_SHA."
@@ -501,8 +523,55 @@ jobs:
               exit 1
             fi
           done
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
       - name: Publish completed Mac update feeds through Pages
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+  docker:
+    name: Publish main Docker images
+    needs: metadata
+    if: github.event_name != 'release' && needs.metadata.outputs.publish == 'true'
+    uses: ./.github/workflows/docker-main.yml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+
+  pages:
+    name: Publish completed main site and feeds
+    needs: [metadata, docker, publish-apple-apps]
+    if: github.event_name != 'release' && needs.metadata.outputs.publish == 'true'
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      actions: write
+      pages: write
+      id-token: write
+    with:
+      source_revision: ${{ github.sha }}
+
+  complete:
+    name: Verify complete main publication
+    needs: [metadata, docker, publish-apple-apps, pages]
+    if: always() && github.event_name != 'release' && needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require all main distributions and verified Pages
+        env:
+          DOCKER_RESULT: ${{ needs.docker.result }}
+          APPLE_RESULT: ${{ needs.publish-apple-apps.result }}
+          APPLE_PUBLISHED: ${{ needs.publish-apple-apps.outputs.published }}
+          PAGES_RESULT: ${{ needs.pages.result }}
+          PAGES_PUBLISHED: ${{ needs.pages.outputs.published }}
+        run: |
+          if [[ "$DOCKER_RESULT" != success || "$APPLE_RESULT" != success \
+            || "$APPLE_PUBLISHED" != true || "$PAGES_RESULT" != success \
+            || "$PAGES_PUBLISHED" != true ]]; then
+            echo "::error::Main publication is incomplete; pending commits must be retried."
+            exit 1
+          fi
