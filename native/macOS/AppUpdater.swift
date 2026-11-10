@@ -96,6 +96,8 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        installHandler = nil
+        installationPending = false
         let failure = error as NSError
         if failure.domain == SUSparkleErrorDomain && failure.code == SUError.noUpdateError.rawValue {
             self.error = nil

@@ -373,6 +373,8 @@ controller. Update-triggered termination uses the same graceful controller,
 Tailscale and asset shutdown as ordinary Quit; a failed shutdown cancels
 termination rather than replacing a running app. When an update is already
 staged for installation, finish it by quitting before changing channels.
+An aborted update clears its staged installation state so fresh checks and
+channel changes are available again once the update cycle ends.
 The update does not replace standalone CLIs, remote controllers, user data or
 WebKit sessions.
 
