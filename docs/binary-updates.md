@@ -47,9 +47,10 @@ when the previous binary already used that channel. See
 
 Main merges do not publish distributions. The **Build and Release Binaries**
 workflow runs daily at 03:00 `America/New_York`, following Eastern daylight
-saving changes. Scheduled runs publish only when main differs from the last
-complete successful main publication, including manual runs. Failed or partial
-publication does not consume pending commits.
+saving changes. Scheduled runs skip only when the most recently completed main
+publication attempt succeeded for the current main revision, including manual
+runs. A later failed or partial attempt forces recovery on the next nightly
+even if the revision is unchanged.
 Use **Run workflow** on `main` to force a complete rolling publication even
 without new commits, or run:
 

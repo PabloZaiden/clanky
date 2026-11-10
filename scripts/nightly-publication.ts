@@ -26,25 +26,25 @@ let publish = true;
 if (event === "schedule") {
   const history = await github([
     "api",
-    `repos/${repository}/actions/workflows/${workflow}/runs?branch=main&status=success&per_page=100`,
+    `repos/${repository}/actions/workflows/${workflow}/runs?branch=main&status=completed&per_page=100`,
     "--paginate",
     "--jq",
-    '.workflow_runs[] | select(.event == "schedule" or .event == "workflow_dispatch") | [.id, .head_sha, .updated_at] | @tsv',
+    '.workflow_runs[] | select(.event == "schedule" or .event == "workflow_dispatch") | [.id, .head_sha, .updated_at, .conclusion] | @tsv',
   ]);
   const runs = history.split("\n").filter(Boolean).map(line => {
-    const [id, sha, updated, ...extra] = line.split("\t");
+    const [id, sha, updated, conclusion, ...extra] = line.split("\t");
     const completed = Date.parse(updated ?? "");
     if (!id || !/^[1-9]\d*$/.test(id) || !sha || !/^[a-f0-9]{40}$/.test(sha)
-      || !Number.isFinite(completed) || extra.length) {
-      throw new Error("GitHub returned invalid successful publication history.");
+      || !Number.isFinite(completed) || !conclusion || !/^[a-z_]+$/.test(conclusion) || extra.length) {
+      throw new Error("GitHub returned invalid completed publication history.");
     }
-    return { id, revision: sha, completed };
+    return { id, revision: sha, completed, conclusion };
   }).filter(run => run.id !== runId).sort((left, right) => right.completed - left.completed);
   const previous = runs[0];
-  publish = previous?.revision !== revision;
+  publish = !previous || previous.conclusion !== "success" || previous.revision !== revision;
   console.log(previous
-    ? `Last successful main publication: ${previous.revision} (run ${previous.id}).`
-    : "No successful nightly/manual main publication exists yet.");
+    ? `Last completed main publication: ${previous.revision} (run ${previous.id}, ${previous.conclusion}).`
+    : "No completed nightly/manual main publication exists yet.");
 }
 console.log(publish
   ? `Publishing main ${revision}${event === "workflow_dispatch" ? " (manual generation forced)" : ""}.`

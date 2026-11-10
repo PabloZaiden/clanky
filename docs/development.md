@@ -186,8 +186,8 @@ release workflows.
 
 Main merges do not publish distributions. A daily 03:00 `America/New_York`
 publication updates the rolling `latest` binaries, signed apps, Docker images
-and Pages only when main has changed since the last complete successful main
-publication. Manual execution forces generation from current main. Existing
+and Pages when main has changed or a later publication attempt failed.
+Manual execution forces generation from current main. Existing
 version formats, tags and signing remain unchanged. See
 [Binary installation and update channels](binary-updates.md).
 
