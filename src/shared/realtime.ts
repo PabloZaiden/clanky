@@ -33,6 +33,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   controlCredentials: "control-credentials",
   notificationSettings: "notification-settings",
   promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
+  sidebarPins: "sidebar-pins",
 } as const;
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];

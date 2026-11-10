@@ -9,6 +9,7 @@ export * from "./preferences-routes";
 
 import { modelsRoutes } from "./models-routes";
 import { preferencesRoutes } from "./preferences-routes";
+import { sidebarPinsRoutes } from "./sidebar-pins-routes";
 
 /**
  * All models and preferences routes combined.
@@ -19,4 +20,5 @@ import { defineRoutes } from "@/platform/server";
 export const modelsAndPreferencesRoutes = defineRoutes({
   ...modelsRoutes,
   ...preferencesRoutes,
+  ...sidebarPinsRoutes,
 });

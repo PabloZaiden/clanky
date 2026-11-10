@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.6
+version: 0.6.7
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -128,6 +128,10 @@ in app-owned adapters, not silently convert/reset them.
   default; preserve Light/System.
 - Server theme synchronization is app-injected through `WebAppRoot.theme` or
   `ThemeProvider.adapter` load/save callbacks. There is no implicit theme API.
+- Inject account-backed pins through `sidebar.pinning.provider`; Webapp owns
+  their UI and async lifecycle, while apps own persistence and invalidation.
+  The local preference provider remains the default. Injected providers never
+  synchronize with or fall back to local pin storage.
 - `WebAppRoot` composes shell/visual Settings, not login/admin/session screens.
   Supply Settings sections/rows or `routes.settings` for app composition.
 
@@ -155,6 +159,8 @@ in app-owned adapters, not silently convert/reset them.
   `max(spacing, inset)` rather than stacking duplicate bottom clearance.
 - Sidebar ready snapshots control pin retirement. Temporary loading/error
   must not delete pins. Async producers/consumers own explicit ready/error state.
+- Injected pin providers retain unavailable references; snapshot reconciliation
+  updates presentation only and never deletes or rewrites their stored pins.
 - Let sidebar defaults align sibling disclosure controls. Only lists containing
   expandable items reserve a compact gutter; leaf-only lists stay compact.
   Keep item-child indentation fixed instead of accumulating depth-based margins.
