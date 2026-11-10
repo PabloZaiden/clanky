@@ -22,7 +22,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     let enabled: Bool
     let installedVersion: String
     let installedChannel: String
-    let installedBuild: String
     let installedRevision: String
     private var installHandler: (() -> Void)?
     var canInstall: Bool { installationPending && installHandler != nil }
@@ -34,7 +33,6 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
         let info = Bundle.main.infoDictionary ?? [:]
         installedChannel = info["ClankyDistributionChannel"] as? String ?? "development"
         installedVersion = info["ClankyDistributionVersion"] as? String ?? "development"
-        installedBuild = info["CFBundleVersion"] as? String ?? "development"
         installedRevision = info["ClankySourceRevision"] as? String ?? "development"
         enabled = AppUpdateChannel(rawValue: installedChannel) != nil
         channel = UserDefaults.standard.string(forKey: "appUpdateChannel").flatMap(AppUpdateChannel.init)
@@ -127,7 +125,6 @@ struct AppUpdateSettings: View {
     var body: some View {
         Form {
             LabeledContent("Installed", value: "\(updater.installedVersion) (\(updater.installedChannel))")
-            LabeledContent("Build", value: updater.installedBuild)
             LabeledContent("Revision", value: String(updater.installedRevision.prefix(7)))
             Picker("Update channel", selection: Binding(
                 get: { updater.channel }, set: { updater.select($0) }
