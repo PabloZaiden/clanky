@@ -130,6 +130,7 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
   const historyRecovery = new ChatHistoryRecoveryService({
     state,
     session,
+    worktree,
     conversation: conversationService,
     historyExport,
   });

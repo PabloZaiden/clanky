@@ -191,6 +191,17 @@ The chat transcript and chat ID remain unchanged. History continuation is
 blocked while the chat has an active run, queued input, unresolved delivery,
 question, or permission request.
 
+For workspace chats, history continuation uses the workspace's current execution
+host, even if the old session belongs to a previous host. The replacement session
+and saved chat binding use that current host. Direct execution-host chats keep
+their explicitly selected host.
+
+The chat directory must already exist on the destination host. A managed chat
+worktree must be registered there and retain its recorded branch; recovery fails
+explicitly if these resources are missing or the branch differs. History
+continuation does not clone repositories or transfer worktrees or uncommitted
+files between hosts.
+
 Before the new session handles its first message, Clanky writes the persisted,
 user-visible transcript as JSON Lines to
 `<chat-directory>/.clanky-chat-history/<chat-id>/<recovery-id>/conversation.jsonl`
@@ -205,9 +216,12 @@ and tool actions are not replayed.
 The export is removed after the first continuation completes successfully or
 when the chat is deleted. It cannot be used after its 24-hour expiry. Expiry is
 not a background deletion job: physical cleanup is attempted when the export
-is next used/replaced or during chat deletion. An
-unreachable host may retain the expired file until the next
-authorized recovery attempt or chat deletion.
+is next used/replaced or during chat deletion. If an earlier export's host is
+unavailable, recovery on another host keeps its cleanup metadata without
+blocking the replacement session. Cleanup is retried on later continuation,
+recovery, and deletion, using the original export's host binding. Unreachable
+or revoked hosts can retain files; recovery never redirects their cleanup to
+another host or bypasses binding revisions.
 
 ## Token consumption
 

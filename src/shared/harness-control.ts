@@ -122,6 +122,7 @@ export interface HarnessConversationState {
   gitSafety?: HarnessGitSafety;
   gitOutcome?: { status: "pending" | "succeeded" | "failed"; observedAt: string };
   historyRecovery?: HarnessHistoryRecovery;
+  historyRecoveryCleanup?: HarnessHistoryRecovery[];
   inputs?: HarnessInputReceipt[];
   integrity?: "invalid";
   questions?: HarnessQuestionRequest[];

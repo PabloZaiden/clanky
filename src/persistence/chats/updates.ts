@@ -110,6 +110,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
           gitSafety: state.harness.gitSafety === options.previousState.harness?.gitSafety ? previousHarness?.gitSafety : state.harness.gitSafety,
           gitOutcome: state.harness.gitOutcome === options.previousState.harness?.gitOutcome ? previousHarness?.gitOutcome : state.harness.gitOutcome,
           inputs: state.harness.inputs === options.previousState.harness?.inputs ? previousHarness?.inputs : state.harness.inputs,
+          historyRecoveryCleanup: state.harness.historyRecoveryCleanup === options.previousState.harness?.historyRecoveryCleanup ? previousHarness?.historyRecoveryCleanup : state.harness.historyRecoveryCleanup,
           questions: state.harness.questions === options.previousState.harness?.questions ? previousHarness?.questions : state.harness.questions,
           integrity: previousHarness?.integrity ?? state.harness.integrity,
         },

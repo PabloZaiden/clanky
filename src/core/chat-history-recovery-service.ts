@@ -4,7 +4,7 @@
 
 import type { Chat, HarnessHistoryRecovery } from "@/shared";
 import { createTimestamp } from "@/shared/events";
-import { isChatBusyStatus } from "@/shared/chat";
+import { getChatWorkspaceId, isChatBusyStatus } from "@/shared/chat";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "@/domain/domain-error";
@@ -13,6 +13,7 @@ import type {
   ChatConversationPort,
   ChatSessionPort,
   ChatStatePort,
+  ChatWorktreePort,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 
@@ -23,6 +24,7 @@ export interface ChatHistoryRecoveryServiceDependencies {
   session: Pick<ChatSessionPort, "createSessionFromHistory">;
   conversation: Pick<ChatConversationPort, "hasActiveStream" | "runStartupOperation">;
   historyExport: ChatHistoryExportService;
+  worktree: Pick<ChatWorktreePort, "resolveWorkingDirectory">;
 }
 
 export class ChatHistoryRecoveryService {
@@ -30,12 +32,14 @@ export class ChatHistoryRecoveryService {
   private readonly session: ChatHistoryRecoveryServiceDependencies["session"];
   private readonly conversation: ChatHistoryRecoveryServiceDependencies["conversation"];
   private readonly historyExport: ChatHistoryExportService;
+  private readonly worktree: ChatHistoryRecoveryServiceDependencies["worktree"];
 
   constructor(dependencies: ChatHistoryRecoveryServiceDependencies) {
     this.state = dependencies.state;
     this.session = dependencies.session;
     this.conversation = dependencies.conversation;
     this.historyExport = dependencies.historyExport;
+    this.worktree = dependencies.worktree;
   }
 
   async continueFromHistory(
@@ -95,16 +99,29 @@ export class ChatHistoryRecoveryService {
       }
       reservationStarted = true;
 
-      const previousRecovery = originalChat.state.harness?.historyRecovery;
-      if (previousRecovery && previousRecovery.status !== "complete") {
-        await this.historyExport.cleanup(
-          originalChat,
-          previousRecovery,
-          { signal: options.signal },
+      const exportChat = await this.requireChatSummary(chatId);
+      const source = exportChat.config.source;
+      const workspace = source?.kind === "execution_host"
+        ? null
+        : await this.state.getWorkspace(getChatWorkspaceId(exportChat));
+      const executionHost = source?.kind === "execution_host"
+        ? source.executionHost
+        : workspace?.executionHostBinding;
+      if (!executionHost) {
+        throw new DomainError(
+          "execution_host_unavailable",
+          "The current execution host for this chat is unavailable.",
         );
       }
-
-      const exportChat = await this.requireChatSummary(chatId);
+      await this.historyExport.cleanupBeforeRecovery(exportChat, executionHost, {
+        signal: options.signal,
+      });
+      const workingDirectory = source?.kind === "execution_host"
+        ? source.directory
+        : (await this.worktree.resolveWorkingDirectory(exportChat, {
+            prepareWorkspace: false,
+            signal: options.signal,
+          })).directory;
       const session = exportChat.state.session;
       const previousSession = session
         ? {
@@ -116,6 +133,8 @@ export class ChatHistoryRecoveryService {
           }
         : undefined;
       const recovery = await this.historyExport.create(exportChat, {
+        executionHost,
+        directory: workingDirectory,
         signal: options.signal,
         previousSession,
         onAllocated: async (allocated) => {

@@ -95,27 +95,30 @@ const IdentifiedInputSchema = z.union([
   AcceptedInputSchema.extend({ nativeClientInputId: z.string().min(1) }),
 ]);
 
+const HarnessHistoryRecoverySchema = z.object({
+  id: z.string().uuid(),
+  executionHost: ExecutionHostBindingSchema,
+  directory: z.string().min(1),
+  exportDirectory: z.string().min(1),
+  transcriptPath: z.string().min(1),
+  createdAt: z.string().min(1),
+  expiresAt: z.string().min(1),
+  status: z.enum(["exporting", "pending", "cleaning", "complete"]),
+  previousSession: z.object({
+    id: z.string().min(1),
+    serverUrl: z.string().optional(),
+    binding: HarnessConversationBindingSchema.nullable().optional(),
+  }).optional(),
+});
+
 export const HarnessConversationStateSchema = z.object({
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
   unfinishedMessages: z.object({
     nativeId: z.string().min(1),
     messageIds: z.array(z.string().min(1)).min(1).max(1000),
   }).optional(),
-  historyRecovery: z.object({
-    id: z.string().uuid(),
-    executionHost: ExecutionHostBindingSchema,
-    directory: z.string().min(1),
-    exportDirectory: z.string().min(1),
-    transcriptPath: z.string().min(1),
-    createdAt: z.string().min(1),
-    expiresAt: z.string().min(1),
-    status: z.enum(["exporting", "pending", "cleaning", "complete"]),
-    previousSession: z.object({
-      id: z.string().min(1),
-      serverUrl: z.string().optional(),
-      binding: HarnessConversationBindingSchema.nullable().optional(),
-    }).optional(),
-  }).optional(),
+  historyRecovery: HarnessHistoryRecoverySchema.optional(),
+  historyRecoveryCleanup: z.array(HarnessHistoryRecoverySchema).optional(),
   capabilities: z.object({
     adapter: z.enum(HARNESS_ADAPTER_IDS), experimental: z.boolean(),
     steering: z.enum(["unsupported", "active-session", "expected-turn"]),
