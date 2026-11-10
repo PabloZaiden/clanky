@@ -113,7 +113,8 @@ clear checkpoints, merge equal text, or resend an interrupted/uncertain request
 to bypass a failure. Use **Continue from history** only when intentionally
 starting a replacement native session. Workspace chats recover on their current
 workspace host; the chat directory/worktree must already exist there. Recovery
-does not transfer uncommitted files from an old host. See
+does not transfer uncommitted files from an old host. Unavailable old exports
+retain their original cleanup ownership without blocking recovery elsewhere. See
 [native recovery](../../docs/harnesses.md#activity-and-individual-stop) and
 [history continuation](../../docs/harnesses.md#continue-from-history).
 

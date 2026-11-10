@@ -365,6 +365,13 @@ export class ChatSessionService implements ChatSessionPort {
         !originalExecutionHost
         || !executionHostBindingsEqual(originalExecutionHost, recovery.executionHost)
       ) {
+        if (!await this.disconnectChat(chat.config.id)) {
+          throw new HarnessError(
+            "harness_transport_closed",
+            "The previous chat backend could not be disconnected. The chat was not rebound.",
+          );
+        }
+        throwIfAborted(options.signal);
         const updated = await this.state.updateConfig(chat.config.id, {
           ...chat.config,
           executionHostBinding: recovery.executionHost,

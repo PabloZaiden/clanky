@@ -99,15 +99,6 @@ export class ChatHistoryRecoveryService {
       }
       reservationStarted = true;
 
-      const previousRecovery = originalChat.state.harness?.historyRecovery;
-      if (previousRecovery && previousRecovery.status !== "complete") {
-        await this.historyExport.cleanup(
-          originalChat,
-          previousRecovery,
-          { signal: options.signal },
-        );
-      }
-
       const exportChat = await this.requireChatSummary(chatId);
       const source = exportChat.config.source;
       const workspace = source?.kind === "execution_host"
@@ -122,6 +113,9 @@ export class ChatHistoryRecoveryService {
           "The current execution host for this chat is unavailable.",
         );
       }
+      await this.historyExport.cleanupBeforeRecovery(exportChat, executionHost, {
+        signal: options.signal,
+      });
       const workingDirectory = source?.kind === "execution_host"
         ? source.directory
         : (await this.worktree.resolveWorkingDirectory(exportChat, {

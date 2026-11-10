@@ -569,6 +569,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     let succeeded = true;
     const cleanupSteps: Array<{ label: string; run: () => Promise<void | boolean>; requiresRuntimeCleanup?: boolean }> = [];
     const historyRecovery = chat.state.harness?.historyRecovery;
+    const historyExports = new Map(
+      (chat.state.harness?.historyRecoveryCleanup ?? []).map((recovery) => [recovery.id, recovery]),
+    );
+    if (historyRecovery && historyRecovery.status !== "complete") {
+      historyExports.set(historyRecovery.id, historyRecovery);
+    }
     if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
@@ -594,14 +600,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         label: "chat session",
         run: () => this.session.disconnectChat(chat.config.id),
       },
-      ...(!options.preserveWorktree && historyRecovery
-        && historyRecovery.status !== "complete" && this.historyExport ? [{
+      ...(!options.preserveWorktree && this.historyExport
+        ? Array.from(historyExports.values(), (recovery) => ({
           label: "chat history export",
           requiresRuntimeCleanup: true,
           run: () => this.historyExport!.cleanup(
-            chat, historyRecovery, { markComplete: false },
+            chat, recovery, { markComplete: false },
           ),
-        }] : []),
+        })) : []),
       ...(!options.preserveWorktree ? [{
         label: "chat attachments",
         requiresRuntimeCleanup: true,

@@ -16,14 +16,15 @@ import {
   executionHostBindingsEqual,
 } from "@/shared/execution-host";
 import type { AgentProvider } from "@/shared/settings";
-import { DomainError } from "@/domain/domain-error";
+import { DomainError, isDomainError } from "@/domain/domain-error";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   closeCommandExecutor,
   resolveCommandExecutorDirectory,
   type CommandExecutor,
 } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
-import { executionPathsEqual } from "./execution-path";
+import { executionPathsEqual, isAbsoluteExecutionPath } from "./execution-path";
 import { GitService } from "./git";
 import { ManagedPathService } from "./managed-path-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -32,6 +33,7 @@ import { getCanonicalMessageAttachmentMimeType, getMessageAttachmentKind } from 
 import { conversationAttachmentService } from "./conversation-attachment-service";
 
 const CHAT_HISTORY_EXPORT_TTL_MS = 24 * 60 * 60 * 1000;
+const log = createLogger("core:chat-history-export-service");
 
 interface ChatHistoryExportServiceDependencies {
   state: Pick<
@@ -271,7 +273,20 @@ export class ChatHistoryExportService {
       const git = GitService.withExecutor(executor);
       const isGitRepo = await git.isGitRepo(directory);
       if (chat.config.useWorktree) {
-        if (!isGitRepo || !await git.worktreeExists(chat.config.directory, directory)) {
+        let repositoryDirectory = chat.config.directory;
+        if (!isAbsoluteExecutionPath(repositoryDirectory, executor.pathStyle)) {
+          const repositoryExecutor = await this.getExecutor(
+            chat, executionHost, repositoryDirectory, `${recoveryId}:repository`,
+          );
+          try {
+            repositoryDirectory = await resolveCommandExecutorDirectory(
+              repositoryExecutor, repositoryDirectory,
+            );
+          } finally {
+            closeCommandExecutor(repositoryExecutor);
+          }
+        }
+        if (!isGitRepo || !await git.worktreeExists(repositoryDirectory, directory)) {
           throw new DomainError(
             "chat_directory_unavailable",
             "The chat worktree is not registered on the selected execution host. Restore it there before continuing from history.",
@@ -506,6 +521,7 @@ export class ChatHistoryExportService {
     recovery: HarnessHistoryRecovery,
     options: { signal?: AbortSignal } = {},
   ): Promise<ChatHistoryPromptContext | null> {
+    await this.cleanupDeferred(chat, options);
     if (recovery.status === "complete") {
       return null;
     }
@@ -625,6 +641,74 @@ export class ChatHistoryExportService {
     } finally {
       options.signal?.removeEventListener("abort", abort);
       closeCommandExecutor(executor);
+    }
+  }
+
+  async cleanupBeforeRecovery(
+    chat: Chat,
+    destination: ExecutionHostBinding,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const pending = new Map(
+      (chat.state.harness?.historyRecoveryCleanup ?? []).map((recovery) => [recovery.id, recovery]),
+    );
+    const current = chat.state.harness?.historyRecovery;
+    if (current && current.status !== "complete") pending.set(current.id, current);
+    for (const recovery of pending.values()) {
+      await this.cleanupOrDefer(chat, recovery, options, destination);
+    }
+  }
+
+  private async cleanupDeferred(
+    chat: Chat,
+    options: { signal?: AbortSignal },
+  ): Promise<void> {
+    for (const recovery of chat.state.harness?.historyRecoveryCleanup ?? []) {
+      await this.cleanupOrDefer(chat, recovery, options);
+    }
+  }
+
+  private async cleanupOrDefer(
+    chat: Chat,
+    recovery: HarnessHistoryRecovery,
+    options: { signal?: AbortSignal },
+    destination?: ExecutionHostBinding,
+  ): Promise<void> {
+    try {
+      await this.cleanup(chat, recovery, options);
+    } catch (error) {
+      if (
+        options.signal?.aborted
+        || (destination && executionHostBindingsEqual(destination, recovery.executionHost))
+        || !isDomainError(error)
+        || ![
+          "execution_host_unavailable",
+          "execution_host_binding_stale",
+          "mesh_execution_unreachable",
+          "mesh_execution_endpoint_unavailable",
+        ].includes(error.code)
+      ) {
+        throw error;
+      }
+      await this.state.mutateState(chat.config.id, (current) => {
+        const deferred = current.state.harness?.historyRecoveryCleanup ?? [];
+        if (deferred.some((entry) => entry.id === recovery.id)) return;
+        return {
+          ...current.state,
+          harness: {
+            ...current.state.harness,
+            historyRecoveryCleanup: [
+              ...deferred,
+              { ...recovery, status: "cleaning", previousSession: undefined },
+            ],
+          },
+        };
+      });
+      log.warn("Deferred chat history cleanup because its execution host is unavailable", {
+        chatId: chat.config.id,
+        recoveryId: recovery.id,
+        error: String(error),
+      });
     }
   }
 
@@ -797,10 +881,13 @@ export class ChatHistoryExportService {
   ): Promise<void> {
     await this.state.mutateState(chatId, (current) => {
       const recovery = current.state.harness?.historyRecovery;
-      if (!recovery || recovery.id !== recoveryId) {
+      const deferred = current.state.harness?.historyRecoveryCleanup ?? [];
+      const deferredCompleted = status === "complete"
+        && deferred.some((entry) => entry.id === recoveryId);
+      if (recovery?.id !== recoveryId && !deferredCompleted) {
         return;
       }
-      const updatedRecovery = status === "complete"
+      const updatedRecovery = recovery?.id !== recoveryId ? recovery : status === "complete"
         ? {
             id: recovery.id,
             executionHost: recovery.executionHost,
@@ -817,6 +904,9 @@ export class ChatHistoryExportService {
         harness: {
           ...current.state.harness,
           historyRecovery: updatedRecovery,
+          ...(deferredCompleted ? {
+            historyRecoveryCleanup: deferred.filter((entry) => entry.id !== recoveryId),
+          } : {}),
         },
       };
     });

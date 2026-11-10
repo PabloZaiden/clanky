@@ -216,9 +216,12 @@ and tool actions are not replayed.
 The export is removed after the first continuation completes successfully or
 when the chat is deleted. It cannot be used after its 24-hour expiry. Expiry is
 not a background deletion job: physical cleanup is attempted when the export
-is next used/replaced or during chat deletion. An
-unreachable host may retain the expired file until the next
-authorized recovery attempt or chat deletion.
+is next used/replaced or during chat deletion. If an earlier export's host is
+unavailable, recovery on another host keeps its cleanup metadata without
+blocking the replacement session. Cleanup is retried on later continuation,
+recovery, and deletion, using the original export's host binding. Unreachable
+or revoked hosts can retain files; recovery never redirects their cleanup to
+another host or bypasses binding revisions.
 
 ## Token consumption
 
