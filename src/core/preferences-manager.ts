@@ -6,6 +6,9 @@
  */
 
 import {
+  getSidebarPins,
+  addSidebarPin,
+  removeSidebarPin,
   getControlApprovalRequired,
   setControlApprovalRequired,
   getDashboardViewMode as getDashboardViewModeRecord,
@@ -31,6 +34,7 @@ import {
   setSchedulerTimezone as setSchedulerTimezoneRecord,
   rememberWorkerUpdateMode as rememberWorkerUpdateModeRecord,
 } from "../persistence/preferences";
+import type { SidebarPin } from "@pablozaiden/webapp/contracts";
 import type { CheapModelSelection } from "@/contracts/schemas/model";
 import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
@@ -57,6 +61,18 @@ export interface QuickChatModelRequest {
 }
 
 export class PreferencesManager {
+  getSidebarPins(): SidebarPin[] {
+    return getSidebarPins();
+  }
+
+  addSidebarPin(pin: SidebarPin): void {
+    addSidebarPin(pin);
+  }
+
+  removeSidebarPin(id: string): void {
+    removeSidebarPin(id);
+  }
+
   async getControlApprovalRequired(): Promise<boolean> {
     return await getControlApprovalRequired();
   }

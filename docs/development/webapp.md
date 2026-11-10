@@ -91,6 +91,12 @@ Declare entity actions through route-backed `SidebarNode.actions`. Framework
 sidebar context menus and the active title-bar menu share those actions.
 Framework Pin/Unpin actions remain available in both menus, including when
 explicit `contextActions` customize the sidebar menu.
+Account-backed clients store pins per user on the Clanky server through an
+injected Webapp pin provider. Pin/unpin changes propagate through user-scoped
+realtime invalidation; old local pins are not imported. Browser-only external
+collaboration clients retain their local provider because they have no account
+preferences server. Unavailable references stay saved but are hidden until a
+current authorized sidebar node exists; pin snapshots never grant access.
 Do not add Clanky shell/header menus or hide a single fitting action behind
 ellipsis. Use framework dialogs and menus; they own Enter/Escape behavior,
 red/last destructive items, and compact status-dot sidebar badges.

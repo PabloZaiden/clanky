@@ -12,6 +12,8 @@
  */
 
 import { getDatabase } from "./database";
+import type { SidebarPin } from "@pablozaiden/webapp/contracts";
+import { SidebarPinsSchema } from "@/contracts/schemas/sidebar-pins";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type DashboardViewMode, type QuickChatSettings } from "@/shared/preferences";
@@ -31,6 +33,25 @@ import {
 } from "@/contracts/schemas/agent-notifications";
 
 const log = createLogger("persistence:preferences");
+
+export function getSidebarPins(): SidebarPin[] {
+  const stored = getPreference("sidebarPins");
+  if (stored === null) return [];
+  return SidebarPinsSchema.parse(JSON.parse(stored));
+}
+
+export function addSidebarPin(pin: SidebarPin): void {
+  getDatabase().transaction(() => {
+    const pins = [...getSidebarPins().filter((item) => item.id !== pin.id), pin];
+    setPreference("sidebarPins", JSON.stringify(SidebarPinsSchema.parse(pins)));
+  })();
+}
+
+export function removeSidebarPin(id: string): void {
+  getDatabase().transaction(() => {
+    setPreference("sidebarPins", JSON.stringify(getSidebarPins().filter((pin) => pin.id !== id)));
+  })();
+}
 
 export async function getNotificationWebhookUrl(ownerUserId?: string): Promise<string | null> {
   return getPreference("notificationWebhookUrl", ownerUserId);

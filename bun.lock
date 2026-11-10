@@ -11,7 +11,7 @@
         "@noble/hashes": "2.4.0",
         "@opencode/client": "2.2.6",
         "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
-        "@pablozaiden/webapp": "github:PabloZaiden/webapp#1edfbc32b3fe24b89476d2b1532e502755ff129d",
+        "@pablozaiden/webapp": "github:PabloZaiden/webapp#b57b8693cfbed8db4355b7d06e7c411d06a68de9",
         "@peculiar/x509": "2.2.0",
         "@tailwindcss/typography": "0.5.20",
         "@xterm/addon-fit": "0.11.0",
@@ -178,7 +178,7 @@
 
     "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#a60b4b7", { "peerDependencies": { "typescript": "^7.0.0" } }, "PabloZaiden-installer-a60b4b7", "sha512-4ucYjA0vB9U1otEbQ9NmIOjpbWevEUpv3dL09joX0dEZHVHCA9d6Ne/H76hwDMqycH6SOoxoldv+ISCEV9IDhQ=="],
 
-    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#1edfbc3", { "dependencies": { "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.1.0", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.15", "tailwindcss": "4.3.5", "tslog": "5.4.0", "zod": "4.6.7" }, "peerDependencies": { "react": "^19.3.0", "react-dom": "^19.3.0" } }, "PabloZaiden-webapp-1edfbc3", "sha512-cBYQh0bpneoHEcWakVOqzaUkiFAwYVjlSEBSeE1AUT0+HMYUCk3ObuChOpBXb1aC1nq9ucxsQkk89LI1bea//A=="],
+    "@pablozaiden/webapp": ["@pablozaiden/webapp@github:PabloZaiden/webapp#b57b869", { "dependencies": { "@simplewebauthn/browser": "14.0.0", "@simplewebauthn/server": "14.1.0", "bun-plugin-tailwind": "0.1.2", "jose": "6.2.15", "tailwindcss": "4.3.5", "tslog": "5.4.0", "zod": "4.6.7" }, "peerDependencies": { "react": "^19.3.0", "react-dom": "^19.3.0" } }, "PabloZaiden-webapp-b57b869", "sha512-KsI5a2AwopsZxayQqr2WeY5PrvLUsHfVn9C0tQ4RbiXHbxyaMv1DlYZZ9GFAAH6jD+/dpOmlrnnGCHpEyZ1oBA=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.11.1", "", { "dependencies": { "@peculiar/asn1-schema": "^2.11.1", "asn1js": "^3.0.10", "tslib": "^2.8.1" } }, "sha512-AuUBRDNdWrgtnuJGXARa0Xdtq6OAD8GqezDQz6Qka7kyynMo9fzkcrtpBEHuX984uEB570BrhMZfJfkUDfpQfw=="],
 

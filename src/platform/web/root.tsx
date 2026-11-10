@@ -17,6 +17,7 @@ import { SettingsView } from "./settings/settings-view";
 import type { WebAppRootProps } from "./root-types";
 import { WebAppConfigProvider, useWebAppConfig } from "./webapp-config";
 import type { ThemePreference } from "../contracts";
+import { useSidebarPinProvider } from "@/hooks/useSidebarPinProvider";
 
 function pagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -82,12 +83,20 @@ export function ClankyApplication({ children }: { children: ReactNode }) {
 export const ClankyRoot = forwardRef<WebAppRootController, WebAppRootProps>(function ClankyRoot(props, controllerRef) {
   const { config, external, refresh } = useWebAppConfig();
   const theme = useAccountTheme();
+  const pins = useSidebarPinProvider();
   const version = getWebAppClientVersion() ?? props.version ?? config?.version ?? "";
   return <WebAppRoot
     {...props}
     ref={controllerRef}
     version={version}
     theme={theme}
+    sidebar={{
+      ...props.sidebar,
+      pinning: props.sidebar.pinning === false ? false : {
+        ...props.sidebar.pinning,
+        ...(pins ? { provider: pins } : {}),
+      },
+    }}
     settings={undefined}
     routes={{
       ...props.routes,
