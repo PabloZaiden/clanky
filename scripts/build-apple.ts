@@ -1,5 +1,6 @@
 import { chmod, cp, mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
+import { embedSparkle, macOSBuildSettings, prepareSparkle } from "./sparkle";
 
 const [platform, ...options] = process.argv.slice(2);
 const linux = platform === "macos-linux" || platform === "ios-linux" || platform === "ios-simulator-linux";
@@ -44,6 +45,8 @@ async function run(command: string[], cwd?: string): Promise<void> {
 await run([process.execPath, "run", "build:pages", ...(frontendVersion ? [frontendVersion] : [])]);
 const directory = resolve("dist/apple");
 await mkdir(directory, { recursive: true });
+const macSettings = platform === "macos" || platform === "macos-linux" ? macOSBuildSettings() : {};
+if (platform === "macos" || platform === "macos-linux") await prepareSparkle();
 const web = `${directory}/Web`;
 await rm(web, { recursive: true, force: true });
 await cp(resolve("dist/pages"), web, { recursive: true });
@@ -72,7 +75,7 @@ if (linux) {
 
   const project = await Bun.file("native/Clanky.xcodeproj/project.pbxproj").text();
   const configurations = [...project.matchAll(
-    /isa = XCBuildConfiguration;\s*buildSettings = \{([^{}]*)\};\s*name = Debug;/g,
+    /isa = XCBuildConfiguration;\s*(?:baseConfigurationReference = [A-F0-9]+;\s*)?buildSettings = \{([^{}]*)\};\s*name = Debug;/g,
   )].map(match => match[1]!);
   const common = configurations[0];
   const target = configurations.find(settings => mac
@@ -80,6 +83,7 @@ if (linux) {
   if (!common || !target) throw new Error("Unable to read the Xcode Debug Apple configuration.");
   const inheritedSettings = `${target}\n${common}`;
   function setting(name: string): string {
+    if (mac && macSettings[name] !== undefined) return macSettings[name]!;
     const pattern = new RegExp(`^\\s*${name} = ([^;]+);`, "m");
     const value = inheritedSettings.match(pattern)?.[1]?.trim();
     if (!value) throw new Error(`Missing Xcode build setting: ${name}`);
@@ -115,6 +119,8 @@ if (linux) {
       "-sdk", `${sdk}/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk`,
       "-resource-dir", `${toolchain}/swift`,
       "-Xfrontend", "-enable-cross-import-overlays", "-use-ld=lld",
+      "-F", `${directory}/Sparkle`, "-framework", "Sparkle",
+      "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
       `-ld-path=${sdk}/toolset/bin/ld64.lld`,
       "-Xlinker", "-platform_version", "-Xlinker", "macos",
       "-Xlinker", deploymentTarget, "-Xlinker", metadata.Version,
@@ -124,7 +130,8 @@ if (linux) {
     await cp(resolve("dist/clanky-darwin-arm64"), `${contents}/Helpers/clanky`);
     await chmod(`${contents}/Helpers/clanky`, 0o755);
     await cp(web, `${contents}/Resources/Web`, { recursive: true });
-    const plist = (await Bun.file("native/Configuration/macOS.plist").text()).replace(
+    await embedSparkle(app);
+    const plist = (await Bun.file(`${directory}/macOS.plist`).text()).replace(
       /\$\(([^)]+)\)/g,
       (_, name: string) => Bun.escapeHTML(name === "EXECUTABLE_NAME" ? product : setting(name)),
     );
@@ -221,6 +228,7 @@ skipLSP: true
     ...(mac ? ["ARCHS=" + (process.arch === "x64" ? "x86_64" : process.arch), "ONLY_ACTIVE_ARCH=YES"]
       : ["CODE_SIGNING_ALLOWED=NO"]),
     ...(device ? ["ARCHS=arm64"] : []),
+    ...Object.entries(macSettings).map(([name, value]) => `${name}=${value}`),
     "build",
   ]);
   const product = mac ? configuration : `${configuration}-${device ? "iphoneos" : "iphonesimulator"}`;

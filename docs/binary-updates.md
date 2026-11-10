@@ -55,8 +55,12 @@ After both CLI publication and native Apple builds succeed, the same release
 also receives the Mac/iOS app archives, checksums and platform build metadata.
 Their filenames use that release's exact version; rolling publication shares
 the CLI publisher's lock and freshness checks. These app bundles are not inputs
-to the CLI installer or updater. See [Apple apps](apple-apps.md#ci-builds-for-main-and-releases)
-for downloads and signing prerequisites.
+to the CLI installer or updater. Public Mac apps instead use their own signed Sparkle
+updates, with independent stable/latest feeds and native channel preferences.
+They update the whole bundle on quit, not just the embedded binary. Latest Mac
+archives have no retention; a stale/in-progress download may fail safely during
+rolling publication. See [automatic Mac updates](apple-apps.md#automatic-mac-app-updates)
+and [Apple downloads/signing](apple-apps.md#ci-builds-for-main-and-releases).
 
 Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
 job. It installs dependencies and runs prebuild once, then uses the same Bun
@@ -74,7 +78,7 @@ publication remain lightweight Linux jobs; Docker and native platform E2E
 tests are unchanged.
 
 GitHub's latest **stable** release endpoint is separate from the tag `latest`.
-This channel does not add unattended updates or restart running servers.
+The CLI update channel does not add unattended updates or restart running servers.
 Stop processes using the binary before updating when required by the platform,
 then restart them to run the new build. If publication overlaps a download,
 the operation can fail safely; rerun it after publication completes.

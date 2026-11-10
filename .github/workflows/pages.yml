@@ -128,10 +128,12 @@ jobs:
           ' <<< "$snapshots"
           echo "snapshots=$snapshots" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - name: Upload browser client snapshots
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: browser-clients
           path: dist/pages
+          if-no-files-found: error
 
   deploy:
     if: github.event_name != 'pull_request' && github.event_name != 'release' && github.ref == 'refs/heads/main'
@@ -177,6 +179,28 @@ jobs:
         if: steps.revision.outputs.publish == 'true'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
+      - name: Download browser client snapshots
+        if: steps.revision.outputs.publish == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: browser-clients
+          path: dist/pages
+
+      - name: Add completed Mac update feeds
+        if: steps.revision.outputs.publish == 'true'
+        id: macos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          feeds="$(bun scripts/macos-pages-feeds.ts dist/pages)"
+          echo "feeds=$feeds" >> "$GITHUB_OUTPUT"
+
+      - name: Upload complete Pages artifact
+        if: steps.revision.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist/pages
+
       - name: Deploy stable and latest channels
         id: deployment
         if: steps.revision.outputs.publish == 'true'
@@ -187,4 +211,5 @@ jobs:
         env:
           EXPECTED_SNAPSHOTS: ${{ needs.build.outputs.snapshots }}
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          EXPECTED_MACOS_FEEDS: ${{ steps.macos.outputs.feeds }}
         run: bun scripts/verify-pages.ts "$PAGE_URL"

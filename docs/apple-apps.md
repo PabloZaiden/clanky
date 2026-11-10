@@ -74,9 +74,10 @@ controller and shared web UI; the iOS bundle targets physical iPhones/iPads,
 not the simulator. Main pushes use Xcode's Debug configuration; published
 versioned releases use Release, with the project's optimized Swift settings.
 Archive paths and build metadata follow that configuration, and publication
-rejects artifacts built in the wrong mode for the event. Public archives keep
-the project's native version numbers, but their bundled frontend and Mac
-controller embed the exact distribution version: the release tag without `v`,
+rejects artifacts built in the wrong mode for the event. Public Mac archives
+embed an increasing native build number and their distribution channel/version;
+public unsigned iOS archives retain the project's native version numbers.
+The bundled frontend and Mac controller embed the exact distribution version: the release tag without `v`,
 or the CLI publisher's exact rolling main version. Apple builds wait for CLI
 publication so main does not independently generate a different timestamp-based
 version. Superseded main commits are skipped. Before signing and packaging,
@@ -120,6 +121,13 @@ publisher's exact build version and skips superseded source commits; publication
 shares its lock so rolling cleanup preserves the current Apple assets.
 Existing Actions artifacts keep their original names. Historical releases are
 not backfilled.
+
+Updater-enabled Mac builds also attach
+`Clanky-v<version>-macos-arm64-appcast.xml` and
+`Clanky-v<version>-macos-arm64-update.json`. The latter is the completion marker
+for an uploaded archive/appcast pair; publication verifies their GitHub asset
+digests before the feeds are advertised. Older releases without this metadata
+are not offered as native updates.
 
 The Mac app, bundled controller and native dynamic libraries are Developer ID
 Application signed with Hardened Runtime and secure timestamps, notarized and
@@ -341,6 +349,95 @@ Debug Run builds only the active Mac architecture, matching the bundled helper;
 Release builds still require a helper supporting every requested architecture.
 Replace/rebuild the whole app to update it; running CLI self-update against
 the embedded helper would modify the signed bundle and is not an app updater.
+
+### Automatic Mac app updates
+
+Public Mac builds use [Sparkle 2](https://sparkle-project.org/) to replace the
+complete app, including its frontend and bundled controller. Install the first
+updater-enabled build manually; older app versions cannot acquire an updater
+through their web UI or CLI self-update.
+
+**Clanky > Check for Updates...** checks immediately. **Clanky > Settings...**
+shows the installed distribution version, native build, source revision,
+update channel, and automatic-update preferences. The initial channel matches
+the downloaded app; a saved **Stable/Latest** selection overrides it. Stable
+checks every 24 hours and latest every hour. Automatic checks, downloads and
+installation on normal quit are enabled by default and can be disabled.
+Development builds do not start the updater.
+
+An immediate installation/restart requires an explicit **Install and Restart**
+action in Clanky's app menu/settings or Sparkle's update window. Once an
+automatic download is ready, it waits for that action or normal Quit rather
+than starting another update cycle. Ordinary downloads do not terminate the app or its
+controller. Update-triggered termination uses the same graceful controller,
+Tailscale and asset shutdown as ordinary Quit; a failed shutdown cancels
+termination rather than replacing a running app. When an update is already
+staged for installation, finish it by quitting before changing channels.
+An aborted update clears its staged installation state so fresh checks and
+channel changes are available again once the update cycle ends.
+The update does not replace standalone CLIs, remote controllers, user data or
+WebKit sessions.
+
+Changing channels never installs an equal or lower native build number.
+Switching from latest to stable may therefore wait for a future stable build,
+even when its display version looks newer. All builds from the binary workflow
+share a monotonic native sequence derived from its GitHub run number; rerunning
+the same run does not create a new native version. Preserve that sequence if
+the workflow is replaced or its counter is reset.
+
+Mac feeds are separate from iOS frontend updates:
+
+| Channel | Appcast |
+| --- | --- |
+| Stable | `https://pablozaiden.github.io/clanky/macos/stable/appcast.xml` |
+| Latest | `https://pablozaiden.github.io/clanky/macos/latest/appcast.xml` |
+
+Feeds and archive downloads are public HTTPS resources; installed apps need no
+GitHub token. The existing Pages deploy assembles both feeds from completed
+native publications, independently of frontend build versions. Native asset
+publication requests a new Pages deployment after completion. Every Pages
+deployment includes and verifies both appcasts; it does not overwrite them with
+frontend-only content or regress a published native build number.
+
+Latest deliberately has no archive retention. A new CLI publication may remove
+an older Mac ZIP before a cached appcast or in-progress download finishes.
+That update fails safely without changing the installed app; check again after
+the next Mac publication. Network, signature, installation permission and
+controller-shutdown failures are reported rather than treated as success.
+Install and run the complete app from a writable location, not inside a ZIP or
+read-only disk image. Local controller connections are interrupted when the
+user explicitly quits/restarts the app.
+
+#### Sparkle dependency and signing key
+
+`native/Configuration/sparkle.json` pins the Sparkle version, upstream archive
+SHA-256, public Ed25519 key and feed base URL. Mac build commands require
+`curl`, download and verify that distribution, and prepare the framework and
+generated Xcode configuration under `dist/apple/`. Xcode and Linux Mac builds
+use the same distribution; iOS does not link Sparkle. Re-run the Mac build
+preparation after changing the pin or public configuration.
+
+Configure `CLANKY_SPARKLE_PRIVATE_KEY` as a protected repository secret containing
+Sparkle's exported, base64-encoded private seed. This is separate from the
+Developer ID and Apple notarization credentials. The app embeds only its public
+key. `scripts/macos-appcast.ts` uses Sparkle's `generate_appcast` with deltas
+disabled, signs the final notarized ZIP, and verifies its Ed25519 signature
+against the configured public key before generating publication metadata.
+Feeds are not additionally signed; archive signatures remain mandatory and are
+checked before extraction.
+
+Generate/export/import keys using Sparkle's `generate_keys` tool and a dedicated
+Keychain account. Keep a verified private export in restricted, offline-backed-up
+storage, separate from served files and source checkouts; record machine-specific
+locations only in private guidance. Verify recovery by deriving the matching
+public key before configuring CI. Never print the seed, include it in command
+arguments, commit it, or upload it as an Actions/release artifact.
+Restore the existing key when replacing a signing machine. With verification
+before extraction enabled, Ed25519 key rotation requires Sparkle's documented
+Developer ID signed-DMG recovery path; losing the private seed is not solved
+by simply changing the public key in a new ZIP.
+
+### App icons
 
 Both Xcode targets use the checked-in `AppIcon` asset catalog for Clanky's
 native app icon, including Finder/Dock on Mac and the iPhone/iPad Home Screen.

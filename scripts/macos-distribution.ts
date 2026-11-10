@@ -1,5 +1,6 @@
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
 
@@ -41,22 +42,56 @@ const logSchema = z.object({
   ticketContents: z.array(z.object({ cdhash: z.string() })).nullable().optional(),
 });
 
-async function machOFiles(directory: string): Promise<string[]> {
+function inside(directory: string, path: string): boolean {
+  const name = relative(directory, path);
+  return name !== ".." && !name.startsWith(`..${sep}`) && !isAbsolute(name);
+}
+
+async function bundleCode(directory: string): Promise<{ files: string[]; targets: string[] }> {
   const files: string[] = [];
+  const bundles: string[] = [];
   const magic = new Set(["feedface", "cefaedfe", "feedfacf", "cffaedfe",
     "cafebabe", "bebafeca", "cafebabf", "bfbafeca"]);
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await machOFiles(path));
-    } else if (entry.isFile()) {
-      const header = Buffer.from(await Bun.file(path).slice(0, 4).arrayBuffer()).toString("hex");
-      if (magic.has(header)) files.push(path);
-    } else {
-      throw new Error(`Unsupported app bundle entry: ${path}.`);
+  const root = await realpath(directory);
+  async function visit(directory: string) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isSymbolicLink()) {
+        const link = await readlink(path);
+        if (isAbsolute(link) || !inside(root, resolve(dirname(path), link))
+          || !inside(root, await realpath(path))) {
+          throw new Error(`Unsafe app bundle symlink: ${path}.`);
+        }
+        const target = await lstat(await realpath(path));
+        if (!target.isFile() && !target.isDirectory()) throw new Error(`Unsupported app bundle link: ${path}.`);
+      } else if (entry.isDirectory()) {
+        await visit(path);
+      } else if (entry.isFile()) {
+        const header = Buffer.from(await Bun.file(path).slice(0, 4).arrayBuffer()).toString("hex");
+        if (magic.has(header)) files.push(path);
+      } else {
+        throw new Error(`Unsupported app bundle entry: ${path}.`);
+      }
     }
+    if (/\.(app|framework|xpc)$/.test(directory)) bundles.push(directory);
   }
-  return files;
+  await visit(root);
+  const executables = new Set<string>();
+  for (const bundle of bundles) {
+    const framework = bundle.endsWith(".framework");
+    const info = join(bundle, framework ? "Resources/Info.plist" : "Contents/Info.plist");
+    const name = (await run(["plutil", "-extract", "CFBundleExecutable", "raw", "-o", "-", info], true)).trim();
+    if (!name || name === "." || name === ".." || basename(name) !== name) {
+      throw new Error(`Invalid bundle executable: ${bundle}.`);
+    }
+    const executable = await realpath(join(bundle, framework ? name : `Contents/MacOS/${name}`));
+    if (!inside(bundle, executable) || !files.includes(executable)) {
+      throw new Error(`Missing bundle Mach-O executable: ${bundle}.`);
+    }
+    executables.add(executable);
+  }
+  // Sign bundle executables through their owning bundle, never a second time as loose files.
+  return { files, targets: [...files.filter((path) => !executables.has(path)), ...bundles] };
 }
 
 async function distribute() {
@@ -94,8 +129,9 @@ async function distribute() {
   let teamId: string | undefined;
   let verificationIndex = 0;
   const hashes = new Map<string, string>();
-  const signed: { path: string; bun: boolean }[] = [];
-  async function verify(target: string, bun: boolean) {
+  type Entitlements = Record<string, unknown>;
+  const signed: { path: string; expected: Entitlements }[] = [];
+  async function verify(target: string, expected: Entitlements) {
     await run(["codesign", "--verify", "--strict", "--verbose=2", target]);
     const details = await run(["codesign", "-d", "--verbose=4", target]);
     const team = details.match(/^TeamIdentifier=([A-Z0-9]{10})$/m)?.[1];
@@ -114,8 +150,6 @@ async function distribute() {
     const fingerprint = await run(["openssl", "x509", "-inform", "DER", "-in", `${prefix}0`, "-noout", "-fingerprint", "-sha1"]);
     const actual = fingerprint.split("=")[1]?.trim().replaceAll(":", "").toUpperCase();
     if (actual !== identity) throw new Error(`Unexpected signing certificate: ${target}.`);
-    const expected = bun ? { "com.apple.security.cs.allow-jit": true }
-      : target.endsWith(".app") ? appPermissions : {};
     const xml = await run(["codesign", "-d", "--entitlements", "-", "--xml", target], true);
     if (!xml.trim()) {
       if (Object.keys(expected).length) throw new Error(`Missing required distribution entitlements: ${target}.`);
@@ -124,35 +158,55 @@ async function distribute() {
     const entitlementPath = join(work, `verified-${verificationIndex}.plist`);
     await writeFile(entitlementPath, xml);
     const values: unknown = JSON.parse(await run(["plutil", "-convert", "json", "-o", "-", entitlementPath]));
-    const entitlements = z.record(z.string(), z.boolean()).parse(values);
-    if (Object.keys(entitlements).length !== Object.keys(expected).length
-      || Object.entries(expected).some(([key, value]) => entitlements[key] !== value)) {
+    const entitlements = z.record(z.string(), z.unknown()).parse(values);
+    if (!isDeepStrictEqual(entitlements, expected)) {
       throw new Error(`Unexpected distribution entitlements: ${target}.`);
     }
   }
-  async function sign(target: string, bun: boolean) {
+  async function sign(target: string, policy: "app" | "bun" | "sparkle" | "library") {
+    let entitlements = policy === "bun" ? bunEntitlements : policy === "app" ? appEntitlements : emptyEntitlements;
+    let expected: Entitlements = policy === "bun" ? { "com.apple.security.cs.allow-jit": true }
+      : policy === "app" ? appPermissions : {};
+    if (policy === "sparkle") {
+      // Sparkle's helpers have their own entitlements (including optional Downloader sandboxing).
+      const xml = await run(["codesign", "-d", "--entitlements", "-", "--xml", target], true);
+      if (xml.trim()) {
+        entitlements = join(work, `sparkle-${signed.length}.entitlements`);
+        await writeFile(entitlements, xml, { mode: 0o600 });
+        expected = z.record(z.string(), z.unknown()).parse(JSON.parse(
+          await run(["plutil", "-convert", "json", "-o", "-", entitlements], true),
+        ));
+        if ("com.apple.security.get-task-allow" in expected) {
+          delete expected["com.apple.security.get-task-allow"];
+          await run(["plutil", "-remove", "com\\.apple\\.security\\.get-task-allow", entitlements]);
+        }
+      }
+    }
     await run(["codesign", "--force", "--sign", identity, "--keychain", signingKeychain,
       "--timestamp", "--options", "runtime", "--entitlements",
-      bun ? bunEntitlements : target.endsWith(".app") ? appEntitlements : emptyEntitlements, target]);
-    await verify(target, bun);
-    signed.push({ path: target, bun });
+      entitlements, target]);
+    await verify(target, expected);
+    signed.push({ path: target, expected });
   }
   for (const target of targets) {
     if (target.endsWith(".app")) {
-      const controller = join(target, "Contents/Helpers/clanky");
+      const app = await realpath(target);
+      const controller = join(app, "Contents/Helpers/clanky");
       if (!(await lstat(controller)).isFile()) throw new Error("Missing bundled Mac controller.");
-      const main = join(target, "Contents/MacOS/Clanky");
-      const code = await machOFiles(target);
-      if (!code.includes(controller) || !code.includes(main)) {
+      const main = join(app, "Contents/MacOS/Clanky");
+      const code = await bundleCode(app);
+      if (!code.files.includes(controller) || !code.files.includes(main)) {
         throw new Error("Missing native Mac executable or bundled controller Mach-O code.");
       }
-      for (const path of code) {
-        if (path !== main) await sign(path, path === controller);
+      const sparkle = join(app, "Contents/Frameworks/Sparkle.framework");
+      for (const path of code.targets) {
+        const helper = path !== sparkle && inside(sparkle, path)
+          && (/\.(app|xpc)$/.test(path) || basename(path) === "Autoupdate");
+        await sign(path, path === app ? "app" : path === controller ? "bun" : helper ? "sparkle" : "library");
       }
-      await sign(target, false);
       await run(["codesign", "--verify", "--deep", "--strict", target]);
     } else {
-      await sign(target, true);
+      await sign(target, "bun");
     }
   }
   let submissionId: string | undefined;
@@ -200,7 +254,7 @@ async function distribute() {
       await run(["xcrun", "stapler", "validate", apps[0]]);
       await run(["spctl", "--assess", "--type", "execute", "--verbose=2", apps[0]]);
     }
-    for (const target of signed) await verify(target.path, target.bun);
+    for (const target of signed) await verify(target.path, target.expected);
     for (const app of apps) await run(["codesign", "--verify", "--deep", "--strict", app]);
   }
   return {

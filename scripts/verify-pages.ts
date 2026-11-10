@@ -35,6 +35,9 @@ if (!expectedJson) {
   throw new Error("Pages verification requires EXPECTED_SNAPSHOTS from the built artifact.");
 }
 const snapshots = z.object({ stable: infoSchema, latest: infoSchema }).parse(JSON.parse(expectedJson));
+const expectedMacOS = process.env["EXPECTED_MACOS_FEEDS"];
+const macOSFeeds = expectedMacOS
+  ? z.object({ stable: hashSchema, latest: hashSchema }).parse(JSON.parse(expectedMacOS)) : undefined;
 const decoder = new TextDecoder();
 
 async function read(path: string): Promise<Uint8Array | null> {
@@ -100,6 +103,14 @@ async function matchesChannel(channel: "stable" | "latest"): Promise<boolean> {
 async function matchesSite(): Promise<boolean> {
   for (const channel of ["stable", "latest"] as const) {
     if (!await matchesChannel(channel)) return false;
+    if (macOSFeeds) {
+      const path = `macos/${channel}/appcast.xml`;
+      const bytes = await read(path);
+      if (!bytes || new Bun.CryptoHasher("sha256").update(bytes).digest("hex") !== macOSFeeds[channel]) {
+        console.warn(`Waiting for Pages to serve the built ${channel} Mac update feed.`);
+        return false;
+      }
+    }
   }
   const root = await read("index.html");
   if (!root) return false;
