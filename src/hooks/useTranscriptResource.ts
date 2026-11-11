@@ -137,6 +137,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const resourceRef = useRef<TResource | null>(initialResource);
   const transcriptRef = useRef(transcript);
@@ -177,6 +178,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
     setNotFound(true);
     setLoading(false);
     setError(message ?? null);
+    setMetadataError(null);
   }, [setResource, setTranscript]);
 
   const isMetadataOnly = (event: ResourceRealtimeEvent<TranscriptResourceChange>) =>
@@ -201,14 +203,16 @@ export function useTranscriptResource<TResource, TSnapshot>(
       ids: [resourceId],
       predicate: isMetadataOnly,
       trackLastEvent: false,
+      onError: (failure) => { setMetadataError(failure.message); },
     },
   });
   useEffect(() => {
     if (!metadataUrl || !metadata.data || metadata.data.baseUrl !== baseUrl) return;
+    setMetadataError(null);
     const incoming = metadata.data.resource;
-    if (incoming === null) clearResource(`${resourceLabel} not found`);
+    if (incoming === null) void sync.current?.refresh();
     else setResource((current) => settings.current.mergeResource?.(current, incoming) ?? incoming);
-  }, [baseUrl, metadataUrl, metadata.data, resourceLabel, clearResource, setResource]);
+  }, [baseUrl, metadataUrl, metadata.data, setResource]);
 
   useEffect(() => {
     windowRef.current = {};
@@ -220,6 +224,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
     setLoadingTranscript(false);
     setNotFound(false);
     setError(null);
+    setMetadataError(null);
     let committedResource: TResource | null | undefined;
     let committedTranscript: ChatTranscript | undefined;
     const owner = createVersionedSyncController<TranscriptSyncSnapshot<TResource> | null, ContentEvent>({
@@ -262,6 +267,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
         setError(null);
         if (committedResource !== snapshot.resource) {
           committedResource = snapshot.resource;
+          setMetadataError(null);
           setResource((current) => settings.current.mergeResource?.(current, snapshot.resource) ?? snapshot.resource);
         }
         if (committedTranscript !== snapshot.transcript) {
@@ -350,7 +356,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
   return {
     resource: resourceState ? resourceState.resource : localResource,
     getResource, setResource, transcript, loading, loadingTranscript,
-    error: error ?? metadata.error?.message ?? null, notFound,
+    error: error ?? metadataError, notFound,
     setError, refresh, loadMoreTranscript, loadFullTranscript, loadToolDetails, clearResource, realtimeStatus,
   };
 }

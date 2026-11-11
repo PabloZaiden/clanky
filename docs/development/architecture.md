@@ -414,6 +414,9 @@ Chat views refresh their metadata through the summary endpoint for those
 notifications, preserving observation freshness without rebuilding history.
 Unclassified invalidations and stream recovery still refresh the transcript;
 consumers without a metadata reader retain that authoritative fallback.
+Summary 404s require confirmation through the authoritative snapshot before
+clearing retained state. Successful metadata reads or authoritative snapshot
+commits clear obsolete metadata errors.
 Unchanged harness projections/checkpoints do not publish changes, but still
 validate their current owner and binding. A valid no-op must never be treated
 as an invalid session or stop its observers.
