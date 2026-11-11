@@ -9,17 +9,20 @@ import { parseStoredHarnessBinding, parseStoredHarnessState } from "./harness-bi
 import { HarnessConversationStateSchema } from "@/contracts/schemas/harness";
 import { HarnessError } from "../backends/harness-errors";
 import { invalidateChatMetadata } from "./chats/metadata-cache";
+import { isDeepStrictEqual } from "node:util";
 
 export interface HarnessContext {
   kind: "chat" | "task";
   id: string;
 }
 
+export type HarnessProjectionUpdate = "invalid" | "unchanged" | "changed";
+
 export function mergeHarnessProjection(
   context: HarnessContext,
   binding: HarnessConversationBinding,
   projection: Pick<HarnessConversationState, "activity" | "cleanup" | "gitSafety" | "gitOutcome" | "capabilities">,
-): boolean {
+): HarnessProjectionUpdate {
   const parsed = HarnessConversationStateSchema.safeParse(projection);
   if (!parsed.success) {
     throw new HarnessError("harness_request_failed", "The native activity projection is invalid.", {
@@ -34,14 +37,16 @@ export function mergeHarnessProjection(
     const row = db.query<{ session_binding_json: string | null; harness_state_json: string | null }, [string, string]>(
       `SELECT session_binding_json, harness_state_json FROM ${table} WHERE id = ? AND user_id = ?${liveCondition}`,
     ).get(context.id, userId);
-    if (!row) return false;
+    if (!row) return "invalid";
     const current = parseStoredHarnessBinding(row.session_binding_json, context.id);
-    if (!current || current.nativeId !== binding.nativeId || current.adapter !== binding.adapter || current.ownerId !== binding.ownerId || current.contextId !== binding.contextId) return false;
+    if (!current || current.nativeId !== binding.nativeId || current.adapter !== binding.adapter || current.ownerId !== binding.ownerId || current.contextId !== binding.contextId) return "invalid";
     const state = parseStoredHarnessState(row.harness_state_json, context.id);
+    const next = { ...state, ...projection };
+    if (isDeepStrictEqual(state, next)) return "unchanged";
     if (context.kind === "chat") invalidateChatMetadata(db, userId, context.id);
     const revisionUpdate = context.kind === "chat" ? ", state_revision = state_revision + 1" : "";
     db.query(`UPDATE ${table} SET harness_state_json = ?${revisionUpdate} WHERE id = ? AND user_id = ?`)
-      .run(JSON.stringify({ ...state, ...projection }), context.id, userId);
-    return true;
+      .run(JSON.stringify(next), context.id, userId);
+    return "changed";
   })();
 }

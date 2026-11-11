@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateA
 import {
   createVersionedSyncController,
   RealtimeResyncRequiredError,
+  useLiveQuery,
   useRealtime,
   type ResourceRealtimeEvent,
 } from "@pablozaiden/webapp/web";
@@ -18,6 +19,7 @@ import { isAbortError, SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecy
 import { markStreamingText } from "../lib/streaming-text";
 import { toTranscriptStreamEvent } from "./transcript-event-adapter";
 import { useTranscriptToolDetails } from "./useTranscriptToolDetails";
+import type { TranscriptResourceChange } from "@/shared/realtime";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -40,6 +42,7 @@ export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceLabel: string;
   stream: "task" | "chat" | "automation.run" | "subagent";
   baseUrl: string;
+  metadataUrl?: string;
   initialResource?: TResource | null;
   resourceState?: TranscriptResourceState<TResource>;
   decodeSnapshot: (snapshot: TSnapshot) => TranscriptResourceSnapshot<TResource>;
@@ -126,7 +129,7 @@ function reduceContent<T>(
 export function useTranscriptResource<TResource, TSnapshot>(
   options: UseTranscriptResourceOptions<TResource, TSnapshot>,
 ): UseTranscriptResourceResult<TResource> {
-  const { resourceId, resourceLabel, baseUrl, stream, initialResource = null, resourceState } = options;
+  const { resourceId, resourceLabel, baseUrl, metadataUrl, stream, initialResource = null, resourceState } = options;
   const settings = useRef(options);
   settings.current = options;
   const [localResource, setLocalResource] = useState<TResource | null>(initialResource);
@@ -134,6 +137,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
   const [loading, setLoading] = useState(true);
   const [loadingTranscript, setLoadingTranscript] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const resourceRef = useRef<TResource | null>(initialResource);
   const transcriptRef = useRef(transcript);
@@ -174,7 +178,41 @@ export function useTranscriptResource<TResource, TSnapshot>(
     setNotFound(true);
     setLoading(false);
     setError(message ?? null);
+    setMetadataError(null);
   }, [setResource, setTranscript]);
+
+  const isMetadataOnly = (event: ResourceRealtimeEvent<TranscriptResourceChange>) =>
+    Boolean(metadataUrl) && event.action === "changed" && event.payload?.transcript === "unchanged";
+  const metadata = useLiveQuery<
+    { baseUrl: string; resource: TResource | null },
+    ResourceRealtimeEvent<TranscriptResourceChange>
+  >({
+    enabled: Boolean(metadataUrl),
+    deps: [baseUrl, metadataUrl],
+    load: async (signal) => {
+      const response = await requestApiResponse(metadataUrl!, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(SNAPSHOT_REQUEST_TIMEOUT_MS)]),
+        action: `Fetch ${resourceLabel} metadata`,
+        fallbackMessage: `Failed to fetch ${resourceLabel}`,
+        acceptedStatuses: [404],
+      });
+      return { baseUrl, resource: response.status === 404 ? null : await readApiResponse<TResource>(response) };
+    },
+    realtime: {
+      resources: [STREAMS[stream].resource],
+      ids: [resourceId],
+      predicate: isMetadataOnly,
+      trackLastEvent: false,
+      onError: (failure) => { setMetadataError(failure.message); },
+    },
+  });
+  useEffect(() => {
+    if (!metadataUrl || !metadata.data || metadata.data.baseUrl !== baseUrl) return;
+    setMetadataError(null);
+    const incoming = metadata.data.resource;
+    if (incoming === null) void sync.current?.refresh();
+    else setResource((current) => settings.current.mergeResource?.(current, incoming) ?? incoming);
+  }, [baseUrl, metadataUrl, metadata.data, setResource]);
 
   useEffect(() => {
     windowRef.current = {};
@@ -186,6 +224,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
     setLoadingTranscript(false);
     setNotFound(false);
     setError(null);
+    setMetadataError(null);
     let committedResource: TResource | null | undefined;
     let committedTranscript: ChatTranscript | undefined;
     const owner = createVersionedSyncController<TranscriptSyncSnapshot<TResource> | null, ContentEvent>({
@@ -228,6 +267,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
         setError(null);
         if (committedResource !== snapshot.resource) {
           committedResource = snapshot.resource;
+          setMetadataError(null);
           setResource((current) => settings.current.mergeResource?.(current, snapshot.resource) ?? snapshot.resource);
         }
         if (committedTranscript !== snapshot.transcript) {
@@ -261,10 +301,11 @@ export function useTranscriptResource<TResource, TSnapshot>(
     },
     onError: (failure) => { setLoading(false); setError(String(failure)); },
   });
-  useRealtime<ResourceRealtimeEvent>({
+  useRealtime<ResourceRealtimeEvent<TranscriptResourceChange>>({
     resources: [STREAMS[stream].resource],
     ids: [resourceId],
     trackLastEvent: false,
+    predicate: (event) => !isMetadataOnly(event),
     onEvent: () => { void sync.current?.refresh(); },
   });
 
@@ -314,7 +355,8 @@ export function useTranscriptResource<TResource, TSnapshot>(
 
   return {
     resource: resourceState ? resourceState.resource : localResource,
-    getResource, setResource, transcript, loading, loadingTranscript, error, notFound,
+    getResource, setResource, transcript, loading, loadingTranscript,
+    error: error ?? metadataError, notFound,
     setError, refresh, loadMoreTranscript, loadFullTranscript, loadToolDetails, clearResource, realtimeStatus,
   };
 }

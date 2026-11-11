@@ -7,7 +7,7 @@ import type { EventStream } from "../utils/event-stream";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessActivitySnapshot, HarnessConversationBinding, HarnessConversationState } from "@/shared/harness-control";
 import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
-import { mergeHarnessProjection, type HarnessContext } from "../persistence/harness-state";
+import { mergeHarnessProjection, type HarnessContext, type HarnessProjectionUpdate } from "../persistence/harness-state";
 import { harnessEventEmitter } from "./event-emitter";
 import { HarnessError } from "../backends/harness-errors";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -34,7 +34,7 @@ interface Observation {
   nextRefreshAt: number;
   usage: HarnessUsageObserver;
   subagents: SubagentTranscriptObserver;
-  publish(projection: Pick<HarnessConversationState, "activity" | "cleanup">): boolean;
+  publish(projection: Pick<HarnessConversationState, "activity" | "cleanup">): HarnessProjectionUpdate;
 }
 
 export class HarnessActivityService {
@@ -65,14 +65,14 @@ export class HarnessActivityService {
       onEvent: onEvent ? (event) => runWithExecutionOwner(user, () => onEvent(event)) : undefined,
       publish: (projection) => runWithExecutionOwner(user, () => {
         const saved = mergeHarnessProjection(context, binding, projection);
-        if (saved) harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: user.id });
+        if (saved === "changed") harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: user.id });
         return saved;
       }),
     };
     this.observations.set(key, observation);
     try {
       const saved = runWithExecutionOwner(user, () => mergeHarnessProjection(context, binding, { capabilities: backend.harness.capabilities }));
-      if (!saved) throw new HarnessError("harness_session_not_owned", "The activity conversation is not persisted.");
+      if (saved === "invalid") throw new HarnessError("harness_session_not_owned", "The activity conversation is not persisted.");
       // The owned loop has its own visible failure path and remains alive after prompt completion.
       observation.loop = this.consume(observation).catch((error) => {
         log.error("Unable to persist observation failure", { context, error: String(error) });
@@ -163,8 +163,9 @@ export class HarnessActivityService {
   }
 
   private publishCurrent(context: HarnessContext, binding: HarnessConversationBinding, projection: Pick<HarnessConversationState, "activity" | "cleanup">): void {
-    if (!mergeHarnessProjection(context, binding, projection)) throw new HarnessError("harness_session_not_owned", "The activity conversation was replaced.");
-    harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: binding.ownerId });
+    const saved = mergeHarnessProjection(context, binding, projection);
+    if (saved === "invalid") throw new HarnessError("harness_session_not_owned", "The activity conversation was replaced.");
+    if (saved === "changed") harnessEventEmitter.emit({ type: "harness.changed", context }, { userId: binding.ownerId });
   }
 
   private async consume(observation: Observation): Promise<void> {
@@ -234,7 +235,7 @@ export class HarnessActivityService {
     const operation = (async () => {
       const activity = await observation.backend.harness.getActivity(observation.binding.nativeId);
       await observation.subagents.reconcile(activity);
-      if (!observation.stopped && !observation.publish({ activity })) this.stop(observation);
+      if (!observation.stopped && observation.publish({ activity }) === "invalid") this.stop(observation);
       observation.failures = 0;
       observation.nextRefreshAt = 0;
     })();

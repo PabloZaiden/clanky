@@ -17,7 +17,7 @@ import type {
 } from "@/shared";
 import {
   CLANKY_REALTIME_RESOURCES, type ClankyRealtimeResource, type ClankyStreamEvent,
-  type ClankyRealtimeEvent, type RetainedChatEvent,
+  type ClankyRealtimeEvent, type RetainedChatEvent, type TranscriptResourceChange,
 } from "@/shared/realtime";
 import type { MeshStateEvent, HarnessStateEvent } from "./core/event-emitter";
 import { createToolCallSummary, projectTranscriptMessage, serializeExecutionHostRef } from "@/shared";
@@ -128,12 +128,14 @@ function publishChanged(
   resource: ClankyRealtimeResource,
   id?: string,
   scope?: string,
+  payload?: TranscriptResourceChange,
 ): void {
   publisher.publishResource(owner, {
     resource,
     action: "changed",
     ...(id ? { id } : {}),
     ...(scope ? { scope } : {}),
+    ...(payload ? { payload } : {}),
   });
 }
 
@@ -207,12 +209,14 @@ export function publishClankyDomainEvent(
         } : event.event,
       }, { subagentId: event.subagentId, chatId: event.chatId, taskId: event.taskId });
       return;
-    case "harness.changed":
-      publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id);
+    case "harness.changed": {
+      const payload: TranscriptResourceChange = { transcript: "unchanged" };
+      publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id, undefined, payload);
       for (const run of event.runs ?? []) {
-        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, run.id, run.automationId);
+        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, run.id, run.automationId, payload);
       }
       return;
+    }
     case "mesh.changed":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.executionHosts);

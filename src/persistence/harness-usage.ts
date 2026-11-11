@@ -13,6 +13,7 @@ import { parseStoredHarnessBinding } from "./harness-binding";
 import { invalidateChatMetadata } from "./chats/metadata-cache";
 import type { HarnessContext } from "./harness-state";
 import { requireMatchingHarnessBindings } from "../backends/harness-binding";
+import { isDeepStrictEqual } from "node:util";
 
 const log = createLogger("persistence:harness-usage");
 
@@ -144,7 +145,11 @@ export function saveHarnessUsage(
     if (previous && (previous.chat_id !== chatId || previous.task_id !== taskId)) {
       throw new HarnessError("harness_session_not_owned", "Token accounting belongs to another conversation.");
     }
-    const merged = mergeSnapshot(previous ? readSnapshot(previous.snapshot_json) : undefined, next);
+    const previousSnapshot = previous ? readSnapshot(previous.snapshot_json) : undefined;
+    const merged = mergeSnapshot(previousSnapshot, next);
+    if (previous?.status === "current" && isDeepStrictEqual(previousSnapshot, merged)) {
+      return { contexts: [], runs: [] };
+    }
     db.query(`INSERT INTO harness_usage (user_id, source_key, chat_id, task_id, snapshot_json, status)
       VALUES (?, ?, ?, ?, ?, 'current')
       ON CONFLICT(user_id, source_key) DO UPDATE SET snapshot_json = excluded.snapshot_json, status = excluded.status`)
@@ -161,6 +166,7 @@ export function markHarnessUsageStale(context: HarnessContext, binding: HarnessC
       "SELECT * FROM harness_usage WHERE user_id = ? AND source_key = ?",
     ).get(userId, sourceKey(binding));
     if (!row || (context.kind === "chat" ? row.chat_id !== context.id : row.chat_id !== null || row.task_id !== context.id)) return undefined;
+    if (row.status === "stale") return { contexts: [], runs: [] };
     db.query("UPDATE harness_usage SET status = 'stale' WHERE user_id = ? AND source_key = ?")
       .run(userId, sourceKey(binding));
     return updateSummaries(context, row);
