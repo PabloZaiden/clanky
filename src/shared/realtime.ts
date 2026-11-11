@@ -38,6 +38,10 @@ export const CLANKY_REALTIME_RESOURCES = {
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];
 
+export interface TranscriptResourceChange {
+  transcript: "unchanged";
+}
+
 type BrowserTranscriptEvent<T> = T extends { message: MessageData }
   ? Omit<T, "message"> & { message: TranscriptMessage }
   : T;

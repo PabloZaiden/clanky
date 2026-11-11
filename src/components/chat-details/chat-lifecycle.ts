@@ -65,6 +65,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     resourceLabel: "chat",
     stream: "chat",
     baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
+    metadataUrl: `/api/chats/${encodeURIComponent(chatId)}`,
     resourceState,
     decodeSnapshot: decodeChatSnapshot,
     mergeResource: mergeOperationalChatSnapshot,

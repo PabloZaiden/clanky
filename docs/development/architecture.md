@@ -409,6 +409,15 @@ windows stay bounded; older history is explicit. Recovery replaces the loaded
 window authoritatively, preserving its coverage rather than unioning stale
 records. Public pagination options are in the [API reference](../API.md).
 
+Harness activity and usage publications identify unchanged transcript content.
+Chat views refresh their metadata through the summary endpoint for those
+notifications, preserving observation freshness without rebuilding history.
+Unclassified invalidations and stream recovery still refresh the transcript;
+consumers without a metadata reader retain that authoritative fallback.
+Unchanged harness projections/checkpoints do not publish changes, but still
+validate their current owner and binding. A valid no-op must never be treated
+as an invalid session or stop its observers.
+
 ## Errors and logging
 
 Classify domain failures by stable typed codes, not human-readable messages.
