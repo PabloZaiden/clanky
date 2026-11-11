@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { createLiveVoiceValidationOffer } from "../lib/live-voice-browser";
+import { getClientSession, subscribeClientSession } from "@/platform/web/client-session";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
 } from "@/shared";
@@ -86,6 +87,14 @@ function updateState(patch: Partial<VoiceSettingsStoreState>): void {
   emit();
 }
 
+subscribeClientSession(() => {
+  if (!getClientSession().demo) return;
+  refreshController?.abort();
+  refreshController = null;
+  refreshCoordinator.reset();
+  updateState({ settings: createDefaultSettings(), loading: true, saving: false, validating: null, error: null });
+});
+
 async function refreshVoiceSettings(): Promise<void> {
   await refreshCoordinator.run(async () => {
     const controller = new AbortController();
@@ -97,8 +106,10 @@ async function refreshVoiceSettings(): Promise<void> {
         action: "Load voice settings",
         fallbackMessage: "Failed to load voice settings",
       });
+      if (controller.signal.aborted) return;
       updateState({ settings: next, error: null });
     } catch (refreshError) {
+      if (controller.signal.aborted) return;
       if (!(refreshError instanceof Error && refreshError.name === "AbortError")) {
         updateState({ error: String(refreshError) });
       }
@@ -150,6 +161,7 @@ export function useVoiceSettings({ enabled = true }: { enabled?: boolean } = {})
   const updateSettings = useCallback(async (
     update: VoiceSettingsUpdate,
   ): Promise<VoiceSettings> => {
+    const generation = getClientSession().generation;
     updateState({ saving: true });
     try {
       const next = await apiRequest<VoiceSettings>("/api/voice/settings", {
@@ -159,25 +171,28 @@ export function useVoiceSettings({ enabled = true }: { enabled?: boolean } = {})
         action: "Save voice settings",
         fallbackMessage: "Failed to save voice settings",
       });
-      updateState({ settings: next, error: null });
+      if (generation === getClientSession().generation) updateState({ settings: next, error: null });
       return next;
     } catch (saveError) {
-      updateState({ error: String(saveError) });
+      if (generation === getClientSession().generation) updateState({ error: String(saveError) });
       throw saveError;
     } finally {
-      updateState({ saving: false });
+      if (generation === getClientSession().generation) updateState({ saving: false });
     }
   }, []);
 
   const validateCapability = useCallback(async (
     capability: VoiceCapability,
   ): Promise<VoiceSettings> => {
+    if (getClientSession().demo) throw new Error("Demo: voice providers and microphone validation are not simulated.");
+    const generation = getClientSession().generation;
     updateState({ validating: capability });
     const signal = AbortSignal.timeout(30_000);
     try {
       const sdp = capability === "live"
         ? await createLiveVoiceValidationOffer(signal)
         : undefined;
+      if (generation !== getClientSession().generation) throw new Error("The client session changed.");
       const result = await apiRequest<{ settings: VoiceSettings }>("/api/voice/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,14 +201,16 @@ export function useVoiceSettings({ enabled = true }: { enabled?: boolean } = {})
         action: `Validate ${capability} voice capability`,
         fallbackMessage: `Failed to validate ${capability} voice capability`,
       });
-      updateState({ settings: result.settings, error: null });
+      if (generation === getClientSession().generation) updateState({ settings: result.settings, error: null });
       return result.settings;
     } catch (validationError) {
-      await refreshVoiceSettings();
-      updateState({ error: String(validationError) });
+      if (generation === getClientSession().generation) {
+        await refreshVoiceSettings();
+        updateState({ error: String(validationError) });
+      }
       throw validationError;
     } finally {
-      updateState({ validating: null });
+      if (generation === getClientSession().generation) updateState({ validating: null });
     }
   }, []);
 

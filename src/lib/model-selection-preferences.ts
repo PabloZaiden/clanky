@@ -2,6 +2,7 @@ import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schema
 import type { CheapModelSelection, ModelConfig } from "@/shared";
 import { clientScopedStorageKey } from "@/platform/web/client-session";
 import { createLogger } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 const log = createLogger("modelSelectionPreferences");
 
@@ -30,7 +31,7 @@ function resolveStorage(
   }
 
   try {
-    return window.localStorage;
+    return getDemoStorage() ?? window.localStorage;
   } catch (error) {
     log.warn("Model preference storage is unavailable", {
       error: String(error),

@@ -2,6 +2,7 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Automation, Chat, Task, TerminalSession, Workspace } from "@/shared";
 import { isWorkspaceReadOnly } from "@/shared/workspace";
 import { decodeCollaborationResourceReference } from "@/shared/collaboration-reference";
+import { getClankyClientCapabilities } from "../client-sdk/capabilities";
 
 export interface WorkspaceAccessResources {
   workspaces: Workspace[];
@@ -12,6 +13,11 @@ export interface WorkspaceAccessResources {
 }
 
 export function isReadOnlyWorkspaceRoute(route: WebAppRoute, resources: WorkspaceAccessResources): boolean {
+  if (!getClankyClientCapabilities().taskExecution && (
+    typeof route["taskId"] === "string"
+    || resources.chats.some((chat) => chat.config.id === route["chatId"] && Boolean(chat.config.taskId))
+    || route.view === "compose" && route["kind"] === "task"
+  )) return true;
   // Trash actions check the deleted chat's workspace grant independently.
   if (route.view === "trash") return false;
   const workspaceId = typeof route["workspaceId"] === "string" ? route["workspaceId"]

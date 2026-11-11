@@ -33,6 +33,7 @@ await Bun.write(
   JSON.stringify(collaborationBootstrap),
 );
 await cp(new URL("./favicon.svg", import.meta.url), join(outdir, "favicon.svg"));
+await cp(resolve("assets/privacy"), join(outdir, "privacy"), { recursive: true, errorOnExist: true, force: false });
 
 await Bun.write(join(outdir, "index.html"), renderPagesChooser({
   prompt: "Choose how to connect.",

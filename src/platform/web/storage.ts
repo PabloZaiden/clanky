@@ -1,4 +1,5 @@
 import { createLogger } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 type StorageOperation = "get" | "set" | "remove";
 
@@ -81,7 +82,9 @@ function unavailableFailure(key: string): StorageFailure {
   return { ok: false, reason: "unavailable", error };
 }
 
-function resolveStorage(operation: StorageOperation, key: string): Storage | StorageFailure {
+function resolveStorage(operation: StorageOperation, key: string, persistent = false): Storage | StorageFailure {
+  const demo = getDemoStorage();
+  if (demo && !persistent) return demo;
   if (typeof window === "undefined") {
     return unavailableFailure(key);
   }
@@ -121,8 +124,8 @@ export function readStorage(key: string): StorageReadResult {
   }
 }
 
-export function writeStorage(key: string, value: string): StorageWriteResult {
-  const resolved = resolveStorage("set", key);
+export function writeStorage(key: string, value: string, options?: { persistent: boolean }): StorageWriteResult {
+  const resolved = resolveStorage("set", key, options?.persistent);
   if (isStorageFailure(resolved)) {
     return resolved;
   }

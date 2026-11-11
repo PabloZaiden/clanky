@@ -17,6 +17,7 @@ import { ImageAttachment } from "./image-attachment";
 import { MessageBody } from "./message-body";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
+import { getDemoStorage } from "../../client-sdk/demo/storage";
 import {
   detectTrailingPromiseMarker,
   type PromiseMarkerOutcomeKind,
@@ -89,8 +90,9 @@ export const MessageEntry = memo(function MessageEntry({
     : null;
   const renderedContent = currentTranslation?.text ?? sourceText;
   const hasMessageText = sourceText.trim().length > 0;
-  const canReadAloud = !isUser && Boolean(onReadAloud) && hasMessageText;
-  const canTranslate = msg.role === "assistant"
+  const demo = getDemoStorage() !== undefined;
+  const canReadAloud = !demo && !isUser && Boolean(onReadAloud) && hasMessageText;
+  const canTranslate = !demo && msg.role === "assistant"
     && hasMessageText
     && sourceText.trim().length <= VOICE_MAX_TEXT_CHARS;
   const isReadAloudActive = playingReadAloudKey === msg.id;

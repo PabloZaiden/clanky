@@ -64,6 +64,7 @@ function getWorkspaceSidebarActions(
       ...(isGitBacked ? [{
           id: "new-task",
           label: "New Task",
+          disabled: !capabilities.taskExecution,
           onClick: () => context.navigateWithinShell({
             view: "compose",
             kind: "task",
@@ -73,6 +74,7 @@ function getWorkspaceSidebarActions(
       {
         id: "new-terminal-session",
         label: "New Terminal",
+        disabled: !capabilities.terminalManagement,
         onClick: () => context.navigateWithinShell({
           view: "compose",
           kind: "terminal-session",

@@ -255,6 +255,14 @@ as public release assets. Existing unsigned iOS downloads remain unchanged.
 Public App Store publication is not implemented by the release workflow.
 Published GitHub releases upload only internal TestFlight builds; public
 distribution requires a separately approved tooling/workflow change.
+See [App Review preparation](app-store-review.md) for the privacy-policy
+publication, local demonstration, review notes, and remaining readiness gates.
+
+The native shell includes `PrivacyInfo.xcprivacy`, declaring its own-container
+UserDefaults use with reason `CA92.1`. Xcode includes the shared resource;
+Linux builds explicitly package it. The existing iOS resource verifier checks
+the exact manifest and Settings bundle in built, archived, and exported apps.
+Reassess the declaration when native APIs or data handling change.
 
 The same valid Apple Distribution certificate **and private key**, matching
 [App Store Connect provisioning profile](https://developer.apple.com/help/account/provisioning-profiles/create-an-app-store-provisioning-profile/)
@@ -989,6 +997,24 @@ state that limitation instead of claiming the layout passed.
 
 Keep the chosen simulator and install later builds on that same device to
 preserve its app data. A physical iPhone cannot install this simulator artifact.
+
+For manual recording automation, `scripts/ios-simulator-ui.py` inspects Device
+Hub's accessibility tree and supplies guarded presses, clicks and keyboard input
+using macOS frameworks and Python's standard library. Run its `--help` on the
+Mac; it requires existing Accessibility/input-event permissions and never grants
+them. Inspection writes a new JSON file; presses require the inspected path and
+current label, and coordinate clicks stay inside Device Hub windows. Select and
+verify an isolated recording device before sending input. Typing sends individual
+printable ASCII keystrokes and expects a US keyboard layout in the simulator.
+Wait for focus and keyboard transitions before typing. Click controls once;
+a follow-up Return can activate a replacement action.
+Long terminal input has been unreliable in manual capture; use short commands
+and verify the line before submitting.
+Use `type --stdin` with private piped input for credentials, never command
+arguments. Capture the selected simulator display with `simctl`, not the Mac
+desktop, and keep original footage and edit artifacts private unless publication
+is separately authorized.
+
 Native signing still requires the account, certificate and provisioning
 requirements below. A private-NAT VM does not automatically discover a real
 iPhone on the host's Wi-Fi: use a reachable paired Mac for network deployment

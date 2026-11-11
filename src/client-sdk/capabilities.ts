@@ -3,10 +3,14 @@
  */
 
 import { getWebAppClientMode, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "./demo/storage";
 
 export function getClankyClientCapabilities() {
   const apiBacked = getWebAppClientMode() !== "external";
+  const demo = getDemoStorage() !== undefined;
   return {
+    taskExecution: !demo,
+    terminalManagement: !demo,
     controllerAdministration: apiBacked,
     workspaceCreation: apiBacked,
     executionHosts: apiBacked,
@@ -19,6 +23,13 @@ export function getClankyClientCapabilities() {
 
 export function getClankyRouteUnavailableReason(route: WebAppRoute): string | undefined {
   const capabilities = getClankyClientCapabilities();
+  if (route.view === "compose" && !capabilities.taskExecution && route["kind"] === "task") {
+    return "Demo tasks are read-only.";
+  }
+  if (route.view === "compose" && !capabilities.terminalManagement
+    && ["terminal-session", "execution-host-terminal"].includes(String(route["kind"]))) {
+    return "Demo: open the sample terminal instead.";
+  }
   if (!capabilities.executionHosts && (route.view === "execution-host" || route.view === "execution-host-files"
     || route.view === "code-explorer" && route["contentType"] === "execution-host"
     || route.view === "compose" && ["execution-host-chat", "execution-host-terminal"].includes(String(route["kind"])))) {

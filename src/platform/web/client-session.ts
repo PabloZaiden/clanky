@@ -5,6 +5,8 @@ import {
 } from "./client-credentials";
 import { readStorage, writeStorage } from "./storage";
 import { recordClientSessionDiagnostic, startClientSessionDiagnostics } from "./client-session-diagnostics";
+import { DEMO_CONTROLLER_ENDPOINT, isDemoControllerEndpoint, startDemoStorage } from "@/client-sdk/demo/storage";
+import { startDemoController, stopDemoController } from "@/client-sdk/demo/controller";
 
 declare global {
   interface Window {
@@ -24,6 +26,7 @@ export interface WebAppClientSession {
   endpoint?: string;
   authenticated: boolean;
   generation: number;
+  demo?: boolean;
   error?: Error;
 }
 
@@ -44,6 +47,9 @@ function update(change: Partial<WebAppClientSession>): void {
 
 export function normalizeClientEndpoint(value: string): string {
   const url = new URL(value.trim());
+  if (url.hostname === "demo-controller" && !isDemoControllerEndpoint(value)) {
+    throw new Error("Use exactly https://demo-controller for the in-browser demo.");
+  }
   if (url.username || url.password || url.search || url.hash
     || !["http:", "https:"].includes(url.protocol)) {
     throw new Error("Enter an HTTP(S) API URL without credentials, query or fragment.");
@@ -72,7 +78,9 @@ export function configureRemoteClient(defaultEndpoint?: string, options: WebAppR
       if (!saved.ok) throw saved.error;
       endpoint = saved.value ?? endpoint;
     }
-    update({ enabled: true, ready: false, localController, endpoint: endpoint ? normalizeClientEndpoint(endpoint) : undefined });
+    const normalized = endpoint ? normalizeClientEndpoint(endpoint) : undefined;
+    update({ enabled: true, ready: false, localController,
+      endpoint: normalized && !isDemoControllerEndpoint(normalized) ? normalized : undefined });
   } catch (error) {
     update({ enabled: true, ready: true, localController, error: error instanceof Error ? error : new Error(String(error)) });
   }
@@ -80,6 +88,7 @@ export function configureRemoteClient(defaultEndpoint?: string, options: WebAppR
 
 export function getClientSession(): WebAppClientSession { return state; }
 function storageChanged(event: StorageEvent): void {
+  if (state.demo) return;
   if (event.storageArea !== window.localStorage) return;
   if (event.key === null || !state.localController && event.key === clientStorageKey("endpoint")) {
     window.location.reload();
@@ -105,6 +114,7 @@ export function subscribeClientSession(listener: () => void): () => void {
 }
 
 export function getClientStorageScope(): string {
+  if (state.demo) return `demo:${state.generation}`;
   if (externalStorageScope) return externalStorageScope();
   return state.enabled ? `${state.endpoint ?? ""}:${credentials?.clientId ?? ""}` : "";
 }
@@ -143,6 +153,26 @@ export async function initializeClientSession(): Promise<void> {
 export async function selectClientEndpoint(endpoint: string): Promise<void> {
   if (state.localController) throw new Error("Use the API connection mode to choose a different server.");
   const normalized = normalizeClientEndpoint(endpoint);
+  if (isDemoControllerEndpoint(normalized)) {
+    login?.abort();
+    startDemoStorage();
+    startDemoController();
+    credentials = undefined;
+    hydration = undefined;
+    update({ endpoint: DEMO_CONTROLLER_ENDPOINT, ready: true, authenticated: true, demo: true,
+      generation: state.generation + 1, error: undefined });
+    window.addEventListener("pagehide", stopDemoController, { once: true });
+    window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    }, { once: true });
+    return;
+  }
+  if (state.demo) {
+    const result = writeStorage(clientStorageKey("endpoint"), normalized, { persistent: true });
+    if (!result.ok) throw result.error;
+    window.location.reload();
+    return;
+  }
   const previous = state.endpoint;
   if (previous) await withClientCredentialLock(previous, async () => { await store.remove(previous); });
   const result = writeStorage(clientStorageKey("endpoint"), normalized);
@@ -156,6 +186,7 @@ export async function selectClientEndpoint(endpoint: string): Promise<void> {
 export function hasNativeAuthorizationBrowser(): boolean { return nativeOpen !== undefined; }
 
 export async function loginClient(onVerification: (info: { url: string; code: string }) => void): Promise<void> {
+  if (state.demo) throw new Error("Demo does not use authentication.");
   const endpoint = state.endpoint;
   if (!endpoint) throw new Error("Choose an API server first.");
   login?.abort();
@@ -196,6 +227,10 @@ export async function loginClient(onVerification: (info: { url: string; code: st
 export function cancelClientLogin(): void { login?.abort(); }
 
 export async function logoutClient(): Promise<void> {
+  if (state.demo) {
+    window.location.reload();
+    return;
+  }
   const endpoint = state.endpoint;
   let previous = credentials;
   login?.abort();
@@ -215,11 +250,16 @@ export async function logoutClient(): Promise<void> {
 }
 
 export function invalidateClientSession(): void {
+  if (state.demo) {
+    window.location.reload();
+    return;
+  }
   credentials = undefined;
   update({ authenticated: false, generation: state.generation + 1 });
 }
 
 export async function clientAccessToken(rejectedToken?: string): Promise<string> {
+  if (state.demo) throw new Error("Demo does not use credentials.");
   const current = credentials;
   if (!current || current.baseUrl !== state.endpoint) throw new Error("Sign in to the selected API server.");
   if (rejectedToken && current.accessToken !== rejectedToken) return current.accessToken;

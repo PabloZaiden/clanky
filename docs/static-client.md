@@ -3,6 +3,8 @@
 Clanky supports the normal combined server/UI binary, a static frontend that
 connects to a remote API, and a browser-only invited collaboration client.
 The static frontend needs no Bun, Node, application server or SPA rewrites.
+The [App Review guide](app-store-review.md) documents the public privacy policy
+and local demonstration used to explore the client without a controller.
 
 ## Build and publish
 

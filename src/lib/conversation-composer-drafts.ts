@@ -1,4 +1,5 @@
-import { clientScopedStorageKey } from "@/platform/web/client-session";
+import { clientScopedStorageKey, getClientStorageScope } from "@/platform/web/client-session";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
@@ -51,7 +52,7 @@ function resolveStorage(
   }
 
   try {
-    return window.localStorage;
+    return getDemoStorage() ?? window.localStorage;
   } catch (error) {
     log.warn("Conversation composer draft storage is unavailable", {
       error: String(error),
@@ -217,6 +218,7 @@ export function createConversationComposerDraftPersistence(
 ): ConversationComposerDraftPersistence {
   const scheduleTimeout = dependencies.setTimeout ?? globalThis.setTimeout;
   const clearTimeout = dependencies.clearTimeout ?? globalThis.clearTimeout;
+  const scope = getClientStorageScope();
   let latestMessage = "";
   let timeoutHandle: DraftTimeoutHandle | null = null;
   let dirty = false;
@@ -231,6 +233,7 @@ export function createConversationComposerDraftPersistence(
 
   function flush(): void {
     cancelScheduledWrite();
+    if (scope !== getClientStorageScope()) return;
     if (!dirty) {
       return;
     }

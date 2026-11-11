@@ -130,6 +130,7 @@ if (linux) {
     await cp(resolve("dist/clanky-darwin-arm64"), `${contents}/Helpers/clanky`);
     await chmod(`${contents}/Helpers/clanky`, 0o755);
     await cp(web, `${contents}/Resources/Web`, { recursive: true });
+    await cp(resolve("native/Shared/PrivacyInfo.xcprivacy"), `${contents}/Resources/PrivacyInfo.xcprivacy`);
     await embedSparkle(app);
     const plist = (await Bun.file(`${directory}/macOS.plist`).text()).replace(
       /\$\(([^)]+)\)/g,
@@ -191,7 +192,7 @@ let package = Package(
     platforms: [.iOS(${JSON.stringify(deploymentTarget)})],
     products: [.library(name: ${JSON.stringify(product)}, targets: [${JSON.stringify(product)}])],
     targets: [.target(
-        name: ${JSON.stringify(product)}, path: "Shared", exclude: ["Assets.xcassets"],
+        name: ${JSON.stringify(product)}, path: "Shared", exclude: ["Assets.xcassets", "PrivacyInfo.xcprivacy"],
         linkerSettings: [.unsafeFlags([
             "-Xlinker", "-platform_version", "-Xlinker", ${JSON.stringify(simulator ? "ios-simulator" : "ios")},
             "-Xlinker", ${JSON.stringify(deploymentTarget)}, "-Xlinker", ${JSON.stringify(metadata.Version)}
@@ -208,6 +209,7 @@ iconPath: Shared/Assets.xcassets/AppIcon.appiconset/ios-1024.png
 resources:
   - ../Web
   - Settings.bundle
+  - Shared/PrivacyInfo.xcprivacy
 skipLSP: true
 `);
     await run([

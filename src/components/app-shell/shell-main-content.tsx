@@ -59,6 +59,7 @@ import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ShellMainContentProps {
   trashActions: ChatTrashActions;
@@ -966,7 +967,7 @@ export function AppRouteContent(props: ShellMainContentProps) {
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>
-      {readOnly ? <p role="status" className="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Read-only workspace</p> : null}
+      {readOnly ? <p role="status" className="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{getClankyClientCapabilities().taskExecution ? "Read-only workspace" : "Read-only task"}</p> : null}
       <WorkspaceConnectionsNotice />
       {props.shellErrors.length > 0 && (
         <ErrorState
