@@ -330,9 +330,9 @@ private struct NativeToolbarPageActions: View {
                         .disabled(item.disabled || item.busy)
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Label("More", systemImage: "list.bullet")
                 }
-                .accessibilityLabel("Page actions")
+                .accessibilityLabel("More")
                 .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
             }
         }

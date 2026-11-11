@@ -116,6 +116,10 @@ descriptors. The framework moves them first into overflow on narrow screens
 while preserving native form validation/submission. Do not duplicate or clip
 actions or crowd titles.
 
+The web header's action-menu trigger uses a bulleted-list glyph matching the
+native iOS `list.bullet` symbol. Sidebar and inline menus retain their existing
+icons. Preserve the shell's contextual accessible labels.
+
 The workspace overview promotes **New Chat** to a primary header action when
 space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.

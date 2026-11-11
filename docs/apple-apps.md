@@ -36,6 +36,9 @@ bottom-anchored placement and native interactions.
 Show/Hide sidebar and Settings have higher native visibility priority than the
 other toolbar controls, without changing their order or system-managed spacing.
 Pages without actions leave no empty toolbar group reserving space.
+The shared page-actions menu is labeled **More** and uses the `list.bullet`
+symbol on every page. Its semantic icon-and-text label keeps the name visible
+when the system moves it into overflow, including with the keyboard open.
 They invoke the same web callbacks; Swift does not implement their
 business logic. Native actions use the current published state, so changing a
 label or active state does not invalidate a visible control. Native button and
