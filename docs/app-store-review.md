@@ -19,6 +19,10 @@ The policy's canonical source is
 the page, and whole-site publications preserve it. Publication verification
 checks its exact contents.
 
+Keep the policy limited to necessary data/use, recipient, retention/deletion
+and contact disclosures. Technical explanations, demo instructions and other
+review material belong in this guide, not in the policy.
+
 Before entering these URLs in App Store Connect, deploy the approved page and
 confirm that it is readable without a login. Enable receiving and monitoring
 `clanky@zaiden.dev` before submission. An address that cannot receive messages is
