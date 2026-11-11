@@ -84,6 +84,7 @@ export function configureRemoteClient(defaultEndpoint?: string, options: WebAppR
   } catch (error) {
     update({ enabled: true, ready: true, localController, error: error instanceof Error ? error : new Error(String(error)) });
   }
+  if (listeners.size) window.addEventListener("storage", storageChanged);
 }
 
 export function getClientSession(): WebAppClientSession { return state; }
@@ -155,6 +156,8 @@ export async function selectClientEndpoint(endpoint: string): Promise<void> {
   const normalized = normalizeClientEndpoint(endpoint);
   if (isDemoControllerEndpoint(normalized)) {
     login?.abort();
+    // Finish real credential rotation before switching to in-memory storage.
+    while (refresh) await refresh;
     startDemoStorage();
     startDemoController();
     credentials = undefined;
