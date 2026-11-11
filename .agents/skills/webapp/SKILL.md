@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.8
+version: 0.6.9
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -146,8 +146,10 @@ in app-owned adapters, not silently convert/reset them.
   top-level `Page`; `layout="full"` handles viewport content. Never duplicate
   the fixed framework title or override internal content geometry.
 - Make ordinary actions subtle/unboxed; primary emphasis is explicit.
-  Prefer direct actions when space permits, ellipsis for meaningful secondary
-  groups/constrained space. Reserve danger emphasis for final confirmation.
+  Prefer direct actions when space permits. Title-bar menus use a bulleted-list
+  glyph matching native `list.bullet`; other menus retain ellipsis for meaningful
+  secondary groups/constrained space. Preserve contextual accessible names.
+  Reserve danger emphasis for final confirmation.
 - All destructive deletes use `ConfirmDialog` before the mutation. Support
   Escape, X and Cancel, focus and mobile scroll.
 - Settings has identity at left and controls/actions right, vertically centered.
