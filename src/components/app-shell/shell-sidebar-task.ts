@@ -14,6 +14,7 @@ import {
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import { harnessActivityActions } from "./harness-actions";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface TaskSidebarContext {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -102,7 +103,7 @@ export function createTaskSidebarNode(
     render,
     route: { view: "task", taskId: task.config.id },
     actions,
-    pinnable: true,
+    pinnable: getClankyClientCapabilities().taskExecution,
     pinId,
   }, privateHidden, privateActions(actions, privateHidden, task.config.isPrivate === true));
 }

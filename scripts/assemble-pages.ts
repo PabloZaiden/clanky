@@ -38,6 +38,7 @@ await rm(outdir, { recursive: true, force: true });
 await cp(stable.root, join(outdir, "stable"), { recursive: true, errorOnExist: true, force: false });
 await cp(latest.root, join(outdir, "latest"), { recursive: true, errorOnExist: true, force: false });
 await cp(join(stable.root, "favicon.svg"), join(outdir, "favicon.svg"));
+await cp(resolve("assets/privacy"), join(outdir, "privacy"), { recursive: true, errorOnExist: true, force: false });
 await Bun.write(join(outdir, "index.html"), renderPagesChooser({
   prompt: "Choose a frontend channel.",
   navigation: "Frontend channels",

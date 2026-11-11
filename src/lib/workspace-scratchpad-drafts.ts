@@ -1,4 +1,5 @@
-import { clientScopedStorageKey } from "@/platform/web/client-session";
+import { clientScopedStorageKey, getClientStorageScope } from "@/platform/web/client-session";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { decodeCollaborationResourceReference } from "../shared/collaboration-reference";
 
@@ -51,7 +52,7 @@ function resolveStorage(
   }
 
   try {
-    return window.localStorage;
+    return getDemoStorage() ?? window.localStorage;
   } catch (error) {
     log.warn("Workspace Scratchpad draft storage is unavailable", {
       error: String(error),
@@ -196,6 +197,7 @@ export function createWorkspaceScratchpadDraftPersistence(
 ): WorkspaceScratchpadDraftPersistence {
   const scheduleTimeout = dependencies.setTimeout ?? globalThis.setTimeout;
   const clearTimeout = dependencies.clearTimeout ?? globalThis.clearTimeout;
+  const scope = getClientStorageScope();
   let latestContent = "";
   let timeoutHandle: DraftTimeoutHandle | null = null;
   let dirty = false;
@@ -210,6 +212,7 @@ export function createWorkspaceScratchpadDraftPersistence(
 
   function flush(): void {
     cancelScheduledWrite();
+    if (scope !== getClientStorageScope()) return;
     if (!dirty) {
       return;
     }

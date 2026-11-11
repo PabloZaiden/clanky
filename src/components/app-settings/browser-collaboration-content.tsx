@@ -10,6 +10,7 @@ import { getBrowserCollaborationClient } from "../../client-sdk/browser-runtime"
 import { readWorkspaceInvitationFile } from "../../client-sdk/collaboration/invitation-file";
 import { Button, StatusBadge } from "../common";
 import { controllerStatusLabel, isControllerUnavailable } from "./collaboration-connection-status";
+import { PrivacyPolicyLink } from "@/platform/web/privacy-policy-link";
 
 function useBrowserConnections() {
   const client = getBrowserCollaborationClient()!;
@@ -102,6 +103,7 @@ export function BrowserCollaborationContent() {
   return <div className="space-y-4">
     <FormActions>
       <Button disabled={saving} onClick={() => open({ kind: "connect" })}>Connect controller</Button>
+      <PrivacyPolicyLink />
     </FormActions>
     {state.error ? <ErrorState title="Connections unavailable" description={state.error.message} /> : null}
     {state.loading ? <LoadingState title="Loading connections" /> : null}
@@ -155,7 +157,7 @@ export function BrowserConnectionsNotice() {
   if (state.loading) return <LoadingState title="Loading connections" />;
   const link = <a href={routeToHash({ view: "settings", category: "collaboration" })}>Connect controller</a>;
   if (state.connections.length === 0) {
-    return <Panel title="No connected controllers"><FormActions>{link}</FormActions></Panel>;
+    return <Panel title="No connected controllers"><FormActions>{link}<PrivacyPolicyLink /></FormActions></Panel>;
   }
   const unavailable = state.connections.filter((entry) => entry.connection.status !== "active" || isControllerUnavailable(entry));
   if (unavailable.length === 0) return null;

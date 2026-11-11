@@ -9,6 +9,7 @@ import {
   supportsExecutionHostCapability,
 } from "@/shared";
 import { sidebarActionItems } from "./shell-sidebar-utils";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ExecutionHostSidebarContext {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -91,7 +92,7 @@ export function getExecutionHostSidebarActions(
     {
       id: "new-terminal",
       label: "New Terminal",
-      disabled: !usable || !host.capabilities.interactiveTerminal,
+      disabled: !usable || !host.capabilities.interactiveTerminal || !getClankyClientCapabilities().terminalManagement,
       onClick: () => createExecutionHostTerminal(host, context),
     },
     {

@@ -11,6 +11,7 @@ import { getClientConnectionPickerUrl } from "./api-client";
 import {
   clientSessionDiagnosticsEnabled, readClientSessionDiagnostics, readNativeDiagnostics,
 } from "./client-session-diagnostics";
+import { PrivacyPolicyLink } from "./privacy-policy-link";
 
 function SessionDiagnostics() {
   const [diagnostics, setDiagnostics] = useState(readClientSessionDiagnostics);
@@ -133,6 +134,7 @@ export function RemoteClientBoundary({ children }: { children: ReactNode }) {
         </> : null}
         {error || session.error ? <p className="wapp-error" role="alert">{error ?? session.error?.message}</p> : null}
         {session.ready && clientSessionDiagnosticsEnabled() ? <SessionDiagnostics /> : null}
+        <PrivacyPolicyLink />
       </Dialog>
     </main></ThemeProvider>
   );
@@ -155,7 +157,7 @@ export function RemoteClientSettings() {
     <FormSection title="Connection">
       {session.enabled ? <SettingsFieldRow title="API server" content={<span>{session.endpoint}</span>} actions={<>
         <Button onClick={() => changeServer(() => setEditing(!editing))}>Change server</Button>
-        <Button onClick={() => void signOut()}>Sign out</Button>
+        <Button onClick={() => void signOut()}>{session.demo ? "Exit demo" : "Sign out"}</Button>
       </>} /> : null}
       {session.enabled && editing ? <EndpointForm endpoint={session.endpoint} /> : null}
       {connectionPickerUrl ? <SettingsFieldRow title="Client"

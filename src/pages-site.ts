@@ -99,7 +99,10 @@ ${options.choices.map(choice => `          <li>
           </li>`).join("\n")}
         </ul>
       </nav>
-${options.revision ? `      <footer>Build: <a href="https://github.com/PabloZaiden/clanky/commit/${Bun.escapeHTML(options.revision)}">${Bun.escapeHTML(options.revision.slice(0, 7))}</a></footer>\n` : ""}    </main>
+      <footer>
+        <a href="./privacy/">Privacy Policy</a>
+${options.revision ? `        &middot; Build: <a href="https://github.com/PabloZaiden/clanky/commit/${Bun.escapeHTML(options.revision)}">${Bun.escapeHTML(options.revision.slice(0, 7))}</a>\n` : ""}      </footer>
+    </main>
   </body>
 </html>
 `;

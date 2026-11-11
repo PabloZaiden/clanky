@@ -1,5 +1,6 @@
 import { clientScopedStorageKey } from "@/platform/web/client-session";
 import { createLogger } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 const log = createLogger("newTaskPlanningPreferences");
 
@@ -31,7 +32,7 @@ function resolveStorage(
   }
 
   try {
-    return window.localStorage;
+    return getDemoStorage() ?? window.localStorage;
   } catch (error) {
     log.warn("New task planning preference storage is unavailable", {
       error: String(error),

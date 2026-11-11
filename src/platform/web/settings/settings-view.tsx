@@ -14,6 +14,7 @@ import { SettingsSectionContent } from "@pablozaiden/webapp/web";
 import { SettingsLayout } from "@pablozaiden/webapp/web";
 import { RemoteClientSettings } from "../remote-client";
 import { AppearanceSection } from "./appearance-section";
+import { PrivacyPolicyLink } from "../privacy-policy-link";
 import type { WebAppExternalSession } from "@pablozaiden/webapp/web";
 
 export type { SettingsAction, SettingsRow, SettingsSection } from "../root-types";
@@ -84,7 +85,10 @@ export function SettingsView({ config, external, appName, version, refresh, cust
         {selected === "administration" && config ? <UserManagement config={config} /> : null}
         {visibleSections.filter((section) => (section.category?.id ?? "general") === selected).map((section) => <SettingsSectionContent key={section.id} section={section} />)}
         {selected === "maintenance" && config ? <ShutdownSection config={config} setError={setError} /> : null}
-        {selected === "about" ? <FormSection title="Version"><span>{appName ?? config?.appName} {version ?? config?.version}</span></FormSection> : null}
+        {selected === "about" ? <>
+          <FormSection title="Version"><span>{appName ?? config?.appName} {version ?? config?.version}</span></FormSection>
+          <PrivacyPolicyLink />
+        </> : null}
       </div>
     </SettingsLayout>
   );

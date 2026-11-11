@@ -5,6 +5,7 @@ import {
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 import { getShellShortcutForKeyboardEvent, isEditableShortcutTarget } from "./shell-shortcuts";
+import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
 
 export const HOME_ROUTE: WebAppRoute = { view: "home" };
 
@@ -32,6 +33,7 @@ export function useShellNavigation({
       }
 
       event.preventDefault();
+      if (shortcut.route && getClankyRouteUnavailableReason(shortcut.route)) return;
       if (shortcut.action === "sidebar-search") {
         focusSidebarSearch();
         return;

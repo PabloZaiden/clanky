@@ -39,6 +39,7 @@ const expectedMacOS = process.env["EXPECTED_MACOS_FEEDS"];
 const macOSFeeds = expectedMacOS
   ? z.object({ stable: hashSchema, latest: hashSchema }).parse(JSON.parse(expectedMacOS)) : undefined;
 const decoder = new TextDecoder();
+const privacy = new Uint8Array(await Bun.file("assets/privacy/index.html").arrayBuffer());
 
 async function read(path: string): Promise<Uint8Array | null> {
   const url = new URL(path, base);
@@ -101,6 +102,13 @@ async function matchesChannel(channel: "stable" | "latest"): Promise<boolean> {
 }
 
 async function matchesSite(): Promise<boolean> {
+  const policyPath = "privacy/index.html";
+  const policy = await read(policyPath);
+  if (!policy || !matchesFile(policyPath, policy, {
+    path: policyPath,
+    bytes: privacy.byteLength,
+    sha256: new Bun.CryptoHasher("sha256").update(privacy).digest("hex"),
+  })) return false;
   for (const channel of ["stable", "latest"] as const) {
     if (!await matchesChannel(channel)) return false;
     if (macOSFeeds) {

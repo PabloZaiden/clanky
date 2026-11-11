@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clientScopedStorageKey } from "@/platform/web/client-session";
 import { createLogger } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 const log = createLogger("usePrivateItemsPreference");
 const PRIVATE_ITEMS_STORAGE_KEY = "clanky.showPrivateItems";
@@ -16,7 +17,7 @@ function getStorage(): Storage | null {
   }
 
   try {
-    return window.localStorage;
+    return getDemoStorage() ?? window.localStorage;
   } catch (error) {
     log.warn("Private items preference storage is unavailable", { error: String(error) });
     return null;
@@ -66,6 +67,7 @@ export function usePrivateItemsPreference(): PrivateItemsPreference {
     }
 
     const handleStorage = (event: StorageEvent) => {
+      if (getDemoStorage()) return;
       if (event.key !== clientScopedStorageKey(PRIVATE_ITEMS_STORAGE_KEY)) {
         return;
       }

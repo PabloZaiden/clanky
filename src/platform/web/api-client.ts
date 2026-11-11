@@ -15,9 +15,11 @@ import {
   configureExternalClientStorageScope,
   configureRemoteClient,
   getClientSession,
+  subscribeClientSession,
   type WebAppRemoteClientOptions,
 } from "./client-session";
 import { clankyClientRuntime } from "./runtime";
+import { getDemoController } from "@/client-sdk/demo/controller";
 
 export {
   appAbsoluteUrl,
@@ -61,6 +63,14 @@ function selectedApiUrl(url: URL): URL {
 }
 
 async function authenticatedRequest(request: Request): Promise<Response> {
+  if (getClientSession().demo) {
+    const demo = getDemoController();
+    if (!demo) throw new Error("Demo session has ended. Reload to reconnect.");
+    return await demo.request(request);
+  }
+  if (new URL(request.url).hostname === "demo-controller") {
+    throw new Error("The reserved demo alias cannot be used as a network endpoint.");
+  }
   if (!getClientSession().enabled) return await fetchAppRequest(request);
   selectedApiUrl(new URL(request.url));
   const retry = request.clone();
@@ -99,6 +109,11 @@ async function resourceUrl(
   path: string,
   options: { signal?: AbortSignal; kind?: "resource" | "websocket" } = {},
 ): Promise<WebAppResourceUrl> {
+  if (getClientSession().demo) {
+    const demo = getDemoController();
+    if (!demo) throw new Error("Demo session has ended. Reload to reconnect.");
+    return await demo.resourceUrl(path, options);
+  }
   const kind = options.kind ?? "resource";
   const url = new URL(kind === "websocket" ? appWebSocketUrl(path) : appPath(path));
   if (url.protocol === "wss:") url.protocol = "https:";
@@ -145,6 +160,11 @@ export function configureClankyClient(
       apiBaseUrl: getClientSession().endpoint,
       resourceUrl,
       connect: async (path: string, options: { signal?: AbortSignal }) => {
+        if (getClientSession().demo) {
+          const demo = getDemoController();
+          if (!demo) throw new Error("Demo session has ended. Reload to reconnect.");
+          return await demo.connect(path, options);
+        }
         const resource = await resourceUrl(path, { ...options, kind: "websocket" });
         options.signal?.throwIfAborted();
         return nativeWebAppDuplex(new WebSocket(resource.url), options.signal);
@@ -152,3 +172,11 @@ export function configureClankyClient(
     } : {}),
   });
 }
+
+subscribeClientSession(() => {
+  if (getClientSession().demo) configureWebAppClient({
+    apiBaseUrl: getClientSession().endpoint,
+    realtimePath: "/api/realtime",
+    saveResource: async () => { throw new Error("Demo: saving files is not simulated. No file was downloaded or written."); },
+  });
+});

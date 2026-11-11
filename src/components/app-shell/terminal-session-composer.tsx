@@ -3,6 +3,7 @@ import type { Workspace, TerminalSession, TerminalConnectionMode } from "@/share
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import { Panel, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 const TERMINAL_USE_TMUX_STORAGE_KEY = "clanky.terminalSession.useTmux";
 
@@ -10,14 +11,14 @@ function readStoredUseTmuxPreference(): boolean {
   if (typeof window === "undefined") {
     return false;
   }
-  return window.localStorage.getItem(TERMINAL_USE_TMUX_STORAGE_KEY) === "true";
+  return (getDemoStorage() ?? window.localStorage).getItem(TERMINAL_USE_TMUX_STORAGE_KEY) === "true";
 }
 
 function storeUseTmuxPreference(useTmux: boolean): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(TERMINAL_USE_TMUX_STORAGE_KEY, String(useTmux));
+  (getDemoStorage() ?? window.localStorage).setItem(TERMINAL_USE_TMUX_STORAGE_KEY, String(useTmux));
 }
 
 export function TerminalSessionComposer({

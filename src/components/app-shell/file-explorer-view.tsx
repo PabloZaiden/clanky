@@ -973,7 +973,7 @@ export function FileExplorerView({
                     type="button"
                     size="sm"
                     loading={creatingTerminal}
-                    disabled={!hasTerminal || creatingTerminal}
+                    disabled={!hasTerminal || creatingTerminal || !getClankyClientCapabilities().terminalManagement}
                     onClick={() => void handleCreateTerminal()}
                   >
                     New

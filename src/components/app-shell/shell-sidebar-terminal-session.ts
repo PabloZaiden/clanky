@@ -12,6 +12,7 @@ import {
   withPrivateToggleAction,
 } from "./shell-sidebar-utils";
 import type { TerminalSessionActionTarget } from "./shell-sidebar-types";
+import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface TerminalSessionSidebarContext {
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
@@ -40,6 +41,7 @@ export function getTerminalSessionSidebarActions(
   session: TerminalSession,
   context: TerminalSessionSidebarContext,
 ): ActionMenuItem[] {
+  if (!getClankyClientCapabilities().terminalManagement) return [];
   const baseActions = sidebarActionItems([
     {
       id: "rename-terminal-session",
@@ -89,7 +91,7 @@ export function createTerminalSessionSidebarNode(
     render,
     route: { view: "terminal", terminalSessionId: session.config.id },
     actions,
-    pinnable: true,
+    pinnable: getClankyClientCapabilities().terminalManagement,
     pinId,
   }, privateHidden, privateActions(actions, privateHidden, session.config.isPrivate === true));
 }
