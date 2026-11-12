@@ -164,6 +164,8 @@ in app-owned adapters, not silently convert/reset them.
   belong inline. Do not create another toast queue/provider.
 - Preserve native toolbar/header actions and mobile safe-area layout. Use
   `max(spacing, inset)` rather than stacking duplicate bottom clearance.
+  Only top-band occlusions may replace top clearance; full-height side regions
+  retain the separate top safe area.
 - Sidebar ready snapshots control pin retirement. Temporary loading/error
   must not delete pins. Async producers/consumers own explicit ready/error state.
 - Injected pin providers retain unavailable references; snapshot reconciliation
