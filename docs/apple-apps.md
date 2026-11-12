@@ -24,7 +24,8 @@ On iOS 27.1, the host also reports public system-reserved regions to the shared
 shell. When a top status area occupies only a corner, the web header uses the
 free part of that row instead of adding a second row beneath it. Camera and
 indicator regions remain clear; ordinary notches and unsupported layouts keep
-the normal safe-area fallback. Opening the mobile sidebar focuses navigation,
+the normal safe-area fallback. Full-height side regions do not remove the
+separate top-bar clearance. Opening the mobile sidebar focuses navigation,
 not Search; tapping Search or explicitly requesting search still focuses it.
 
 In iOS 27.1 modes with a system side bar, existing sidebar actions and page
