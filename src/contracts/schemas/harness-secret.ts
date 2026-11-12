@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
 
 export const RequestSecretSchema = z.object({
   identifier: z.string().trim().min(1).max(128)
@@ -9,8 +8,5 @@ export const RequestSecretSchema = z.object({
 }).strict();
 
 export const ReplyToSecretSchema = z.object({
-  value: z.string().min(1).max(SECRET_MAX_BYTES)
-    .refine((value) => new TextEncoder().encode(value).byteLength <= SECRET_MAX_BYTES,
-      "The secret exceeds the 64 KiB limit.")
-    .nullable(),
+  value: z.string().min(1).nullable(),
 }).strict();

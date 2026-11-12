@@ -137,7 +137,9 @@ Startup and deletion failures are reported, not treated as successful cleanup.
 In Mesh, the worker creates and owns the file; the controller never makes a
 local copy. Secret values travel only through private browser/host reply paths,
 not ordinary question answers, transcripts, attachments or model tool inputs
-and outputs. Multiline text and whitespace are preserved.
+and outputs. Multiline text and whitespace are preserved. Private input uses
+the same request-body reading as ordinary chat text, without a secret-specific
+size limit; general server and transport limits still apply.
 
 Prefer a CLI's stdin or file option. For environment-only CLIs, read the file
 inside the command, for example `GH_TOKEN="$(cat -- /private/path)" gh api user`.
