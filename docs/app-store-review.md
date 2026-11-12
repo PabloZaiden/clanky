@@ -176,6 +176,11 @@ The existing internal TestFlight workflow remains internal-only. Its previous
 uploads cannot be converted into a public-review build. A separately authorized
 App Store Connect export needs a new build number and must omit
 `testFlightInternalTestingOnly=true`.
+The separate manual [App Store workflow](apple-apps.md#public-ios-app-store-prerequisites)
+uses the latest stable versioned release, verifies public eligibility, submits
+the prepared version to review and enables automatic publication after approval.
+It does not prepare missing metadata or screenshots, and must not be run just
+to validate tooling.
 
 Before marking a version ready to submit:
 

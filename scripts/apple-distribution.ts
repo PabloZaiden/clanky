@@ -1,6 +1,55 @@
 import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { importPKCS8, SignJWT } from "jose";
+import { z } from "zod";
+
+export async function createAppStoreConnectClient(
+  keyId: string, issuer: string, privateKey: string,
+  redactions: { redact(value: string): void; safe(value: string): string },
+) {
+  if (!validAppleApiIdentifiers(keyId, issuer)) throw new Error("Invalid App Store Connect API key/issuer identifiers.");
+  const key = await importPKCS8(privateKey, "ES256");
+  const origin = "https://api.appstoreconnect.apple.com";
+  async function api(path: string, method = "GET", data?: unknown): Promise<unknown> {
+    const url = new URL(path, origin);
+    if (url.origin !== origin || !url.pathname.startsWith("/v1/")) {
+      throw new Error("Unexpected App Store Connect pagination URL.");
+    }
+    const token = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: keyId, typ: "JWT" })
+      .setIssuer(issuer).setAudience("appstoreconnect-v1").setIssuedAt().setExpirationTime("10m").sign(key);
+    redactions.redact(token);
+    const response = await fetch(url, {
+      method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: data === undefined ? undefined : JSON.stringify(data),
+      redirect: "error", signal: AbortSignal.timeout(30_000),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`App Store Connect ${method} ${url.pathname} failed (${response.status}): ${redactions.safe(text).slice(0, 4000)}`);
+    }
+    if (!text && method === "GET") throw new Error(`Empty App Store Connect response: ${url.pathname}.`);
+    return text ? JSON.parse(text) : null;
+  }
+  async function list<T>(path: string, schema: z.ZodType<T>, filters: Record<string, string> = {}): Promise<T[]> {
+    const rows: T[] = [];
+    const seen = new Set<string>();
+    let next: string | null = `${path}?${new URLSearchParams({ ...filters, limit: "200" })}`;
+    while (next) {
+      if (seen.has(next)) throw new Error("Repeated App Store Connect pagination URL.");
+      seen.add(next);
+      const page = z.object({
+        data: z.array(schema), links: z.object({ next: z.string().nullable().optional() }),
+      }).parse(await api(next));
+      rows.push(...page.data);
+      next = page.links.next ?? null;
+    }
+    return rows;
+  }
+  return { api, list };
+}
+
+export type AppStoreConnectClient = Awaited<ReturnType<typeof createAppStoreConnectClient>>;
 
 export function validAppleApiIdentifiers(keyId: string, issuer: string): boolean {
   return /^[A-Z0-9]{10}$/.test(keyId) && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(issuer);

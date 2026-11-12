@@ -2,63 +2,28 @@ import { X509Certificate } from "node:crypto";
 import { chmod, mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { importPKCS8, SignJWT } from "jose";
 import { z } from "zod";
-import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
+import { createAppleDistributionCommands, createAppStoreConnectClient } from "./apple-distribution";
+import { prepareAppStoreVersion, submitAppStoreVersion } from "./ios-app-store";
 import { verifyAppleFrontend } from "./verify-apple-frontend";
 
-const [tag, ...extra] = process.argv.slice(2);
+const [tag, mode, ...extra] = process.argv.slice(2);
 const version = tag?.match(/^v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/)?.[1];
-if (!tag || !version || extra.length) throw new Error("Usage: bun scripts/ios-testflight.ts vX.Y.Z[-prerelease]");
+if (!tag || !version || extra.length || (mode !== undefined && mode !== "--app-store")) {
+  throw new Error("Usage: bun scripts/ios-testflight.ts vX.Y.Z[-prerelease] [--app-store]");
+}
+const appStore = mode === "--app-store";
+if (appStore && tag !== `v${version}`) throw new Error("App Store publication requires a stable versioned release.");
 const frontendVersion = tag.slice(1);
-if (process.platform !== "darwin") throw new Error("TestFlight publication requires macOS and Xcode.");
+if (process.platform !== "darwin") throw new Error("iOS distribution requires macOS and Xcode.");
 const { secret, redact, safe, run, importIdentity } = createAppleDistributionCommands();
 const keyId = secret("IOS_APP_STORE_KEY_ID");
 const issuer = secret("IOS_APP_STORE_ISSUER_ID");
 const privateKey = secret("IOS_APP_STORE_KEY_P8");
 const groupName = process.env["IOS_TESTFLIGHT_GROUP"]?.trim();
-if (!groupName) throw new Error("Missing IOS_TESTFLIGHT_GROUP.");
-if (!validAppleApiIdentifiers(keyId, issuer)) {
-  throw new Error("Invalid App Store Connect API key/issuer identifiers.");
-}
-const key = await importPKCS8(privateKey, "ES256");
-const apiOrigin = "https://api.appstoreconnect.apple.com";
-async function api(path: string, method = "GET", data?: unknown): Promise<unknown> {
-  const url = new URL(path, apiOrigin);
-  if (url.origin !== apiOrigin || !url.pathname.startsWith("/v1/")) {
-    throw new Error("Unexpected App Store Connect pagination URL.");
-  }
-  const token = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: keyId, typ: "JWT" })
-    .setIssuer(issuer).setAudience("appstoreconnect-v1").setIssuedAt()
-    .setExpirationTime("10m").sign(key);
-  redact(token);
-  const response = await fetch(url, {
-    method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: data === undefined ? undefined : JSON.stringify(data),
-    redirect: "error", signal: AbortSignal.timeout(30_000),
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`App Store Connect ${method} ${url.pathname} failed (${response.status}): ${safe(text).slice(0, 4000)}`);
-  }
-  if (!text && method === "GET") throw new Error(`Empty App Store Connect response: ${url.pathname}.`);
-  return text ? JSON.parse(text) : null;
-}
-async function list<T>(path: string, schema: z.ZodType<T>, filters: Record<string, string> = {}): Promise<T[]> {
-  const rows: T[] = [];
-  const seen = new Set<string>();
-  let next: string | null = `${path}?${new URLSearchParams({ ...filters, limit: "200" })}`;
-  while (next) {
-    if (seen.has(next)) throw new Error("Repeated App Store Connect pagination URL.");
-    seen.add(next);
-    const page = z.object({
-      data: z.array(schema), links: z.object({ next: z.string().nullable().optional() }),
-    }).parse(await api(next));
-    rows.push(...page.data);
-    next = page.links.next ?? null;
-  }
-  return rows;
-}
+if (!appStore && !groupName) throw new Error("Missing IOS_TESTFLIGHT_GROUP.");
+const client = await createAppStoreConnectClient(keyId, issuer, privateKey, { redact, safe });
+const { api, list } = client;
 const resourceId = z.object({ id: z.string().min(1) });
 const buildSchema = resourceId.extend({
   attributes: z.object({
@@ -87,8 +52,12 @@ let profileBytes: Buffer | undefined;
 
 async function publish() {
   const sourceRevision = (await run(["git", "rev-parse", "HEAD"], true)).trim();
-  if (process.env["GITHUB_SHA"] && sourceRevision !== process.env["GITHUB_SHA"]) {
-    throw new Error("The checked-out iOS source does not match GITHUB_SHA.");
+  const expectedSource = appStore ? process.env["IOS_SOURCE_REVISION"] : process.env["GITHUB_SHA"];
+  if (appStore && !/^[a-f0-9]{40}$/.test(expectedSource ?? "")) {
+    throw new Error("App Store publication requires an exact IOS_SOURCE_REVISION.");
+  }
+  if (expectedSource && sourceRevision !== expectedSource) {
+    throw new Error("The checked-out iOS source does not match the selected publication source.");
   }
   const native: string[] = ["-project", "native/Clanky.xcodeproj", "-scheme", "Clanky-iOS",
     "-configuration", "Release", "-destination", "generic/platform=iOS"];
@@ -141,15 +110,19 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   }), { "filter[bundleId]": bundleId });
   if (apps.length !== 1 || !apps[0]) throw new Error(`Expected one existing App Store Connect app for ${bundleId}.`);
   const app = apps[0];
-  const groups = (await list(`/v1/apps/${app.id}/betaGroups`, groupSchema))
-    .filter((group) => group.attributes.name === groupName);
-  if (groups.length !== 1 || !groups[0] || !groups[0].attributes.isInternalGroup
-    || !groups[0].attributes.hasAccessToAllBuilds) {
-    throw new Error(`Expected the existing internal-only ${groupName} group with automatic distribution enabled.`);
+  const draftId = appStore ? await prepareAppStoreVersion(client, app.id, version!) : undefined;
+  let group: z.infer<typeof groupSchema> | undefined;
+  if (!appStore) {
+    const groups = (await list(`/v1/apps/${app.id}/betaGroups`, groupSchema))
+      .filter((group) => group.attributes.name === groupName);
+    if (groups.length !== 1 || !groups[0] || !groups[0].attributes.isInternalGroup
+      || !groups[0].attributes.hasAccessToAllBuilds) {
+      throw new Error(`Expected the existing internal-only ${groupName} group with automatic distribution enabled.`);
+    }
+    group = groups[0];
+    const testers = await list(`/v1/betaGroups/${group.id}/betaTesters`, resourceId);
+    if (!testers.length) throw new Error("The internal group has no testers.");
   }
-  const group = groups[0];
-  const testers = await list(`/v1/betaGroups/${group.id}/betaTesters`, resourceId);
-  if (!testers.length) throw new Error("The internal group has no testers.");
   const filters = { "filter[app]": app.id, "filter[preReleaseVersion.version]": version!,
     "filter[preReleaseVersion.platform]": "IOS" };
   const previous = await list("/v1/builds", buildSchema, filters);
@@ -162,7 +135,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   }
   const buildNumber = String(greatest + 1);
   if (greatest >= 9999) throw new Error("This marketing version has exhausted Apple's four-digit major build component.");
-  console.error(`Preparing iOS ${version} (${buildNumber}) from ${sourceRevision} for internal TestFlight.`);
+  console.error(`Preparing iOS ${version} (${buildNumber}) from ${sourceRevision} for ${appStore ? "App Store review and automatic release" : "internal TestFlight"}.`);
   originalSearchList = (await run(["security", "list-keychains", "-d", "user"], true))
     .split("\n").map((line) => line.trim()).filter(Boolean).map((line) => z.string().parse(JSON.parse(line)));
   await importIdentity(keychain, "IOS");
@@ -200,7 +173,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
     await run([process.execPath, "scripts/verify-ios-settings.ts", appPath]);
     await verifyAppleFrontend(join(appPath, "Web"), sourceRevision, frontendVersion);
     if ((await run(["lipo", "-archs", join(appPath, info.CFBundleExecutable)], true)).trim() !== "arm64") {
-      throw new Error("The TestFlight app must contain exactly the arm64 device architecture.");
+      throw new Error("The distribution app must contain exactly the arm64 device architecture.");
     }
     if (!(await readFile(join(appPath, "embedded.mobileprovision"))).equals(profileBytes!)) {
       throw new Error("The signed app embeds a different provisioning profile.");
@@ -237,7 +210,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   await writeFile(options, JSON.stringify({
     method: "app-store-connect", destination: "export", teamID: team, signingStyle: "manual",
     signingCertificate: identity, provisioningProfiles: { [bundleId]: profile.UUID },
-    manageAppVersionAndBuildNumber: false, testFlightInternalTestingOnly: true,
+    manageAppVersionAndBuildNumber: false, ...(!appStore && { testFlightInternalTestingOnly: true }),
   }), { mode: 0o600 });
   await run(["plutil", "-convert", "xml1", options]);
   await chmod(options, 0o600);
@@ -253,7 +226,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   const keys = join(work, "private_keys");
   await mkdir(keys, { mode: 0o700 });
   await writeFile(join(keys, `AuthKey_${keyId}.p8`), `${privateKey}\n`, { mode: 0o600 });
-  console.error(`Uploading verified iOS ${version} (${buildNumber}); no external distribution or App Store submission.`);
+  console.error(`Uploading verified iOS ${version} (${buildNumber}); ${appStore ? "App Review submission and automatic release will follow processing" : "no external distribution or App Store submission"}.`);
   await run(["xcrun", "altool", "--upload-package", ipa, "--api-key", keyId, "--api-issuer", issuer],
     false, { ...process.env, API_PRIVATE_KEYS_DIR: keys });
   const deadline = Date.now() + 30 * 60_000;
@@ -261,18 +234,30 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
     const builds = await list("/v1/builds", buildSchema, { ...filters, "filter[version]": buildNumber });
     if (builds.length > 1) throw new Error("Apple returned multiple builds for the same marketing/build version.");
     const build = builds[0];
+    if (build && build.attributes.version !== buildNumber) {
+      throw new Error("Apple returned a different build number than the uploaded artifact.");
+    }
     if (build?.attributes.processingState === "FAILED" || build?.attributes.processingState === "INVALID") {
       throw new Error(`Apple rejected build ${build.id}: ${build.attributes.processingState}.`);
     }
     if (build?.attributes.processingState === "VALID") {
-      if (build.attributes.buildAudienceType !== "INTERNAL_ONLY"
+      const audience = appStore ? "APP_STORE_ELIGIBLE" : "INTERNAL_ONLY";
+      if (build.attributes.buildAudienceType !== audience
         || build.attributes.usesNonExemptEncryption !== false || build.attributes.expired) {
-        throw new Error("Apple did not confirm an unexpired internal-only build with the declared OS-only encryption.");
+        throw new Error(`Apple did not confirm an unexpired ${audience} build with the declared OS-only encryption.`);
       }
       const prerelease = z.object({ data: resourceId.extend({
         attributes: z.object({ version: z.literal(version!), platform: z.literal("IOS") }),
       }) }).parse(await api(`/v1/builds/${build.id}/preReleaseVersion`));
       if (!prerelease.data.id) throw new Error("Missing processed iOS prerelease version.");
+      if (appStore) {
+        if (!draftId) throw new Error("Missing prepared App Store version.");
+        const review = await submitAppStoreVersion(client, app.id, version!, draftId, build.id);
+        return { appId: app.id, bundleId, releaseTag: tag, version, frontendVersion, buildNumber,
+          buildId: build.id, sourceRevision, configuration: "Release", architecture: "arm64",
+          internalOnly: false, processingState: "VALID", buildAudienceType: audience, ...review };
+      }
+      if (!group) throw new Error("Missing verified internal TestFlight group.");
       const detail = z.object({ data: resourceId.extend({
         attributes: z.object({ internalBuildState: z.string() }),
       }) }).parse(await api(`/v1/builds/${build.id}/buildBetaDetail`));
@@ -297,7 +282,9 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
     }
     await Bun.sleep(15_000);
   }
-  throw new Error(`Apple did not make iOS ${version} (${buildNumber}) available to ${groupName} within the processing deadline.`);
+  throw new Error(appStore
+    ? `Apple did not finish processing iOS ${version} (${buildNumber}) for App Store review within the deadline. Inspect the build before rerunning.`
+    : `Apple did not make iOS ${version} (${buildNumber}) available to ${groupName} within the processing deadline.`);
 }
 
 let result: Awaited<ReturnType<typeof publish>> | undefined;
