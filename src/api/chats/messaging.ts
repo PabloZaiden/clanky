@@ -11,7 +11,6 @@ import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
 import { ReplyToChatQuestionRequestSchema } from "@/contracts/schemas/harness";
 import { ReplyToSecretSchema } from "@/contracts/schemas/harness-secret";
-import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
 import { isDomainError } from "../../domain/domain-error";
 
 const log = createLogger("api:chats");
@@ -37,9 +36,9 @@ export const chatsMessagingRoutes = defineRoutes({
       },
     },
     async POST(req, ctx): Promise<Response> {
-      const validation = await parseAndValidate(ReplyToSecretSchema, req, { maxBodyBytes: SECRET_MAX_BYTES * 6 + 1024 });
+      const validation = await parseAndValidate(ReplyToSecretSchema, req);
       if (!validation.success) {
-        return privateSecretResponse(errorResponse("invalid_secret_response", "Provide a nonempty secret of at most 64 KiB, or decline.", 400));
+        return privateSecretResponse(errorResponse("invalid_secret_response", "Provide a nonempty secret, or decline.", 400));
       }
       try {
         const chat = await chatManager.replyToSecret(ctx.params["id"]!, ctx.params["requestId"]!, validation.data.value);

@@ -9,7 +9,6 @@ import { getClankyClientId } from "../../lib/clanky-client-id";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import { toMessageAttachments } from "../../lib/image-attachments";
 import { ImageAttachmentControl, type ImageAttachmentControlHandle } from "../ImageAttachmentControl";
-import { SECRET_MAX_BYTES } from "@/shared/harness-secrets";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
@@ -30,10 +29,9 @@ function SecretForm({ chatId, request, onChatSnapshot }: {
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
   const disabled = submitting || request.status !== "pending";
-  const tooLarge = new TextEncoder().encode(value).byteLength > SECRET_MAX_BYTES;
 
   async function submit(declined: boolean): Promise<void> {
-    if (disabled || !declined && (!value.length || tooLarge)) return;
+    if (disabled || !declined && !value.length) return;
     const body = JSON.stringify({ value: declined ? null : value });
     setValue("");
     setShow(false);
@@ -68,14 +66,13 @@ function SecretForm({ chatId, request, onChatSnapshot }: {
         Your secret
         <textarea
           aria-label="Your secret" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
-          rows={3} maxLength={SECRET_MAX_BYTES} disabled={disabled}
+          rows={3} disabled={disabled}
           className={`mt-1 block w-full resize-y rounded border border-gray-200 bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:text-gray-100 ${show ? "" : "[-webkit-text-security:disc]"}`}
           value={value} onChange={(event) => setValue(event.target.value)} />
       </label>
-      {tooLarge && <p className="text-xs text-red-600 dark:text-red-400">The secret must be at most 64 KiB.</p>}
       {(request.error ?? error) && <ErrorState title="Secret could not be delivered" description={request.error ?? error} />}
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <button type="button" className={actionClass} disabled={disabled || !value.length || tooLarge} onClick={() => void submit(false)}>
+        <button type="button" className={actionClass} disabled={disabled || !value.length} onClick={() => void submit(false)}>
           {submitting || request.status === "submitting" ? "Delivering secret" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Provide secret"}
         </button>
         <button type="button" className={actionClass} disabled={disabled} onClick={() => void submit(true)}>Decline</button>
