@@ -253,11 +253,48 @@ as public release assets. Existing unsigned iOS downloads remain unchanged.
 
 ### Public iOS App Store prerequisites
 
-Public App Store publication is not implemented by the release workflow.
-Published GitHub releases upload only internal TestFlight builds; public
-distribution requires a separately approved tooling/workflow change.
+Ordinary published GitHub releases still upload only internal TestFlight
+builds. The separate, manually triggered **Publish latest iOS release to App
+Store** workflow uploads the latest stable versioned release, submits it to
+App Review and requests automatic public release after Apple's approval.
+It never creates a GitHub release or bypasses Apple's review.
 See [App Review preparation](app-store-review.md) for the privacy-policy
 publication, local demonstration, review notes, and remaining readiness gates.
+
+Run it from the default branch only after the tooling has been merged and a
+normal versioned release containing it has been published. The workflow pins
+that latest release's exact tag and commit, excludes prereleases and the rolling
+`latest` channel, and shares the existing iOS upload queue. It builds Release
+arm64 with an unused build number, verifies the archive and extracted IPA,
+and requires Apple's `VALID` / `APP_STORE_ELIGIBLE` processing result.
+
+Configure separate `CLANKY_APP_STORE_KEY_P8`, `CLANKY_APP_STORE_KEY_ID` and
+`CLANKY_APP_STORE_ISSUER_ID` secrets for a team App Store Connect key with
+App Manager permissions. These do not replace the existing notary/internal
+TestFlight credentials. The workflow reuses the existing iOS Distribution
+certificate/password and App Store Connect provisioning profile secrets.
+No internal beta group or testers are required for this public export.
+
+Prepare the matching iOS version in App Store Connect first, with its approved
+metadata, review contact/access details, legal declarations and screenshots.
+The workflow does not create versions, invent release notes, upload media or
+overwrite descriptions, review access, privacy or account information.
+Its preflight checks an editable matching draft, copyright, primary-language
+description/keywords/support URL, release notes for updates, review details and
+completed iPhone/iPad screenshots. Apple additionally validates exact screenshot
+specifications, other locales, privacy, agreements and other submission requirements.
+
+After processing, the workflow rechecks readiness, selects the verified build,
+changes that version to **automatic release after approval**, and submits only
+that app version using the review-submissions API. Existing active iOS review
+submissions block it before upload; it never includes unrelated review items.
+The Actions summary records submission, not approval or actual availability.
+Apple handles publication after approval; no runner waits for the review.
+
+Uploads and submission mutations are never retried automatically. If a run
+fails or its outcome is uncertain, inspect the recorded build/submission in
+App Store Connect before rerunning. Existing pending reviews must be resolved
+there first. No upload or publication is needed merely to validate the tooling.
 
 The native shell includes `PrivacyInfo.xcprivacy`, declaring its own-container
 UserDefaults use with reason `CA92.1`. Xcode includes the shared resource;
@@ -276,8 +313,10 @@ An [internal-only build](https://developer.apple.com/help/app-store-connect/test
 cannot be submitted to external testers or customers. Export a new
 `app-store-connect` IPA without `testFlightInternalTestingOnly=true` and upload
 it with a new build number. Changing group membership or store metadata cannot
-convert an existing internal-only upload. The current TestFlight tooling
-enforces internal-only export and processing checks, not public eligibility.
+convert an existing internal-only upload. The default TestFlight path
+enforces internal-only export and processing checks. Its explicit `--app-store`
+path instead requires public eligibility and submits for automatic release;
+never invoke that mode as a dry run.
 
 [Submitting for App Review](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app)
 requires Account Holder, Admin or App Manager permissions. A Developer-role key
