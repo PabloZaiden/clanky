@@ -1,0 +1,128 @@
+name: Publish latest iOS release to App Store
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Pin latest stable release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      source: ${{ steps.release.outputs.source }}
+    steps:
+      - name: Resolve exact published release source
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]]; then
+            echo "Run this publication workflow from the default branch." >&2
+            exit 1
+          fi
+          gh api --hostname github.com "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/ios-release.json"
+          if ! jq -e '.draft == false and .prerelease == false' "$RUNNER_TEMP/ios-release.json" > /dev/null; then
+            echo "App Store publication requires a published stable GitHub release." >&2
+            exit 1
+          fi
+          if ! tag=$(jq -er '.tag_name | select(test("^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))' "$RUNNER_TEMP/ios-release.json"); then
+            echo "The latest release must use a stable vX.Y.Z tag, not the rolling latest channel." >&2
+            exit 1
+          fi
+          ref=$(gh api --hostname github.com "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")
+          for depth in {1..10}; do
+            if ! source=$(jq -er '.object.sha | select(test("^[a-f0-9]{40}$"))' <<< "$ref"); then
+              echo "GitHub returned an invalid release source identifier." >&2
+              exit 1
+            fi
+            type=$(jq -er '.object.type' <<< "$ref")
+            if [[ "$type" == "commit" ]]; then
+              break
+            fi
+            if [[ "$type" != "tag" ]]; then
+              echo "Release tag does not resolve to a commit." >&2
+              exit 1
+            fi
+            ref=$(gh api --hostname github.com "repos/$GITHUB_REPOSITORY/git/tags/$source")
+          done
+          if [[ "$type" != "commit" ]]; then
+            echo "Release tag nesting exceeds the publication limit." >&2
+            exit 1
+          fi
+          {
+            printf 'tag=%s\n' "$tag"
+            printf 'source=%s\n' "$source"
+          } >> "$GITHUB_OUTPUT"
+          printf '### App Store publication target\n\nRelease: `%s`\n\nSource: `%s`\n\nThis run submits to App Review and enables automatic public release after approval.\n' \
+            "$tag" "$source" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Upload, submit for review and release after approval
+    needs: release
+    runs-on: xcode-27
+    timeout-minutes: 60
+    concurrency:
+      group: ios-testflight-${{ github.repository }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+    steps:
+      - name: Checkout pinned release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.source }}
+          persist-credentials: false
+
+      - name: Require release containing App Store tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f scripts/ios-app-store.ts ]]; then
+            echo "The latest release predates App Store automation. Create a normal release after merging this tooling first." >&2
+            exit 1
+          fi
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Archive, upload and submit the latest release
+        env:
+          IOS_RELEASE_TAG: ${{ needs.release.outputs.tag }}
+          IOS_SOURCE_REVISION: ${{ needs.release.outputs.source }}
+          IOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CLANKY_IOS_DISTRIBUTION_CERT_BASE64 }}
+          IOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CLANKY_IOS_DISTRIBUTION_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.CLANKY_IOS_TESTFLIGHT_PROFILE_BASE64 }}
+          IOS_APP_STORE_KEY_P8: ${{ secrets.CLANKY_APP_STORE_KEY_P8 }}
+          IOS_APP_STORE_KEY_ID: ${{ secrets.CLANKY_APP_STORE_KEY_ID }}
+          IOS_APP_STORE_ISSUER_ID: ${{ secrets.CLANKY_APP_STORE_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/ios-app-store-result.json"
+          bun scripts/ios-testflight.ts "$IOS_RELEASE_TAG" --app-store > "$result"
+          jq -e --arg version "${IOS_RELEASE_TAG#v}" --arg source "$IOS_SOURCE_REVISION" '
+            .version == $version and .frontendVersion == $version and .sourceRevision == $source
+            and .internalOnly == false and .processingState == "VALID"
+            and .buildAudienceType == "APP_STORE_ELIGIBLE" and .releaseType == "AFTER_APPROVAL"
+            and .configuration == "Release" and .architecture == "arm64"
+            and (.reviewSubmissionId | length > 0) and (.appStoreVersionId | length > 0)
+            and (.reviewState == "WAITING_FOR_REVIEW" or .reviewState == "IN_REVIEW"
+              or .reviewState == "COMPLETING" or .reviewState == "COMPLETE")
+          ' "$result" > /dev/null
+          jq -r '"### App Review submission\n\n"
+            + "iOS " + .version + " (" + .buildNumber + ") submitted as `" + .reviewSubmissionId + "`.\n\n"
+            + "Review state: `" + .reviewState + "`. Automatic public release is configured after Apple approval.\n\n"
+            + "Source: `" + .sourceRevision + "`. Submission is not proof of approval or publication."
+          ' "$result" >> "$GITHUB_STEP_SUMMARY"
