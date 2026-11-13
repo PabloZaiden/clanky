@@ -8,9 +8,6 @@ import type { SidebarActiveWorkItem } from "./shell-types";
 import { getOverviewActivityTimestamp, type OverviewAttention } from "./overview-activity";
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
-  if (item.kind === "task") {
-    return { view: "task", taskId: item.taskNode.task.config.id };
-  }
   if (item.kind === "chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
   }
@@ -24,9 +21,6 @@ function getActiveWorkRoute(item: SidebarActiveWorkItem): WebAppRoute {
 }
 
 function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
-  if (item.kind === "task") {
-    return item.taskNode.title;
-  }
   if (item.kind === "chat" || item.kind === "execution-host-chat") {
     return item.chatNode.title;
   }
@@ -34,9 +28,6 @@ function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
 }
 
 function getActiveWorkItemType(item: SidebarActiveWorkItem): ActiveWorkSidebarItemType {
-  if (item.kind === "task") {
-    return "Task";
-  }
   if (item.kind === "chat" || item.kind === "execution-host-chat") {
     return "Chat";
   }
@@ -51,7 +42,7 @@ function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
 }
 
 function getActiveWorkWorkspace(item: SidebarActiveWorkItem): Workspace | null {
-  return item.kind === "task" || item.kind === "chat" || item.kind === "terminal-session"
+  return item.kind === "chat" || item.kind === "terminal-session"
     ? item.workspace
     : null;
 }
@@ -60,9 +51,6 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
   label: string;
   variant: BadgeVariant;
 } {
-  if (item.kind === "task") {
-    return { label: item.taskNode.badge, variant: item.taskNode.badgeVariant };
-  }
   if (item.kind === "chat" || item.kind === "execution-host-chat") {
     return { label: item.chatNode.badge, variant: item.chatNode.badgeVariant };
   }
@@ -70,9 +58,6 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
 }
 
 function isActiveWorkPrivateHidden(item: SidebarActiveWorkItem, showPrivateItems: boolean): boolean {
-  if (item.kind === "task") {
-    return shouldObscurePrivateItem(isEffectivelyPrivate(item.taskNode.task.config, [item.workspace]), showPrivateItems);
-  }
   if (item.kind === "chat") {
     return shouldObscurePrivateItem(isEffectivelyPrivate(item.chatNode.chat.config, [item.workspace]), showPrivateItems);
   }

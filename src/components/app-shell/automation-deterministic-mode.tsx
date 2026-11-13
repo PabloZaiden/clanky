@@ -4,7 +4,7 @@ import type {
   DeterministicCodeDiagnostic,
 } from "@/shared";
 import { DETERMINISTIC_AUTOMATION_CODE_CONTRACT } from "@/shared/deterministic-automation";
-import type { TaskLogEntry } from "@/shared/task";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import { StatusBadge } from "../common";
 import { ChatDetails } from "../ChatDetails";
 import { MonacoCodeEditor } from "../MonacoCodeEditor";
@@ -161,7 +161,7 @@ function DeterministicTestOutputPanel({
   isRunning,
 }: {
   result: DeterministicAutomationTestResult | null;
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   isRunning: boolean;
 }) {
   return (

@@ -4,11 +4,7 @@
 
 export {
   getStoredChatModelPreference,
-  getStoredTaskCheapModelPreference,
-  getStoredTaskModelPreference,
   saveStoredChatModelPreference,
-  saveStoredTaskCheapModelPreference,
-  saveStoredTaskModelPreference,
   type ModelPreferenceStorageLike,
   type ModelSelectionPreferenceDependencies,
 } from "./model-selection-preferences";

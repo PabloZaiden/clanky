@@ -1,7 +1,7 @@
 # Control chats
 
 Native Codex, Copilot and OpenCode 2 executions can collaborate through Clanky's
-shared application-control tools. Normal workspace chats, tasks and managed
+shared application-control tools. Normal workspace chats and managed
 Automation runs automatically receive workspace access. Neither Quick Chat setup
 nor the workspace's general-access setting is required for project work.
 There is no separate control conversation type.
@@ -20,7 +20,7 @@ enabled.
    execution host. Native runtimes run on the selected host; local and Mesh v7 paths are
    supported. See
    [Harness adapters](harnesses.md#workspace-configuration) for runtime setup.
-2. Create a native chat, task or Automation run in that workspace.
+2. Create a native chat or Automation run in that workspace.
 
 For OpenCode 2, select `agent.adapter: "opencode2"` and configure a model in
 its isolated Clanky profile. Control eligibility for all three runtimes follows
@@ -30,7 +30,7 @@ For external clients, scoped credentials, approvals and MCP setup, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
 Clanky admits a scoped control connection from the execution's validated owner,
-active chat, task or Automation run and workspace. It does not issue a CLI API key
+active chat or Automation run and workspace. It does not issue a CLI API key
 for these tools; caller-supplied workspace IDs are not grants.
 If the source, account, native provider, or advertised Mesh capability
 is unavailable, starting control tools
@@ -53,10 +53,10 @@ broad credentials to call arbitrary REST routes. Successful and pending results
 are returned without a native-specific wrapper.
 Actual chat roots supply their real chat ID during discovery so the server
 can include optional browser tools after checking the execution source.
-Task and scheduled-run roots omit it; this does not change Mesh bindings or
+Scheduled-run roots omit it; this does not change Mesh bindings or
 grant additional authority.
 
-Workspace access permits reading literal chat/task history and creating,
+Workspace access permits reading literal chat history and creating,
 messaging and managing work in that project, subject to the user's existing
 permissions and human-approval policies. Explicit general access is required
 for other workspaces and in-scope workspace/server administration. A workspace
@@ -104,7 +104,7 @@ contents to the model. Browser tools are available only when the server can
 reliably associate the current turn with its originating tab.
 
 An admitted message is not completed agent work. Required human approval is a
-pending result, never implicit approval; unattended tasks and scheduled runs
+pending result, never implicit approval; unattended scheduled runs
 do not wait indefinitely or auto-answer it. An interrupted or timed-out request
 can have an uncertain outcome and must not be automatically replayed.
 Humans can review requests in **Settings → Agents & integrations → Approvals**
@@ -132,7 +132,7 @@ URL user credentials or fragments, including private self-hosted Listen servers.
 The webhook token remains on the controller, not in agent prompts, tools,
 execution-host configuration, or logs.
 
-Native Copilot, Codex and OpenCode 2 workspace chats, tasks and managed Automation runs
+Native Copilot, Codex and OpenCode 2 workspace chats and managed Automation runs
 receive `clanky_send_notification` through the existing common control tools.
 It requires no general-access grant or extra confirmation. Local and Mesh
 executions share controller-owned delivery; ACP, standalone execution-host chats,
@@ -141,8 +141,8 @@ retain their previously registered tools: start a new conversation if the
 notification tool is missing.
 
 **Receive automatic notifications** is a per-user master checkbox. Separate
-checkboxes select errors, blocked work, questions, secret requests, permission
-and approval requests, plans ready for approval, and finished chats/tasks.
+checkboxes select errors, questions, secret requests, permission
+and approval requests, and finished chat responses.
 The master and every event default to off. Turning the master off preserves
 all event selections; turning it back on resumes that selection. Saving a
 webhook does not enable either the master or any event. Preferences may be
@@ -153,15 +153,13 @@ automatic notifications are disabled; the toggle does not change the webhook
 or event selections.
 
 Enabling an event is explicit consent for Clanky itself to send that kind of
-automatic notification when the master is on. Finished work includes a chat's
-completed response/turn and a completed task. Completed managed Automation runs do
+automatic notification when the master is on. Finished work means a standalone
+chat's completed response/turn. Completed managed Automation runs do
 not generate automatic notifications; an Automation can still send a notification
 when explicitly requested by the user.
 Interruptions, failures, pending questions and progress updates are not
-completion. Embedded task/Automation chats do not generate duplicate completion or
-error alerts for their enclosing work. Automatically accepted plans do not
-generate a plan-approval alert. Blocked work means the task reported
-a blocker, not an ordinary user-requested stop. Tasks and managed Automation runs
+completion. Automation-linked chats do not generate duplicate completion or
+error alerts for their enclosing work. Managed Automation runs
 retain their unattended input policy; this setting does not enable questions
 or secret forms where those interactions are unavailable. Automatically
 approved permissions do not require an approval alert; pending native
@@ -169,7 +167,7 @@ permissions and presented/pending agent-operation confirmations do, including Vo
 Transcript and progress updates do not resend alerts for existing pending
 interactions.
 
-Automatic messages identify the chat, task or managed Automation by name and include
+Automatic messages identify the chat or managed Automation by name and include
 the event description. Questions include a brief excerpt of the question;
 secret requests include the credential's label and purpose, never its value or
 internal identifier. Native permission alerts identify the work and request a
@@ -180,10 +178,10 @@ title and description limits; the Markdown body includes up to 1,000 characters
 of request context as escaped text.
 
 Private work and work in private workspaces retain generic alerts without names
-or request text; linked chats also inherit their Task or Automation parent's privacy.
+or request text; linked chats also inherit their Automation parent's privacy.
 Private approval targets, including Automation runs and terminals, and file-backed
 operations also retain generic alerts. Terminal target privacy includes its
-Task, workspace and execution host. Targets whose privacy cannot be resolved
+workspace and execution host. Targets whose privacy cannot be resolved
 retain generic alerts. Notifications never copy submitted answers, private secret
 files, arbitrary transcript content, error diagnostics, tool arguments or webhook
 credentials. Request labels, purposes and approval descriptions should explain
@@ -200,7 +198,7 @@ by the user**. Neither saving a webhook nor enabling automatic event preferences
 authorizes discretionary tool calls. The master checkbox controls automatic
 event notifications only, not explicitly requested `clanky_send_notification` calls.
 This is an agent instruction and tool-description policy, not an additional
-application-enforced per-chat/task permission.
+application-enforced per-chat permission.
 
 The tool accepts Listen's text fields `title` (1–100 characters),
 `shortDescription` (1–500 characters), and `markdownContent` (nonempty, at most
@@ -246,7 +244,7 @@ its own browser provenance.
 ## Live voice
 
 [Live voice](voice.md#live-voice) is now an independent global assistant,
-started from the sidebar rather than a chat. It can operate chats, tasks,
+started from the sidebar rather than a chat. It can operate chats,
 workspaces and servers through authorized API contracts and navigate its
 originating tab. It requires neither a native adapter nor a Quick Chat workspace.
 Native executions use the same common control operations while keeping their
@@ -256,8 +254,8 @@ voice does not interrupt their agent work.
 ## Provider limitations
 
 New native Codex threads and owned Copilot/OpenCode 2 conversations receive
-these tools for workspace chats, tasks and managed Automation runs. Tasks and Automation
-runs retain their unattended question policy. Standalone execution-host chats
+these tools for workspace chats and managed Automation runs. Automation runs
+retain their unattended question policy. Standalone execution-host chats
 and native subagents do not inherit them.
 Use the versions and execution hosts supported by the
 [harness guide](harnesses.md).
@@ -288,7 +286,7 @@ Copilot registers current tools on creation and cold resume.
 Control belongs to the admitted execution, not a CLI credential or callback.
 Mesh signs the control capability into its native lease; requests, replies and
 cancellation reuse that lease's authenticated infrastructure. Browser context carries real
-chat/tab/turn provenance, while tasks and unattended runs need no browser context:
+chat/tab/turn provenance, while unattended runs need no browser context:
 their controller-owned grant identifies the canonical execution server-side.
 The native adapter privately
 requires an active owned root turn before forwarding any tool call.

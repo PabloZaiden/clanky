@@ -3,7 +3,7 @@
  */
 
 import type { ResourceRealtimeEvent } from "@pablozaiden/webapp/contracts";
-import type { TaskEvent, ChatEvent, AutomationEvent } from "./events";
+import type { ChatEvent, AutomationEvent } from "./events";
 import type { ProvisioningEvent } from "./provisioning";
 import type { ControlUiActionEvent } from "./clanky-control";
 import type { LiveVoiceActivityEvent } from "./live-voice";
@@ -15,7 +15,6 @@ import type { MessageData } from "./events";
 
 export const CLANKY_REALTIME_RESOURCES = {
   workspaces: "workspaces",
-  tasks: "tasks",
   chats: "chats",
   subagents: "subagents",
   chatActivity: "chat-activity",
@@ -46,12 +45,6 @@ type BrowserTranscriptEvent<T> = T extends { message: MessageData }
   ? Omit<T, "message"> & { message: TranscriptMessage }
   : T;
 
-type RetainedTaskEvent = BrowserTranscriptEvent<Extract<TaskEvent, {
-  type:
-    | "task.message" | "task.message.delta" | "task.tool_call"
-    | "task.log" | "task.log.delta" | "task.iteration.start" | "task.iteration.end" | "task.git.commit";
-}>>;
-
 export type RetainedChatEvent = BrowserTranscriptEvent<Extract<ChatEvent, {
   type:
     | "chat.message" | "chat.message.delta" | "chat.tool_call"
@@ -69,7 +62,7 @@ type RetainedProvisioningEvent = Extract<ProvisioningEvent, {
 }>;
 
 export type TranscriptContentEvent =
-  | RetainedTaskEvent | RetainedChatEvent | RetainedAutomationEvent
+  | RetainedChatEvent | RetainedAutomationEvent
   | Extract<SubagentEvent, { type: "subagent.transcript" }>;
 
 export type ClankyStreamEvent =
@@ -80,7 +73,6 @@ export type ClankyRealtimeEvent = ResourceRealtimeEvent | ClankyStreamEvent;
 
 export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, CollaborationResourceKind>> = {
   workspaces: "workspace",
-  tasks: "task",
   chats: "chat",
   subagents: "subagent",
   trash: "chat",
@@ -93,8 +85,6 @@ export const WORKSPACE_REALTIME_RESOURCE_KINDS: Readonly<Record<string, Collabor
 
 const WORKSPACE_STREAM_TYPES = new Set<string>([
   "subagent.transcript",
-  "task.message", "task.message.delta", "task.tool_call",
-  "task.log", "task.log.delta", "task.iteration.start", "task.iteration.end", "task.git.commit",
   "chat.message", "chat.message.delta", "chat.tool_call", "chat.log", "chat.log.delta",
   "automation.run.message", "automation.run.message.delta", "automation.run.tool_call",
   "automation.run.log", "automation.run.log.delta",

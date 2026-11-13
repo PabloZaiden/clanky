@@ -4,11 +4,9 @@ import {
   type TranscriptMessage,
   type VoiceTranslationLanguage,
 } from "@/shared";
-import type { BadgeVariant } from "../common";
 import {
   getMessageAttachmentKind,
 } from "@/shared/message-attachments";
-import { StatusBadge } from "../common";
 import type { TranscriptFileLinkContext } from "./types";
 import { ActivitySpinner } from "./activity-spinner";
 import { HarnessMessageAdmission } from "../harness-activity";
@@ -18,10 +16,6 @@ import { MessageBody } from "./message-body";
 import { formatTime } from "./utils";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 import { getDemoStorage } from "../../client-sdk/demo/storage";
-import {
-  detectTrailingPromiseMarker,
-  type PromiseMarkerOutcomeKind,
-} from "../../utils/promise-markers";
 
 interface MessageEntryProps {
   data: TranscriptMessage;
@@ -42,19 +36,6 @@ interface MessageEntryProps {
   onBeforeExpand: () => void;
 }
 
-function getOutcomeBadgeVariant(kind: PromiseMarkerOutcomeKind): BadgeVariant {
-  switch (kind) {
-    case "complete":
-      return "completed";
-    case "plan_ready":
-      return "plan_ready";
-    case "blocked":
-      return "warning";
-    case "custom":
-      return "default";
-  }
-}
-
 export const MessageEntry = memo(function MessageEntry({
   data: msg,
   showTimestamp,
@@ -70,14 +51,12 @@ export const MessageEntry = memo(function MessageEntry({
   onBeforeExpand,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
-  const outcome = isUser || msg.question ? null : detectTrailingPromiseMarker(msg.content);
   const answerStatus = isUser && msg.question ? getQuestionAnswerStatus(msg.question.status) : undefined;
-  const displayMessage = outcome ? { ...msg, content: outcome.content } : msg;
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const contentWidthClassName = isUser
     ? "min-w-0 max-w-[min(88%,64rem)] space-y-2"
     : "min-w-0 w-full space-y-2";
-  const sourceText = displayMessage.content;
+  const sourceText = msg.content;
   const [translation, setTranslation] = useState<{ source: string; text: string } | null>(null);
   const [translationRequest, setTranslationRequest] = useState<{
     source: string;
@@ -167,13 +146,6 @@ export const MessageEntry = memo(function MessageEntry({
             <div className="text-right text-xs text-gray-500 dark:text-gray-400" role="status">{answerStatus}</div>
           )}
           {isUser && <HarnessMessageAdmission inputId={msg.id} />}
-          {outcome && (
-            <div className="pt-1">
-              <StatusBadge variant={getOutcomeBadgeVariant(outcome.kind)} size="sm">
-                {outcome.label}
-              </StatusBadge>
-            </div>
-          )}
           {msg.attachments && msg.attachments.length > 0 && (
             <div className={`flex flex-wrap gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
               {msg.attachments.map((attachment) => (

@@ -6,7 +6,6 @@ import type { CollaborationResourceKind } from "@/shared/collaboration-reference
 
 const REFERENCE_FIELDS = {
   workspaceId: "workspace",
-  taskId: "task",
   chatId: "chat",
   subagentId: "subagent",
   automationId: "automation",
@@ -93,13 +92,12 @@ function qualifyEntity(
   context: WorkspaceSourceResponseContext,
 ): Record<string, unknown> {
   const config = isReadRecord(value["config"]) ? value["config"] : value;
-  if (["task", "chat", "automation"].includes(String(config["mode"]))) resource = String(config["mode"]);
+  if (["chat", "automation"].includes(String(config["mode"]))) resource = String(config["mode"]);
   else if (typeof config["remoteSessionName"] === "string") resource = "terminal";
   else if (typeof config["targetKind"] === "string" && typeof config["remotePort"] === "number") resource = "preview";
   else if (typeof value["automationId"] === "string" && isReadRecord(value["configSnapshot"])) resource = "automation-run";
-  else if (typeof value["commentText"] === "string" && typeof value["taskId"] === "string") resource = "review-comment";
   else if (isReadRecord(value["activity"]) && isReadRecord(value["binding"])
-    && (typeof value["chatId"] === "string" || typeof value["taskId"] === "string")) resource = "subagent";
+    && typeof value["chatId"] === "string") resource = "subagent";
   const result = qualifyFields(value, context);
   if (resource === "workspace" && context.controllerName) {
     result["collaboration"] = { controllerName: context.controllerName };
@@ -147,14 +145,12 @@ function qualifyEntityReferences(
 
 const ENTITY_SLOTS = {
   workspace: "workspace",
-  task: "task",
   chat: "chat",
   automation: "automation",
   run: "automation-run",
   terminal: "terminal",
   terminalSession: "terminal",
   preview: "preview",
-  comment: "review-comment",
   subagent: "subagent",
 } as const;
 
@@ -165,7 +161,6 @@ function isEntity(value: Record<string, unknown>): boolean {
       || typeof value["executionTargetRevision"] === "number"
       || isReadRecord(value["details"])
       || isReadRecord(value["configSnapshot"])
-      || typeof value["commentText"] === "string"
       || isReadRecord(value["activity"]) && isReadRecord(value["binding"]));
 }
 

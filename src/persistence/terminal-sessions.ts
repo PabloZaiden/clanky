@@ -13,7 +13,6 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { filterWorkspacePersistenceRows, requireResourcePersistenceUserId, workspacePersistenceParameters } from "./ownership";
 import { recordWorkspaceResourceCreation } from "./collaboration-creation";
 import { getWorkspaceAccessAuthority } from "../context/user-context";
-import { isSqliteUniqueConstraintError, uniqueConstraintError } from "./errors";
 import {
   EXECUTION_HOST_JOIN_COLUMNS,
   executionHostBindingFromRow,
@@ -34,7 +33,6 @@ const ALLOWED_TERMINAL_SESSION_COLUMNS = new Set([
   "user_id",
   "name",
   "workspace_id",
-  "task_id",
   "collaboration_principal_id",
   "directory",
   "connection_mode",
@@ -78,7 +76,6 @@ function terminalSessionToRow(session: TerminalSession): Record<string, unknown>
     user_id: userId,
     name: session.config.name,
     workspace_id: session.config.workspaceId ?? null,
-    task_id: session.config.taskId ?? null,
     collaboration_principal_id: existing?.collaboration_principal_id ?? getWorkspaceAccessAuthority()?.guestId ?? "owner",
     directory: session.config.directory,
     connection_mode: session.config.connectionMode,
@@ -108,7 +105,6 @@ function rowToTerminalSession(row: Record<string, unknown>): TerminalSession {
       id: row["id"] as string,
       name: row["name"] as string,
       workspaceId: (row["workspace_id"] as string | null) ?? undefined,
-      taskId: (row["task_id"] as string | null) ?? undefined,
       directory: row["directory"] as string,
       connectionMode: normalizeTerminalConnectionMode(
         (row["connection_mode"] as string | null) ?? DEFAULT_TERMINAL_CONNECTION_MODE,
@@ -157,8 +153,7 @@ export async function saveTerminalSession(session: TerminalSession): Promise<voi
     .map((column) => `${column} = excluded.${column}`)
     .join(", ");
 
-  try {
-    db.transaction(() => {
+  db.transaction(() => {
       const exists = db.query("SELECT 1 FROM terminal_sessions WHERE id = ?").get(session.config.id);
       db.run(
       `INSERT INTO terminal_sessions (${columns.join(", ")}) VALUES (${placeholders})
@@ -168,17 +163,7 @@ export async function saveTerminalSession(session: TerminalSession): Promise<voi
       );
       if (!exists) recordWorkspaceResourceCreation({ kind: "terminal", id: session.config.id,
         ownerUserId: String(row["user_id"]), workspaceId: session.config.workspaceId });
-    })();
-  } catch (error) {
-    if (isSqliteUniqueConstraintError(error)) {
-      throw uniqueConstraintError(
-        "Terminal session task uniqueness constraint violated",
-        { table: "terminal_sessions", constraint: "task_id" },
-        error,
-      );
-    }
-    throw error;
-  }
+  })();
   log.debug("Saved terminal session", {
     id: session.config.id,
     workspaceId: session.config.workspaceId,
@@ -212,26 +197,6 @@ export async function listTerminalSessionsByWorkspace(workspaceId: string): Prom
      WHERE terminal_session.workspace_id = ? AND terminal_session.user_id = ?
      ORDER BY terminal_session.created_at DESC`,
   ).all(workspaceId, requireResourcePersistenceUserId("terminal", undefined, workspaceId)) as Record<string, unknown>[];
-  return filterWorkspacePersistenceRows(rows, "terminal").map(rowToTerminalSession);
-}
-
-export async function getTerminalSessionByTaskId(taskId: string): Promise<TerminalSession | null> {
-  const db = getDatabase();
-  const row = db.query(
-    `${TERMINAL_SESSION_SELECT}
-     WHERE terminal_session.task_id = ? AND terminal_session.user_id = ? AND terminal_session.collaboration_principal_id = ?
-     LIMIT 1`,
-  ).get(taskId, requireResourcePersistenceUserId("task", taskId), getWorkspaceAccessAuthority()?.guestId ?? "owner") as Record<string, unknown> | null;
-  if (row) requireResourcePersistenceUserId("terminal", String(row["id"]));
-  return row ? rowToTerminalSession(row) : null;
-}
-
-export async function listTerminalSessionsByTaskId(taskId: string): Promise<TerminalSession[]> {
-  const rows = getDatabase().query(
-    `${TERMINAL_SESSION_SELECT}
-     WHERE terminal_session.task_id = ? AND terminal_session.user_id = ?
-       AND (? IS NULL OR terminal_session.workspace_id = ?)`,
-  ).all(taskId, requireResourcePersistenceUserId("task", taskId), ...workspacePersistenceParameters()) as Record<string, unknown>[];
   return filterWorkspacePersistenceRows(rows, "terminal").map(rowToTerminalSession);
 }
 

@@ -1,4 +1,4 @@
-import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceTasks } from "../persistence/workspaces";
+import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace } from "../persistence/workspaces";
 import type { Workspace } from "@/shared/workspace";
 import { executionHostService } from "./execution-host-service";
 import { DomainError } from "../domain/domain-error";
@@ -22,7 +22,6 @@ export interface DeleteWorkspaceOptions {
 export type WorkspaceDeletionErrorCode =
   | "workspace_deletion_in_progress"
   | "workspace_not_found"
-  | "workspace_has_tasks"
   | "workspace_not_auto_provisioned"
   | "workspace_delete_failed";
 
@@ -122,25 +121,8 @@ async function deleteWorkspaceWithOptionsUnlocked(
     });
   }
 
-  const taskCount = await countWorkspaceTasks(id);
-  if (taskCount > 0) {
-    return deletionFailure(
-      "workspace_has_tasks",
-      `Workspace has ${taskCount} task(s). Delete all tasks first.`,
-      { workspaceId: id, taskCount },
-    );
-  }
-
   workspaceDeletionLocks.add(id);
   try {
-    if ((await countWorkspaceTasks(id)) > 0) {
-      return deletionFailure(
-        "workspace_has_tasks",
-        "Workspace has task(s). Delete all tasks first.",
-        { workspaceId: id },
-      );
-    }
-
     if (options.deleteServerDirectory && !isAutoProvisionedWorkspace(workspace)) {
       return deletionFailure(
         "workspace_not_auto_provisioned",
@@ -199,15 +181,6 @@ async function deleteWorkspaceWithOptionsUnlocked(
       return deletionFailure("workspace_not_found", "Workspace not found", {
         workspaceId: id,
       });
-    }
-
-    const remainingTaskCount = await countWorkspaceTasks(id);
-    if (remainingTaskCount > 0) {
-      return deletionFailure(
-        "workspace_has_tasks",
-        "Workspace has task(s). Delete all tasks first.",
-        { workspaceId: id, taskCount: remainingTaskCount },
-      );
     }
 
     return deletionFailure(

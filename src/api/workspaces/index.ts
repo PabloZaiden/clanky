@@ -1,5 +1,5 @@
 /**
- * Workspace API endpoints for Clanky Tasks Management System.
+ * Workspace API endpoints for Clanky.
  *
  * This module aggregates all workspace sub-module routes into a single export.
  *
@@ -9,7 +9,6 @@
 import { defineRoutes } from "@/platform/server";
 
 import { crudRoutes } from "./crud";
-import { archivedTasksRoutes } from "./archived-tasks";
 import { serverSettingsRoutes } from "./server-settings";
 import { workspaceFilesRoutes } from "./files";
 import { workspaceMaintenanceRoutes } from "./maintenance";
@@ -20,7 +19,6 @@ export const workspacesRoutes = defineRoutes({
   ...workspaceFilesRoutes,
   ...workspaceMaintenanceRoutes,
   ...serverSettingsRoutes,
-  ...archivedTasksRoutes,
   ...crudRoutes,
   ...workspaceExecRoutes,
   ...workspaceIconRoutes,

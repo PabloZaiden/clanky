@@ -13,7 +13,7 @@ import {
   PROMPT_TEMPLATE_LIMITS,
   type QuickChatSettings,
 } from "@/shared";
-import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
+import { ModelConfigSchema } from "./model";
 
 /**
  * Schema for setting last used model - PUT /api/preferences/last-model
@@ -21,12 +21,6 @@ import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
  * Uses the same ModelConfigSchema since it's the same structure.
  */
 export const SetLastModelRequestSchema = ModelConfigSchema;
-
-/**
- * Schema for setting last used cheap helper-model selection
- * - PUT /api/preferences/last-cheap-model
- */
-export const SetLastCheapModelRequestSchema = CheapModelSelectionSchema;
 
 /**
  * Schema for setting last used directory - PUT /api/preferences/last-directory
@@ -62,13 +56,6 @@ export const SetMarkdownRenderingRequestSchema = z.object({
  */
 export const SetFileExplorerFullTreeRequestSchema = z.object({
   enabled: z.boolean({ error: "enabled must be a boolean" }),
-});
-
-/**
- * Schema for setting dashboard view mode - PUT /api/preferences/dashboard-view-mode
- */
-export const SetDashboardViewModeRequestSchema = z.object({
-  mode: z.enum(["rows", "cards"], { error: "mode must be 'rows' or 'cards'" }),
 });
 
 export const SetSchedulerTimezoneRequestSchema = z.object({

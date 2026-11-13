@@ -10,7 +10,7 @@ import type {
   DeterministicAutomationTestResult,
   DeterministicAutomationTestStreamEvent,
   GeneratedAutomationCode,
-  TaskLogEntry,
+  ConversationLogEntry,
 } from "@/shared";
 import type { CreateAutomationRequest, DeleteAutomationRunsRequest, GenerateAutomationCodeRequest, PrepareGenerateAutomationCodeRequest, RunAutomationRequest, TestAutomationCodeRequest, UpdateAutomationRequest } from "@/contracts/schemas";
 
@@ -88,7 +88,7 @@ export interface UseAutomationsResult {
     request: TestAutomationCodeRequest,
     options?: {
       signal?: AbortSignal;
-      onLog?: (entry: TaskLogEntry) => void;
+      onLog?: (entry: ConversationLogEntry) => void;
     },
   ) => Promise<DeterministicAutomationTestResult | null>;
   deleteAutomation: (id: string) => Promise<boolean>;
@@ -295,7 +295,7 @@ export function useAutomations(): UseAutomationsResult {
     request: TestAutomationCodeRequest,
     options: {
       signal?: AbortSignal;
-      onLog?: (entry: TaskLogEntry) => void;
+      onLog?: (entry: ConversationLogEntry) => void;
     } = {},
   ): Promise<DeterministicAutomationTestResult | null> => {
     try {

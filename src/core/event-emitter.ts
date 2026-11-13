@@ -1,5 +1,5 @@
 /**
- * Simple event emitter for Clanky Tasks Management System.
+ * Simple event emitter for Clanky.
  * A minimal pub/sub implementation for internal event handling.
  * No external dependencies - uses native patterns.
  */
@@ -9,7 +9,6 @@ import type {
   ChatEvent,
   PreviewEvent,
   ProvisioningEvent,
-  TaskEvent,
   TerminalSessionEvent,
   WorkerUpdateEvent,
 } from "@/shared";
@@ -18,6 +17,7 @@ import { getExecutionOwnerUserId } from "../context/user-context";
 import type { ControlUiActionEvent } from "@/shared/clanky-control";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
 import type { SubagentEvent } from "@/shared/subagent";
+import type { ServerEvent } from "./backend/backend-state";
 
 export interface EventContext {
   readonly userId?: string;
@@ -42,9 +42,9 @@ type Unsubscribe = () => void;
 
 /**
  * Simple typed event emitter.
- * Provides basic pub/sub functionality for task events.
+ * Provides basic pub/sub functionality for domain events.
  */
-export class SimpleEventEmitter<T = TaskEvent> {
+export class SimpleEventEmitter<T> {
   private handlers = new Set<EventHandler<T>>();
 
   /**
@@ -62,14 +62,6 @@ export class SimpleEventEmitter<T = TaskEvent> {
    * Emit an event to all subscribers.
    */
   emit(event: T, context: EventContext = { userId: getExecutionOwnerUserId() }): void {
-    // Only log subscriber count for task.log events to avoid spam
-    const eventType = (event as { type?: string }).type;
-    if (this.handlers.size > 1 && eventType === "task.log") {
-      log.debug("[EventEmitter] emit: Multiple subscribers detected", {
-        subscriberCount: this.handlers.size,
-        eventType,
-      });
-    }
     for (const handler of this.handlers) {
       try {
         handler(event, context);
@@ -96,10 +88,9 @@ export class SimpleEventEmitter<T = TaskEvent> {
 }
 
 /**
- * Global event emitter instance for task events.
- * Used by WebSocket handlers to broadcast events to clients.
+ * Backend connection notifications remain separate from conversation events.
  */
-export const taskEventEmitter = new SimpleEventEmitter<TaskEvent>();
+export const serverEventEmitter = new SimpleEventEmitter<ServerEvent>();
 
 /**
  * Global event emitter instance for chat events.
@@ -136,7 +127,7 @@ export const meshStateEventEmitter = new SimpleEventEmitter<MeshStateEvent>();
 
 export interface HarnessStateEvent {
   type: "harness.changed";
-  context: { kind: "chat" | "task"; id: string };
+  context: { kind: "chat"; id: string };
   runs?: Array<{ id: string; automationId: string }>;
 }
 

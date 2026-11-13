@@ -1,10 +1,10 @@
 import type { AutomationRun } from "@/shared/automation";
-import type { TaskLogEntry } from "@/shared/task";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import type { StreamDeltaPosition } from "@/shared/stream-position";
 import { createTimestamp } from "@/shared/events";
 import { saveAutomationRun } from "../persistence/automations";
 import { automationEventEmitter } from "./event-emitter";
-import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
+import { MAX_PERSISTED_LOGS } from "./conversation-limits";
 
 const MAX_OUTPUT_ENTRY_LENGTH = 16_384;
 
@@ -19,7 +19,7 @@ export interface DeterministicAutomationOutputOptions {
   emit?: boolean;
   userId?: string;
   eventAutomationRunId?: string;
-  onAppend?: (entry: TaskLogEntry) => StreamDeltaPosition | void;
+  onAppend?: (entry: ConversationLogEntry) => StreamDeltaPosition | void;
 }
 
 function normalizeOutput(text: string): { message: string; truncated: boolean } {
@@ -40,7 +40,7 @@ export class DeterministicAutomationOutput {
   private readonly emit: boolean;
   private readonly userId?: string;
   private readonly eventAutomationRunId?: string;
-  private readonly onAppend?: (entry: TaskLogEntry) => StreamDeltaPosition | void;
+  private readonly onAppend?: (entry: ConversationLogEntry) => StreamDeltaPosition | void;
 
   constructor(run: AutomationRun, options: DeterministicAutomationOutputOptions = {}) {
     this.currentRun = run;
@@ -62,7 +62,7 @@ export class DeterministicAutomationOutput {
 
     const normalized = normalizeOutput(text);
     const timestamp = createTimestamp();
-    const entry: TaskLogEntry = {
+    const entry: ConversationLogEntry = {
       id: crypto.randomUUID(),
       level: stream === "stderr" ? "error" : "info",
       message: normalized.message,

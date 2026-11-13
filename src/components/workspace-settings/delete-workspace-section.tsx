@@ -11,7 +11,6 @@ import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety"
 interface DeleteWorkspaceSectionProps {
   workspace: Workspace;
   onDeleteWorkspace: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  workspaceTaskCount: number;
   saving: boolean;
   onDeleted?: () => void;
 }
@@ -19,7 +18,6 @@ interface DeleteWorkspaceSectionProps {
 export function DeleteWorkspaceSection({
   workspace,
   onDeleteWorkspace,
-  workspaceTaskCount,
   saving,
   onDeleted,
 }: DeleteWorkspaceSectionProps) {
@@ -29,7 +27,7 @@ export function DeleteWorkspaceSection({
   const [deleteServerDirectory, setDeleteServerDirectory] = useState(true);
   const canDeleteServerDirectory = isAutoProvisionedWorkspace(workspace);
 
-  const disabled = saving || deleting || workspaceTaskCount > 0;
+  const disabled = saving || deleting;
 
   async function handleDelete() {
     setDeleting(true);
@@ -57,9 +55,7 @@ export function DeleteWorkspaceSection({
   return (
     <>
       <SettingsFieldRow title="Delete workspace" danger
-        description={workspaceTaskCount > 0
-                ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
-                : "Chats in Trash and their managed worktrees will be permanently deleted."}
+        description="Chats in Trash and their managed worktrees will be permanently deleted."
         actions={<Button
             type="button"
             tone="danger"

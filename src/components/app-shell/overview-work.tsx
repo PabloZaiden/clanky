@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { DataList, EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Automation, Workspace } from "@/shared";
-import { shouldShowInRecentActivity } from "../../utils";
 import {
   buildActiveWorkSidebarItems,
   buildChatHistorySidebarItems,
@@ -46,8 +45,7 @@ export function OverviewWork({
           (item.kind === "chat" || item.kind === "execution-host-chat")
           && item.chatNode.chat.state.status === "done";
         return !getOverviewAttention(item)
-          && !isDoneChat
-          && (item.kind !== "task" || shouldShowInRecentActivity(item.taskNode.task.state.status));
+          && !isDoneChat;
       })
       .sort((left, right) => getOverviewActivityTimestamp(right).localeCompare(getOverviewActivityTimestamp(left)))
       .slice(0, RECENT_ACTIVITY_LIMIT);

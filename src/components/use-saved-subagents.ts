@@ -5,7 +5,7 @@ import { apiRequest } from "../lib/api-client";
 import { createRefreshCoordinator } from "../lib/refresh-coordinator";
 import { SNAPSHOT_REQUEST_TIMEOUT_MS } from "../lib/request-lifecycle";
 
-export function useSavedSubagents(kind: "chat" | "task", entityId: string) {
+export function useSavedSubagents(kind: "chat", entityId: string) {
   const [items, setItems] = useState<Subagent[]>([]);
   const [pages, setPages] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -48,7 +48,7 @@ export function useSavedSubagents(kind: "chat" | "task", entityId: string) {
     return () => { current.abort(); coordinator.reset(); };
   }, [coordinator, refresh]);
   useRealtime<ResourceRealtimeEvent>({
-    resources: ["subagents"], targets: { [kind === "chat" ? "chatId" : "taskId"]: entityId },
+    resources: ["subagents"], targets: { chatId: entityId },
     trackLastEvent: false,
     onSubscribed: () => { void refresh(); },
     onEvent: () => { void refresh(); },

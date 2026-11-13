@@ -8,14 +8,11 @@ import { DomainError } from "../domain/domain-error";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
 import type { ModelConfig } from "@/contracts/schemas/model";
-import type { ControlClientContext } from "@/shared/control-interactions";
 
 export interface ControlToolOrigin {
   workspaceId?: string;
-  current: Partial<Record<"chat" | "task" | "workspace", string>>;
+  current: Partial<Record<"chat" | "workspace", string>>;
   defaultModel?: ModelConfig;
-  planningPreferences?: ControlClientContext["planningPreferences"];
-  modelPreferences?: ControlClientContext["modelPreferences"];
 }
 
 export function directRecord(value: unknown): Record<string, unknown> {
@@ -113,12 +110,8 @@ export class ControlToolContext {
     return outcome.context;
   }
 
-  async creationPreferences(): Promise<Pick<ControlClientContext, "planningPreferences" | "modelPreferences">> {
-    return this.options.origin ?? await this.uiContext();
-  }
-
-  async resolve(kind: "chat" | "task" | "workspace", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
-    const paths = { chat: "chats", task: "tasks", workspace: "workspaces" } as const;
+  async resolve(kind: "chat" | "workspace", target: string, workspace: string | null = null): Promise<Record<string, unknown>> {
+    const paths = { chat: "chats", workspace: "workspaces" } as const;
     if (target === "current") {
       const id = this.options.origin
         ? this.options.origin.current[kind]
@@ -135,7 +128,7 @@ export class ControlToolContext {
     }
     const items = await this.collect(`GET /api/${paths[kind]}`, {
       ...(workspaceId ? { workspaceId } : {}),
-      ...(["chat", "task"].includes(kind) ? { name: target } : {}),
+      ...(kind === "chat" ? { name: target } : {}),
     });
     return this.choose(items, target);
   }

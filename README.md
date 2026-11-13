@@ -8,7 +8,7 @@
 Clanky is a coding-agent manager for running, reviewing, and iterating on
 software tasks with Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
 It combines a web dashboard, an authenticated CLI, isolated workspaces, live
-task visibility, chats, and review workflows in one application.
+conversation visibility, planning, and iteration in one application.
 
 **Promo**
 
@@ -22,10 +22,10 @@ https://github.com/user-attachments/assets/c5245a2d-0a66-4632-b437-a502e8629726
 
 ## Why Clanky
 
-- **Safer automation:** work in isolated branches or worktrees and review
-  changes before accepting or pushing them.
-- **One control plane:** manage tasks, chats, automations, workspaces, terminals,
-  files, previews, and reviews from the dashboard or API.
+- **Visible changes:** work in isolated branches or worktrees and inspect
+  their diff from the conversation.
+- **One control plane:** manage chats, plans, automations, workspaces, terminals,
+  files, and previews from the dashboard or API.
 - **Local or remote execution:** run locally or use a remote Mesh host
   when the repository and agent should live elsewhere.
 
@@ -38,11 +38,7 @@ https://github.com/user-attachments/assets/c5245a2d-0a66-4632-b437-a502e8629726
 
 ![Chat with an agent](assets/screenshots/desktop/chat-promo.png)
 
-*Start with a conversation, then turn the work into a task.*
-
-![Task review](assets/screenshots/desktop/task-review-promo.png)
-
-*Inspect the agent's changes before accepting or pushing them.*
+*Discuss the requirements, iterate on a plan, and implement in one conversation.*
 </details>
 
 <details>
@@ -93,13 +89,13 @@ default port or bind address.
 clanky auth --base-url http://localhost:3000
 clanky status
 clanky api
-clanky api tasks --method GET
-clanky schema tasks
+clanky api chats --method GET
+clanky schema chats
 clanky ws
 ```
 
 See the [getting started guide](docs/getting-started.md) for the first
-workspace and task, and the [API reference](docs/API.md) for the complete CLI
+workspace and chat, and the [API reference](docs/API.md) for the complete CLI
 and HTTP contract.
 
 ### Run with Docker

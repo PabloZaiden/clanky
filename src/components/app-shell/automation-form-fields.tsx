@@ -2,7 +2,7 @@ import type { ModelInfo, BranchInfo } from "@/contracts";
 import type { Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { ModelSelector } from "../ModelSelector";
-import { BranchSelector } from "../create-task/branch-selector";
+import { BranchSelector } from "../common/branch-selector";
 import type {
   AutomationFormDraft,
   AutomationFormIntervalUnit,

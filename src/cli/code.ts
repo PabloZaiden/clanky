@@ -24,13 +24,12 @@ export function parseCodeCommandArgs(args: readonly string[]): PreviewCommandOpt
       flags.add(name);
       continue;
     }
-    if (!["--chat", "--task", "--base-url"].includes(name)) throw new Error(`Unknown code option: ${name}`);
+    if (!["--chat", "--base-url"].includes(name)) throw new Error(`Unknown code option: ${name}`);
     const value = separator < 0 ? args[++index] : argument.slice(separator + 1);
     if (!value?.trim() || value.startsWith("--")) throw new Error(`${name} requires a value`);
     values[name] = value.trim();
   }
   if (!workspace?.trim()) throw new Error("code requires a workspace ID or name");
-  if (values["--chat"] && values["--task"]) throw new Error("--chat and --task may not be used together");
   return {
     workspace: workspace.trim(),
     port: 0,
@@ -41,7 +40,6 @@ export function parseCodeCommandArgs(args: readonly string[]): PreviewCommandOpt
     ...(values["--base-url"] ? { baseUrl: normalizeBaseUrl(values["--base-url"]) } : {}),
     code: {
       chat: values["--chat"],
-      task: values["--task"],
     },
   };
 }

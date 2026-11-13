@@ -6,7 +6,6 @@ import type { ServerSettings, ConnectionStatus } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import type { ExecutionHostRef } from "@/shared";
 import type { DeleteWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
-import type { PurgeArchivedTasksResult } from "../../hooks";
 
 /** Props for the shell workspace settings form. */
 export interface WorkspaceSettingsFormProps {
@@ -23,20 +22,12 @@ export interface WorkspaceSettingsFormProps {
     settings: ServerSettings,
     executionHost: ExecutionHostRef | null,
   ) => Promise<{ success: boolean; error?: string }>;
-  /** Callback to purge the workspace tasks covered by the terminal-state settings action */
-  onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;
   /** Callback to delete the workspace */
   onDeleteWorkspace?: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  /** Number of purgeable tasks shown in the terminal-state section */
-  purgeableTaskCount?: number;
-  /** Total number of tasks still assigned to the selected workspace */
-  workspaceTaskCount?: number;
   /** Whether saving is in progress */
   saving?: boolean;
   /** Whether testing is in progress */
   testing?: boolean;
-  /** Whether the terminal-state purge action is in progress */
-  purgingPurgeableTasks?: boolean;
   /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
   /** Form id for external submit buttons */

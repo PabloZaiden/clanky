@@ -29,7 +29,7 @@ export interface UseWorkspacesResult {
   createWorkspace: (request: CreateWorkspaceRequest, controllerId?: string) => Promise<Workspace | null>;
   /** Update a workspace */
   updateWorkspace: (id: string, request: string | UpdateWorkspaceRequest) => Promise<Workspace | null>;
-  /** Delete a workspace (only if it has no tasks) */
+  /** Delete a workspace */
   deleteWorkspace: (id: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Pull latest changes for the workspace default branch */
   pullLatestChanges: (

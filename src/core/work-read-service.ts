@@ -8,7 +8,6 @@ import { requireExecutionOwnerUserId } from "../context/user-context";
 import { listWorkReadIds, listWorkReadWindow, type WorkReadResource, type StoredWorkReadRow } from "../persistence/resource-reads";
 import { collectionReadPage, decodeReadCursor, readRevision, resourceKey, fitCompactMetadata } from "../client-sdk/collaboration/resource-read";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { loadAutomationRunSummary } from "../persistence/automations";
 import { DomainError } from "../domain/domain-error";
 import { getExecutionHostRefsByIds } from "../persistence/execution-hosts";
@@ -30,16 +29,12 @@ function workMetadata(row: StoredWorkReadRow, resource: WorkReadResource, hosts:
       directory: row.directory,
     } : { kind: "workspace", workspaceId: row.workspaceId },
     ...(row.automationId ? { automationId: row.automationId, chatId: row.chatId } : {}),
-    ...(row.taskId ? { taskId: row.taskId } : {}),
-    ...(row.currentIteration !== null ? { currentIteration: row.currentIteration } : {}),
     ...(row.stateAvailable ? {
-      needsInput: row.pendingQuestions + row.pendingPermissions + row.planApproval > 0,
+      needsInput: row.pendingQuestions + row.pendingPermissions > 0,
       interventionReasons: [
         ...(row.pendingQuestions ? ["question"] : []),
         ...(row.pendingPermissions ? ["permission"] : []),
-        ...(row.planApproval ? ["plan_approval"] : []),
       ],
-      availableActions: resource === "task" && row.status === "completed" ? ["accept", "push"] : [],
       pendingQuestions: row.pendingQuestions, pendingPermissions: row.pendingPermissions,
       pendingInputs: row.pendingInputs,
     } : { stateUnavailable: true }),
@@ -65,8 +60,7 @@ export async function readWorkCollectionItem(input: {
   const id = listWorkReadIds({ ...input, userId: requireExecutionOwnerUserId() })
     .find((candidate) => resourceKey({ id: candidate }) === input.options.item);
   if (!id) throw new DomainError("read_item_unavailable", "The selected item is unavailable.");
-  return input.resource === "chat" ? await loadChatMetadata(id)
-    : input.resource === "task" ? await loadTaskSummary(id) : await loadAutomationRunSummary(id);
+  return input.resource === "chat" ? await loadChatMetadata(id) : await loadAutomationRunSummary(id);
 }
 
 export function readWorkCollection(input: {

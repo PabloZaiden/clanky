@@ -164,7 +164,7 @@ export interface AgentResponse {
  * This includes both the real AcpBackend and MockAcpBackend for tests.
  * 
  * The interface is split into two parts:
- * - Core methods: Used by TaskEngine for task execution
+ * - Core methods: Used by conversation runtimes for agent execution
  * - Manager methods: Used by BackendManager for connection management
  */
 export interface Backend {
@@ -174,7 +174,7 @@ export interface Backend {
   readonly name: string;
 
   // ============================================
-  // Core methods (used by TaskEngine)
+  // Core methods (used by conversation runtime)
   // ============================================
 
   /**

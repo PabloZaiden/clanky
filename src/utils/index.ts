@@ -2,35 +2,6 @@
  * Central export for all utility functions.
  */
 
-export {
-  getStatusLabel,
-  canAccept,
-  canMarkMerged,
-  canManualComplete,
-  isFinalState,
-  isTaskActive,
-  isTaskRunning,
-  isTaskGenerating,
-  canJumpstart,
-  canSendTerminalFollowUp,
-  isAwaitingFeedback,
-  isArchivedTask,
-  isTaskInActiveSection,
-  isSidebarHistoryTask,
-  isWorkspaceHistoryTask,
-  shouldShowInRecentActivity,
-  getPlanningStatusLabel,
-  getTaskStatusLabel,
-  getTaskStatusPill,
-  getTaskStatusPillFromState,
-  isTaskPlanReady,
-  getEntityLabel,
-  type EntityLabels,
-  type TaskStatusPill,
-  type TaskStatusPillKey,
-  type TaskStatusPillVariant,
-} from "./task-status";
-
 export { sanitizeBranchName } from "./sanitize-branch-name";
 export {
   formatFileSize,

@@ -140,7 +140,7 @@ export const CollaborationActorSchema = z.discriminatedUnion("kind", [
   }).strict(),
 ]);
 
-export const CollaborationAuthorshipResourceKindSchema = z.enum(["chat", "task"]);
+export const CollaborationAuthorshipResourceKindSchema = z.literal("chat");
 
 export const CollaborationAuthorshipSchema = z.object({
   resourceKind: CollaborationAuthorshipResourceKindSchema,

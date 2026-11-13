@@ -339,6 +339,7 @@ export const executionHostRoutes = defineRoutes({
           modelProviderID: validation.data.model.providerID,
           modelID: validation.data.model.modelID,
           modelVariant: validation.data.model.variant,
+          startWithPlan: validation.data.startWithPlan,
         });
         return Response.json(chat, { status: 201 });
       } catch (error) {

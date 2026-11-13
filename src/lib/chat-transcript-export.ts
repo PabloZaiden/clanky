@@ -1,5 +1,5 @@
 import type { Chat } from "@/shared/chat";
-import type { PersistedMessage, PersistedToolCall } from "@/shared/task";
+import type { PersistedMessage, PersistedToolCall } from "@/shared/conversation";
 import { getToolMeta } from "../components/log-viewer/tool-inference";
 import { getQuestionAnswerStatus } from "@/shared/harness-questions";
 

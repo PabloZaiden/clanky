@@ -124,8 +124,8 @@ The workspace overview promotes **New Chat** to a primary header action when
 space permits, with framework-managed overflow otherwise. Its sidebar context
 menu retains the same action; workspace subpages keep their existing menu.
 
-Workspace menus list **New Chat** first, followed by **New Task** (Git workspaces
-only), **New Terminal**, and **New Automation**. **Import Automation** belongs to
+Workspace menus list **New Chat** first, followed by **New Terminal** and
+**New Automation**. **Import Automation** belongs to
 the New Automation page and imports into its selected workspace. File-opening
 actions use the label **Code Explorer**. Scratchpad opens from its overview
 heading, not the workspace menu. Git-backed workspace overviews expose
@@ -137,14 +137,14 @@ for the selected local or Mesh server, without requiring or creating a workspace
 This is a menu-only action, not a standalone page button. It is disabled when
 the server does not accept execution or lacks the required file-operation capability.
 
-In the sidebar's **Workspaces** tab, each workspace directly lists chats,
-Git-backed tasks, and terminals together, including completed chats and
-historical tasks. **Automations** is a peer section containing automations from all
+In the sidebar's **Workspaces** tab, each workspace directly lists chats
+and terminals together, including completed chats.
+**Automations** is a peer section containing automations from all
 workspaces, with their workspace names and inherited privacy/access rules.
 In **Servers**, each server directly lists only its host chats and host terminals;
 workspaces remain in the **Workspaces** tab rather than appearing under servers.
-Mixed lists sort by most recent interaction (chat/task user message or terminal
-connection, falling back to creation). Chats, tasks, and terminals reuse
+Mixed lists sort by most recent interaction (chat user message or terminal
+connection, falling back to creation). Chats and terminals reuse
 Active's rich rows: workspace/host and textual status above the title, with
 relative interaction time and type/provider metadata below. Automations and
 workspace/server rows retain their own presentation.
@@ -209,7 +209,7 @@ not data rewriting.
 
 Transcripts use 18px body text and 16px technical output on desktop and mobile.
 Check rendered Markdown, raw text, code, and tool descendants, not just inherited
-container styles. Across chat, task-log, and automation transcripts, visible
+container styles. Across chat and automation transcripts, visible
 timestamps for entries before the current local day include the date and time;
 same-day entries remain time-only. Keep the existing timestamp visibility
 cadence, and refresh the displayed day at local midnight and when returning to
@@ -229,8 +229,7 @@ Keep framework controls and compact descriptions rather than screen-specific
 spacing corrections.
 
 Activity opens through framework entity actions while preserving conversation
-DOM, scroll, and composer draft. An embedded task chat's **Chat activity** action
-is distinct from execution **Activity**; tool rows link to their own scope.
+DOM, scroll, and composer draft; tool rows link to their own scope.
 Saved subagent selection stays inside that Activity composition. Reuse the
 normal shared chat transcript presentation and read actions without mounting
 the composer, editable chat lifecycle or input-voice gesture. Keep both parent
@@ -240,7 +239,7 @@ execution-host/file context, not controller-local path guesses.
 Steer is a text-style action below queued input. Admission, native delivery,
 and model obedience remain separate concepts.
 
-Chat and task composers place the conversation-options control between the
+Chat composers place the conversation-options control between the
 message textbox and the send/queue/interrupt button. Its sliders icon
 distinguishes conversation controls and information from sidebar navigation;
 the options panel opens above it, aligned to the right.
@@ -292,7 +291,7 @@ and their All approvals link returns there. There is no separate sidebar action
 or standalone inbox. Pending requests also appear in Home's Needs attention;
 both surfaces use the same user-scoped collection and realtime updates,
 with local expiry removal during a connection interruption.
-Subscribe to pending-collection changes, not generic workspace/chat/task/host
+Subscribe to pending-collection changes, not generic workspace/chat/host
 activity or policy/result updates. Read initially and after a relevant WS
 notification or reconnect; keep the loaded empty/nonempty state visible during
 background refresh rather than hiding it or showing initial loading again.

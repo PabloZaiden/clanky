@@ -2,7 +2,7 @@
  * Stable execution-context identities and external credential scopes.
  */
 
-export const MANAGED_CONTEXT_TYPES = ["task", "chat", "automation_run", "terminal_session"] as const;
+export const MANAGED_CONTEXT_TYPES = ["chat", "automation_run", "terminal_session"] as const;
 
 export type ManagedContextType = typeof MANAGED_CONTEXT_TYPES[number];
 

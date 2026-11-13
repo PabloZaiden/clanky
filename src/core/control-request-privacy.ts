@@ -2,7 +2,6 @@ import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { executionHostRefFromParts, isPrivateMeshExecutionHostRef } from "@/shared/execution-host";
 import { readReferenceField } from "@/shared/record";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { listAutomationsByWorkspace, loadAutomation, loadAutomationRunSummary, loadAutomationRunSummaryByChatId } from "../persistence/automations";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { getWorkspace } from "../persistence/workspaces";
@@ -15,17 +14,10 @@ async function workspacePrivate(id: string): Promise<boolean> {
 
 export async function resourcePrivate(resource: string, id: string): Promise<boolean> {
   if (resource === "workspace") return await workspacePrivate(id);
-  if (resource === "task") {
-    const task = await loadTaskSummary(id);
-    return !task || task.config.isPrivate === true || await workspacePrivate(task.config.workspaceId);
-  }
   if (resource === "chat") {
     const chat = await loadChatMetadata(id);
     if (!chat || chat.config.isPrivate === true) return true;
     if (chat.config.workspaceId && await workspacePrivate(chat.config.workspaceId)) return true;
-    if (chat.config.scope === "task" || chat.config.taskId) {
-      return !chat.config.taskId || await resourcePrivate("task", chat.config.taskId);
-    }
     if (chat.config.scope === "automation") {
       const run = await loadAutomationRunSummaryByChatId(id);
       if (run) return await resourcePrivate("automation-run", run.id);
@@ -49,7 +41,6 @@ export async function resourcePrivate(resource: string, id: string): Promise<boo
     const terminal = await getTerminalSession(id);
     if (!terminal || terminal.config.isPrivate === true
       || isPrivateMeshExecutionHostRef(terminal.config.executionHostBinding.host)) return true;
-    if (terminal.config.taskId && await resourcePrivate("task", terminal.config.taskId)) return true;
     return terminal.config.workspaceId ? await workspacePrivate(terminal.config.workspaceId) : false;
   }
   return true;

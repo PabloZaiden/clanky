@@ -1,5 +1,5 @@
 /**
- * Git service for Clanky Tasks Management System.
+ * Git service for Clanky.
  * Provides git operations using a CommandExecutor abstraction.
  * All operations are isolated to a specific directory.
  *
@@ -92,7 +92,7 @@ import type {
 } from "./git-types";
 
 /**
- * GitService provides git operations for Clanky Tasks.
+ * GitService provides git operations for Clanky.
  * Uses a CommandExecutor for running git commands, allowing for both
  * local execution and remote execution through Mesh workers.
  */

@@ -32,7 +32,7 @@ export interface MessageAttachment {
 }
 
 export interface AttachmentContext {
-  kind: "chat" | "task";
+  kind: "chat";
   id: string;
 }
 

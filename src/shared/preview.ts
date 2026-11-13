@@ -22,7 +22,6 @@ export type PreviewTarget =
 
 export interface CodePreviewOptions {
   chat?: string;
-  task?: string;
 }
 
 export type CodePreviewCleanup =

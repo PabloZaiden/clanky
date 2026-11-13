@@ -8,7 +8,7 @@ import type {
   ChatTranscript,
   ChatTranscriptStorageEntry,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
@@ -30,7 +30,7 @@ export function includeLiveTranscript(
   live: LiveTranscriptState | undefined,
   options: {
     window: TranscriptSnapshotOptions;
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean;
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean;
   },
 ): ChatTranscript {
   if (!live) return persisted;
@@ -104,7 +104,7 @@ type TranscriptEntry =
       id: string;
       timestamp: string;
       sequence: number;
-      log: TaskLogEntry;
+      log: ConversationLogEntry;
     };
 
 export function getTranscriptSnapshotEtag(
@@ -140,7 +140,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function createTranscriptEntryFromStorage(
   entry: ChatTranscriptStorageEntry,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean,
 ): TranscriptEntry | null {
   if (entry.kind === "message" && isRecord(entry.payload)) {
     return {
@@ -163,7 +163,7 @@ function createTranscriptEntryFromStorage(
     };
   }
   if (entry.kind === "log" && isRecord(entry.payload)) {
-    const logEntry = entry.payload as unknown as TaskLogEntry;
+    const logEntry = entry.payload as unknown as ConversationLogEntry;
     return shouldIncludeLog(logEntry)
       ? {
           kind: "log",
@@ -187,7 +187,7 @@ export function createTranscriptFromStorageEntries(
     nextCursor?: string;
     isPartial?: boolean;
   },
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): ChatTranscript {
   const transcriptEntries = entries
     .map((entry) => createTranscriptEntryFromStorage(entry, shouldIncludeLog))
@@ -228,7 +228,7 @@ export function createTranscriptFromStorageEntries(
 export function createTranscriptFromStoragePage(
   page: TranscriptEntriesPage,
   options: { revision: string; totalEntries: number },
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): ChatTranscript {
   return createTranscriptFromStorageEntries(
     page.entries,

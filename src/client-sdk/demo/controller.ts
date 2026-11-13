@@ -5,11 +5,11 @@ import {
 } from "@pablozaiden/webapp/contracts";
 import type { WebAppDuplex, WebAppDuplexHandlers, WebAppResourceUrl } from "@pablozaiden/webapp/web";
 import {
-  CreateChatRequestSchema, CreateExecutionHostChatRequestSchema, SendChatMessageRequestSchema,
+  ChatDiffFileQuerySchema, CreateChatRequestSchema, CreateExecutionHostChatRequestSchema, SendChatMessageRequestSchema,
   DiscoverExecutionHostModelsRequestSchema,
 } from "@/contracts/schemas/chat";
 import {
-  SetDashboardViewModeRequestSchema, SetFileExplorerFullTreeRequestSchema,
+  SetFileExplorerFullTreeRequestSchema,
   SetMarkdownRenderingRequestSchema, SetQuickChatSettingsRequestSchema,
 } from "@/contracts/schemas/preferences";
 import {
@@ -17,8 +17,8 @@ import {
 } from "@/contracts/schemas/file-explorer";
 import { DEMO_CONTROLLER_ENDPOINT } from "./storage";
 import {
-  DEMO_DIFF, DEMO_DIRECTORY, DEMO_FILES, DEMO_HOST, DEMO_MODEL, DEMO_MODELS, DEMO_NOTIFICATIONS, DEMO_RELAYS, DEMO_VOICE, DEMO_WORKER,
-  demoChat, demoConfig, demoMeshStatus, demoTask, demoTaskChat, demoTerminal, demoTranscript, demoWorkspace,
+  DEMO_DIFF, DEMO_DIFF_BASE, DEMO_DIRECTORY, DEMO_FILES, DEMO_HOST, DEMO_MODEL, DEMO_MODELS, DEMO_NOTIFICATIONS, DEMO_RELAYS, DEMO_VOICE, DEMO_WORKER,
+  demoChat, demoConfig, demoMeshStatus, demoTerminal, demoTranscript, demoWorkspace,
 } from "./data";
 import { DemoTerminal } from "./terminal";
 import type { Chat, ChatSnapshot, ExecutionHostDescriptor, HarnessActivitySnapshot, WorkspaceFileEntry, WorkspaceFileNode } from "@/shared";
@@ -31,7 +31,7 @@ class DemoError extends Error {
 
 function unsupported(): never {
   throw new DemoError(422, "demo_action_unavailable",
-    "Demo: this action is not simulated. Explore the fictional workspace, files and task diff, or create a chat and send a text message. No real operation was performed.");
+    "Demo: this action is not simulated. Explore the fictional workspace, files and chat diff, or create a chat and send a text message. No real operation was performed.");
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -43,20 +43,18 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
 export class DemoController {
   private readonly now = new Date().toISOString();
   private readonly workspace = demoWorkspace(this.now);
-  private readonly task = demoTask(this.now);
   private readonly terminal = new DemoTerminal(demoTerminal(this.now), () => this.changed("terminal-sessions", "demo-terminal"));
   private readonly chats = new Map<string, Chat>([
     ["demo-chat", demoChat("demo-chat", "Demo: explore the observatory", this.now)],
     ["demo-host-chat", demoChat("demo-host-chat", "Demo: server conversation", this.now, DEMO_WORKER)],
-    ["demo-task-chat", demoTaskChat(this.now)],
   ]);
   private readonly connections = new Set<{ publish(event: ResourceRealtimeEvent): void; close(): Promise<void> }>();
   private readonly urls = new Set<string>();
   private readonly preferences = new Map<string, unknown>([
     ["theme", { theme: "dark" }], ["markdown-rendering", { enabled: true }],
-    ["file-explorer-full-tree", { enabled: true }], ["dashboard-view-mode", { mode: "rows" }],
+    ["file-explorer-full-tree", { enabled: true }],
     ["quick-chat", { workspaceId: "demo-workspace", model: DEMO_MODEL, useWorktree: false }],
-    ["last-model", DEMO_MODEL], ["last-cheap-model", null],
+    ["last-model", DEMO_MODEL],
     ["prompt-templates", { templates: [] }], ["sidebar-pins", { pins: [] }],
     ["scheduler-timezone", { timezone: "UTC" }], ["github-username", { githubUsername: "" }],
   ]);
@@ -77,7 +75,12 @@ export class DemoController {
       request.signal.throwIfAborted();
       if (new TextEncoder().encode(text).length > 64_000) throw new DemoError(413, "demo_input_limit", "Demo: use a shorter text message (at most 64 KB).");
       const body: unknown = text ? JSON.parse(text) : {};
-      return Response.json(this.dispatch(url, request.method, body), { headers: { "cache-control": "no-store" } });
+      const headers = new Headers({ "cache-control": "no-store" });
+      if (/\/chats\/[^/]+\/diff$/.test(url.pathname)) {
+        headers.set("X-Clanky-Diff-Base", DEMO_DIFF_BASE);
+        headers.set("X-Clanky-Diff-Base-Ref", "main");
+      }
+      return Response.json(this.dispatch(url, request.method, body), { headers });
     } catch (error) {
       request.signal.throwIfAborted();
       if (error instanceof DemoError) return Response.json({ error: error.code, message: error.message }, { status: error.status });
@@ -100,7 +103,6 @@ export class DemoController {
         case "/api/collaboration/invitations": case "/api/collaboration/relays": return [];
         case "/api/workspaces": return [this.workspace];
         case "/api/execution-hosts": return [DEMO_HOST, DEMO_WORKER];
-        case "/api/tasks": return [this.task];
         case "/api/chats": return [...this.chats.values()];
         case "/api/terminal-sessions": return [this.terminal.session];
         case "/api/terminal-sessions/demo-terminal": return this.terminal.session;
@@ -111,7 +113,6 @@ export class DemoController {
         case "/api/git/default-branch": this.requireWorkspace(url.searchParams.get("workspaceId")); return { defaultBranch: "main" };
         case "/api/git/github-repository-url": this.requireWorkspace(url.searchParams.get("workspaceId")); return { githubUrl: null };
         case "/api/git/remote-status": this.requireWorkspace(url.searchParams.get("workspaceId")); return { remote: "origin", hasRemote: false };
-        case "/api/check-planning-dir": this.requireWorkspace(url.searchParams.get("workspaceId")); return { exists: false, hasFiles: false, files: [] };
         case "/api/trash": return { items: [], nextCursor: null };
       }
     }
@@ -125,7 +126,6 @@ export class DemoController {
           case "theme": value = parse(z.object({ theme: z.enum(["dark", "light", "system"]) }).strict(), body); break;
           case "markdown-rendering": value = parse(SetMarkdownRenderingRequestSchema, body); break;
           case "file-explorer-full-tree": value = parse(SetFileExplorerFullTreeRequestSchema, body); break;
-          case "dashboard-view-mode": value = parse(SetDashboardViewModeRequestSchema, body); break;
           case "quick-chat": {
             const settings = parse(SetQuickChatSettingsRequestSchema, body);
             this.requireWorkspace(settings.workspaceId);
@@ -172,7 +172,7 @@ export class DemoController {
         const input = parse(CreateExecutionHostChatRequestSchema, body);
         this.requireModel(input.model);
         if (input.directory !== DEMO_DIRECTORY) unsupported();
-        return this.createChat(input.name, selectedHost);
+        return this.createChat(input.name, selectedHost, { ...input, useWorktree: false });
       }
     }
 
@@ -186,7 +186,7 @@ export class DemoController {
       }
     }
 
-    const files = /^\/api\/(?:workspaces\/demo-workspace|tasks\/demo-task|execution-hosts\/(?:local\/demo-host|mesh\/demo-worker))\/files(?:\/(content|metadata|tree))?$/.exec(path);
+    const files = /^\/api\/(?:workspaces\/demo-workspace|execution-hosts\/(?:local\/demo-host|mesh\/demo-worker))\/files(?:\/(content|metadata|tree))?$/.exec(path);
     if (files && method === "GET") return this.files(url, files[1]);
 
     const chatRoute = /^\/api\/chats\/([^/]+)(?:\/(.+))?$/.exec(path);
@@ -203,8 +203,26 @@ export class DemoController {
       if (method === "GET" && action === "activity") return {
         activity: { observation: "unavailable", reason: "unsupported" } satisfies HarnessActivitySnapshot,
       };
+      if (method === "GET" && action === "diff") return DEMO_DIFF.map(({ patch: _patch, ...file }) => file);
+      if (method === "GET" && action === "diff/file") {
+        const input = parse(ChatDiffFileQuerySchema, Object.fromEntries(url.searchParams));
+        const file = DEMO_DIFF.find((entry) => entry.path === input.path);
+        if (input.base !== DEMO_DIFF_BASE || !file) {
+          throw new DemoError(404, "chat_diff_file_not_found", "Demo: this file is not in the fictional change list.");
+        }
+        return file;
+      }
+      if (method === "GET" && action === "plan") return {
+        exists: true,
+        content: "# Demo plan\n\n- Add a friendly greeting.\n- Review the simulated diff.\n\nThis is fictional sample content; no execution takes place.",
+      };
+      if (method === "GET" && action === "status-file") return {
+        exists: true, content: "# Demo status\n\nThe fictional greeting is ready to review.",
+      };
+      if (method === "GET" && action === "repository-context") return {
+        isGitRepo: true, branch: "demo/star-greeting", pullRequest: null, pullRequestLookup: "none",
+      };
       if (method === "POST" && action === "messages") {
-        if (chat.config.taskId) unsupported();
         const input = parse(SendChatMessageRequestSchema, body);
         if (input.attachments.length) throw new DemoError(422, "demo_attachments_unavailable", "Demo: send text only. Attachments are not uploaded or processed.");
         if (chat.state.messages.length >= 100) throw new DemoError(409, "demo_message_limit", "Demo: this chat is full. Create another chat or reload to reset.");
@@ -212,7 +230,7 @@ export class DemoController {
         chat.state.messages.push(
           { id: crypto.randomUUID(), role: "user", content: input.message ?? "", timestamp },
           { id: crypto.randomUUID(), role: "assistant", timestamp,
-            content: "Demo simulated response: your message was received in this browser only. No AI model was called and no commands or file changes were made. Try opening Demo Observatory's Code Explorer or the sample task's Diff tab." },
+            content: "Demo simulated response: your message was received in this browser only. No AI model was called and no commands or file changes were made. Try opening Demo Observatory's Code Explorer or this chat's Diff view." },
         );
         chat.state.revision++;
         chat.state.lastUserMessageAt = timestamp;
@@ -223,26 +241,6 @@ export class DemoController {
       }
     }
 
-    const task = /^\/api\/tasks\/demo-task(?:\/(.+))?$/.exec(path);
-    if (task?.[1] === "chat" && method === "POST") {
-      parse(z.object({}).strict(), body);
-      return url.searchParams.get("summary") === "1"
-        ? { chatId: "demo-task-chat", created: false } : this.chats.get("demo-task-chat");
-    }
-    if (task && method === "GET") {
-      switch (task[1]) {
-        case undefined: return this.task;
-        case "snapshot": return { task: this.task, transcript: demoTranscript("demo-task", this.task.state.messages, 1) };
-        case "diff": return DEMO_DIFF;
-        case "plan": return { exists: true, content: "# Demo plan\n\n- Add a friendly greeting.\n- Review the simulated diff.\n\nThis is fictional sample content; no execution takes place." };
-        case "status-file": return { exists: true, content: "# Demo status\n\nThe fictional greeting is ready to review." };
-        case "comments": return [];
-        case "chat": return this.chats.get("demo-task-chat");
-        case "subagents": return { items: [] } satisfies SubagentList;
-        case "activity": return { activity: { observation: "unavailable", reason: "unsupported" } satisfies HarnessActivitySnapshot };
-        case "pull-request": return { enabled: false, destinationType: "disabled", disabledReason: "Demo: there is no real repository or pull request." };
-      }
-    }
     unsupported();
   }
 
@@ -256,13 +254,18 @@ export class DemoController {
     }
   }
 
-  private createChat(name?: string, host?: ExecutionHostDescriptor, input?: CreateChatRequest): Chat {
+  private createChat(
+    name?: string,
+    host?: ExecutionHostDescriptor,
+    input?: Pick<CreateChatRequest, "useWorktree" | "useSelectedBranchForWorktree" | "useChatNameAsBranch" | "startWithPlan" | "baseBranch">,
+  ): Chat {
     if (this.chats.size >= 20) throw new DemoError(409, "demo_chat_limit", "Demo: reload to reset the 20-chat demo limit.");
     const chat = demoChat(crypto.randomUUID(), `Demo: ${name?.trim() || "new conversation"}`.slice(0, 100), new Date().toISOString(), host);
     if (input) {
       chat.config.useWorktree = input.useWorktree;
       chat.config.useSelectedBranchForWorktree = input.useSelectedBranchForWorktree;
       chat.config.useChatNameAsBranch = input.useChatNameAsBranch;
+      chat.config.startWithPlan = input.startWithPlan;
       chat.config.baseBranch = input.baseBranch;
       if (input.useWorktree) chat.state.worktree = {
         originalBranch: input.baseBranch ?? "main",
@@ -284,8 +287,7 @@ export class DemoController {
     if (start && start !== DEMO_DIRECTORY) throw new DemoError(404, "directory_not_found", "Demo: only the fictional /demo/observatory directory is available.");
     const relative = path === DEMO_DIRECTORY ? "" : path.startsWith(`${DEMO_DIRECTORY}/`) ? path.slice(DEMO_DIRECTORY.length + 1) : path;
     const identity = url.pathname.startsWith("/api/workspaces/") ? { workspaceId: this.workspace.id }
-      : url.pathname.startsWith("/api/tasks/") ? { taskId: this.task.config.id }
-        : { serverId: url.pathname.includes("/mesh/") ? "demo-worker" : "demo-host" };
+      : { serverId: url.pathname.includes("/mesh/") ? "demo-worker" : "demo-host" };
     const entries = (directory: string): WorkspaceFileNode[] => Object.keys(DEMO_FILES)
       .filter(file => (file.includes("/") ? file.slice(0, file.lastIndexOf("/")) : "") === directory)
       .map(file => ({ name: file.slice(file.lastIndexOf("/") + 1), path: file, kind: "file" }));

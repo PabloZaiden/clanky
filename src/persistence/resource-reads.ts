@@ -10,7 +10,7 @@ import { DomainError } from "../domain/domain-error";
 import type { CollaborationCreator } from "@/shared/collaboration";
 import { collaborationCreatorFromRow, collaborationCreatorProjection } from "./collaboration-authorship";
 
-export type WorkReadResource = "chat" | "task" | "automation_run";
+export type WorkReadResource = "chat" | "automation_run";
 export interface StoredWorkReadRow {
   id: string;
   creator?: CollaborationCreator;
@@ -22,18 +22,15 @@ export interface StoredWorkReadRow {
   updatedAt: string;
   lastActivityAt: string;
   lastUserMessageAt: string | null;
-  planApproval: number;
   providerID: string | null;
   modelID: string | null;
   variant: string | null;
-  currentIteration: number | null;
   pendingQuestions: number;
   pendingPermissions: number;
   pendingInputs: number;
   stateAvailable: number;
   automationId: string | null;
   chatId: string | null;
-  taskId: string | null;
   sourceKind: string;
   executionHostId: string | null;
 }
@@ -47,7 +44,7 @@ interface WorkReadSource {
   options?: ResourceReadOptions;
 }
 
-const TABLES = { chat: "chats", task: "tasks", automation_run: "automation_runs" } as const;
+const TABLES = { chat: "chats", automation_run: "automation_runs" } as const;
 
 function sourceWhere(source: WorkReadSource): { clause: string; values: string[] } {
   const kind = source.resource === "automation_run" ? "automation-run" : source.resource;
@@ -60,7 +57,7 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
   const clauses = ["user_id = ?"];
   const values = [source.userId];
   if (source.resource === "chat") clauses.push("deleted_at IS NULL");
-  if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace' AND task_id IS NULL");
+  if (source.resource === "chat" && !source.id) clauses.push("scope = 'workspace'");
   if (source.id) { clauses.push("id = ?"); values.push(source.id); }
   const workspaceId = getPersistenceWorkspaceId() ?? source.workspaceId ?? source.options?.workspaceId;
   if (workspaceId && source.resource !== "automation_run") {
@@ -81,7 +78,6 @@ function sourceWhere(source: WorkReadSource): { clause: string; values: string[]
 function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
   const where = sourceWhere(source);
   const run = source.resource === "automation_run";
-  const task = source.resource === "task";
   const snapshot = "CASE WHEN json_valid(config_snapshot) THEN config_snapshot ELSE '{}' END";
   const storedHarness = run
     ? "(SELECT harness_state_json FROM chats WHERE chats.id = automation_runs.chat_id AND chats.user_id = automation_runs.user_id)"
@@ -112,25 +108,21 @@ function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
     json_extract(${snapshot}, '$.model.providerID') AS providerID,
     json_extract(${snapshot}, '$.model.modelID') AS modelID,
     json_extract(${snapshot}, '$.model.variant') AS variant,
-    NULL AS currentIteration, ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
-    0 AS planApproval,
-    automation_id AS automationId, chat_id AS chatId, NULL AS taskId, 'workspace' AS sourceKind, NULL AS executionHostId,
+    ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
+    automation_id AS automationId, chat_id AS chatId, 'workspace' AS sourceKind, NULL AS executionHostId,
     ${pendingPermissions} AS pendingPermissions,
     CASE WHEN json_valid(config_snapshot) AND json_type(${snapshot}) = 'object' AND ${harnessAvailable}
       AND ${permissionsAvailable} THEN 1 ELSE 0 END AS stateAvailable
   ` : `
     name, workspace_id AS workspaceId, directory,
     model_provider_id AS providerID, model_model_id AS modelID, model_variant AS variant,
-    ${task ? "current_iteration" : "NULL"} AS currentIteration,
     NULL AS automationId, NULL AS chatId,
-    ${task ? "NULL" : "task_id"} AS taskId,
-    ${task ? "'workspace'" : "source_kind"} AS sourceKind,
-    ${task ? "NULL" : "execution_host_id"} AS executionHostId,
+    source_kind AS sourceKind,
+    execution_host_id AS executionHostId,
     ${pendingQuestions} AS pendingQuestions, ${pendingInputs} AS pendingInputs,
-    ${task ? "0" : pendingPermissions} AS pendingPermissions,
-    ${task ? "(status = 'planning' AND plan_is_ready = 1 AND auto_accept_plan = 0)" : "0"} AS planApproval,
+    ${pendingPermissions} AS pendingPermissions,
     CASE WHEN ${harnessAvailable}
-      ${task ? "" : `AND ${permissionsAvailable}`}
+      AND ${permissionsAvailable}
       THEN 1 ELSE 0 END AS stateAvailable
   `;
   const transcript = getTranscriptTableConfig(source.resource);
@@ -143,14 +135,14 @@ function workQuery(source: WorkReadSource): { sql: string; values: string[] } {
   if (source.options?.status) { clauses.push("status = ?"); where.values.push(source.options.status); }
   if (source.options?.needsInput) {
     clauses.push(source.options.needsInput === "true"
-      ? "(pendingQuestions + pendingPermissions + planApproval > 0 OR stateAvailable = 0)"
-      : "(pendingQuestions + pendingPermissions + planApproval = 0 AND stateAvailable = 1)");
+      ? "(pendingQuestions + pendingPermissions > 0 OR stateAvailable = 0)"
+      : "(pendingQuestions + pendingPermissions = 0 AND stateAvailable = 1)");
   }
   return { sql: `
     WITH work AS (SELECT id, status, created_at AS createdAt, updated_at AS updatedAt,
       ${run ? "COALESCE(completed_at, started_at, created_at)" : "COALESCE(last_activity_at, created_at)"} AS lastActivityAt,
       ${lastUser} AS lastUserMessageAt,
-      ${run ? "NULL AS collaboration_creator_json" : collaborationCreatorProjection(task ? "task" : "chat")}, ${select}
+      ${run ? "NULL AS collaboration_creator_json" : collaborationCreatorProjection("chat")}, ${select}
     FROM ${TABLES[source.resource]} WHERE ${where.clause}
     )
     SELECT * FROM work ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}

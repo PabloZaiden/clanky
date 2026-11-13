@@ -12,7 +12,6 @@ import type {
   PreviewEvent,
   ProvisioningEvent,
   TerminalSessionEvent,
-  TaskEvent,
   WorkerUpdateEvent,
 } from "@/shared";
 import {
@@ -33,7 +32,6 @@ import type {
 } from "@pablozaiden/webapp/server";
 
 export type ClankyDomainEvent =
-  | TaskEvent
   | ChatEvent
   | AutomationEvent
   | TerminalSessionEvent
@@ -57,7 +55,6 @@ export interface ResourcePublication<TPayload = unknown> {
   membershipId?: string | null;
   payload?: TPayload;
   chatId?: string;
-  taskId?: string;
 }
 
 export interface RealtimeOwner {
@@ -89,7 +86,6 @@ export function createClankyRealtimePublisher(
         ...(publication.workspaceId ? { workspaceId: publication.workspaceId } : {}),
         ...(publication.membershipId !== undefined ? { membershipId: publication.membershipId ?? "owner" } : {}),
         ...(publication.chatId ? { chatId: publication.chatId } : {}),
-        ...(publication.taskId ? { taskId: publication.taskId } : {}),
       };
       const options = {
         ...(publication.scope ? { scope: publication.scope } : {}),
@@ -194,7 +190,7 @@ export function publishClankyDomainEvent(
     case "subagent.changed":
       publisher.publishResource(owner, {
         resource: CLANKY_REALTIME_RESOURCES.subagents, action: "changed", id: event.subagentId,
-        chatId: event.chatId, taskId: event.taskId,
+        chatId: event.chatId,
       });
       return;
     case "subagent.transcript":
@@ -204,14 +200,14 @@ export function publishClankyDomainEvent(
           ...event.event,
           message: projectTranscriptMessage(
             event.event.message,
-            `/api/${event.chatId ? "chats" : "tasks"}/${encodeURIComponent(event.chatId ?? event.taskId!)}/subagents/${encodeURIComponent(event.subagentId)}`,
+            `/api/chats/${encodeURIComponent(event.chatId!)}/subagents/${encodeURIComponent(event.subagentId)}`,
           ),
         } : event.event,
-      }, { subagentId: event.subagentId, chatId: event.chatId, taskId: event.taskId });
+      }, { subagentId: event.subagentId, chatId: event.chatId });
       return;
     case "harness.changed": {
       const payload: TranscriptResourceChange = { transcript: "unchanged" };
-      publishChanged(publisher, owner, event.context.kind === "chat" ? CLANKY_REALTIME_RESOURCES.chats : CLANKY_REALTIME_RESOURCES.tasks, event.context.id, undefined, payload);
+      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.context.id, undefined, payload);
       for (const run of event.runs ?? []) {
         publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.automationRuns, run.id, run.automationId, payload);
       }
@@ -221,69 +217,6 @@ export function publishClankyDomainEvent(
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.mesh);
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.executionHosts);
       return;
-    case "task.created":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
-      return;
-    case "task.starting":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
-      return;
-    case "task.deleted":
-      publishDeleted(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId, undefined, { workspaceId: event.workspaceId });
-      return;
-    case "task.message":
-      if (event.message.role === "user") {
-        publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
-      }
-      publishStream(publisher, owner, {
-        ...event,
-        message: projectTranscriptMessage(event.message, `/api/tasks/${encodeURIComponent(event.taskId)}`),
-      }, { taskId: event.taskId });
-      return;
-    case "task.message.delta":
-    case "task.log":
-    case "task.log.delta":
-      publishStream(publisher, owner, event, { taskId: event.taskId });
-      return;
-    case "task.tool_call":
-      publishStream(
-        publisher,
-        owner,
-        {
-          ...event,
-          tool: createToolCallSummary(withLiveToolCallRevision(event.tool)),
-        },
-        { taskId: event.taskId },
-      );
-      return;
-    case "task.iteration.start":
-    case "task.iteration.end":
-    case "task.git.commit":
-      publishStream(publisher, owner, event, { taskId: event.taskId });
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
-      return;
-    case "task.started":
-    case "task.stopped":
-    case "task.session_aborted":
-    case "task.completed":
-    case "task.terminal_handoff":
-    case "task.error":
-    case "task.merged":
-    case "task.accepted":
-    case "task.discarded":
-    case "task.pushed":
-    case "task.sync.started":
-    case "task.sync.clean":
-    case "task.sync.conflicts":
-    case "task.sync.failed":
-    case "task.plan.ready":
-    case "task.plan.feedback":
-    case "task.plan.accepted":
-    case "task.plan.discarded":
-    case "task.pending.updated":
-    case "task.automatic_pr_flow.updated":
-      publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.tasks, event.taskId);
-      return;
-
     case "chat.created":
       publishChanged(publisher, owner, CLANKY_REALTIME_RESOURCES.chats, event.chatId);
       return;

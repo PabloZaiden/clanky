@@ -1,5 +1,5 @@
-import type { Chat, ChatTranscript, ExecutionHostDescriptor, PersistedMessage, Task, TerminalSession, VoiceSettings, Workspace } from "@/shared";
-import type { FileDiff, ModelInfo } from "@/contracts";
+import type { Chat, ChatTranscript, ExecutionHostDescriptor, PersistedMessage, TerminalSession, VoiceSettings, Workspace } from "@/shared";
+import type { FileDiffContent, ModelInfo } from "@/contracts";
 import type { WebAppConfigResponse } from "@/platform/contracts";
 import type { MeshControllerStatus } from "@/shared/mesh";
 import { MESH_PROTOCOL_PREFERRED_VERSION, MESH_SUPPORTED_PROTOCOL_VERSIONS } from "@/shared/mesh-protocol";
@@ -99,32 +99,13 @@ export function demoChat(id: string, name: string, now: string, host?: Execution
       id, revision: 1, status: "idle", connectionStatus: "connected",
       messages: [{
         id: `${id}-welcome`, role: "assistant", timestamp: now,
-        content: "Demo: this is an in-browser simulation, not an AI agent. Explore the fictional workspace, files and task diff, or send a message for a simulated response. No commands run and no messages leave this demo.",
+        content: "Demo: this is an in-browser simulation, not an AI agent. Explore the fictional workspace, files and chat diff, or send a message for a simulated response. No commands run and no messages leave this demo.",
       }],
       logs: [], toolCalls: [], queuedMessages: [], pendingPermissionRequests: [], hasMessages: true, hasTranscript: true,
     },
   };
 }
 
-export function demoTask(now: string): Task {
-  return {
-    config: {
-      id: "demo-task", name: "Demo: add a star greeting", directory: DEMO_DIRECTORY,
-      prompt: "Demo task: add a friendly greeting to the fictional observatory.",
-      createdAt: now, updatedAt: now, workspaceId: "demo-workspace", model: DEMO_MODEL,
-      maxIterations: 3, maxConsecutiveErrors: 3, activityTimeoutSeconds: null, stopPattern: "TASK_COMPLETE",
-      git: { branchPrefix: "", commitScope: "" }, baseBranch: "main", useWorktree: true,
-      clearPlanningFolder: false, mode: "task",
-    },
-    state: {
-      id: "demo-task", status: "completed", currentIteration: 1, startedAt: now, completedAt: now,
-      recentIterations: [], logs: [], toolCalls: [],
-      git: { originalBranch: "main", workingBranch: "demo/star-greeting", worktreePath: DEMO_DIRECTORY, commits: [] },
-      messages: [{ id: "demo-task-message", role: "assistant", timestamp: now,
-        content: "Demo: the fictional greeting is ready to review in Diff. This sample task did not run an agent, edit a real file or create a Git branch." }],
-    },
-  };
-}
 
 export function demoTerminal(now: string): TerminalSession {
   return {
@@ -139,12 +120,6 @@ export function demoTerminal(now: string): TerminalSession {
   };
 }
 
-export function demoTaskChat(now: string): Chat {
-  const chat = demoChat("demo-task-chat", "Demo: task conversation", now);
-  chat.config.scope = "task";
-  chat.config.taskId = "demo-task";
-  return chat;
-}
 
 export function demoTranscript(id: string, messages: PersistedMessage[], revision: number): ChatTranscript {
   const responses = messages.filter(message => message.role === "assistant").length;
@@ -171,7 +146,9 @@ export const DEMO_VOICE: VoiceSettings = {
   live: { useVoiceProvider: true, baseUrl: "", apiKeyConfigured: false, model: "", personalInstructions: "", configured: false },
 };
 
-export const DEMO_DIFF: FileDiff[] = [{
+export const DEMO_DIFF_BASE = "0123456789abcdef0123456789abcdef01234567";
+
+export const DEMO_DIFF: FileDiffContent[] = [{
   path: "src/greeting.ts", status: "modified", additions: 1, deletions: 1,
   patch: 'diff --git a/src/greeting.ts b/src/greeting.ts\n--- a/src/greeting.ts\n+++ b/src/greeting.ts\n@@ -1,3 +1,3 @@\n export function greeting(): string {\n-  return "Hello";\n+  return "Hello, stargazer!";\n }\n',
 }];

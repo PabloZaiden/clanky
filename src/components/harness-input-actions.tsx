@@ -19,7 +19,7 @@ export function HarnessInputActions({
   onUpdated,
   onChatSnapshot,
 }: {
-  kind: "chat" | "task";
+  kind: "chat";
   entityId: string;
   inputId: string;
   canSteer: boolean;

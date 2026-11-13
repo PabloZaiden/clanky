@@ -7,7 +7,6 @@ import type {
   Automation,
   Chat,
   ExecutionHostDescriptor,
-  Task,
   TerminalSession,
   Workspace,
 } from "@/shared";
@@ -34,11 +33,9 @@ export interface ShellSidebarActionHandlers {
   navigateWithinShell: (route: WebAppRoute) => void;
   openHarnessActivity: (route: WebAppRoute) => void;
   onError: (message: string) => void;
-  toggleTaskPrivate: (task: Task) => void | Promise<void>;
   toggleChatPrivate: (chat: Chat) => void | Promise<void>;
   getChatLifecycleActions: (chat: Chat) => ActionMenuItem[];
   toggleAutomationPrivate: (automation: Automation) => void | Promise<void>;
-  stopSidebarTask: (task: Task) => void | Promise<void>;
   toggleTerminalSessionPrivate: (session: TerminalSession) => void | Promise<void>;
   openRenameTerminalSession: (target: TerminalSessionActionTarget) => void;
   openDeleteTerminalSession: (target: TerminalSessionActionTarget) => void;

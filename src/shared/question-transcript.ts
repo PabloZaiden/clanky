@@ -4,7 +4,7 @@
 
 import type { HarnessQuestionRequest } from "./harness-questions";
 import { formatHarnessAnswers, formatHarnessQuestions } from "./harness-questions";
-import type { PersistedMessage } from "./task";
+import type { PersistedMessage } from "./conversation";
 
 export function projectQuestionMessages(
   messages: PersistedMessage[],

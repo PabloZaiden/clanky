@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   TranscriptMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallData,
   ToolCallDisplayData,
   WorkspaceFileEntry,
@@ -38,12 +38,12 @@ export interface ConversationViewerProps {
   /** Tool calls to display. ToolEntry infers the concrete tool kind from the raw payload shape. */
   toolCalls: ToolCallDisplayData[];
   /** Application logs to display */
-  logs?: TaskLogEntry[];
+  logs?: ConversationLogEntry[];
   /** Maximum height */
   maxHeight?: string;
   /** Whether to render conversation content as markdown. */
   markdownEnabled?: boolean;
-  /** Whether the task or chat is operationally active. Default: false */
+  /** Whether the conversation is operationally active. Default: false */
   isActive?: boolean;
   /** Whether active-work indicators should be shown. Defaults to isActive. */
   isWorking?: boolean;
@@ -51,9 +51,9 @@ export interface ConversationViewerProps {
   scrollContentFooter?: ReactNode;
   /** ID for the root element (for accessibility) */
   id?: string;
-  /** Root directory used to display tool file paths relative to the active chat/task context. */
+  /** Root directory used to display tool file paths relative to the conversation. */
   toolPathDisplayRoot?: string;
-  /** Optional chat/task-aware context for turning inline code paths into code explorer links. */
+  /** Optional context for turning inline code paths into code explorer links. */
   fileLinkContext?: TranscriptFileLinkContext;
   /** Fetches one full tool-call payload for expanded details or a visible image. */
   onLoadToolDetails?: (toolCallId: string, signal?: AbortSignal) => Promise<ToolCallData | null>;
@@ -82,7 +82,7 @@ export type EntryBase =
   | { type: "tool-image"; data: ToolCallDisplayData; timestamp: string }
   | {
       type: "log";
-      data: TaskLogEntry;
+      data: ConversationLogEntry;
       timestamp: string;
       /** Stable identity of the original consecutive reasoning run. */
       reasoningGroupId?: string;
@@ -109,7 +109,7 @@ export interface ReasoningGroupEntryBase {
   /** Stable identity for a consecutive run of reasoning logs. */
   id: string;
   /** Reasoning log entries contained in this consecutive run. */
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   /** Timestamp of the first reasoning log in the run. */
   timestamp: string;
   /** Timestamp of the last reasoning log in the run. */

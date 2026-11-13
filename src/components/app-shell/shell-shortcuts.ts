@@ -2,7 +2,6 @@ import type { MouseEvent } from "react";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 
 export type ShellShortcutAction =
-  | "new-task"
   | "new-chat"
   | "new-terminal-session"
   | "settings"
@@ -17,12 +16,6 @@ interface ShellShortcutDefinition {
 }
 
 export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinition> = {
-  "new-task": {
-    action: "new-task",
-    key: "l",
-    labelKey: "L",
-    route: { view: "compose", kind: "task" },
-  },
   "new-chat": {
     action: "new-chat",
     key: "c",

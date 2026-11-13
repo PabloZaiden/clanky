@@ -1,5 +1,5 @@
 /**
- * WebSocket handlers for Clanky Tasks Management System.
+ * WebSocket handlers for Clanky.
  * Re-exports from sub-modules in `./websocket/`.
  *
  * @module api/websocket

@@ -2,7 +2,7 @@
 
 ## Workspace configuration
 
-Choose the adapter in the existing workspace settings page. Tasks and chats
+Choose the adapter in the existing workspace settings page. Chats
 continue to choose a model and variant from that workspace's harness catalog.
 Clanky scheduled Automations inherit the same execution behavior; they are not
 harness subagents.
@@ -34,7 +34,7 @@ new conversation when changing adapters; app transcript history is preserved.
 Clanky resumes its own sessions, but no longer imports external harness sessions
 or offers conversation forks.
 
-Tasks and chats have the same Mesh worker isolation: maintenance on another
+Chats have the same Mesh worker isolation: maintenance on another
 worker does not close their sessions. If their own worker is revoked or its
 route becomes invalid, the interruption remains visible and native prompts
 are not automatically resent. See
@@ -57,7 +57,7 @@ OpenCode 2 uses a separate profile under the Clanky data directory. It does not
 upgrade an existing OpenCode generation-1 data directory in place. Configure
 the required providers for that profile or through the execution-host environment.
 
-Owned native chats, tasks and managed Automation runs support
+Owned native chats and managed Automation runs support
 [Clanky Control](control-chats.md) in their workspace without Quick Chat setup
 or general access. Explicit general access permits broader application control
 within the user's permissions. Native adapters discover their granted catalog
@@ -87,12 +87,12 @@ For OpenCode 2, Clanky loads a managed native plugin and private loopback bridge
 the execution host; no separate plugin installation, ACP adapter or MCP
 configuration is needed. The installed runtime must support the generation-2
 Promise plugin API, including tool reload. Actual chat roots discover optional
-browser tools using their persisted real chat ID; task/run roots do not claim a
+browser tools using their persisted real chat ID; scheduled-run roots do not claim a
 chat identity. The plugin reloads newly discovered tools before the native
 prompt is prepared and filters each model context to that owned root's catalog.
 Plugin activation and execution-owned control readiness are checked
 before admitting a Control conversation. Tools belong only to an active owned
-root turn; native subagents do not inherit them. Task and scheduled-run
+root turn; native subagents do not inherit them. Scheduled-run
 question policies remain unattended, and human control approval remains a
 separate pending interaction.
 
@@ -105,7 +105,7 @@ Interactive native Copilot, Codex and OpenCode 2 chats on POSIX execution hosts
 provide `clanky_request_secret`. It is a host-local native tool, not a Control
 operation, approval, MCP tool or tool-to-tool secret reference. It needs no
 general-access grant. ACP and native subagent calls are unsupported. Autonomous
-tasks, scheduled runs and helper conversations do not receive the tool and
+scheduled runs and helper conversations do not receive the tool and
 cannot access its cache.
 
 The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
@@ -154,7 +154,7 @@ does not replace its tool catalog or start another conversation.
 
 ## Connection context and helper isolation
 
-Model catalogs, variants, task titles, PR metadata and review-feedback helpers
+Model catalogs, variants and conversation-title helpers
 reuse a workspace connection only when its user, workspace, execution-host
 binding and revision, adapter/provider, runtime settings and directory match.
 An incompatible operation opens its own connection instead of reconnecting the
@@ -174,11 +174,9 @@ attempt; resetting a workspace attempts every helper even if one fails.
 Shutdown freezes new chat input before stopping background producers, drains
 chat admission, checkpoints conversations under their owning user context, and detaches native
 observers before disconnecting backends. Backend teardown finishes before
-Mesh relays and gateways close. Tasks first checkpoint
-under their owning user context; interrupted planning remains resumable after
-restart rather than being marked stopped or failed by transport cleanup.
+Mesh relays and gateways close.
 
-Task and chat connections remain dedicated to their entity and user. Helpers
+Chat connections remain dedicated to their entity and user. Helpers
 never borrow those conversations or move their worktree context. This isolation
 does not authorize resuming a saved conversation under a different binding; the
 existing session-ownership checks still apply.
@@ -227,8 +225,8 @@ another host or bypasses binding revisions.
 
 ## Token consumption
 
-The chat composer's **...** menu shows **Usage** above **Template**. A task's
-**Info** tab shows the same three rows: **Input tokens**, **Output tokens**,
+The chat composer's **...** menu shows **Usage** above **Template**, with
+three rows: **Input tokens**, **Output tokens**,
 and **Cached**. Cached is the percentage of total input read from the prompt
 cache; cache writes are not included in that percentage. It is unavailable
 when input is zero or either required counter is missing. Counts use decimal
@@ -251,12 +249,12 @@ finalize their counters at model-call boundaries. Saved totals survive Clanky
 restart, reconnect and replacement of a native session. Repeated cumulative
 snapshots do not count as additional consumption.
 
-Task and chat teardown settles owned native work before the final usage
+Chat teardown settles owned native work before the final usage
 checkpoint and transport release. If settlement or the final refresh fails,
 the retained total is marked **Last known** instead of implying complete
 final accounting.
 
-Tasks include their task-scoped chat consumption. Scheduled Automation runs share
+Scheduled Automation runs share
 their backing chat's accounting rather than counting a second execution.
 Consumption is private to the entity owner. On Mesh, the controller requests
 usage only when the worker advertises token-accounting support; update older
@@ -271,9 +269,8 @@ provider no longer exposes it.
 
 ## Activity and individual Stop
 
-Open **Activity** from the existing task or chat action menu. Inside a task's
-Chat tab, **Chat activity** targets the attached chat; the task's **Activity**
-action targets task execution. Returning preserves the composer draft and
+Open **Activity** from the chat action menu.
+Returning preserves the composer draft and
 transcript position. Related tool rows never show inline activity status
 labels. They show only an **Activity** link while any associated activity is
 running; otherwise, no inline activity summary is shown. No permanent panel is
@@ -362,8 +359,7 @@ recovery support. ACP retains its existing turn-based behavior.
 Native messages have independent lifecycles identified by their provider IDs.
 Several messages may be streaming before any of them completes; reasoning,
 tool events and another message's completion do not replace their pending text.
-Native task transcripts select the corresponding message state too, while ACP
-retains its turn-based projection. Chat switches checkpoint the outgoing block
+ACP retains its turn-based projection. Chat switches checkpoint the outgoing block
 without closing it, so interleaving does not create extra transcript segments.
 Authoritative completions reconcile only their own message and transcript
 segments. Clanky never merges different message IDs because their text matches.
@@ -415,12 +411,9 @@ reconciles the original conversation before accepting another prompt. This does
 not guarantee that background work survives the death of its execution runtime
 or container; clean shutdown is an optimization, not a recovery requirement.
 
-For tasks, the completion marker seals the logical result. Owned native cleanup
-and safe Git finalization happen separately. Active or unconfirmed writers can
-block acceptance/push without restarting task iterations or discarding completion.
 OpenCode also retains observed foreign or unattributed shells in the selected
-directory as unverified external activity. They can block Git finalization,
-but Clanky does not stop them individually or during owned cleanup.
+directory as unverified external activity.
+Clanky does not stop them individually or during owned cleanup.
 
 ## Queued input and Steer
 
@@ -439,13 +432,13 @@ actual execution host and referenced by absolute path. Clanky does not parse
 their content or require provider-native document/embedded-context support.
 The agent chooses its own tools; acceptance of a file does not guarantee the
 model can interpret its format. [Attachment storage and lifecycle](attachments.md)
-also apply to tasks and Automation runs.
+also apply to Automation runs.
 
 `accepted` means native admission, not delivery or model obedience.
 `delivered` means native history confirms the message. An `unknown` admission
 retains the input and blocks deletion, replacement or blind resend. Clanky
 reconciles unresolved admission automatically against the original owned native
-conversation while the chat or task is open; status updates appear without a
+conversation while the chat is open; status updates appear without a
 manual check. Reconciliation is serialized per entity, starts at least 250 ms
 apart, and batches up to five results before refreshing the entity. Reconciliation
 updates and realtime invalidations share a 500 ms refresh-coalescing window, so
@@ -498,7 +491,6 @@ enter another answer when the harness permits it, then use **Send answer**.
 Multiple-selection requests accept more than one choice. A blocking question
 shows the chat as waiting; normal composer messages remain queued rather than
 being interpreted as the answer. **Stop** interrupts the pending execution.
-Task-attached chats use the same interactive behavior.
 
 New questions appear in the transcript as assistant messages, and submitted
 answers as user messages, without opening a tool call. Requests with several
@@ -513,7 +505,7 @@ choices and permitted custom-answer fields, not another copy of the question,
 visible or hidden. Requests with several fields number their answer groups to
 match the transcript.
 
-Task execution, task planning, helper sessions and autonomous scheduled runs
+Helper sessions and autonomous scheduled runs
 use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
 Codex disables ordinary `request_user_input` and denies both question variants
 through a session-owned native `PreToolUse` hook. These controls apply on creation
@@ -551,7 +543,6 @@ other hook trust decisions and YOLO permissions remain unchanged. A Codex
 profile that disables hooks or permits only managed hooks cannot enforce this
 policy and is rejected explicitly for unattended execution. Unexpected native
 human-input callbacks are rejected or cancelled, never answered automatically.
-Tasks that need missing human information use the existing blocked outcome.
 ACP has no universal tool-exclusion mechanism; unsupported replies are explicit
 errors.
 
@@ -588,24 +579,16 @@ event timestamp is earlier or equal.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/chats/:id/activity` | Read native chat activity |
-| GET | `/api/tasks/:id/activity` | Read native task activity |
 | POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned chat activity |
-| POST | `/api/tasks/:id/activity/:activityId/stop` | Stop one owned task activity |
 | POST | `/api/chats/:id/questions/:requestId` | Answer one current native question |
 | POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued chat message |
 | POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native chat input delivery |
 | POST | `/api/chats/:id/continue-from-history` | Explicitly create a fresh native session using a temporary export of the persisted chat history |
-| POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Steer the current pending task input |
-| POST | `/api/tasks/:id/pending-inputs/:inputId/reconcile` | Recover native task input delivery |
-
-For task queueing, use `PUT /api/tasks/:id/pending-prompt` with
-`{ "prompt": "...", "attachments": [] }`. `POST /api/tasks/:id/pending` uses the
-existing interrupt-first behavior and is not the queue-only path.
 
 ```bash
 clanky api chats/<chat-id>/activity --method GET
-clanky api tasks/<task-id>/pending-inputs/<input-id>/steer --method POST
-clanky api tasks/<task-id>/pending-inputs/<input-id>/reconcile --method POST
+clanky api chats/<chat-id>/queued-messages/<message-id>/steer --method POST
+clanky api chats/<chat-id>/queued-messages/<message-id>/reconcile --method POST
 ```
 
 Activity responses contain `activity`; Stop responses contain `result`.

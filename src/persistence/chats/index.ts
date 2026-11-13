@@ -7,9 +7,7 @@ export {
   loadChat,
   loadChatMetadata,
   loadChatStreamControlState,
-  loadTaskChat,
   deleteChat,
-  deleteChatsByTaskId,
   listChats,
   listChatsByWorkspace,
   listChatSummaries,
@@ -18,7 +16,7 @@ export {
   getWorkspaceChatNameStats,
   chatExists,
 } from "./crud";
-export { updateChatState, updateChatStreamState, updateChatConfig } from "./updates";
+export { updateChatState, updateChatStreamState, updateChatConfig, claimChatPlanningKickoff } from "./updates";
 export {
   getChatTranscriptMeta,
   hasSingleChatUserMessage,

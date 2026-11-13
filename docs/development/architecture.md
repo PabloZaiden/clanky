@@ -23,8 +23,6 @@ Browser/server-safe domain types and event contracts belong in `src/shared/`;
 public request/response types and schemas belong in `src/contracts/`.
 Contracts may depend on shared types, not the reverse. Keep implementation-only
 types with their owner and do not add compatibility copies or parallel models.
-Task status changes must use the canonical state machine rather than duplicate
-transition rules.
 
 Local CLI maintenance commands must not initialize the application server or
 database unnecessarily. Load the server only for commands that need it and
@@ -308,9 +306,9 @@ capacity; consumption-driven transport backpressure still waits for the reader.
 This intentionally permits memory growth when output exceeds consumption, so
 do not describe the absence of arbitrary caps as immunity to memory exhaustion.
 
-Tasks depend on the generic backend contract, not an ACP class.
-Shutdown records interruption before transport cleanup; interrupted planning
-must remain recoverable, while provider exits outside shutdown remain failures.
+Chats depend on the generic backend contract, not an ACP class.
+Shutdown records interruption before transport cleanup; native conversation
+recovery remains distinct from provider exits outside shutdown.
 
 Session control distinguishes steering from expected-turn admission, unavailable
 observation from an empty activity list, and cancellation acknowledgement from
@@ -343,6 +341,39 @@ edit the consolidated base schema for ordinary evolution. Historical no-op
 markers preserve deployed version history. Verify significant upgrade and
 recovery contracts through the compiled application and public boundaries,
 including a second restart when idempotency matters.
+
+### Task retirement
+
+Tasks are removed rather than migrated into standalone conversations.
+Migration 94 permanently removes Task records, transcripts, linked chats and
+owned auxiliary records. It first saves narrowly scoped external-resource
+ownership in `retired_task_resources`; migration 95 adds chat planning kickoff
+state. Migration 96 removes Task-only notification choices, saved Task pins and
+obsolete model/dashboard preferences, preserving remaining choices and the
+separately stored notification webhook. The immutable baseline remains
+historical, and startup removes the empty Task tables it recreates. Dormant
+baseline columns are not active ownership relationships or API fields.
+
+Startup cleanup authorizes the original owner on the recorded execution host.
+Native roots are recovered using their saved identity with application-control
+tools disabled, their ownership is rechecked, and settlement is durably recorded
+before session deletion. Only after owned writers have confirmed settlement
+may validated attachment locations and exclusive managed worktrees/local
+working branches be removed. Repository roots, shared current directories,
+the Task's original branch, default/checked-out branches, remote branches and
+external PRs are not deleted.
+
+Unreachable hosts, missing ownership or unconfirmed writers retain their
+inventory and an explicit logged error. Worktrees/branches protected by current
+usage likewise remain inventoried as pending rather than reporting completion;
+other eligible resources can still be cleaned. Successful partial stages are
+persisted for an idempotent later startup. Historical ACP bindings lack a durable
+transport-stop proof, and historical terminals likewise cannot prove writer
+settlement after controller restart. Their resources therefore remain pending
+instead of being deleted unsafely. This is not a hidden Task product or an
+archive: ordinary Task records/routes are already gone.
+
+### Other schema evolution
 
 Before retiring the SSH execution transport, upgrades remove orphaned SSH host
 records, whether revoked or not. A host is retained if referenced by a
@@ -384,7 +415,7 @@ Publications, including scheduled/background work, must target the authoritative
 current user. Centralize resource names and retained stream classification at
 the server realtime boundary.
 
-Custom deltas are reserved for incremental task/chat/automation-run/provisioning
+Custom deltas are reserved for incremental chat/automation-run/provisioning
 content where refetching is disruptive. Use bounded, no-history stream adapters,
 versioned snapshots/deltas, and authoritative refresh after reconnects or gaps.
 Take snapshot content and its position together from the domain owner, not a

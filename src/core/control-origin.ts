@@ -4,7 +4,6 @@ import type { ControlGrant } from "./control-authority";
 import type { ControlToolOrigin } from "./control-tool-context";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { loadAutomationRunSummary } from "../persistence/automations";
 import { DomainError } from "../domain/domain-error";
 
@@ -34,15 +33,6 @@ export async function resolveControlOrigin(
     if (!chat) throw new DomainError("control_context_unavailable", "The originating chat is unavailable.");
     origin.current.chat = chat.config.id;
     origin.defaultModel = chat.config.model;
-  } else if (identity?.contextType === "task") {
-    const task = await loadTaskSummary(identity.contextId);
-    if (!task) throw new DomainError("control_context_unavailable", "The originating task is unavailable.");
-    origin.current.task = task.config.id;
-    origin.defaultModel = task.config.model;
-    origin.planningPreferences = {
-      autoAcceptPlan: task.config.autoAcceptPlan === true,
-      fullyAutonomous: task.config.fullyAutonomous === true,
-    };
   } else if (identity?.contextType === "automation_run") {
     const run = await loadAutomationRunSummary(identity.contextId);
     if (!run) throw new DomainError("control_context_unavailable", "The originating automation run is unavailable.");

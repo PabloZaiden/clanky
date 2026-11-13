@@ -234,6 +234,15 @@ export class ConversationAttachmentService {
     }
   }
 
+  async cleanupLocation(executor: CommandExecutor, directory: string, contextToken: string): Promise<void> {
+    const root = new ManagedPathService(executor.pathStyle).getConversationAttachmentDirectory(directory, contextToken);
+    await this.assertManagedDirectories(executor, root, directory);
+    const metadata = await executor.getFileMetadata(root, { includeContentHash: false });
+    if (metadata && !await executor.deletePath(root, { kind: "directory", recursive: true })) {
+      throw new DomainError("attachment_cleanup_failed", "The conversation attachments could not be removed.");
+    }
+  }
+
   async cleanup(context: AttachmentContext): Promise<void> {
     await this.operations.run(this.token(context), async () => {
       for (const location of listAttachmentLocations(context)) {
@@ -241,13 +250,7 @@ export class ConversationAttachmentService {
           context, ...location,
         });
         try {
-          const paths = new ManagedPathService(executor.pathStyle);
-          const root = paths.getConversationAttachmentDirectory(location.directory, this.token(context));
-          await this.assertManagedDirectories(executor, root, location.directory);
-          const metadata = await executor.getFileMetadata(root, { includeContentHash: false });
-          if (metadata && !await executor.deletePath(root, { kind: "directory", recursive: true })) {
-            throw new DomainError("attachment_cleanup_failed", "The conversation attachments could not be removed.");
-          }
+          await this.cleanupLocation(executor, location.directory, this.token(context));
           forgetAttachmentLocation(context, location.id);
         } finally {
           closeCommandExecutor(executor);

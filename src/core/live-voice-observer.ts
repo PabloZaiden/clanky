@@ -4,13 +4,13 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { CurrentUser } from "@/platform/contracts";
-import { taskEventEmitter, chatEventEmitter, provisioningEventEmitter } from "./event-emitter";
+import { chatEventEmitter, provisioningEventEmitter } from "./event-emitter";
 import { runWithCurrentUser } from "../context/user-context";
 import type { ClankyOperationService, OperationAuthority, OperationResult } from "./clanky-operation-service";
 import { DomainError } from "../domain/domain-error";
 
 const log = createLogger("core:voice-observer");
-type Target = { kind: "chat" | "task" | "provisioning"; id: string };
+type Target = { kind: "chat" | "provisioning"; id: string };
 interface Watch { target: Target; last?: string; timer?: ReturnType<typeof setTimeout>; dirty: boolean; reading: boolean }
 
 export class LiveVoiceObserver {
@@ -29,11 +29,6 @@ export class LiveVoiceObserver {
       chatEventEmitter.subscribe((event, context) => {
         if (context.userId === options.user.id && !["chat.message.delta", "chat.log", "chat.log.delta", "chat.tool_call"].includes(event.type)) {
           this.schedule({ kind: "chat", id: event.chatId });
-        }
-      }),
-      taskEventEmitter.subscribe((event, context) => {
-        if (context.userId === options.user.id && !["task.message.delta", "task.log", "task.log.delta", "task.tool_call"].includes(event.type)) {
-          this.schedule({ kind: "task", id: event.taskId });
         }
       }),
       provisioningEventEmitter.subscribe((event, context) => {
@@ -95,7 +90,7 @@ export class LiveVoiceObserver {
     const state = "state" in entity && entity.state && typeof entity.state === "object" ? entity.state : entity;
     return JSON.stringify(Object.fromEntries(Object.entries(state).filter(([key]) =>
       ["status", "error", "needsInput", "pendingQuestions", "pendingPermissions", "pendingInputs", "result", "currentStep",
-        "currentIteration", "workspaceId", "workspaceAction", "targetDirectory", "resolvedDirectory"].includes(key))));
+        "workspaceId", "workspaceAction", "targetDirectory", "resolvedDirectory"].includes(key))));
   }
 
   private schedule(target: Target): void {

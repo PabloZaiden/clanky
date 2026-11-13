@@ -53,6 +53,7 @@ export interface ConversationComposerProps {
   notice?: ConversationComposerNotice;
   status?: ConversationComposerStatus;
   tokenUsage?: TokenUsageSummary | null;
+  repositoryChatId?: string;
   questionAnswerInputFocused?: boolean;
   voice?: ConversationComposerVoice;
   onSubmit: (submission: ConversationComposerSubmission) => Promise<boolean | void>;

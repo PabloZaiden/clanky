@@ -1,9 +1,9 @@
 /**
- * Backend manager for Clanky Tasks Management System.
+ * Backend manager for Clanky.
  * Manages multiple workspace-specific backend connections.
  *
  * Each workspace can have its own server settings and connection,
- * allowing parallel operation of tasks across different workspaces.
+ * allowing parallel operation of conversations across different workspaces.
  */
 
 import {
@@ -23,8 +23,7 @@ import {
   type ServerSettings,
 } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
-import { meshStateEventEmitter, taskEventEmitter, type MeshStateEvent } from "../event-emitter";
-import type { TaskEvent } from "@/shared/events";
+import { meshStateEventEmitter, serverEventEmitter, type MeshStateEvent } from "../event-emitter";
 import {
   closeCommandExecutor,
   resolveCommandExecutorDirectory,
@@ -37,7 +36,7 @@ import {
   areRuntimeServerSettingsEqual,
   DEFAULT_CONNECTION_TIMEOUT_MS,
   type WorkspaceConnectionState,
-  type TaskConnectionState,
+  type ConversationConnectionState,
   type ServerEvent,
 } from "./backend-state";
 import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identity";
@@ -77,8 +76,8 @@ interface PendingExecutionHost {
   invalidated: boolean;
 }
 
-interface PendingTaskDisconnect {
-  state: TaskConnectionState;
+interface PendingConversationDisconnect {
+  state: ConversationConnectionState;
   promise: Promise<boolean>;
 }
 
@@ -97,10 +96,10 @@ interface OperationConnection {
 class BackendManager {
   /** Map of workspace ID to connection state (for workspace-level operations) */
   private connections = new Map<string, WorkspaceConnectionState>();
-  /** Map of task ID to its own dedicated backend connection */
-  private taskConnections = new Map<string, TaskConnectionState>();
-  /** In-flight teardown results keyed by the task/chat backend owner. */
-  private readonly taskDisconnects = new Map<string, PendingTaskDisconnect>();
+  /** Map of conversation ID to its own dedicated backend connection */
+  private conversationConnections = new Map<string, ConversationConnectionState>();
+  /** In-flight teardown results keyed by the conversation backend owner. */
+  private readonly conversationDisconnects = new Map<string, PendingConversationDisconnect>();
   private readonly operationConnections = new Map<Backend, OperationConnection>();
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CachedCommandExecutor>();
@@ -577,7 +576,7 @@ class BackendManager {
   }
 
   /**
-   * Retire affected cache entries before awaiting teardown. Existing task/chat
+   * Retire affected cache entries before awaiting teardown. Existing conversation
    * bindings, not mutable workspace settings, determine session ownership.
    */
   async invalidateMeshExecutionConnections(event: Exclude<MeshStateEvent, { impact: "inventory" }>): Promise<void> {
@@ -610,9 +609,9 @@ class BackendManager {
       teardown.push(connection.close());
     }
     if (event.impact === "resources") {
-      for (const [contextId, state] of this.taskConnections) {
+      for (const [contextId, state] of this.conversationConnections) {
         if (!matches(state)) continue;
-        teardown.push(this.disconnectTask(contextId, reason).then(() => {}));
+        teardown.push(this.disconnectConversation(contextId, reason).then(() => {}));
       }
     }
     log.debug("Invalidating scoped Mesh execution resources", {
@@ -668,11 +667,11 @@ class BackendManager {
       errors.push(error);
     }
 
-    // Reset all task-level connections
-    for (const taskId of this.taskConnections.keys()) {
-      const disconnected = await this.disconnectTask(taskId);
+    // Reset all conversation-level connections
+    for (const contextId of this.conversationConnections.keys()) {
+      const disconnected = await this.disconnectConversation(contextId);
       if (!disconnected) {
-        errors.push(new Error(`Failed to close task connection ${taskId}.`));
+        errors.push(new Error(`Failed to close conversation connection ${contextId}.`));
       }
     }
 
@@ -915,31 +914,31 @@ class BackendManager {
   }
 
   /**
-   * Get a dedicated backend instance for a task.
-   * Each task gets its own AcpBackend so that concurrent tasks
+   * Get a dedicated backend instance for a conversation.
+   * Each conversation gets its own AcpBackend so that concurrent conversations
    * in the same workspace don't interfere with each other.
    *
-   * The actual directory binding happens later when TaskEngine calls
+   * The actual directory binding happens later when conversation runtime calls
    * backend.connect() in setupSession() with the worktree directory.
    *
-   * @param taskId - The task ID
+   * @param contextId - The conversation ID
    * @param workspaceId - The workspace ID (for settings lookup)
-   * @returns A Backend instance dedicated to this task
+   * @returns A Backend instance dedicated to this conversation
    */
-  getTaskBackend(taskId: string, workspaceId: string): Backend {
+  getConversationBackend(contextId: string, workspaceId: string): Backend {
     this.assertAcceptingConnections();
-    if (this.taskDisconnects.has(taskId)) {
-      throw new Error(`[BackendManager] Backend teardown is still in progress for context ${taskId}.`);
+    if (this.conversationDisconnects.has(contextId)) {
+      throw new Error(`[BackendManager] Backend teardown is still in progress for context ${contextId}.`);
     }
-    const existing = this.taskConnections.get(taskId);
+    const existing = this.conversationConnections.get(contextId);
     if (existing) {
       if (existing.userId !== requireExecutionOwnerUserId() || existing.workspaceId !== workspaceId) {
-        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different task or chat context.");
+        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different conversation context.");
       }
       return existing.backend;
     }
 
-    // Create a new dedicated backend for this task
+    // Create a new dedicated backend for this conversation
     const workspaceState = this.connections.get(workspaceId);
     if (!workspaceState) {
       throw new Error(
@@ -957,27 +956,27 @@ class BackendManager {
       localNodeId: workspaceState.localNodeId ?? null,
       executionHostBinding: workspaceState.executionHostBinding,
     });
-    this.taskConnections.set(taskId, {
+    this.conversationConnections.set(contextId, {
       userId: workspaceState.userId,
       backend,
       workspaceId,
       settings: structuredClone(workspaceState.settings),
       executionHostBinding: structuredClone(workspaceState.executionHostBinding),
     });
-    log.debug(`[BackendManager] Created dedicated backend for task ${taskId}`);
+    log.debug(`[BackendManager] Created dedicated backend for conversation ${contextId}`);
     return backend;
   }
 
   /**
    * Get a dedicated backend instance for a chat.
-   * Chats share the same dedicated-backend pool semantics as tasks.
+   * Chats share the same dedicated-backend pool semantics as other conversations.
    */
   getChatBackend(chatId: string, workspaceId: string): Backend {
-    return this.getTaskBackend(chatId, workspaceId);
+    return this.getConversationBackend(chatId, workspaceId);
   }
 
   getInitializedContextBackend(contextId: string): Backend | null {
-    const state = this.taskConnections.get(contextId);
+    const state = this.conversationConnections.get(contextId);
     if (state && state.userId !== requireExecutionOwnerUserId()) {
       throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
     }
@@ -985,31 +984,31 @@ class BackendManager {
   }
 
   /**
-   * Disconnect and clean up the backend for a specific task.
-   * Called when a task is stopped, completed, or failed.
+   * Disconnect and clean up the backend for an owned conversation.
+   * Called when a conversation is stopped, completed, or failed.
    *
-   * @param taskId - The task ID to clean up
+   * @param contextId - The conversation ID to clean up
    */
-  async disconnectTask(taskId: string, reason?: Error): Promise<boolean> {
-    const pending = this.taskDisconnects.get(taskId);
+  async disconnectConversation(contextId: string, reason?: Error): Promise<boolean> {
+    const pending = this.conversationDisconnects.get(contextId);
     if (pending) {
       if (!reason) {
         return await pending.promise;
       }
 
-      this.retireTaskConnection(taskId, pending.state);
+      this.retireConversationConnection(contextId, pending.state);
       try {
         pending.state.backend.abortAllSubscriptions(reason);
       } catch (error) {
-        log.error("[BackendManager] Error aborting invalidated task subscriptions", {
-          contextId: taskId,
+        log.error("[BackendManager] Error aborting invalidated conversation subscriptions", {
+          contextId: contextId,
           error: String(error),
         });
       }
       return await pending.promise;
     }
 
-    const state = this.taskConnections.get(taskId);
+    const state = this.conversationConnections.get(contextId);
     if (!state) {
       return true;
     }
@@ -1019,35 +1018,35 @@ class BackendManager {
       resolveDisconnect = resolve;
     });
     const pendingDisconnect = { state, promise: disconnect };
-    this.taskDisconnects.set(taskId, pendingDisconnect);
+    this.conversationDisconnects.set(contextId, pendingDisconnect);
     if (reason) {
-      this.retireTaskConnection(taskId, state);
+      this.retireConversationConnection(contextId, state);
     }
 
     try {
-      const succeeded = await this.closeBackend(state.backend, taskId, reason);
+      const succeeded = await this.closeBackend(state.backend, contextId, reason);
       resolveDisconnect(succeeded);
       if (succeeded) {
-        this.retireTaskConnection(taskId, state);
+        this.retireConversationConnection(contextId, state);
       }
       if (succeeded) {
-        log.debug(`[BackendManager] Cleaned up backend for task ${taskId}`);
+        log.debug(`[BackendManager] Cleaned up backend for conversation ${contextId}`);
       }
       return succeeded;
     } catch (error) {
-      log.error("[BackendManager] Error closing backend", { contextId: taskId, error: String(error) });
+      log.error("[BackendManager] Error closing backend", { contextId: contextId, error: String(error) });
       resolveDisconnect(false);
       return false;
     } finally {
-      if (this.taskDisconnects.get(taskId) === pendingDisconnect) {
-        this.taskDisconnects.delete(taskId);
+      if (this.conversationDisconnects.get(contextId) === pendingDisconnect) {
+        this.conversationDisconnects.delete(contextId);
       }
     }
   }
 
-  private retireTaskConnection(taskId: string, state: TaskConnectionState): void {
-    if (this.taskConnections.get(taskId) === state) {
-      this.taskConnections.delete(taskId);
+  private retireConversationConnection(contextId: string, state: ConversationConnectionState): void {
+    if (this.conversationConnections.get(contextId) === state) {
+      this.conversationConnections.delete(contextId);
     }
   }
 
@@ -1071,7 +1070,7 @@ class BackendManager {
    * Disconnect and clean up the backend for a specific chat.
    */
   async disconnectChat(chatId: string): Promise<boolean> {
-    return await this.disconnectTask(chatId);
+    return await this.disconnectConversation(chatId);
   }
 
   /**
@@ -1147,6 +1146,7 @@ class BackendManager {
     context: {
       binding: ExecutionHostBinding;
       provider: AgentProvider;
+      adapter?: AgentSettings["adapter"];
       directory: string;
     },
     operation: (backend: Backend, settings: RuntimeServerSettings) => Promise<T>,
@@ -1156,7 +1156,7 @@ class BackendManager {
     try {
       const settings = await this.buildRuntimeSettings(
         context.binding,
-        createAgentSettings("acp", context.provider),
+        createAgentSettings(context.adapter ?? "acp", context.provider),
       );
       const localNodeId = await this.getLocalMeshNodeId();
       this.assertPendingExecutionHost(pending);
@@ -1180,7 +1180,7 @@ class BackendManager {
     directory: string;
   }): Promise<Backend | null> {
     this.assertAcceptingConnections();
-    const state = this.taskConnections.get(context.connectionId);
+    const state = this.conversationConnections.get(context.connectionId);
     if (!state) return null;
     if (state.userId !== requireExecutionOwnerUserId()) {
       throw new HarnessError("harness_session_not_owned", "The backend belongs to a different user.");
@@ -1197,7 +1197,7 @@ class BackendManager {
       context.binding,
       createAgentSettings("acp", context.provider),
     );
-    return this.taskConnections.get(context.connectionId) === state
+    return this.conversationConnections.get(context.connectionId) === state
       && state.backend.isConnected()
       && areRuntimeServerSettingsEqual(state.settings, settings)
       ? state.backend
@@ -1218,19 +1218,19 @@ class BackendManager {
       const options: WorkspaceBackendOptions = {
         workspaceId: connectionId, localNodeId, executionHostBinding: binding,
       };
-      const existing = this.taskConnections.get(connectionId);
+      const existing = this.conversationConnections.get(connectionId);
       if (existing && (existing.userId !== userId || existing.workspaceId !== "")) {
-        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different task or chat context.");
+        throw new HarnessError("harness_session_not_owned", "The backend belongs to a different conversation context.");
       }
       const backend = this.createBackendForSettings(settings, options);
-      this.taskConnections.set(connectionId, {
+      this.conversationConnections.set(connectionId, {
         userId, backend, workspaceId: "", settings: structuredClone(settings),
         executionHostBinding: structuredClone(binding),
       });
       if (existing) await this.closeBackend(existing.backend, connectionId);
-      if (pending.invalidated || this.taskConnections.get(connectionId)?.backend !== backend) {
-        if (this.taskConnections.get(connectionId)?.backend === backend) {
-          this.taskConnections.delete(connectionId);
+      if (pending.invalidated || this.conversationConnections.get(connectionId)?.backend !== backend) {
+        if (this.conversationConnections.get(connectionId)?.backend === backend) {
+          this.conversationConnections.delete(connectionId);
           await this.closeBackend(backend, connectionId);
         }
         throw new HarnessError("harness_connection_aborted", "The execution host changed while replacing its connection.");
@@ -1245,9 +1245,7 @@ class BackendManager {
    * Emit a server event.
    */
   private emitEvent(event: ServerEvent): void {
-    // Cast to TaskEvent since the emitter accepts that type
-    // The WebSocket handler will pass through any event with a type property
-    taskEventEmitter.emit(event as unknown as TaskEvent);
+    serverEventEmitter.emit(event);
   }
 }
 

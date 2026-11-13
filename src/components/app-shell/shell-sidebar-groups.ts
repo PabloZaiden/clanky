@@ -23,10 +23,6 @@ import {
   type ChatSidebarContext,
 } from "./shell-sidebar-chat";
 import {
-  createTaskSidebarNode,
-  type TaskSidebarContext,
-} from "./shell-sidebar-task";
-import {
   createTerminalSessionSidebarNode,
   type TerminalSessionSidebarContext,
 } from "./shell-sidebar-terminal-session";
@@ -43,7 +39,6 @@ import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface SidebarDomainBuilderContexts {
   chat: ChatSidebarContext;
-  task: TaskSidebarContext;
   terminal: TerminalSessionSidebarContext;
   automation: AutomationSidebarContext;
   workspace: WorkspaceSidebarContext;
@@ -75,21 +70,6 @@ export function buildSidebarDomainNodes({
 }: BuildSidebarDomainNodesOptions): SidebarNode[] {
   const capabilities = getClankyClientCapabilities();
   const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }).map((item): SidebarNode => {
-    if (item.kind === "task") {
-      return createTaskSidebarNode({
-        id: item.key,
-        pinId: item.key,
-        task: item.taskNode.task,
-        title: item.taskNode.title,
-        subtitle: item.workspaceName,
-        badge: item.taskNode.badge,
-        badgeVariant: item.taskNode.badgeVariant,
-        badgeAppearance: "text",
-        itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem("Task", getActiveWorkItemTimestamp(item), item.workspace),
-        ancestors: [item.workspace],
-      }, contexts.task);
-    }
     if (item.kind === "chat" || item.kind === "execution-host-chat") {
       const ancestors = item.kind === "chat" ? [item.workspace] : [item.host];
       return createChatSidebarNode({
@@ -161,7 +141,6 @@ export function buildSidebarDomainNodes({
   const workspaceContext: WorkspaceSidebarBuilderContext = {
     workspace: contexts.workspace,
     chat: contexts.chat,
-    task: contexts.task,
     terminal: contexts.terminal,
   };
   const workspaceNodes = sidebarWorkspaceGroups.flatMap((group) => group.workspaces

@@ -1,5 +1,5 @@
 /**
- * Server settings types for Clanky Tasks Management System.
+ * Server settings types for Clanky.
  * Defines workspace settings for agent and deterministic execution channels.
  */
 

@@ -50,7 +50,7 @@ function references(value: unknown, depth = 0): Array<Record<string, string>> {
   }
   if (typeof state["status"] === "string") ref["status"] = excerpt(state["status"], 100);
   if (ref["id"]) return [ref];
-  return ["data", "items", "job", "chat", "task", "workspace"].flatMap((key) => references(entity[key], depth + 1)).slice(0, 8);
+  return ["data", "items", "job", "chat", "workspace"].flatMap((key) => references(entity[key], depth + 1)).slice(0, 8);
 }
 
 export class LiveVoiceConversation {

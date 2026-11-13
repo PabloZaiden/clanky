@@ -112,15 +112,6 @@ export function toMessageAttachments(
   return attachments.map(({ previewUrl: _previewUrl, ...attachment }) => attachment);
 }
 
-/**
- * Strip the transient `attachments` field from a request before persisting.
- * Used by draft save and task edit flows to avoid storing image data.
- */
-export function stripTransientAttachments<T extends { attachments?: unknown }>(request: T): Omit<T, "attachments"> {
-  const { attachments: _attachments, ...persistedRequest } = request;
-  return persistedRequest;
-}
-
 export {
   MESSAGE_ATTACHMENT_LIMIT,
   MESSAGE_ATTACHMENT_MAX_BYTES,

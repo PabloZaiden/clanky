@@ -1,5 +1,5 @@
 /**
- * SQLite database layer for Clanky Tasks Management System.
+ * SQLite database layer for Clanky.
  * Provides centralized database connection and schema management.
  */
 

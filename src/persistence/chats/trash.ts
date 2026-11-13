@@ -16,7 +16,7 @@ import type { TranscriptChangeSet } from "@/shared/chat-transcript";
 import { chatTranscriptStore } from "../transcripts/chat-store";
 import { invalidateChatMetadata } from "./metadata-cache";
 
-const STANDALONE = "scope = 'workspace' AND task_id IS NULL";
+const STANDALONE = "scope = 'workspace'";
 export function loadTrashedChat(chatId: string): Chat | null {
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
@@ -28,7 +28,7 @@ export function loadTrashedChat(chatId: string): Chat | null {
 export function listChatTrash(options: ChatTrashQuery): ChatTrashPage {
   const cursor = options.cursor ? decodeChatTrashCursor(options.cursor) : undefined;
   const values: (string | number)[] = [requireResourcePersistenceUserId("chat")];
-  const conditions = ["chat.user_id = ?", "chat.deleted_at IS NOT NULL", "chat.scope = 'workspace'", "chat.task_id IS NULL"];
+  const conditions = ["chat.user_id = ?", "chat.deleted_at IS NOT NULL", "chat.scope = 'workspace'"];
   const workspaceId = getPersistenceWorkspaceId();
   if (workspaceId) { conditions.push("chat.workspace_id = ?"); values.push(workspaceId); }
   if (cursor) {

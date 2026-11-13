@@ -292,7 +292,7 @@ It uses an existing HTTP route, so the relay does not need an update.
 
 ## Choose a harness
 
-The workspace selects the adapter; each task or chat selects its model.
+The workspace selects the adapter; each chat selects its model.
 Execution-host transport and harness are independent:
 
 | Execution host | Available adapters |
@@ -327,7 +327,7 @@ batching target without invalidating the read.
 - Assistant message completion is not principal turn completion or quiescence.
   Lifetime activity continues after a prompt ends; stopping one owned child
   does not stop the principal, siblings, worker, or controller.
-- Completed task results stay completed even if owned background work remains.
+- Native turn completion does not prove that owned background work has stopped.
   Cleanup and Git safety are separate; failed activity queries are unavailable,
   never an empty successful graph.
 - Native admission records keep the canonical queued-input ID separately from
@@ -391,7 +391,7 @@ worker. The workspace directory remains a navigation root, not a sandbox.
 ## Independent worker lifecycle
 
 Creating, enrolling, restarting, rebuilding, revoking, or deleting a worker
-does not disconnect tasks or chats on another worker. This also applies to
+does not disconnect chats on another worker. This also applies to
 automatic workspace provisioning and maintenance. Multiple workspaces on the
 same worker share that worker's availability; restarting it can interrupt all
 of them.
@@ -639,7 +639,7 @@ itself must be regenerated.
 
 Use `--no-start` when installation should register the service without starting
 it immediately. The service account needs access to Git, the selected provider
-runtime, the workspace directory, and any other tools used by tasks.
+runtime, the workspace directory, and any other tools used by agents.
 
 On Linux, installation creates systemd services. On macOS, it installs a
 per-user LaunchAgent; the worker can request Accessibility, Screen Recording,

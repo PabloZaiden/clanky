@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger, type ToastService } from "@pablozaiden/webapp/web";
-import type { CheapModelSelection, ModelConfig } from "@/shared";
+import type { ModelConfig } from "@/shared";
 import type { ModelInfo } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import { ModelConfigSchema } from "@/contracts/schemas/model";
@@ -16,8 +16,6 @@ export interface UseWorkspaceModelsResult {
   modelsLoading: boolean;
   lastModel: ModelConfig | null;
   setLastModel: (model: ModelConfig | null) => void;
-  lastCheapModel: CheapModelSelection | null;
-  setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
   fetchModels: (
     workspaceId: string | null,
@@ -50,7 +48,6 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [lastModel, setLastModel] = useState<ModelConfig | null>(null);
-  const [lastCheapModel, setLastCheapModel] = useState<CheapModelSelection | null>(null);
   const [modelsWorkspaceId, setModelsWorkspaceId] = useState<string | null>(null);
 
   const modelsRequestIdRef = useRef(0);
@@ -84,34 +81,13 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
         log.warn("Failed to fetch last model preference", { error: String(error) });
       }
     }
-    async function fetchLastCheapModel() {
-      try {
-        const data = isBrowserCollaborationClient()
-          ? browserPreferences.lastCheapModel.read(controller.signal)
-          : await apiRequest<CheapModelSelection | null>("/api/preferences/last-cheap-model", {
-          signal: controller.signal,
-          action: "Load last cheap model preference",
-          fallbackMessage: "Failed to load last cheap model preference",
-        });
-        if (controller.signal.aborted) return;
-        setLastCheapModel(data);
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        log.warn("Failed to fetch last cheap model preference", { error: String(error) });
-      }
-    }
     void fetchLastModel();
-    void fetchLastCheapModel();
     const unsubscribeModel = isBrowserCollaborationClient()
       ? browserPreferences.lastModel.subscribe(() => { void fetchLastModel(); })
-      : undefined;
-    const unsubscribeCheapModel = isBrowserCollaborationClient()
-      ? browserPreferences.lastCheapModel.subscribe(() => { void fetchLastCheapModel(); })
       : undefined;
     return () => {
       controller.abort();
       unsubscribeModel?.();
-      unsubscribeCheapModel?.();
     };
   }, []);
 
@@ -181,8 +157,6 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     modelsLoading,
     lastModel,
     setLastModel,
-    lastCheapModel,
-    setLastCheapModel,
     modelsWorkspaceId,
     fetchModels,
     resetModels,

@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { isValidIanaTimeZone } from "@/shared";
 import { ModelConfigSchema } from "./model";
-import { TaskNameSchema, MessageAttachmentsSchema } from "./task";
+import { EntityNameSchema, MessageAttachmentsSchema } from "./conversation";
 import { CollaborationResourceIdSchema } from "./collaboration";
 
 export const AutomationScheduleIntervalUnitSchema = z.enum(["minutes", "hours", "days"]);
@@ -34,7 +34,7 @@ export const AutomationTransferScheduleSchema = AutomationScheduleSchema.omit({
 });
 
 export const AutomationTransferConfigSchema = z.object({
-  name: TaskNameSchema,
+  name: EntityNameSchema,
   prompt: z.string().trim().min(1, "prompt is required"),
   code: z.string().nullable().optional(),
   model: ModelConfigSchema,
@@ -50,7 +50,7 @@ export const AutomationTransferPayloadSchema = z.object({
 });
 
 export const CreateAutomationRequestSchema = z.object({
-  name: TaskNameSchema,
+  name: EntityNameSchema,
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().trim().min(1, "prompt is required"),
   code: z.string().nullable().optional(),
@@ -62,7 +62,7 @@ export const CreateAutomationRequestSchema = z.object({
 });
 
 export const UpdateAutomationRequestSchema = z.object({
-  name: TaskNameSchema.optional(),
+  name: EntityNameSchema.optional(),
   prompt: z.string().trim().min(1, "prompt cannot be empty").optional(),
   code: z.string().nullable().optional(),
   model: ModelConfigSchema.optional(),
@@ -74,7 +74,7 @@ export const UpdateAutomationRequestSchema = z.object({
 });
 
 export const GenerateAutomationCodeRequestSchema = z.object({
-  name: TaskNameSchema.optional(),
+  name: EntityNameSchema.optional(),
   prompt: z.string().optional(),
   previousCode: z.string().optional(),
   workspaceId: z.string().min(1).optional(),
@@ -91,7 +91,7 @@ export const PrepareGenerateAutomationCodeRequestSchema = z.object({
 });
 
 export const TestAutomationCodeRequestSchema = z.object({
-  name: TaskNameSchema.optional(),
+  name: EntityNameSchema.optional(),
   prompt: z.string().optional().default(""),
   code: z.string().trim().min(1, "code is required"),
   workspaceId: z.string().min(1),

@@ -1,6 +1,6 @@
 /**
  * Aggregator for dashboard data sub-hooks.
- * Composes useAppConfig, useWorkspaceModels, useWorkspaceBranches, and usePlanningDir
+ * Composes useAppConfig, useWorkspaceModels, and useWorkspaceBranches
  * into the unified useDashboardData hook.
  */
 
@@ -11,12 +11,10 @@ import type { WorkspaceType } from "@/shared";
 import { useAppConfig } from "./use-app-config";
 import { useWorkspaceModels } from "./use-workspace-models";
 import { useWorkspaceBranches } from "./use-workspace-branches";
-import { usePlanningDir } from "./use-planning-dir";
 
 export type { UseAppConfigResult } from "./use-app-config";
 export type { UseWorkspaceModelsResult } from "./use-workspace-models";
 export type { UseWorkspaceBranchesResult } from "./use-workspace-branches";
-export type { UsePlanningDirResult } from "./use-planning-dir";
 
 const log = createLogger("useDashboardData");
 
@@ -30,12 +28,7 @@ export interface UseDashboardDataResult {
   modelsLoading: boolean;
   lastModel: import("@/shared").ModelConfig | null;
   setLastModel: (model: import("@/shared").ModelConfig | null) => void;
-  lastCheapModel: import("@/shared").CheapModelSelection | null;
-  setLastCheapModel: (selection: import("@/shared").CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
-
-  // Planning
-  planningWarning: string | null;
 
   // Branches
   branches: import("@/contracts").BranchInfo[];
@@ -51,9 +44,7 @@ export interface UseDashboardDataResult {
 
   // App settings
   appSettingsResetting: boolean;
-  appSettingsPurgingTerminalTasks: boolean;
   resetAllSettings: () => Promise<boolean>;
-  purgeTerminalTasks: () => Promise<import("../taskActions").PurgeTerminalTasksResult | null>;
 
   // Workspace change handler
   handleWorkspaceChange: (
@@ -71,7 +62,6 @@ export function useDashboardData(config: WebAppConfigState["config"]): UseDashbo
   const appConfig = useAppConfig(config);
   const workspaceModels = useWorkspaceModels();
   const workspaceBranches = useWorkspaceBranches();
-  const planningDir = usePlanningDir();
 
   const refreshBranchData = useCallback(async (
     workspaceId: string | null,
@@ -108,9 +98,7 @@ export function useDashboardData(config: WebAppConfigState["config"]): UseDashbo
     } else {
       workspaceBranches.resetBranches();
     }
-    planningDir.checkPlanningDir(workspaceId);
   }, [
-    planningDir.checkPlanningDir,
     refreshBranchData,
     workspaceBranches.resetBranches,
     workspaceModels.fetchModels,
@@ -118,9 +106,8 @@ export function useDashboardData(config: WebAppConfigState["config"]): UseDashbo
 
   const resetCreateModalState = useCallback(() => {
     workspaceModels.resetModels();
-    planningDir.resetPlanningWarning();
     workspaceBranches.resetBranches();
-  }, [workspaceModels.resetModels, planningDir.resetPlanningWarning, workspaceBranches.resetBranches]);
+  }, [workspaceModels.resetModels, workspaceBranches.resetBranches]);
 
   return {
     remoteOnly: appConfig.remoteOnly,
@@ -129,10 +116,7 @@ export function useDashboardData(config: WebAppConfigState["config"]): UseDashbo
     modelsLoading: workspaceModels.modelsLoading,
     lastModel: workspaceModels.lastModel,
     setLastModel: workspaceModels.setLastModel,
-    lastCheapModel: workspaceModels.lastCheapModel,
-    setLastCheapModel: workspaceModels.setLastCheapModel,
     modelsWorkspaceId: workspaceModels.modelsWorkspaceId,
-    planningWarning: planningDir.planningWarning,
     branches: workspaceBranches.branches,
     branchesLoading: workspaceBranches.branchesLoading,
     branchesWorkspaceId: workspaceBranches.branchesWorkspaceId,
@@ -141,9 +125,7 @@ export function useDashboardData(config: WebAppConfigState["config"]): UseDashbo
     refreshBranchData,
     refreshBranchDataIfCurrent,
     appSettingsResetting: appConfig.appSettingsResetting,
-    appSettingsPurgingTerminalTasks: appConfig.appSettingsPurgingTerminalTasks,
     resetAllSettings: appConfig.resetAllSettings,
-    purgeTerminalTasks: appConfig.purgeTerminalTasks,
     handleWorkspaceChange,
     resetCreateModalState,
   };

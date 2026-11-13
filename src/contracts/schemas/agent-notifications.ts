@@ -3,11 +3,9 @@ import type { NotificationEventPreferences } from "@/shared/agent-notifications"
 
 export const NotificationEventPreferencesSchema = z.object({
   error: z.boolean(),
-  blocked: z.boolean(),
   question: z.boolean(),
   secret: z.boolean(),
   approval: z.boolean(),
-  planReady: z.boolean(),
   completed: z.boolean(),
 }).strict() satisfies z.ZodType<NotificationEventPreferences>;
 

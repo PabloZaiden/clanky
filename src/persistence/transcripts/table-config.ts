@@ -69,7 +69,6 @@ const TRANSCRIPT_TABLE_CONFIGS: Readonly<
   Record<SchemaTranscriptResource, TranscriptTableConfig>
 > = {
   chat: createTranscriptTableConfig("chat"),
-  task: createTranscriptTableConfig("task"),
   automation_run: createTranscriptTableConfig("automation_run"),
   subagent: createTranscriptTableConfig("subagent"),
 };

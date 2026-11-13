@@ -11,7 +11,6 @@ import { ConfirmModal, DataList, Panel, useToast, type WebAppRoute } from "@pabl
 import type {
   DismissAllProvisioningJobsResult,
   UseWorkerUpdateJobsResult,
-  useTaskGrouping,
 } from "../../hooks";
 import { Button } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
@@ -73,7 +72,7 @@ export function OverviewView({
   automations: Automation[];
   automationsLoading: boolean;
   automationsError: string | null;
-  workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
+  workspaceGroups: { workspace: import("@/shared").Workspace }[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
   provisioningJobs: PublicProvisioningJob[];
@@ -161,7 +160,7 @@ export function OverviewView({
               <DataList>
                 {workspaceGroups.map((group) => {
                   const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
-                  const sessionCount = group.tasks.length + (workspaceChatCounts.get(group.workspace.id) ?? 0);
+                  const sessionCount = workspaceChatCounts.get(group.workspace.id) ?? 0;
                   return (
                     <ClankyListRow
                       key={group.workspace.id}

@@ -32,7 +32,6 @@ export type DomainErrorPolicyName =
   | "previews"
   | "provisioning"
   | "settings"
-  | "tasks"
   | "terminal"
   | "transcript"
   | "transport"
@@ -150,8 +149,6 @@ const API_DOMAIN_ERROR_CODES = {
   automation_code_invalid: true,
   automation_not_found: true,
   automation_run_not_ready: true,
-  automatic_pr_flow_busy: true,
-  automatic_pr_flow_disabled: true,
   conflict: true,
   control_action_busy: true,
   control_action_cancelled: true,
@@ -198,13 +195,9 @@ const API_DOMAIN_ERROR_CODES = {
   invalid_preview_type: true,
   invalid_execution_target: true,
   invalid_model_config: true,
-  invalid_uploaded_plan: true,
-  invalid_task_input: true,
-  cheap_model_not_enabled: true,
   model_not_enabled: true,
   model_not_found: true,
   provider_not_found: true,
-  invalid_task_state: true,
   invalid_worker_host_address: true,
   invalid_clanky_release_channel: true,
   invalid_runtime: true,
@@ -295,36 +288,12 @@ const API_DOMAIN_ERROR_CODES = {
   not_git_repo: true,
   operation_in_progress: true,
   reset_failed: true,
-  purge_terminal_tasks_failed: true,
-  plan_not_ready: true,
   preview_server_unsupported: true,
   provisioning_target_busy: true,
   provisioning_cancelled: true,
   quick_chat_model_mismatch: true,
-  task_already_running: true,
-  task_branch_missing: true,
-  task_file_operation_failed: true,
-  task_git_operation_failed: true,
-  task_background_work_unsettled: true,
-  task_final_git_failed: true,
-  task_final_git_pending: true,
-  task_input_unresolved: true,
-  task_no_remote: true,
-  task_not_addressable: true,
-  task_not_found: true,
-  task_not_planning: true,
-  task_not_running: true,
-  task_operation_failed: true,
-  task_session_reconnect_failed: true,
-  task_terminal_session_failed: true,
-  task_worktree_missing: true,
-  task_working_directory_unavailable: true,
   base_branch_immutable: true,
   use_worktree_immutable: true,
-  active_task_update_restricted: true,
-  planning_update_restricted: true,
-  plan_execution_update_restricted: true,
-  task_rename_restricted: true,
   mesh_terminal_connection_unavailable: true,
   mesh_terminal_link_unavailable: true,
   mesh_terminal_target_unavailable: true,
@@ -374,7 +343,6 @@ const API_DOMAIN_ERROR_CODES = {
   workspace_execution_target_missing: true,
   workspace_execution_target_not_trusted: true,
   workspace_git_required: true,
-  workspace_has_tasks: true,
   workspace_icon_candidate_not_found: true,
   workspace_icon_discovery_failed: true,
   workspace_icon_invalid: true,
@@ -427,11 +395,6 @@ function capabilityDetails(error: DomainError): Record<string, unknown> | undefi
 function diagnosticsDetails(error: DomainError): Record<string, unknown> | undefined {
   const diagnostics = error.details["diagnostics"];
   return Array.isArray(diagnostics) ? { diagnostics } : undefined;
-}
-
-function changedFilesDetails(error: DomainError): Record<string, unknown> | undefined {
-  const changedFiles = error.details["changedFiles"];
-  return Array.isArray(changedFiles) ? { changedFiles } : undefined;
 }
 
 function fileConflictDetails(error: DomainError): Record<string, unknown> | undefined {
@@ -546,11 +509,6 @@ const COMMON_MAPPINGS = {
   execution_host_unavailable: {
     status: 404,
     message: "Execution host not found or unavailable.",
-  },
-  task_not_found: {
-    status: 404,
-    error: "not_found",
-    message: "Task not found",
   },
   terminal_session_not_found: {
     status: 404,
@@ -1440,177 +1398,6 @@ const POLICY_PROFILES = {
       },
     },
   },
-  tasks: {
-    boundary: "authenticated",
-    mappings: {
-      ...COMMON_MAPPINGS,
-      automatic_pr_flow_busy: {
-        status: 409,
-        error: "automatic_pr_flow_busy",
-        message: "Automatic PR flow is already processing feedback",
-      },
-      automatic_pr_flow_disabled: {
-        status: 400,
-        error: "automatic_pr_flow_disabled",
-        message: "Automatic PR flow is not enabled for this task",
-      },
-      active_task_update_restricted: {
-        status: 409,
-        message: "Cannot update an active task. Stop it first.",
-      },
-      base_branch_immutable: {
-        status: 409,
-        message: "Base branch cannot be updated after git setup.",
-      },
-      directory_in_use: {
-        status: 409,
-        error: "directory_in_use",
-        message: "The task directory is already in use",
-      },
-      invalid_model_config: {
-        status: 400,
-        error: "invalid_model_config",
-        message: "Invalid model configuration",
-      },
-      invalid_uploaded_plan: {
-        status: 400,
-        message: "The uploaded plan is invalid.",
-      },
-      cheap_model_not_enabled: {
-        status: 400,
-        message: "The selected low-cost model is not available.",
-      },
-      invalid_task_input: {
-        status: 400,
-        error: "validation_error",
-        message: "Invalid task input",
-      },
-      invalid_task_state: {
-        status: 400,
-        error: "invalid_state",
-        message: "Task is in an invalid state for this operation",
-      },
-      operation_in_progress: {
-        status: 409,
-        error: "operation_in_progress",
-        message: "This task operation is already in progress",
-      },
-      plan_execution_update_restricted: {
-        status: 409,
-        message: "After plan approval, only the fully autonomous setting can be changed while execution is still in progress.",
-      },
-      plan_not_ready: {
-        status: 400,
-        error: "plan_not_ready",
-        message: "Plan is not ready yet",
-      },
-      model_not_enabled: {
-        status: 400,
-        message: "The selected model is not available.",
-      },
-      model_not_found: {
-        status: 400,
-        message: "The selected model was not found.",
-      },
-      provider_not_found: {
-        status: 400,
-        message: "The selected model provider was not found.",
-      },
-      validation_failed: {
-        status: 400,
-        message: "The selected model could not be validated.",
-      },
-      planning_update_restricted: {
-        status: 409,
-        message: "Only auto-accept plan and fully autonomous task can be changed while the task is planning.",
-      },
-      task_already_running: {
-        status: 409,
-        error: "already_running",
-        message: "Task is already running",
-      },
-      task_branch_missing: {
-        status: 400,
-        error: "no_git_branch",
-        message: "No git branch was created for this task",
-      },
-      task_file_operation_failed: {
-        status: 500,
-        message: "Task file operation failed",
-      },
-      task_git_operation_failed: {
-        status: 500,
-        message: "Task git operation failed",
-      },
-      task_background_work_unsettled: {
-        status: 409,
-        message: "Native workspace writers have not been confirmed stopped.",
-      },
-      task_final_git_failed: {
-        status: 409,
-        message: "The task completed, but its final Git operation failed.",
-      },
-      task_final_git_pending: {
-        status: 409,
-        message: "The task completed, but its final Git operation is still pending.",
-      },
-      task_input_unresolved: {
-        status: 409,
-        message: "Native task input admission is unresolved.",
-      },
-      task_no_remote: {
-        status: 400,
-        error: "no_remote",
-        message: "Workspace has no git remote configured",
-      },
-      task_not_addressable: {
-        status: 400,
-        error: "invalid_state",
-        message: "Task cannot receive follow-up feedback",
-      },
-      task_not_planning: {
-        status: 400,
-        error: "not_planning",
-        message: "Task is not in planning status",
-      },
-      task_not_running: {
-        status: 409,
-        error: "not_running",
-        message: "Task is not running",
-      },
-      task_operation_failed: {
-        status: 500,
-        message: "Task operation failed",
-      },
-      task_session_reconnect_failed: {
-        status: 500,
-        message: "Task session could not be reconnected",
-      },
-      task_terminal_session_failed: {
-        status: 500,
-        message: "Task terminal session operation failed",
-      },
-      task_rename_restricted: {
-        status: 409,
-        message: "Task name can only be updated while the task is still a draft.",
-      },
-      task_worktree_missing: {
-        status: 400,
-        error: "no_worktree",
-        message: "Task worktree is not available",
-      },
-      uncommitted_changes: {
-        status: 409,
-        error: "uncommitted_changes",
-        message: "Cannot start because the repository has uncommitted changes",
-        extra: changedFilesDetails,
-      },
-      use_worktree_immutable: {
-        status: 409,
-        message: "Use Worktree cannot be updated after git setup.",
-      },
-    },
-  },
   terminal: {
     boundary: "authenticated",
     mappings: {
@@ -1619,11 +1406,6 @@ const POLICY_PROFILES = {
         status: 409,
         message: "This execution host does not support interactive terminals.",
         extra: capabilityDetails,
-      },
-      task_working_directory_unavailable: {
-        status: 400,
-        error: "invalid_session_configuration",
-        message: "The task working directory is unavailable.",
       },
       terminal_session_not_found: {
         status: 404,
@@ -1636,10 +1418,6 @@ const POLICY_PROFILES = {
     boundary: "authenticated",
     mappings: {
       ...COMMON_MAPPINGS,
-      purge_terminal_tasks_failed: {
-        status: 500,
-        message: "Failed to purge terminal-state tasks",
-      },
       reset_failed: {
         status: 500,
         message: "Failed to reset settings",
@@ -1952,10 +1730,6 @@ const POLICY_PROFILES = {
       workspace_exec_output_limit_exceeded: {
         status: 413,
         message: "Workspace command output exceeded the allowed limit.",
-      },
-      workspace_has_tasks: {
-        status: 400,
-        message: "The workspace still has tasks.",
       },
       workspace_not_auto_provisioned: {
         status: 400,

@@ -1,5 +1,6 @@
 import { getToolMeta } from "./tool-inference";
-import type { LogLevel, TaskLogEntry, ToolCallDisplayData } from "@/shared";
+import type { LogLevel, ToolCallDisplayData } from "@/shared";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import type {
   EntryBase,
   GroupedEntryBase,
@@ -352,7 +353,7 @@ export function formatThoughtDuration(startTimestamp: string, endTimestamp: stri
   return `${elapsedMinutes} minute${elapsedMinutes === 1 ? "" : "s"}`;
 }
 
-export function isReasoningLogEntry(logEntry: TaskLogEntry): boolean {
+export function isReasoningLogEntry(logEntry: ConversationLogEntry): boolean {
   const logKind = logEntry.details?.["logKind"] as string | undefined;
   return logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...");
 }

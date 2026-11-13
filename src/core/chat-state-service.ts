@@ -12,7 +12,7 @@ import {
   loadChat,
   loadChatMetadata,
   loadChatStreamControlState,
-  loadTaskChat,
+  claimChatPlanningKickoff,
   getChatTranscriptMeta,
   hasSingleChatUserMessage,
   getChatMessageFromTranscript,
@@ -75,6 +75,10 @@ export class ChatStateService implements ChatStatePort {
 
   async hasSingleUserMessage(chatId: string): Promise<boolean> {
     return hasSingleChatUserMessage(chatId);
+  }
+
+  async claimPlanningKickoff(chatId: string, messageId: string): Promise<boolean> {
+    return claimChatPlanningKickoff(chatId, messageId);
   }
 
   async getChatMessage(chatId: string, messageId: string): Promise<MessageData | null> {
@@ -168,10 +172,6 @@ export class ChatStateService implements ChatStatePort {
     }
   }
 
-  async getTaskChat(taskId: string): Promise<Chat | null> {
-    return loadTaskChat(taskId);
-  }
-
   async getAllChats(): Promise<Chat[]> {
     return (await listChats()).filter(isStandaloneChat);
   }
@@ -180,9 +180,8 @@ export class ChatStateService implements ChatStatePort {
     return (await listChatSummaries()).filter(isStandaloneChat);
   }
 
-  async getChatsByWorkspace(workspaceId: string, options: { includeTaskChats?: boolean } = {}): Promise<Chat[]> {
-    const chats = await listChatsByWorkspace(workspaceId, options);
-    return options.includeTaskChats ? chats : chats.filter(isStandaloneChat);
+  async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
+    return (await listChatsByWorkspace(workspaceId)).filter(isStandaloneChat);
   }
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {

@@ -146,7 +146,7 @@ function getStringArray(value: unknown): string[] | undefined {
   return value;
 }
 
-function countPatchLines(lines: string[]): Pick<FileDiff, "additions" | "deletions"> {
+function countPatchLines(lines: string[]): Pick<ApplyPatchFileSection, "additions" | "deletions"> {
   return lines.reduce(
     (counts, line) => {
       if (line.startsWith("+") && !line.startsWith("+++")) {

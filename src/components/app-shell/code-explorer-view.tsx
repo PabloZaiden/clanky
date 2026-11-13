@@ -3,7 +3,6 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   Chat,
   ExecutionHostDescriptor,
-  Task,
   Workspace,
   TerminalSession,
 } from "@/shared";
@@ -20,7 +19,6 @@ import type { CodeExplorerTarget } from "./shell-types";
 
 interface CodeExplorerViewProps {
   routeTarget?: CodeExplorerTarget;
-  tasks: Task[];
   chats: Chat[];
   executionHosts?: ExecutionHostDescriptor[];
   workspaces: Workspace[];
@@ -33,7 +31,6 @@ interface CodeExplorerViewProps {
 
 export function CodeExplorerView({
   routeTarget,
-  tasks,
   chats,
   executionHosts = [],
   workspaces,
@@ -44,15 +41,13 @@ export function CodeExplorerView({
   onControlFileOpenResult,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
-    tasks,
     chats,
     executionHosts,
     workspaces,
-  }), [chats, executionHosts, tasks, workspaces]);
+  }), [chats, executionHosts, workspaces]);
   const groupedOptions = useMemo(() => getCodeExplorerOptionGroups(options), [options]);
   const resolvedTarget = resolveCodeExplorerTarget({
     target: routeTarget,
-    tasks,
     chats,
     executionHosts,
     workspaces,
@@ -71,7 +66,7 @@ export function CodeExplorerView({
       <div className="h-full overflow-auto p-6">
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Open a workspace, task, server, or chat path in the unified code explorer.
+            Open a workspace, server, or chat path in the unified code explorer.
           </p>
           <div className="space-y-5">
             {groupedOptions.map((group) => (
@@ -89,8 +84,6 @@ export function CodeExplorerView({
                         contentType: option.target.contentType,
                         ...(option.target.contentType === "workspace"
                           ? { workspaceId: option.target.workspaceId }
-                          : option.target.contentType === "task"
-                            ? { taskId: option.target.taskId }
                             : option.target.contentType === "execution-host"
                                 ? {
                                     hostKind: option.target.hostKind,

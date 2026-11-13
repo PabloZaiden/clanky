@@ -13,9 +13,9 @@ import {
   parseCollaborationRecord,
 } from "./collaboration-storage";
 
-export function collaborationCreatorProjection(kind: "chat" | "task"): string {
-  const table = kind === "chat" ? "chats" : "tasks";
-  const resourceKind = kind === "chat" ? "'chat'" : "'task'";
+export function collaborationCreatorProjection(_kind: "chat"): string {
+  const table = "chats";
+  const resourceKind = "'chat'";
   return `COALESCE(
     (SELECT json_object('kind', attribution.creator_kind, 'id', attribution.creator_id, 'name', attribution.creator_name)
       FROM collaboration_authorship attribution
@@ -39,7 +39,7 @@ export function collaborationCreatorFromRow(row: Record<string, unknown>): Colla
 }
 
 export function getCollaborationAuthorship(
-  kind: "chat" | "task",
+  kind: "chat",
   resourceId: string,
   ownerUserId: string,
   workspaceId: string,
@@ -55,7 +55,7 @@ export function getCollaborationAuthorship(
   `).get(kind, resourceId, ownerUserId, workspaceId);
   if (value) {
     const row = parseCollaborationRecord(z.object({
-      resource_kind: z.enum(["chat", "task"]), resource_id: z.string(),
+      resource_kind: z.literal("chat"), resource_id: z.string(),
       owner_user_id: z.string(), workspace_id: z.string(),
       creator_kind: z.enum(["user", "guest"]), creator_id: z.string(), creator_name: z.string(),
     }), value);

@@ -1,0 +1,3 @@
+export const MAX_PERSISTED_LOGS = 5000;
+export const MAX_PERSISTED_MESSAGES = 2000;
+export const MAX_PERSISTED_TOOL_CALLS = 5000;

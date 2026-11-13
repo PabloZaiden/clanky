@@ -24,10 +24,6 @@ export const TranscriptSnapshotQuerySchema = z.object({
   full: z.literal("1").optional(),
 }).strict();
 
-export const TaskChatQuerySchema = z.object({
-  summary: z.literal("1").optional(),
-}).strict();
-
 export const TranscriptDownloadQuerySchema = z.object({
   download: z.literal("1").optional(),
 }).strict();

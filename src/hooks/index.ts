@@ -12,8 +12,6 @@ export { useForegroundPresentation } from "./useForegroundPresentation";
 export { useTextStateSwap } from "./useTextStateSwap";
 export { useAutomations, type UseAutomationsResult } from "./useAutomations";
 export { useWorkspaceSchedulerTimezone } from "./useWorkspaceSchedulerTimezone";
-export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
-export { useTask, type UseTaskResult } from "./useTask";
 export { useTerminalSessions, type UseTerminalSessionsResult } from "./useTerminalSessions";
 export { useTerminalSession, type UseTerminalSessionResult } from "./useTerminalSession";
 export { useExecutionHosts } from "./useExecutionHosts";
@@ -49,9 +47,7 @@ export {
   type VoicePlaybackRecovery,
 } from "./useVoicePlayback";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
-export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
-export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
 export {
   useProvisioningJob,
   type DismissAllProvisioningJobsResult,
@@ -92,37 +88,6 @@ export {
   type FileExplorerOperation,
   type FileExplorerOperationFailure,
 } from "./useWorkspaceFiles";
-// Shared task action API functions
-export {
-  acceptTaskApi,
-  pushTaskApi,
-  updateBranchApi,
-  stopTaskApi,
-  discardTaskApi,
-  deleteTaskApi,
-  purgeTaskApi,
-  manualCompleteTaskApi,
-  purgeArchivedWorkspaceTasksApi,
-  purgeTerminalTasksApi,
-  getTaskTerminalSessionApi,
-  getOrCreateTaskTerminalSessionApi,
-  setPendingPromptApi,
-  clearPendingPromptApi,
-  markMergedApi,
-  sendPlanFeedbackApi,
-  acceptPlanApi,
-  discardPlanApi,
-  addressReviewCommentsApi,
-  sendFollowUpApi,
-  setPendingApi,
-  clearPendingApi,
-  type AcceptTaskResult,
-  type PushTaskResult,
-  type AddressCommentsResult,
-  type SetPendingResult,
-  type PurgeArchivedTasksResult,
-  type PurgeTerminalTasksResult,
-} from "./taskActions";
 export {
   type FileExplorerTarget,
   WorkspaceFileConflictError,

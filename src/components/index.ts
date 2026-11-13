@@ -6,12 +6,9 @@
 export * from "./common";
 
 // Main components
-export { TaskCard } from "./TaskCard";
-export { TaskDetails } from "./TaskDetails";
 export { TerminalSessionDetails, type TerminalSessionDetailsProps } from "./terminal/terminal-session-details";
 export { ConversationViewer } from "./log-viewer";
 export { ChatDetails } from "./ChatDetails";
-export { CreateTaskForm } from "./CreateTaskForm";
 export { ProvisioningJobView } from "./ProvisioningJobView";
 export { ConsoleOutput } from "./console-output";
 export { JobListRow } from "./job-list-row";

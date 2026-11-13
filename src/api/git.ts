@@ -2,7 +2,7 @@ import { defineRoutes } from "@/platform/server";
 import { workspaceOperation } from "./workspace-delegation";
 import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
 /**
- * Git API endpoints for Clanky Tasks Management System.
+ * Git API endpoints for Clanky.
  * 
  * This module provides git-related endpoints for querying repository information.
  * All git operations use the deterministic CommandExecutor abstraction

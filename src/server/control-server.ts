@@ -81,7 +81,7 @@ export class ControlServer {
       const resource = new URL("mcp", `${base.replace(/\/+$/u, "")}/`).href;
       this.oauth = {
         issuer: base.replace(/\/+$/u, ""), resource, clients,
-        scopes: { [CLANKY_CONTROL_SCOPE]: "Control chats, tasks and explicitly selected Clanky resources." },
+        scopes: { [CLANKY_CONTROL_SCOPE]: "Control chats and explicitly selected Clanky resources." },
         resourceScopes: [CLANKY_CONTROL_SCOPE],
         consentPath: `/${routeToHash({ view: "control-consent" })}`,
         getConsentContext: async ({ user }) => await runWithCurrentUser(user,

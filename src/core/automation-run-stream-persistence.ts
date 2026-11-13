@@ -2,7 +2,7 @@ import type {
   AutomationRun,
   MessageData,
   PersistedToolCall,
-  TaskLogEntry,
+  ConversationLogEntry,
   TranscriptEntryPayload,
 } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -11,7 +11,7 @@ import {
   AgentStreamCheckpointPolicy,
   getAgentStreamTextByteLength,
 } from "./agent-stream-controller";
-import { MAX_PERSISTED_LOGS, MAX_PERSISTED_MESSAGES, MAX_PERSISTED_TOOL_CALLS } from "./engine/engine-types";
+import { MAX_PERSISTED_LOGS, MAX_PERSISTED_MESSAGES, MAX_PERSISTED_TOOL_CALLS } from "./conversation-limits";
 import { MemoryFirstPersistenceQueue } from "./memory-first-persistence-queue";
 import { TranscriptStreamProjection } from "./transcript-stream-projection";
 import { saveAutomationRun } from "../persistence/automations";
@@ -133,7 +133,7 @@ export class AutomationRunStreamPersistence {
     }
   }
 
-  handleOutputLog(entry: TaskLogEntry): void {
+  handleOutputLog(entry: ConversationLogEntry): void {
     this.upsertLog(entry);
     const shouldCheckpoint = entry.level === "error"
       || this.checkpointPolicy.recordText(getAgentStreamTextByteLength(entry.message));
@@ -243,7 +243,7 @@ export class AutomationRunStreamPersistence {
     });
   }
 
-  private upsertLog(entry: TaskLogEntry): void {
+  private upsertLog(entry: ConversationLogEntry): void {
     this.transcript.upsertLog(entry);
     this.run = {
       ...this.run,

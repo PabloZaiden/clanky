@@ -30,7 +30,7 @@ import { SubagentTranscript } from "./subagent-transcript";
 import { useSavedSubagents } from "./use-saved-subagents";
 
 interface HarnessActivityProps {
-  kind: "chat" | "task";
+  kind: "chat";
   entityId: string;
   snapshot?: HarnessActivitySnapshot;
   capabilities?: HarnessCapabilities;
@@ -242,9 +242,9 @@ function HarnessActivityPage({ kind, entityId, snapshot, capabilities, onBack, b
 export function HarnessEntityView({
   showActivity,
   children,
-  activityFooter,
+  footer,
   ...props
-}: HarnessActivityProps & { showActivity: boolean; children: ReactNode; activityFooter?: ReactNode }) {
+}: HarnessActivityProps & { showActivity: boolean; children: ReactNode; footer?: ReactNode }) {
   const readOnly = useWorkspaceReadOnly();
   const byTool = useMemo(() => {
     const result = new Map<string, HarnessActivity[]>();
@@ -273,19 +273,21 @@ export function HarnessEntityView({
     >
       <ToolActivityContext.Provider value={toolActivity}>
         <div className="relative flex h-full min-h-0 flex-col">
-          <div
-            className={`flex min-h-0 flex-1 flex-col ${showActivity ? "invisible" : ""}`}
-            inert={showActivity || undefined}
-            aria-hidden={showActivity || undefined}
-          >
-            {children}
-          </div>
-          {showActivity && (
-            <div className="absolute inset-0 flex min-h-0 flex-col">
-              <div className="flex min-h-0 flex-1 flex-col"><HarnessActivityPage key={`${props.kind}:${props.entityId}`} {...props} /></div>
-              {activityFooter}
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+            <div
+              className={`flex min-h-0 flex-1 flex-col ${showActivity ? "invisible" : ""}`}
+              inert={showActivity || undefined}
+              aria-hidden={showActivity || undefined}
+            >
+              {children}
             </div>
-          )}
+            {showActivity && (
+              <div className="absolute inset-0 flex min-h-0 flex-col">
+                <HarnessActivityPage key={`${props.kind}:${props.entityId}`} {...props} />
+              </div>
+            )}
+          </div>
+          {footer}
         </div>
       </ToolActivityContext.Provider>
     </HarnessInputReconciliationProvider>

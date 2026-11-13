@@ -36,7 +36,6 @@ interface PendingNavigation {
 }
 
 type NavigationResources = Pick<ReturnType<typeof useShellResources>,
-  | "tasks" | "tasksError" | "refreshTasks"
   | "chats" | "chatsError" | "refreshChats"
   | "workspaces" | "workspaceError" | "refreshWorkspaces"
   | "automations"
@@ -68,7 +67,6 @@ function getActionRoute(action: ControlUiAction): WebAppRoute | null {
       };
     case "open_chat":
       return { view: "chat", chatId: action.chatId };
-    case "open_task": return { view: "task", taskId: action.taskId };
     case "open_automation": return { view: "automation", automationId: action.automationId };
     case "open_terminal": return { view: "terminal", terminalSessionId: action.terminalSessionId };
     case "open_execution_host": return { view: "execution-host", hostKind: action.kind, hostId: action.id };
@@ -83,7 +81,6 @@ async function refreshNavigationTarget(action: ControlUiAction, resources: Navig
     case "open_workspace":
     case "open_workspace_file": await resources.refreshWorkspaces(); break;
     case "open_chat": await resources.refreshChats(); break;
-    case "open_task": await resources.refreshTasks(); break;
     case "open_automation": await resources.automations.refresh(); break;
     case "open_terminal": await resources.refreshTerminalSessions(); break;
     case "open_execution_host":
@@ -99,8 +96,6 @@ function isNavigationTargetReady(expected: WebAppRoute, resources: NavigationRes
       return !resources.workspaceError && resources.workspaces.some((workspace) => workspace.id === expected["workspaceId"]);
     case "chat":
       return !resources.chatsError && resources.chats.some((chat) => chat.config.id === expected["chatId"]);
-    case "task":
-      return !resources.tasksError && resources.tasks.some((task) => task.config.id === expected["taskId"]);
     case "automation":
       return !resources.automations.error && resources.automations.automations.some((automation) => automation.config.id === expected["automationId"]);
     case "terminal":

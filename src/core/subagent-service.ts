@@ -3,14 +3,13 @@ import type { Subagent, SubagentContext, SubagentList, SubagentSnapshot } from "
 import { getSubagentForContext, listSubagents } from "../persistence/subagents";
 import { subagentTranscriptStore } from "../persistence/transcripts/subagent-store";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { requireResourcePersistenceUserId } from "../persistence/ownership";
 import { DomainError } from "../domain/domain-error";
 import { createTranscriptFromStoragePage } from "./transcript-service";
 import { getSubagentStreamPosition } from "./subagent-transcript-observer";
 
 async function parentExists(context: SubagentContext): Promise<boolean> {
-  return context.kind === "chat" ? await loadChatMetadata(context.id) !== null : await loadTaskSummary(context.id) !== null;
+  return await loadChatMetadata(context.id) !== null;
 }
 
 function observed(record: Subagent): Subagent {

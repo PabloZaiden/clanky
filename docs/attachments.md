@@ -1,6 +1,6 @@
 # Conversation attachments
 
-Attach any file to a chat, task input or manual Automation run. The picker accepts
+Attach any file to a chat or manual Automation run. The picker accepts
 all extensions and MIME types. File paste works when the browser exposes actual
 files; ordinary clipboard text still inserts text. Browsers may not expose
 every operating-system clipboard format.
@@ -56,7 +56,7 @@ Files live below the conversation's actual execution directory:
 <execution-directory>/.clanky-attachments/<owned-context>/<message>/<slot>/<safe-filename>
 ```
 
-A task or chat using a worktree uses that worktree. A conversation without Git
+A chat using a worktree uses that worktree. A conversation without Git
 uses its selected directory. Mesh transfers write on the selected
 execution host, not implicitly on the Clanky controller. Authentication and
 execution-host binding checks still apply.
@@ -81,7 +81,7 @@ messages share this behavior without changing transcript pagination.
 Message images and tool previews load automatically when they enter the visible
 conversation, not when offscreen history is opened. Click a loaded image to
 enlarge it; a failed load remains visible with a retry action. The same behavior
-applies to chat, task, automation-run and saved subagent transcripts.
+applies to chat, automation-run and saved subagent transcripts.
 
 Attachment reads use the conversation's normal authorization and saved originals,
 independently of execution-host working copies. Uploads and provider delivery
@@ -105,11 +105,6 @@ Moving a chat to Trash retains originals and working copies. Permanent deletion
 cleans only that conversation's managed directories on their recorded hosts.
 An unavailable host leaves ordinary chat deletion in Trash for retry. Workspace
 deletion retains its existing best-effort remote cleanup policy.
-
-Logical task deletion retains attachments for revival; permanent task purge
-includes managed-file cleanup in the existing deferred cleanup process. Remote
-cleanup failures are logged and must not be interpreted as proof that the
-remote files disappeared.
 
 Write or connection failures stop file preparation before provider admission.
 No inline-document fallback is attempted, and queued originals remain available

@@ -1,6 +1,6 @@
 import type { ChatConfig, ChatState } from "./chat";
 import type { StreamPosition } from "./stream-position";
-import type { PersistedMessage, TaskLogEntry } from "./task";
+import type { PersistedMessage, ConversationLogEntry } from "./conversation";
 import type { TranscriptMessage } from "./transcript-attachments";
 import {
   mergeToolCallDisplayData,
@@ -12,7 +12,7 @@ export type ChatTranscriptEntryKind = "message" | "tool" | "log";
 
 export type TranscriptEntryKind = ChatTranscriptEntryKind;
 
-export type TranscriptEntryPayload = PersistedMessage | TaskLogEntry | ToolCallRecord;
+export type TranscriptEntryPayload = PersistedMessage | ConversationLogEntry | ToolCallRecord;
 
 export const TRANSCRIPT_PAGE_SIZE = 100;
 
@@ -49,7 +49,7 @@ export interface TranscriptChangeSet {
 export function createTranscriptChangeSet(
   state: {
     messages: PersistedMessage[];
-    logs: TaskLogEntry[];
+    logs: ConversationLogEntry[];
     toolCalls: ToolCallRecord[];
   },
   upserts: TranscriptEntryUpsert[] = [],
@@ -76,7 +76,7 @@ export interface ChatTranscriptStorageEntry {
 
 export interface ChatTranscript {
   messages: TranscriptMessage[];
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   toolCalls: ToolCallDisplayData[];
   revision: string;
   position: StreamPosition;
@@ -221,7 +221,7 @@ export function mergeTranscriptToolCalls(
   return Array.from(merged.values()).sort(compareTranscriptRecords);
 }
 
-export function shouldIncludeConversationTranscriptLog(log: TaskLogEntry): boolean {
+export function shouldIncludeConversationTranscriptLog(log: ConversationLogEntry): boolean {
   const logKind = log.details?.["logKind"];
   if (
     logKind === "tool"

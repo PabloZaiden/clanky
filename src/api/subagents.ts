@@ -12,8 +12,8 @@ import { getTranscriptAttachment } from "../core/transcript-attachment-service";
 import { projectTranscriptAttachments } from "@/shared";
 import { transcriptAttachmentResponse } from "./transcript-snapshot";
 
-export function createSubagentRoutes(kind: "chat" | "task") {
-  const base = `/api/${kind === "chat" ? "chats" : "tasks"}/:id/subagents`;
+export function createSubagentRoutes(kind: "chat") {
+  const base = `/api/chats/:id/subagents`;
   const parent = workspaceOperation(kind);
   const common = {
     auth: "user" as const,
@@ -56,7 +56,7 @@ export function createSubagentRoutes(kind: "chat" | "task") {
             ? new Response(null, { status: 304, headers }) : Response.json({
               ...snapshot,
               transcript: projectTranscriptAttachments(snapshot.transcript,
-                `/api/${kind === "chat" ? "chats" : "tasks"}/${encodeURIComponent(ctx.params["id"]!)}/subagents/${encodeURIComponent(ctx.params["subagentId"]!)}`),
+                `/api/chats/${encodeURIComponent(ctx.params["id"]!)}/subagents/${encodeURIComponent(ctx.params["subagentId"]!)}`),
             }, { headers });
         } catch (error) { return failure(error); }
       },

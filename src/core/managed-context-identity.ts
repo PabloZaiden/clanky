@@ -3,11 +3,9 @@
  */
 
 import type { ManagedContextIdentity, ManagedContextType } from "@/shared/context-api-key";
-import type { Task } from "@/shared/task";
 import { getChatWorkspaceId, type Chat } from "@/shared/chat";
 import { loadAutomationRunSummary, loadAutomationRunSummaryByChatId } from "../persistence/automations";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { getTerminalSession } from "../persistence/terminal-sessions";
 import { DomainError } from "../domain/domain-error";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -40,25 +38,6 @@ function ensureWorkspace(
 }
 
 export class ManagedContextIdentityResolver {
-  async forTask(taskId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
-    const task = await loadTaskSummary(taskId);
-    if (!task) {
-      throw missingContext("task", taskId);
-    }
-    return this.forTaskSnapshot(task, expectedWorkspaceId);
-  }
-
-  forTaskSnapshot(
-    task: Pick<Task, "config">,
-    expectedWorkspaceId?: string,
-  ): ManagedContextIdentity {
-    return this.createIdentity(
-      "task",
-      task.config.id,
-      ensureWorkspace("task", task.config.id, task.config.workspaceId, expectedWorkspaceId),
-    );
-  }
-
   async forChat(chatId: string, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
     const chat = await loadChatMetadata(chatId);
     if (!chat) {
@@ -69,10 +48,6 @@ export class ManagedContextIdentityResolver {
 
   async forChatSnapshot(chat: Pick<Chat, "config">, expectedWorkspaceId?: string): Promise<ManagedContextIdentity> {
     const chatId = chat.config.id;
-    if (chat.config.scope === "task" && chat.config.taskId) {
-      return await this.forTask(chat.config.taskId, expectedWorkspaceId ?? chat.config.workspaceId);
-    }
-
     if (chat.config.scope === "automation") {
       const run = await loadAutomationRunSummaryByChatId(chatId);
       if (run) {
@@ -126,10 +101,6 @@ export class ManagedContextIdentityResolver {
   async isActive(identity: ManagedContextIdentity): Promise<boolean> {
     if (identity.userId !== requireExecutionOwnerUserId() || !await getWorkspace(identity.workspaceId)) return false;
     switch (identity.contextType) {
-      case "task": {
-        const task = await loadTaskSummary(identity.contextId);
-        return task?.config.workspaceId === identity.workspaceId && task.state.status !== "deleted";
-      }
       case "chat": {
         const chat = await loadChatMetadata(identity.contextId);
         return chat?.config.workspaceId === identity.workspaceId;

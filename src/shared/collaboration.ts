@@ -138,7 +138,7 @@ export interface CollaborationCreator {
 }
 
 export interface CollaborationAuthorship {
-  resourceKind: "chat" | "task";
+  resourceKind: "chat";
   resourceId: string;
   ownerUserId: string;
   workspaceId: string;

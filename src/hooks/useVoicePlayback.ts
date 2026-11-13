@@ -61,7 +61,7 @@ export interface UseVoicePlaybackResult {
   playingKey: string | null;
   status: "idle" | "generating" | "playing";
   playbackRecovery: VoicePlaybackRecovery | null;
-  play: (target: string | { kind: "chat" | "task"; parentId: string; subagentId: string }, messageId: string) => Promise<void>;
+  play: (target: string | { kind: "chat"; parentId: string; subagentId: string }, messageId: string) => Promise<void>;
   retryPlayback: () => Promise<void>;
   stop: () => void;
 }
@@ -228,11 +228,11 @@ export function useVoicePlayback(): UseVoicePlaybackResult {
   }, [playbackRecovery, releaseAudio, stop, notifyError]);
 
   const play = useCallback(async (
-    target: string | { kind: "chat" | "task"; parentId: string; subagentId: string },
+    target: string | { kind: "chat"; parentId: string; subagentId: string },
     messageId: string,
   ): Promise<void> => {
     const base = typeof target === "string" ? `/api/chats/${encodeURIComponent(target)}`
-      : `/api/${target.kind === "chat" ? "chats" : "tasks"}/${encodeURIComponent(target.parentId)}/subagents/${encodeURIComponent(target.subagentId)}`;
+      : `/api/chats/${encodeURIComponent(target.parentId)}/subagents/${encodeURIComponent(target.subagentId)}`;
     const key = `${base}:${messageId}`;
     if (activeKeyRef.current === key) {
       stop();

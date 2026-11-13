@@ -21,6 +21,7 @@ import { ComposerSendButton } from "./composer-send-button";
 import { useConversationComposer } from "./use-conversation-composer";
 import type { ConversationComposerProps } from "./types";
 import { TokenUsage } from "../token-usage";
+import { ChatRepositorySection } from "../chat-details/chat-repository-section";
 
 function ThinkingSpinner() {
   return (
@@ -191,6 +192,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
                       <TokenUsage usage={props.tokenUsage} />
                     </ComposerActionsMenuSection>
                   )}
+                  {props.repositoryChatId ? <ChatRepositorySection chatId={props.repositoryChatId} /> : null}
                   {modelEnabled && (
                     <ComposerActionsMenuSection label="Model">
                       <ModelSelector

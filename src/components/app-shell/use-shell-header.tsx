@@ -7,10 +7,8 @@ import {
 } from "@pablozaiden/webapp/web";
 import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import type { ShellDialogComposition } from "./shell-dialog-composition";
-import type { UseComposeStateResult } from "./use-compose-state";
 import {
   getChatCodeExplorerRootDirectory,
-  getTaskCodeExplorerRootDirectory,
 } from "./code-explorer-targets";
 import { getRouteString } from "./route-fields";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
@@ -23,7 +21,6 @@ import type {
   Automation,
   Chat,
   ExecutionHostDescriptor,
-  Task,
   Workspace,
 } from "@/shared";
 import { Badge, formatStatusLabel, getAutomationStatusBadgeVariant, StateText, StatusBadge } from "../common";
@@ -41,22 +38,18 @@ export interface HeaderModel {
 interface UseShellHeaderOptions {
   route: WebAppRoute;
   headerNodes: SidebarNode[];
-  taskId: string | undefined;
   chatId: string | undefined;
   composeKind: string | undefined;
-  selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   selectedAutomation: Automation | null;
-  tasksLoading: boolean;
   chatsLoading: boolean;
   automations: UseAutomationsResult;
   terminalSessions: import("@/shared").TerminalSession[];
   workspaces: Workspace[];
   editingAutomationId: ShellDialogComposition["editingAutomationId"];
-  composeActionState: UseComposeStateResult["composeActionState"];
 }
 
 export function RouteHeaderTitle({ model, defaultTitle }: { model: HeaderModel; defaultTitle: string }) {
@@ -142,7 +135,6 @@ interface HeaderScopeOptions {
   composeKind: string | undefined;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
-  selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   selectedAutomation: Automation | null;
@@ -156,7 +148,6 @@ function getHeaderScopeSubtitle({
   composeKind,
   composeWorkspace,
   composeExecutionHost,
-  selectedTask,
   selectedChat,
   selectedWorkspace,
   selectedAutomation,
@@ -165,9 +156,6 @@ function getHeaderScopeSubtitle({
   workspaces,
 }: HeaderScopeOptions): string | undefined {
   switch (route.view) {
-    case "task":
-    case "task-files":
-      return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
     case "chat":
     case "chat-transcript":
       return getChatScopeSubtitle(selectedChat, workspaces);
@@ -187,9 +175,6 @@ function getHeaderScopeSubtitle({
       return getWorkspaceScopeSubtitle(getRouteString(route, "workspaceId"), workspaces);
     case "code-explorer": {
       const contentType = getRouteString(route, "contentType");
-      if (contentType === "task") {
-        return getWorkspaceScopeSubtitle(selectedTask?.config.workspaceId, workspaces);
-      }
       if (contentType === "chat") {
         return getChatScopeSubtitle(selectedChat, workspaces);
       }
@@ -215,22 +200,18 @@ function getHeaderScopeSubtitle({
 export function useShellHeader({
   route,
   headerNodes,
-  taskId,
   chatId,
   composeKind,
-  selectedTask,
   selectedChat,
   selectedWorkspace,
   composeWorkspace,
   composeExecutionHost,
   selectedAutomation,
-  tasksLoading,
   chatsLoading,
   automations,
   terminalSessions,
   workspaces,
   editingAutomationId,
-  composeActionState,
 }: UseShellHeaderOptions) {
   const headerOwnerRoute = useMemo(() => {
     return getHeaderOwnerRoute(route);
@@ -263,7 +244,6 @@ export function useShellHeader({
       composeKind,
       composeWorkspace,
       composeExecutionHost,
-      selectedTask,
       selectedChat,
       selectedWorkspace,
       selectedAutomation,
@@ -279,21 +259,6 @@ export function useShellHeader({
         return { title: getRouteString(route, "requestId") ? "Control request" : "Approvals" };
       case "control-consent":
         return { title: "Authorize integration" };
-      case "task":
-        if (taskId && !selectedTask && !tasksLoading) {
-          return { title: "Task not found" };
-        }
-        if (!nodeModel) {
-          return { title: "Task" };
-        }
-        return selectedTask?.state.status === "draft"
-          && !isWorkspaceReadOnly(workspaces.find((workspace) => workspace.id === selectedTask.config.workspaceId))
-          ? { ...nodeModel, title: `Edit ${nodeModel.title}`, scopeSubtitle }
-          : { ...nodeModel, scopeSubtitle };
-      case "task-files":
-        return nodeModel
-          ? { title: nodeModel.title, scopeSubtitle, detailSubtitle: "Files" }
-          : { title: "Task files" };
       case "chat":
         if (chatId && !selectedChat && !chatsLoading) {
           return { title: "Chat not found" };
@@ -379,8 +344,6 @@ export function useShellHeader({
         const explorerDirectory = startDirectory || (
           contentType === "workspace"
             ? selectedWorkspace?.directory
-            : contentType === "task" && selectedTask
-              ? getTaskCodeExplorerRootDirectory(selectedTask)
               : contentType === "chat" && selectedChat
                 ? getChatCodeExplorerRootDirectory(selectedChat)
                 : undefined
@@ -392,12 +355,6 @@ export function useShellHeader({
         };
       }
       case "compose": {
-        if (composeKind === "task") {
-          return {
-            title: composeWorkspace ? `Start a new task in ${composeWorkspace.name}` : "Start a new task",
-            scopeSubtitle,
-          };
-        }
         if (
           composeKind === "chat"
           || composeKind === "execution-host-chat"
@@ -448,11 +405,8 @@ export function useShellHeader({
     route,
     selectedAutomation,
     selectedChat,
-    selectedTask,
     selectedWorkspace,
     terminalSessions,
-    taskId,
-    tasksLoading,
     workspaces,
   ]);
   const headerActions = useMemo<ActionMenuItem[]>(() => {
@@ -463,23 +417,8 @@ export function useShellHeader({
       && !sidebarNodeMatchesRoute(headerNode, route)
       ? ownerActions
       : [];
-    const draftAction = route.view === "compose"
-      && composeKind === "task"
-      && composeActionState
-      && (!composeActionState.isEditing || composeActionState.isEditingDraft)
-      ? [{
-          id: "save-as-draft",
-          label: composeActionState.isEditingDraft ? "Update" : "Save as Draft",
-          disabled: !composeActionState.canSaveDraft || composeActionState.isSubmitting,
-          onAction: composeActionState.onSaveAsDraft,
-        }]
-      : [];
-    return [
-      ...draftAction,
-      ...entityActions,
-    ];
+    return entityActions;
   }, [
-    composeActionState,
     composeKind,
     headerNode,
     headerOwnerRoute,
@@ -491,19 +430,8 @@ export function useShellHeader({
       return newChatAction ? [newChatAction] : undefined;
     }
 
-    if (route.view === "compose" && composeKind === "task") {
-      return composeActionState ? [{
-        id: "submit-task",
-        label: composeActionState.isEditing ? "Start" : "Create",
-        onAction: composeActionState.onSubmit,
-        disabled: !composeActionState.canSubmit,
-        loading: composeActionState.isSubmitting,
-      }] : undefined;
-    }
-
     return undefined;
   }, [
-    composeActionState,
     composeKind,
     headerNode,
     route,

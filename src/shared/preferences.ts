@@ -1,5 +1,5 @@
 /**
- * Shared preference types for Clanky Tasks Management System.
+ * Shared preference types for Clanky.
  *
  * Types in this module are shared between the frontend (hooks)
  * and backend (persistence layer). They are the single source
@@ -7,11 +7,6 @@
  *
  * @module types/preferences
  */
-
-/**
- * Dashboard view mode: either a list of rows or a grid of cards.
- */
-export type DashboardViewMode = "rows" | "cards";
 
 /**
  * Default theme preference when none is stored.

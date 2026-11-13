@@ -72,13 +72,11 @@ export function requireCollaborationWorkspaces(ownerUserId: string, workspaceIds
 }
 
 export function getCollaborationResourceBinding(
-  kind: "chat" | "task",
+  _kind: "chat",
   resourceId: string,
 ): { ownerUserId: string; workspaceId: string | null } | undefined {
   const db = getDatabase();
-  const row = kind === "chat"
-    ? db.query("SELECT user_id AS ownerUserId, workspace_id AS workspaceId FROM chats WHERE id = ?").get(resourceId)
-    : db.query("SELECT user_id AS ownerUserId, workspace_id AS workspaceId FROM tasks WHERE id = ?").get(resourceId);
+  const row = db.query("SELECT user_id AS ownerUserId, workspace_id AS workspaceId FROM chats WHERE id = ?").get(resourceId);
   return row ? parseCollaborationRecord(z.object({
     ownerUserId: z.string().min(1),
     workspaceId: z.string().min(1).nullable(),

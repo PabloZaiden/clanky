@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Automation, Chat, PublicWorkspace, Workspace } from "@/shared";
-import type { useChats, useTasks } from "../../hooks";
+import type { useChats } from "../../hooks";
 import type { UseTerminalSessionsResult } from "../../hooks/useTerminalSessions";
-import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   StatusBadge,
   Button,
@@ -116,7 +115,6 @@ function useWorkspaceScratchpadPreview(
 
 export function WorkspaceView({
   workspace,
-  relatedTasks,
   relatedChats,
   relatedTerminalSessions,
   relatedAutomations,
@@ -129,7 +127,6 @@ export function WorkspaceView({
   showPrivateItems = false,
 }: {
   workspace: Workspace;
-  relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
   relatedTerminalSessions: UseTerminalSessionsResult["sessions"];
   relatedAutomations: Automation[];
@@ -143,34 +140,10 @@ export function WorkspaceView({
 }) {
   const scratchpadPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
   const scratchpadPreview = useWorkspaceScratchpadPreview(workspace.id, !scratchpadPrivateHidden);
-  const activityTasks = workspace.workspaceType === "git"
-    ? relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status))
-    : [];
-  const historyTasks = workspace.workspaceType === "git"
-    ? relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status))
-    : [];
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
-  const hasActivity = activityTasks.length > 0 || activityChats.length > 0 || relatedTerminalSessions.length > 0;
-  const historyDescription = "Completed tasks and chats marked as done.";
-
-  function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
-    const route: WebAppRoute = { view: "task", taskId: task.config.id };
-    const statusPill = getTaskStatusPill(task);
-    const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(task.config, [workspace]), showPrivateItems);
-    return (
-      <WorkItemRow
-        key={task.config.id}
-        title={task.config.name}
-        workspace={workspace}
-        itemType="Task"
-        lastInteractionAt={task.state.lastUserMessageAt ?? task.config.createdAt}
-        badge={<StatusBadge variant={statusPill.variant}><StateText>{statusPill.label}</StateText></StatusBadge>}
-        onClick={() => onNavigate(route)}
-        privateHidden={privateHidden}
-      />
-    );
-  }
+  const hasActivity = activityChats.length > 0 || relatedTerminalSessions.length > 0;
+  const historyDescription = "Chats marked as done.";
 
   function renderChatRow(chat: Chat) {
     const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(chat.config, [workspace]), showPrivateItems);
@@ -209,7 +182,6 @@ export function WorkspaceView({
         <div>
           {hasActivity ? (
             <div className="space-y-2">
-              {activityTasks.map((task) => renderTaskRow(task))}
               {activityChats.map(renderChatRow)}
               {relatedTerminalSessions.map((terminal) => {
                 const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(terminal.config, [workspace]), showPrivateItems);
@@ -228,7 +200,7 @@ export function WorkspaceView({
               })}
             </div>
           ) : (
-            <EmptyState title="No active items" description="There are no active tasks, chats, or sessions in this workspace right now." />
+            <EmptyState title="No active items" description="There are no active chats or sessions in this workspace right now." />
           )}
         </div>
       </Panel>
@@ -277,10 +249,9 @@ export function WorkspaceView({
         isAutomationPrivateHidden={(automation) => shouldObscurePrivateItem(isEffectivelyPrivate(automation.config, [workspace]), showPrivateItems)}
       />
 
-      {historyTasks.length > 0 || historyChats.length > 0 ? (
+      {historyChats.length > 0 ? (
         <Panel data-testid="workspace-history-card" title="History" description={historyDescription} className="border-0">
           <div className="space-y-2">
-            {historyTasks.map((task) => renderTaskRow(task))}
             {historyChats.map(renderChatRow)}
           </div>
         </Panel>

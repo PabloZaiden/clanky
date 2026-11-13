@@ -1,4 +1,4 @@
-import type { TaskLogEntry } from "./task";
+import type { ConversationLogEntry } from "./conversation";
 import type { ControlToolInput, ControlToolName } from "@/core/control-tool-contracts";
 import { AGENT_NOTIFICATION_INSTRUCTIONS } from "./agent-notifications";
 
@@ -191,7 +191,7 @@ export interface GeneratedAutomationCode {
 
 export interface DeterministicAutomationTestResult {
   status: "completed" | "failed" | "cancelled";
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   error?: string;
   diagnostics: DeterministicCodeDiagnostic[];
 }
@@ -199,7 +199,7 @@ export interface DeterministicAutomationTestResult {
 export type DeterministicAutomationTestStreamEvent =
   | {
       type: "log";
-      log: TaskLogEntry;
+      log: ConversationLogEntry;
     }
   | {
       type: "result";

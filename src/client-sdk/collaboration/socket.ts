@@ -199,7 +199,7 @@ export function collaborationPreviewOperation(raw: string): {
   }
   target["reference"] = reference.resourceId;
   if (isReadRecord(frame["code"])) {
-    for (const field of ["chat", "task"]) {
+    for (const field of ["chat"]) {
       const value = frame["code"][field];
       if (value === undefined) continue;
       const codeReference = typeof value === "string" ? decodeCollaborationResourceReference(value) : undefined;

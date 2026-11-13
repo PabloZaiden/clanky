@@ -12,7 +12,7 @@ import { invalidateChatMetadata } from "./chats/metadata-cache";
 import { isDeepStrictEqual } from "node:util";
 
 export interface HarnessContext {
-  kind: "chat" | "task";
+  kind: "chat";
   id: string;
 }
 
@@ -31,11 +31,9 @@ export function mergeHarnessProjection(
   }
   const db = getDatabase();
   const userId = requireResourcePersistenceUserId(context.kind, context.id);
-  const table = context.kind === "chat" ? "chats" : "tasks";
-  const liveCondition = context.kind === "chat" ? " AND deleted_at IS NULL" : "";
   return db.transaction(() => {
     const row = db.query<{ session_binding_json: string | null; harness_state_json: string | null }, [string, string]>(
-      `SELECT session_binding_json, harness_state_json FROM ${table} WHERE id = ? AND user_id = ?${liveCondition}`,
+      "SELECT session_binding_json, harness_state_json FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
     ).get(context.id, userId);
     if (!row) return "invalid";
     const current = parseStoredHarnessBinding(row.session_binding_json, context.id);
@@ -43,9 +41,8 @@ export function mergeHarnessProjection(
     const state = parseStoredHarnessState(row.harness_state_json, context.id);
     const next = { ...state, ...projection };
     if (isDeepStrictEqual(state, next)) return "unchanged";
-    if (context.kind === "chat") invalidateChatMetadata(db, userId, context.id);
-    const revisionUpdate = context.kind === "chat" ? ", state_revision = state_revision + 1" : "";
-    db.query(`UPDATE ${table} SET harness_state_json = ?${revisionUpdate} WHERE id = ? AND user_id = ?`)
+    invalidateChatMetadata(db, userId, context.id);
+    db.query("UPDATE chats SET harness_state_json = ?, state_revision = state_revision + 1 WHERE id = ? AND user_id = ?")
       .run(JSON.stringify(next), context.id, userId);
     return "changed";
   })();

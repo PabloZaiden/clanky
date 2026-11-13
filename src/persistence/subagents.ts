@@ -7,8 +7,8 @@ import { DomainError } from "../domain/domain-error";
 import { getDatabase } from "./database";
 import { requireResourcePersistenceUserId } from "./ownership";
 import { subagentTranscriptStore } from "./transcripts/subagent-store";
-import type { TaskLogEntry, TranscriptEntryUpsert } from "@/shared";
-import { isTaskLogEntry } from "./transcripts/codec";
+import type { ConversationLogEntry, TranscriptEntryUpsert } from "@/shared";
+import { isConversationLogEntry } from "./transcripts/codec";
 
 interface SubagentRow { record_json: string }
 
@@ -26,9 +26,8 @@ function sourceKey(context: SubagentContext, binding: HarnessConversationBinding
 
 export function getSubagentForContext(context: SubagentContext, id: string): Subagent | null {
   const userId = requireResourcePersistenceUserId(context.kind, context.id);
-  const column = context.kind === "chat" ? "chat_id" : "task_id";
   const row = getDatabase().query<SubagentRow, [string, string, string]>(
-    `SELECT record_json FROM harness_subagents WHERE id = ? AND user_id = ? AND ${column} = ?`,
+    "SELECT record_json FROM harness_subagents WHERE id = ? AND user_id = ? AND chat_id = ?",
   ).get(id, userId, context.id);
   return row ? decode(row) : null;
 }
@@ -44,23 +43,22 @@ export function retainSubagent(context: SubagentContext, binding: HarnessConvers
     "SELECT record_json FROM harness_subagents WHERE user_id = ? AND source_key = ?",
   ).get(userId, key);
   if (existing) return decode(existing);
-  const table = context.kind === "chat" ? "chats" : "tasks";
   const parent = db.query<{ workspace_id: string | null }, [string, string]>(
-    `SELECT workspace_id FROM ${table} WHERE id = ? AND user_id = ?${context.kind === "chat" ? " AND deleted_at IS NULL" : ""}`,
+    "SELECT workspace_id FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
   ).get(context.id, userId);
   if (!parent) throw new DomainError("harness_session_not_found", "The subagent parent is unavailable.");
   const now = new Date().toISOString();
   const subagent: Subagent = {
     id: crypto.randomUUID(),
-    ...(context.kind === "chat" ? { chatId: context.id } : { taskId: context.id }),
+    chatId: context.id,
     workspaceId: parent.workspace_id,
     binding, activity, coverage: "partial", observation: "connected",
     createdAt: now, updatedAt: now,
   };
   db.transaction(() => {
-    db.query(`INSERT INTO harness_subagents (id, user_id, chat_id, task_id, source_key, record_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      subagent.id, userId, subagent.chatId ?? null, subagent.taskId ?? null, key, JSON.stringify(subagent), now,
+    db.query(`INSERT INTO harness_subagents (id, user_id, chat_id, source_key, record_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(
+      subagent.id, userId, context.id, key, JSON.stringify(subagent), now,
     );
     subagentTranscriptStore.replaceForUserInTransaction(db, subagent.id, userId, { messages: [], toolCalls: [], logs: [] });
   })();
@@ -76,7 +74,7 @@ export function updateSubagent(subagent: Subagent, updates: Partial<Pick<Subagen
   return next;
 }
 
-export function getSubagentLog(id: string, logId: string): TaskLogEntry | null {
+export function getSubagentLog(id: string, logId: string): ConversationLogEntry | null {
   const userId = requireResourcePersistenceUserId("subagent", id);
   const row = getDatabase().query<{ payload: string }, [string, string, string]>(
     "SELECT payload FROM subagent_transcript_entries WHERE subagent_id = ? AND user_id = ? AND entry_id = ?",
@@ -84,7 +82,7 @@ export function getSubagentLog(id: string, logId: string): TaskLogEntry | null {
   if (!row) return null;
   try {
     const value: unknown = JSON.parse(row.payload);
-    if (!isTaskLogEntry(value)) throw new Error("Invalid transcript log");
+    if (!isConversationLogEntry(value)) throw new Error("Invalid transcript log");
     return value;
   } catch (cause) {
     throw new DomainError("harness_event_gap", "A saved subagent log is invalid.", { cause });
@@ -107,7 +105,7 @@ export function writeSubagentEntry(subagent: Subagent, entry: TranscriptEntryUps
 }
 
 const ListCursorSchema = z.object({
-  userId: z.string(), kind: z.enum(["chat", "task"]), parentId: z.string(),
+  userId: z.string(), kind: z.literal("chat"), parentId: z.string(),
   createdAt: z.iso.datetime(), id: z.string().uuid(),
 });
 
@@ -124,9 +122,8 @@ export function listSubagents(context: SubagentContext, before?: string): Subage
       throw new DomainError("transcript_cursor_invalid", "The subagent list cursor is invalid.", { cause });
     }
   }
-  const column = context.kind === "chat" ? "chat_id" : "task_id";
   const rows = getDatabase().query<SubagentRow, Array<string | number>>(
-    `SELECT record_json FROM harness_subagents WHERE user_id = ? AND ${column} = ?
+    `SELECT record_json FROM harness_subagents WHERE user_id = ? AND chat_id = ?
       ${cursor ? "AND (created_at < ? OR (created_at = ? AND id < ?))" : ""}
       ORDER BY created_at DESC, id DESC LIMIT ?`,
   ).all(userId, context.id, ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.id] : []), TRANSCRIPT_PAGE_SIZE + 1);

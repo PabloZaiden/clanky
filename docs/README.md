@@ -4,7 +4,7 @@ Choose the guide that matches what you are trying to do:
 
 | Goal | Guide |
 | --- | --- |
-| Install Clanky, start the server, create a workspace, or run a first task | [Getting started](getting-started.md) |
+| Install Clanky, start the server, create a workspace, or start a first chat | [Getting started](getting-started.md) |
 | Choose repository or provider icons for workspaces | [Workspace and provider icons](workspace-icons.md) |
 | Keep Markdown notes for a workspace | [Workspace Scratchpad](scratchpad.md) |
 | Choose a native harness or ACP, observe background work, or steer queued input | [Harness adapters](harnesses.md) |

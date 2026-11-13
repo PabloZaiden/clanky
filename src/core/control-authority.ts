@@ -23,7 +23,7 @@ import type { ExecuteOperationInput } from "@/contracts/schemas/control";
 import { prepareControlOperationFiles } from "./control-operation-files";
 
 export const CONTROL_INTERACTION_TAG = "clanky-control-interaction";
-const WORKSPACE_RESOURCES = new Set(["chat", "task", "workspace", "review-comment"]);
+const WORKSPACE_RESOURCES = new Set(["chat", "workspace"]);
 
 export interface ControlGrant {
   readonly id: string;

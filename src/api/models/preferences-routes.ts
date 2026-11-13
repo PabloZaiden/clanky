@@ -4,12 +4,10 @@ import { executionAutomation } from "../execution-automation";
  * User preferences API routes.
  *
  * - GET/PUT /api/preferences/last-model
- * - GET/PUT /api/preferences/last-cheap-model
  * - GET/PUT /api/preferences/last-directory
  * - GET/PUT /api/preferences/github-username
  * - GET/PUT /api/preferences/markdown-rendering
  * - GET/PUT /api/preferences/file-explorer-full-tree
- * - GET/PUT /api/preferences/dashboard-view-mode
  * - GET/PUT /api/preferences/quick-chat
  * - GET/PUT /api/preferences/scheduler-timezone
  *
@@ -31,12 +29,10 @@ import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
 import {
   SetLastModelRequestSchema,
-  SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetGithubUsernameRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
-  SetDashboardViewModeRequestSchema,
   SetSchedulerTimezoneRequestSchema,
   SchedulerTimezoneQuerySchema,
   SetQuickChatSettingsRequestSchema,
@@ -173,45 +169,6 @@ export const preferencesRoutes = defineRoutes({
     },
   },
 
-  "/api/preferences/last-cheap-model": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Persist the user's most recently used cheap model.",
-    requestSchema: SetLastCheapModelRequestSchema,
-    operations: {
-      GET: { description: "Read the last-used helper model.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
-      PUT: { requestSchema: SetLastCheapModelRequestSchema, querySchema: undefined, automation: { policy: "write" } },
-    },
-    /**
-     * GET /api/preferences/last-cheap-model - Get the last used cheap helper-model selection.
-     */
-    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const lastCheapModel = await preferencesManager.getLastCheapModel();
-      return Response.json(lastCheapModel ?? null);
-    },
-
-    /**
-     * PUT /api/preferences/last-cheap-model - Set the last used cheap helper-model selection.
-     */
-    async PUT(req: Request, _ctx): Promise<Response> {
-      const result = await parseAndValidate(SetLastCheapModelRequestSchema, req);
-      if (!result.success) {
-        return result.response;
-      }
-
-      try {
-        await preferencesManager.setLastCheapModel(result.data);
-        return Response.json({ success: true });
-      } catch (error) {
-        logPreferenceSaveFailure("last-cheap-model", error);
-        return internalErrorResponse(error, {
-          error: "save_failed",
-          message: "Failed to save the last cheap model preference",
-          status: 500,
-        });
-      }
-    },
-  },
 
   "/api/preferences/last-directory": {
     auth: "user",
@@ -395,52 +352,6 @@ export const preferencesRoutes = defineRoutes({
     },
   },
 
-  "/api/preferences/dashboard-view-mode": {
-    auth: "user",
-    sameOrigin: "mutations",
-    description: "Persist the preferred dashboard layout.",
-    requestSchema: SetDashboardViewModeRequestSchema,
-    operations: {
-      GET: { description: "Read the dashboard layout preference.", requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
-      PUT: { requestSchema: SetDashboardViewModeRequestSchema, querySchema: undefined, automation: { policy: "write" } },
-    },
-    /**
-     * GET /api/preferences/dashboard-view-mode - Get dashboard view mode preference.
-     *
-     * @returns Object with mode property
-     */
-    async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const mode = await preferencesManager.getDashboardViewMode();
-      return Response.json({ mode });
-    },
-
-    /**
-     * PUT /api/preferences/dashboard-view-mode - Set dashboard view mode preference.
-     *
-     * Request Body:
-     * - mode (required): "rows" or "cards"
-     *
-     * @returns Success response
-     */
-    async PUT(req: Request, _ctx): Promise<Response> {
-      const result = await parseAndValidate(SetDashboardViewModeRequestSchema, req);
-      if (!result.success) {
-        return result.response;
-      }
-
-      try {
-        await preferencesManager.setDashboardViewMode(result.data.mode);
-        return Response.json({ success: true, mode: result.data.mode });
-      } catch (error) {
-        logPreferenceSaveFailure("dashboard-view-mode", error);
-        return internalErrorResponse(error, {
-          error: "save_failed",
-          message: "Failed to save the dashboard view preference",
-          status: 500,
-        });
-      }
-    },
-  },
 
   "/api/preferences/quick-chat": {
     auth: "user",

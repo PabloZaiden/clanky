@@ -79,11 +79,11 @@ export function fitReadText(text: string, fits: (part: string) => boolean): stri
 }
 
 const SUMMARY_FIELDS = [
-  "id", "name", "title", "description", "creator", "workspaceId", "taskId", "chatId",
+  "id", "name", "title", "description", "creator", "workspaceId", "chatId",
   "automationId", "runId", "providerId", "modelId", "displayName", "kind", "type",
   "status", "createdAt", "updatedAt", "lastActivityAt", "startedAt", "completedAt",
   "directory", "resolvedDirectory", "targetDirectory", "workspaceAction",
-  "currentStep", "currentIteration", "branch", "path", "size", "isDirectory",
+  "currentStep", "branch", "path", "size", "isDirectory",
   "connected", "enabled", "available", "ready", "paused", "blocking", "requestId",
   "permissionId", "responseMode", "backend", "ref", "executionHost", "transport",
   "model", "error", "success", "url", "port", "hostname", "username",
@@ -96,7 +96,7 @@ const SUMMARY_FIELDS = [
   "current", "remote", "file", "changeType", "additions", "deletions", "number",
   "provider", "installed", "supported", "valid", "usable", "executionHostId",
   "canStop", "parentId", "principalProcessing", "mode", "loadOnExpand",
-  "timestamp", "text", "step", "commentText", "reviewCycle", "addressedAt",
+  "timestamp", "text", "step",
   "ownership", "workspaceWrites", "requestedModel", "effectiveModel", "lastActivity",
 ] as const;
 
@@ -118,14 +118,11 @@ export function compactResource(value: unknown): unknown {
   const harness = isReadRecord(state["harness"]) ? state["harness"] : undefined;
   if (harness?.["integrity"] === "invalid") {
     summary["stateUnavailable"] = true;
-  } else if (harness || state["pendingPermissionRequests"] || state["planMode"]) {
-    const plan = isReadRecord(state["planMode"]) ? state["planMode"] : undefined;
-    const planApproval = state["status"] === "planning" && plan?.["isPlanReady"] === true && config["autoAcceptPlan"] === false;
-    summary["needsInput"] = pendingCount(harness?.["questions"]) > 0 || pendingCount(state["pendingPermissionRequests"]) > 0 || planApproval;
+  } else if (harness || state["pendingPermissionRequests"]) {
+    summary["needsInput"] = pendingCount(harness?.["questions"]) > 0 || pendingCount(state["pendingPermissionRequests"]) > 0;
     summary["interventionReasons"] = [
       ...(pendingCount(harness?.["questions"]) ? ["question"] : []),
       ...(pendingCount(state["pendingPermissionRequests"]) ? ["permission"] : []),
-      ...(planApproval ? ["plan_approval"] : []),
     ];
     summary["pendingQuestions"] = pendingCount(harness?.["questions"]);
     summary["pendingPermissions"] = pendingCount(state["pendingPermissionRequests"]);
@@ -165,7 +162,7 @@ export function fitCompactMetadata(value: Record<string, unknown>, maxBytes: num
 const COLLECTION_SECTIONS = [
   "items", "jobs", "runs", "automations", "models", "providers", "files", "directories",
   "entries", "branches", "templates", "addresses", "sessions", "servers",
-  "workspaces", "chats", "tasks", "workers", "enrollments", "questions", "permissions",
+  "workspaces", "chats", "workers", "enrollments", "questions", "permissions",
   "inputs", "activity", "activities", "variants", "previews", "nodes", "grants", "candidates", "issues",
   "comments", "logs",
 ] as const;
@@ -399,7 +396,7 @@ export function readOperationReceipt(source: unknown, maxBytes: number): unknown
   const projected = isReadRecord(source)
     ? typeof source["id"] === "string" || isReadRecord(source["config"]) && isReadRecord(source["state"])
       ? compactResource(source) : Object.fromEntries(Object.entries(source).map(([key, value]) => [
-        key, ["job", "chat", "task", "run", "workspace", "server", "automation", "session", "preview"].includes(key)
+        key, ["job", "chat", "run", "workspace", "server", "automation", "session", "preview"].includes(key)
           && isReadRecord(value) ? compactResource(value) : value,
       ])) : source;
   if (readBytes(projected) <= maxBytes) return projected;

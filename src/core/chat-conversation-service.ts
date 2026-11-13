@@ -21,7 +21,7 @@ import type {
   PersistedMessage,
   PersistedToolCall,
   SessionInfo,
-  TaskLogEntry,
+  ConversationLogEntry,
   TranscriptChangeSet,
 } from "@/shared";
 import { createTranscriptChangeSet } from "@/shared";
@@ -51,7 +51,6 @@ import {
   type AgentEventTranscriptBlock,
 } from "./agent-event-transcript-interpreter";
 import { createLogger } from "@pablozaiden/webapp/server";
-import { resolveEffectiveCheapModel } from "./cheap-model";
 import { DEFAULT_CHAT_NAME_TIMEOUT_MS, generateChatName } from "../utils/name-generator";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "@/shared/tool-call";
@@ -73,7 +72,7 @@ import { buildPromptParts } from "../backends/prompt-parts";
 import type { ChatAttachmentService } from "./chat-attachment-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import { createIdempotentAsyncOperation, withTimeout } from "../utils/async-operation";
-import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
+import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/conversation";
 import type { QueuedChatMessage } from "@/shared/chat";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
@@ -88,6 +87,7 @@ import type { HarnessConversationBinding } from "@/shared/harness-control";
 import { requireMatchingHarnessBindings } from "../backends/harness-binding";
 import type { CurrentUser } from "@/platform/contracts";
 import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../context/user-context";
+import { ChatDirectoryService } from "./chat-directory-service";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -95,6 +95,12 @@ const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
 const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
+const INITIAL_PLANNING_GUIDANCE = [
+  "Start with a plan for the user's request below.",
+  "Investigate the project and ask clarifying questions as needed. Create .clanky-planning/plan.md with verifiable goals and .clanky-planning/status.md with progress, remaining work, blockers, and next steps.",
+  "Discuss and revise the plan through this same ordinary conversation. Wait for an explicit user request before implementing; do not treat planning or discussion as permission to implement.",
+  "During subsequent implementation, keep status.md current and update it before reporting results.",
+].join("\n");
 
 interface ActiveChatStream {
   owner: CurrentUser;
@@ -129,7 +135,7 @@ interface StartupOperation {
 interface ChatTranscriptMemory {
   version: StreamVersion;
   messages: TranscriptMemoryIndex<PersistedMessage>;
-  logs: TranscriptMemoryIndex<TaskLogEntry>;
+  logs: TranscriptMemoryIndex<ConversationLogEntry>;
   toolCalls: TranscriptMemoryIndex<PersistedToolCall>;
 }
 
@@ -448,11 +454,22 @@ export class ChatConversationService implements ChatConversationPort {
         if (deferQueuedMessage) this.emitMessage(current, userMessage);
         this.emitChatUpdated(current);
       }
+      let planningKickoff = false;
+      if (current.config.startWithPlan && !current.config.planningKickoffMessageId && !answerInputId) {
+        await new ChatDirectoryService(this.state).preparePlanningKickoff(current.config.id);
+        throwIfChatStartupAborted(startupOperation.controller.signal);
+        // Consume before dispatch: an uncertain send or reconnect must never inject it again.
+        planningKickoff = await this.state.claimPlanningKickoff(current.config.id, userMessage.id);
+        if (planningKickoff) {
+          current = { ...current, config: { ...current.config, planningKickoffMessageId: userMessage.id } };
+        }
+      }
       const prompt: PromptInput = {
         parts: [
           ...(historyPromptContext
             ? [{ type: "text" as const, text: historyPromptContext.instruction }]
             : []),
+          ...(planningKickoff ? [{ type: "text" as const, text: INITIAL_PLANNING_GUIDANCE }] : []),
           ...buildPromptParts(input.message, input.attachments, attachmentFiles),
         ],
         model: current.config.model,
@@ -2384,7 +2401,7 @@ export class ChatConversationService implements ChatConversationPort {
 
   async emitChatLog(
     chat: Chat,
-    level: TaskLogEntry["level"],
+    level: ConversationLogEntry["level"],
     message: string,
     details?: Record<string, unknown>,
     id?: string,
@@ -2404,7 +2421,7 @@ export class ChatConversationService implements ChatConversationPort {
         : chat.state.logs.find((logEntry) => logEntry.id === id)
       : undefined;
     const activityTimestamp = timestamp ?? createTimestamp();
-    const entry: TaskLogEntry = {
+    const entry: ConversationLogEntry = {
       id: id ?? `chat-log-${crypto.randomUUID()}`,
       level,
       message,
@@ -2851,17 +2868,11 @@ export class ChatConversationService implements ChatConversationPort {
       });
       const nameSession = tempSession;
       cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, nameSession.id));
-      const helperModel = await resolveEffectiveCheapModel({
-        workspaceId,
-        directory,
-        model: chat.config.model,
-        operation: "chat_name_generation",
-      });
       const name = await timer.measure("name_generation", () => generateChatName({
         message,
         backend,
         sessionId: nameSession.id,
-        model: helperModel,
+        model: chat.config.model,
         timeoutMs: DEFAULT_CHAT_NAME_TIMEOUT_MS,
         cancelSession: cleanupTempSession,
       }));

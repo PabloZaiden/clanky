@@ -12,7 +12,7 @@ import type {
   ChatTranscriptStorageEntry,
   MessageAttachment,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallExtra,
   ToolCallRecord,
 } from "@/shared";
@@ -63,7 +63,7 @@ export function isPersistedMessage(value: unknown): value is PersistedMessage {
   );
 }
 
-const TASK_LOG_LEVELS = new Set([
+const LOG_LEVELS = new Set([
   "agent",
   "user",
   "info",
@@ -73,12 +73,12 @@ const TASK_LOG_LEVELS = new Set([
   "trace",
 ]);
 
-export function isTaskLogEntry(value: unknown): value is TaskLogEntry {
+export function isConversationLogEntry(value: unknown): value is ConversationLogEntry {
   return (
     isRecord(value)
     && isString(value["id"])
     && typeof value["level"] === "string"
-    && TASK_LOG_LEVELS.has(value["level"])
+    && LOG_LEVELS.has(value["level"])
     && isString(value["message"])
     && isString(value["timestamp"])
     && (
@@ -172,7 +172,7 @@ export function getToolPayload(
 function decodePayload(
   row: TranscriptRow,
   resource: TranscriptResource,
-): PersistedMessage | TaskLogEntry | ToolCallRecord | null {
+): PersistedMessage | ConversationLogEntry | ToolCallRecord | null {
   if (row.kind === "message") {
     return decodeJson(
       row.payload,
@@ -188,7 +188,7 @@ function decodePayload(
       null,
       `${resource}_transcript_log`,
       row.entry_id,
-      isTaskLogEntry,
+      isConversationLogEntry,
     );
   }
   return decodeJson(

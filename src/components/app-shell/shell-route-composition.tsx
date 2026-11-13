@@ -6,7 +6,6 @@ import type {
   Automation,
   Chat,
   ExecutionHostDescriptor,
-  Task,
   TerminalSession,
   Workspace,
 } from "@/shared";
@@ -27,8 +26,6 @@ const ROUTE_VIEWS = [
   "automation-run",
   "code-explorer",
   "scratchpad",
-  "task",
-  "task-files",
   "chat",
   "chat-transcript",
   "terminal",
@@ -58,10 +55,8 @@ const WORKSPACE_ENTITY_ROUTE_VIEWS = new Set([
 ]);
 
 export interface ShellRouteSelection {
-  taskId: string | undefined;
   chatId: string | undefined;
   composeKind: string | undefined;
-  selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
@@ -71,7 +66,6 @@ export interface ShellRouteSelection {
 
 type ShellRouteContentSelection = Pick<
   ShellRouteSelection,
-  | "selectedTask"
   | "selectedChat"
   | "selectedWorkspace"
   | "composeWorkspace"
@@ -89,7 +83,6 @@ export type ShellRouteCompositionContext = Omit<
 >;
 
 interface ShellRouteSelectionData {
-  tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
   executionHosts: ExecutionHostDescriptor[];
@@ -120,16 +113,6 @@ function isMissingFromCollection<T>(
     && !collection.loading
     && collection.error === null
     && !collection.items.some((item) => getId(item) === id);
-}
-
-export function getShellRouteTaskId(route: WebAppRoute): string | undefined {
-  const codeExplorerType = route.view === "code-explorer"
-    ? getRouteString(route, "contentType")
-    : undefined;
-  if (route.view === "task" || route.view === "task-files" || codeExplorerType === "task") {
-    return getRouteString(route, "taskId");
-  }
-  return undefined;
 }
 
 export function isMissingShellRouteTarget(
@@ -207,7 +190,6 @@ export function isMissingShellRouteTarget(
 export function getShellRouteSelection(
   route: WebAppRoute,
   {
-    tasks,
     chats,
     workspaces,
     executionHosts,
@@ -215,16 +197,12 @@ export function getShellRouteSelection(
   }: ShellRouteSelectionData,
 ): ShellRouteSelection {
   const codeExplorerContentType = route.view === "code-explorer" ? route["contentType"] : undefined;
-  const codeExplorerTaskId = codeExplorerContentType === "task"
-    ? getRouteString(route, "taskId") ?? null
-    : null;
   const codeExplorerChatId = codeExplorerContentType === "chat"
     ? getRouteString(route, "chatId") ?? null
     : null;
   const codeExplorerWorkspaceId = codeExplorerContentType === "workspace"
     ? getRouteString(route, "workspaceId") ?? null
     : null;
-  const taskId = getRouteString(route, "taskId");
   const chatId = getRouteString(route, "chatId");
   const workspaceId = getRouteString(route, "workspaceId");
   const composeKind = route.view === "compose" ? getRouteString(route, "kind") : undefined;
@@ -232,12 +210,6 @@ export function getShellRouteSelection(
   const isExecutionHostCompose = composeKind === "execution-host-chat"
     || composeKind === "execution-host-terminal";
 
-  const selectedTask =
-    route.view === "task" || route.view === "task-files"
-      ? (taskId ? (tasks.find((task) => task.config.id === taskId) ?? null) : null)
-      : codeExplorerTaskId
-        ? (tasks.find((task) => task.config.id === codeExplorerTaskId) ?? null)
-        : null;
   const selectedChat =
     route.view === "chat" || route.view === "chat-transcript"
       ? (chatId ? (chats.find((chat) => chat.config.id === chatId) ?? null) : null)
@@ -255,9 +227,7 @@ export function getShellRouteSelection(
       ? (workspaceId ? (workspaces.find((workspace) => workspace.id === workspaceId) ?? null) : null)
       : codeExplorerWorkspaceId
         ? (workspaces.find((workspace) => workspace.id === codeExplorerWorkspaceId) ?? null)
-        : codeExplorerTaskId
-          ? (workspaces.find((workspace) => workspace.id === selectedTask?.config.workspaceId) ?? null)
-          : codeExplorerChatId
+        : codeExplorerChatId
             ? (workspaces.find((workspace) => workspace.id === selectedChat?.config.workspaceId) ?? null)
             : null;
   const composeWorkspace =
@@ -281,10 +251,8 @@ export function getShellRouteSelection(
     : null;
 
   return {
-    taskId,
     chatId,
     composeKind,
-    selectedTask,
     selectedChat,
     selectedWorkspace,
     composeWorkspace,
@@ -334,7 +302,6 @@ function renderShellRouteContent(
   }
 
   const selection = getShellRouteSelection(route, {
-    tasks: context.tasks,
     chats: context.chats,
     workspaces: context.workspaces,
     executionHosts: context.executionHosts,
@@ -345,7 +312,6 @@ function renderShellRouteContent(
     <AppRouteContent
       {...context}
       route={route}
-      selectedTask={selection.selectedTask}
       selectedChat={selection.selectedChat}
       selectedWorkspace={selection.selectedWorkspace}
       composeWorkspace={selection.composeWorkspace}

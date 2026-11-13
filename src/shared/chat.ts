@@ -1,8 +1,8 @@
 /**
  * Chat type definitions for long-lived ACP-backed chat sessions.
  *
- * Chats are distinct from tasks: they represent one resumable agent session
- * tied to a workspace and optional git worktree, with persisted transcript and
+ * Chats represent one resumable agent session tied to a workspace or execution
+ * host and optional git worktree, with persisted transcript and
  * streaming artifacts used only for UI hydration and presentation.
  *
  * @module types/chat
@@ -10,11 +10,11 @@
 
 import type { ModelConfig } from "./model";
 import type {
-  TaskLogEntry,
+  ConversationLogEntry,
   PersistedMessage,
   PersistedToolCall,
   SessionInfo,
-} from "./task";
+} from "./conversation";
 import type { MessageAttachment } from "./message-attachments";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
@@ -23,7 +23,7 @@ import type { CollaborationCreator } from "./collaboration";
 
 export type { ModelConfig };
 
-export type ChatScope = "workspace" | "task" | "automation";
+export type ChatScope = "workspace" | "automation";
 
 export interface ChatActivityUpdate {
   timestamp: string;
@@ -56,12 +56,13 @@ export interface ChatConfig {
   source?: ChatSource;
   executionHostBinding?: ExecutionHostBinding;
   scope: ChatScope;
-  taskId?: string;
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
   useSelectedBranchForWorktree?: boolean;
   useChatNameAsBranch?: boolean;
+  startWithPlan?: boolean;
+  planningKickoffMessageId?: string;
   autoApprovePermissions?: boolean;
   skipBaseBranchSync?: boolean;
   baseBranch?: string;
@@ -76,6 +77,14 @@ export interface ChatWorktreeState {
   originalBranch: string;
   workingBranch: string;
   worktreePath?: string;
+}
+
+export interface ChatRepositoryContext {
+  isGitRepo: boolean;
+  branch: string | null;
+  pullRequest: { number: number; url: string } | null;
+  pullRequestLookup: "found" | "none" | "unavailable";
+  message?: string;
 }
 
 export interface ChatError {
@@ -157,7 +166,7 @@ export interface ChatState {
   messages: PersistedMessage[];
   hasMessages?: boolean;
   hasTranscript?: boolean;
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   toolCalls: PersistedToolCall[];
   pendingPermissionRequests?: ChatPermissionRequest[];
   queuedMessages?: QueuedChatMessage[];
@@ -212,17 +221,12 @@ export function isChatTerminalStatus(status: ChatStatus): boolean {
   return status === "idle" || status === "stopped" || status === "failed" || status === "done";
 }
 
-export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
-  const config = "config" in chat ? chat.config : chat;
-  return config.scope === "task" || config.taskId !== undefined;
-}
-
 export function isAutomationChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
   return "config" in chat ? chat.config.scope === "automation" : chat.scope === "automation";
 }
 
-export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope" | "taskId">): boolean {
-  return !isTaskChat(chat) && !isAutomationChat(chat);
+export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return !isAutomationChat(chat);
 }
 
 export function isWorkspaceChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {
@@ -295,16 +299,6 @@ export class ChatPermissionReplyError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "ChatPermissionReplyError";
-  }
-}
-
-export class InvalidCurrentPlanError extends Error {
-  readonly code = "invalid_current_plan";
-  readonly status = 400;
-
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "InvalidCurrentPlanError";
   }
 }
 

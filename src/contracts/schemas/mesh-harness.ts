@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { HarnessActivitySchema, HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";
-import { ProviderImageAttachmentSchema } from "./task";
+import { ProviderImageAttachmentSchema } from "./conversation";
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { ClankyControlContextSchema } from "@/shared/clanky-control";
 import { ControlToolRequestSchema, ControlToolReplySchema } from "./control-tool-transport";

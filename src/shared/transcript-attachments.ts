@@ -1,5 +1,5 @@
 import type { ChatTranscript } from "./chat-transcript";
-import type { PersistedMessage } from "./task";
+import type { PersistedMessage } from "./conversation";
 import type { MessageAttachment } from "./message-attachments";
 
 export interface TranscriptAttachmentReference extends Omit<MessageAttachment, "data"> {

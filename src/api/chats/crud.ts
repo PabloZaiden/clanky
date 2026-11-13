@@ -5,7 +5,8 @@ import { chatManager } from "../../core/chat-manager";
 import { isDomainError } from "../../domain/domain-error";
 import { isModelEnabled } from "../../core/model-discovery";
 import { preferencesManager } from "../../core/preferences-manager";
-import { getChatWorkspaceId, isStandaloneChat, isTaskChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";
+import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat, type ChatConfig } from "@/shared/chat";
+import type { ChatConfigUpdates } from "../../core/chat-service-contracts";
 import {
   CreateChatRequestSchema,
   UpdateChatRequestSchema,
@@ -23,8 +24,8 @@ const log = createLogger("api:chats");
 
 function mapChatUpdates(
   body: Partial<ChatConfig>,
-): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">> {
-  const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">> = {};
+): ChatConfigUpdates {
+  const updates: ChatConfigUpdates = {};
 
   if (body.name !== undefined) {
     updates.name = body.name.trim();
@@ -146,6 +147,7 @@ export const chatsCrudRoutes = defineRoutes({
           useWorktree: body.useWorktree,
           useSelectedBranchForWorktree: body.useSelectedBranchForWorktree,
           useChatNameAsBranch: body.useChatNameAsBranch,
+          startWithPlan: body.startWithPlan,
           baseBranch: body.baseBranch,
           directory: body.directory,
           syncBaseBranch: !body.quick,
@@ -249,9 +251,6 @@ export const chatsCrudRoutes = defineRoutes({
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
-      if (isTaskChat(existing)) {
-        return errorResponse("task_chat_managed_by_task", "Task chats are managed from their owning task", 409);
-      }
 
       const validation = await parseAndValidate(UpdateChatRequestSchema, req);
       if (!validation.success) {
@@ -296,9 +295,6 @@ export const chatsCrudRoutes = defineRoutes({
       const chat = await chatManager.getChat(ctx.params["id"]!);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
-      }
-      if (isTaskChat(chat)) {
-        return errorResponse("task_chat_managed_by_task", "Task chats are deleted with their owning task", 409);
       }
 
       try {

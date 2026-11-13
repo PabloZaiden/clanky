@@ -1,38 +1,19 @@
 /**
- * Task title generation utility.
- * Generates AI-assisted task titles from prompts using the configured agent backend.
+ * Chat name generation utility.
+ * Generates AI-assisted chat names from prompts using the configured agent backend.
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
 import type { ModelConfig } from "@/shared";
 
-export const DEFAULT_TASK_TITLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_CHAT_NAME_TIMEOUT_MS = 30_000;
 
 /**
  * Backend interface for name generation.
- * Matches the interface used by TaskEngine.
+ * Matches the interface used by conversation runtime.
  */
 export interface BackendInterface {
   sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse>;
-}
-
-/**
- * Options for generating a task name.
- */
-export interface GenerateTaskNameOptions {
-  /** The prompt describing the task */
-  prompt: string;
-  /** Backend instance to use for generation */
-  backend: BackendInterface;
-  /** Session ID to use for the generation */
-  sessionId: string;
-  /** Optional model override for helper generation */
-  model?: ModelConfig;
-  /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_TASK_TITLE_TIMEOUT_MS) */
-  timeoutMs?: number;
-  /** Cancel the temporary backend session if generation times out */
-  cancelSession?: () => Promise<void>;
 }
 
 export interface GenerateChatNameOptions {
@@ -51,7 +32,7 @@ export interface GenerateChatNameOptions {
 }
 
 /**
- * Sanitize a generated task name.
+ * Sanitize a generated chat name.
  * - Removes markdown formatting (backticks, asterisks, etc.)
  * - Removes control characters
  * - Collapses consecutive whitespace to single spaces
@@ -59,7 +40,7 @@ export interface GenerateChatNameOptions {
  * - Truncates to max 100 characters
  * - Preserves spaces and natural casing for readability
  */
-export function sanitizeTaskName(name: string): string {
+export function sanitizeChatName(name: string): string {
   return name
     .replace(/[`*~#]/g, "")            // Remove markdown formatting
     .replace(/[\x00-\x1F\x7F]/g, "")   // Remove control characters
@@ -68,7 +49,6 @@ export function sanitizeTaskName(name: string): string {
     .slice(0, 100);                     // Limit length to 100 chars
 }
 
-export const sanitizeChatName = sanitizeTaskName;
 
 class NameGenerationTimeoutError extends Error {
   constructor(message: string) {
@@ -165,44 +145,6 @@ async function generateName(options: GenerateNameOperationOptions): Promise<stri
   } catch (error) {
     throw new Error(`${options.errorPrefix}: ${String(error)}`, { cause: error });
   }
-}
-
-/**
- * Generate a task title from a prompt using the configured agent backend.
- *
- * This function sends a prompt to the backend asking it to generate a short,
- * descriptive title for a coding task. The title is sanitized and validated
- * before being returned.
- *
- * @param options - Options for name generation
- * @returns A sanitized task title (max 100 chars, preserves spaces and casing)
- * @throws Error if prompt is empty, the backend call fails, or the response is unusable
- */
-export async function generateTaskName(options: GenerateTaskNameOptions): Promise<string> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TASK_TITLE_TIMEOUT_MS;
-  return generateName({
-    source: options.prompt,
-    sourceError: "Prompt cannot be empty",
-    backend: options.backend,
-    sessionId: options.sessionId,
-    model: options.model,
-    timeoutMs,
-    buildPrompt: (truncatedPrompt, model) => ({
-      parts: [{
-        type: "text",
-        text: `Generate a title for a task with the following description. It should be 100 chars or less: ${truncatedPrompt}
-
-Output ONLY the title, nothing else. No quotes, no formatting, no explanation.`,
-      }],
-      model,
-    }),
-    timeoutMessage: `Name generation timed out after ${timeoutMs}ms`,
-    emptyResponseMessage: "Title generation returned an empty response",
-    unusableResponseMessage: "Title generation returned an unusable title",
-    errorPrefix: "Failed to generate task title",
-    sanitize: sanitizeTaskName,
-    cancelSession: options.cancelSession,
-  });
 }
 
 export async function generateChatName(options: GenerateChatNameOptions): Promise<string> {

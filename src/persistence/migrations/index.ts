@@ -22,6 +22,7 @@ import { migrateCollaborationAdministration } from "./collaboration-administrati
 import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes";
 import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
 import { dropLegacyAutomationTables, renameAutomations } from "./rename-automations";
+import { dropLegacyTaskTables, retireTasks, retireTaskPreferences } from "./retire-tasks";
 
 const log = createLogger("persistence:migrations");
 
@@ -29,6 +30,7 @@ export const BASELINE_SCHEMA_VERSION = 56;
 const MULTI_RELAY_PAIRING_MIGRATION_VERSION = BASELINE_SCHEMA_VERSION + 7;
 const RETIRE_EXECUTION_TRANSPORT_MIGRATION_VERSION = 91;
 const RENAME_AUTOMATIONS_MIGRATION_VERSION = 93;
+const RETIRE_TASKS_MIGRATION_VERSION = 94;
 
 export interface Migration {
   version: number;
@@ -430,7 +432,7 @@ export const migrations: Migration[] = [
     version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 1,
     name: "add_owned_harness_conversation_bindings",
     up: (db) => {
-      if (tableExists(db, "tasks") && !getTableColumns(db, "tasks").includes("session_binding_json")) {
+      if (tableExists(db, "tasks") && !getMigrationTableColumns(db, "tasks").includes("session_binding_json")) {
         db.run("ALTER TABLE tasks ADD COLUMN session_binding_json TEXT");
       }
       if (tableExists(db, "chats") && !getTableColumns(db, "chats").includes("session_binding_json")) {
@@ -442,7 +444,7 @@ export const migrations: Migration[] = [
     version: MULTI_RELAY_PAIRING_MIGRATION_VERSION + 2,
     name: "add_harness_activity_and_input_receipts",
     up: (db) => {
-      if (tableExists(db, "tasks") && !getTableColumns(db, "tasks").includes("harness_state_json")) {
+      if (tableExists(db, "tasks") && !getMigrationTableColumns(db, "tasks").includes("harness_state_json")) {
         db.run("ALTER TABLE tasks ADD COLUMN harness_state_json TEXT");
       }
       if (tableExists(db, "chats") && !getTableColumns(db, "chats").includes("harness_state_json")) {
@@ -455,10 +457,10 @@ export const migrations: Migration[] = [
     name: "add_durable_task_pending_input",
     up: (db) => {
       if (!tableExists(db, "tasks")) return;
-      if (!getTableColumns(db, "tasks").includes("pending_input_json")) {
+      if (!getMigrationTableColumns(db, "tasks").includes("pending_input_json")) {
         db.run("ALTER TABLE tasks ADD COLUMN pending_input_json TEXT");
       }
-      if (!getTableColumns(db, "tasks").includes("pending_prompt")) return;
+      if (!getMigrationTableColumns(db, "tasks").includes("pending_prompt")) return;
       const pending = db.query<{ id: string }, []>(
         "SELECT id FROM tasks WHERE pending_prompt IS NOT NULL AND pending_input_json IS NULL",
       ).all();
@@ -741,7 +743,7 @@ export const migrations: Migration[] = [
           FOREIGN KEY (user_id) REFERENCES webapp_users(id) ON DELETE CASCADE
         )
       `);
-      if (!getTableColumns(db, "tasks").includes("initial_attachments_json")) {
+      if (!getMigrationTableColumns(db, "tasks").includes("initial_attachments_json")) {
         db.run("ALTER TABLE tasks ADD COLUMN initial_attachments_json TEXT");
       }
     },
@@ -966,12 +968,37 @@ export const migrations: Migration[] = [
     name: "rename_agents_to_automations",
     up: renameAutomations,
   },
+  {
+    version: RETIRE_TASKS_MIGRATION_VERSION,
+    name: "retire_tasks",
+    transactional: false,
+    up: retireTasks,
+  },
+  {
+    version: 95,
+    name: "add_chat_planning_kickoff",
+    up: (db) => {
+      const columns = getTableColumns(db, "chats");
+      if (!columns.includes("start_with_plan")) {
+        db.run("ALTER TABLE chats ADD COLUMN start_with_plan INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!columns.includes("planning_kickoff_message_id")) {
+        db.run("ALTER TABLE chats ADD COLUMN planning_kickoff_message_id TEXT");
+      }
+    },
+  },
+  {
+    version: 96,
+    name: "retire_task_preferences",
+    up: retireTaskPreferences,
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {
   for (const legacyTable of [
     "mesh_controller_relay_pairing",
     "agents", "agent_runs", "agent_run_transcript_entries", "agent_run_transcript_meta",
+    "tasks", "task_transcript_entries", "task_transcript_meta", "review_comments", "sessions",
   ] as const) {
     if (tableName === legacyTable) {
       // Historical migrations run against the immutable baseline's legacy names.
@@ -1157,6 +1184,9 @@ export function runMigrations(
   ensureMigrationsTable(db);
 
   const appliedVersions = getAppliedVersions(db);
+  if (appliedVersions.has(RETIRE_TASKS_MIGRATION_VERSION)) {
+    db.transaction(() => dropLegacyTaskTables(db))();
+  }
   if (appliedVersions.has(RENAME_AUTOMATIONS_MIGRATION_VERSION)) {
     // The immutable baseline recreates the old empty tables on every startup.
     db.transaction(() => dropLegacyAutomationTables(db))();

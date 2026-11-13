@@ -3,7 +3,7 @@
  */
 
 import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
-import type { PersistedMessage } from "@/shared/task";
+import type { PersistedMessage } from "@/shared/conversation";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireResourcePersistenceUserId } from "../ownership";
@@ -24,7 +24,6 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "source_kind",
   "workspace_id",
   "scope",
-  "task_id",
   "directory",
   "created_at",
   "updated_at",
@@ -35,6 +34,8 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "use_worktree",
   "use_selected_branch_for_worktree",
   "use_chat_name_as_branch",
+  "start_with_plan",
+  "planning_kickoff_message_id",
   "auto_approve_permissions",
   "skip_base_branch_sync",
   "base_branch",
@@ -182,7 +183,6 @@ export function chatStateToRow(state: ChatState, options: {
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
   const userId = requireResourcePersistenceUserId("chat", chat.config.id, chat.config.workspaceId ?? null);
-  if (config.taskId) requireResourcePersistenceUserId("task", config.taskId);
   const source = config.source ?? {
     kind: "workspace" as const,
     workspaceId: config.workspaceId,
@@ -201,7 +201,6 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     source_kind: source.kind,
     workspace_id: source.kind === "workspace" ? source.workspaceId : null,
     scope: config.scope,
-    task_id: config.taskId ?? null,
     directory: config.directory,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
@@ -212,6 +211,8 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     use_worktree: config.useWorktree ? 1 : 0,
     use_selected_branch_for_worktree: config.useSelectedBranchForWorktree ? 1 : 0,
     use_chat_name_as_branch: config.useChatNameAsBranch ? 1 : 0,
+    start_with_plan: config.startWithPlan ? 1 : 0,
+    planning_kickoff_message_id: config.planningKickoffMessageId ?? null,
     auto_approve_permissions: config.autoApprovePermissions === false ? 0 : 1,
     skip_base_branch_sync: config.skipBaseBranchSync ? 1 : 0,
     base_branch: config.baseBranch ?? null,
@@ -235,7 +236,6 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     source,
     executionHostBinding: executionHostBindingFromRow(row) ?? undefined,
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),
-    taskId: (row["task_id"] as string | null) ?? undefined,
     directory: requireChatString(row, "directory", rowId),
     model: {
       providerID: (row["model_provider_id"] as string) ?? "unknown",
@@ -245,6 +245,8 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     useWorktree: row["use_worktree"] === 1,
     useSelectedBranchForWorktree: row["use_selected_branch_for_worktree"] === 1,
     useChatNameAsBranch: row["use_chat_name_as_branch"] === 1,
+    startWithPlan: row["start_with_plan"] === 1,
+    planningKickoffMessageId: (row["planning_kickoff_message_id"] as string | null) ?? undefined,
     autoApprovePermissions: row["auto_approve_permissions"] === undefined
       || row["auto_approve_permissions"] === null
       || row["auto_approve_permissions"] === 1,

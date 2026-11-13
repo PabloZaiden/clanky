@@ -17,11 +17,10 @@ import { getAccountStore, initializeDatabase } from "./persistence/database";
 import { harnessSecretFiles } from "./core/harness-secret-files";
 import { agentNotificationService } from "./core/agent-notification-service";
 import { ensureLocalMeshNodeIdentity } from "./persistence/mesh-node-identity";
-import { resetStaleTasks } from "./persistence/tasks";
 import { resetStaleChats } from "./persistence/chats";
 import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
-import { taskManager } from "./core/task-manager";
+import { cleanupRetiredTaskResources } from "./core/retired-task-cleanup";
 import { chatManager } from "./core/chat-manager";
 import type {
   MacWorkerPermissionPreflightRequest,
@@ -29,7 +28,6 @@ import type {
 } from "./core/macos-worker-permissions";
 import { isServerEvent, type ServerEvent } from "./core/backend/backend-state";
 import { getServerStartupMessages } from "./core/server-config";
-import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { automationScheduler } from "./core/automation-scheduler";
 import { getAppConfig } from "./core/config";
 import { managedCredentialService } from "./core/managed-credential-service";
@@ -41,7 +39,6 @@ import {
   chatEventEmitter,
   provisioningEventEmitter,
   terminalSessionEventEmitter,
-  taskEventEmitter,
   previewEventEmitter,
   meshStateEventEmitter,
   harnessEventEmitter,
@@ -188,7 +185,6 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
     publishClankyDomainEvent(publisher, event, { userId: context.userId });
   };
   realtimeBridgeUnsubscribers = [
-    taskEventEmitter.subscribe(publishEvent),
     chatEventEmitter.subscribe(publishEvent),
     automationEventEmitter.subscribe(publishEvent),
     terminalSessionEventEmitter.subscribe(publishEvent),
@@ -205,11 +201,9 @@ function registerClankyRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEven
 async function reconcileStartupState(): Promise<void> {
   await backendManager.initialize();
 
-  let staleTasksReset = 0;
   let staleChatsReset = 0;
   let staleManagedContextsRevoked = 0;
   await runForEachActiveUser(async (user) => {
-    staleTasksReset += await resetStaleTasks();
     staleChatsReset += await resetStaleChats();
     const resetTerminals = terminalSessionManager.reconcileStartupState();
     if (resetTerminals > 0) log.info("Reconciled terminal connections during startup", { count: resetTerminals });
@@ -219,9 +213,6 @@ async function reconcileStartupState(): Promise<void> {
     workerUpdateManager.reconcileStartupState();
     await previewSessionManager.initialize();
   });
-  if (staleTasksReset > 0) {
-    log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
-  }
   if (staleChatsReset > 0) {
     log.info(`Reconciled ${staleChatsReset} stale chats during startup`);
   }
@@ -353,7 +344,6 @@ async function completeStartup(
     });
   }
   if (options.startBackgroundWorkers !== false) {
-    pushedTaskMonitor.start();
     automationScheduler.start();
     startWorkspaceWorkerReconciliation();
     startChatTrashMaintenance();
@@ -372,7 +362,6 @@ async function completeStartup(
 }
 
 function stopBackgroundWorkers(): void {
-  pushedTaskMonitor.stop();
   automationScheduler.stop();
   stopWorkspaceWorkerReconciliation();
 }
@@ -698,9 +687,6 @@ export async function getWebAppServer(
       afterStart: async (server) => {
         controlBaseUrl = app?.config.publicBaseUrl
           ?? (server.port === undefined ? undefined : getLocalManagedCredentialBaseUrl(controlRuntime.host, server.port));
-        await completeStartup(server, {
-          startBackgroundWorkers: !meshWorker,
-        });
         const appServer = app;
         if (!appServer) {
           throw new Error("Clanky web app server is unavailable during relay startup");
@@ -731,12 +717,15 @@ export async function getWebAppServer(
           );
           await workspaceConnections.start();
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
+          await cleanupRetiredTaskResources();
         }
+        await completeStartup(server, {
+          startBackgroundWorkers: !meshWorker,
+        });
       },
       beforeStop: async () => {
         setActiveControllerTls(undefined);
         chatManager.beginShutdown();
-        taskManager.beginShutdown();
         const errors: unknown[] = [];
         const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
           try {
@@ -758,7 +747,6 @@ export async function getWebAppServer(
           cleanup(() => controlServer?.close()),
         ]);
         await cleanup(() => chatManager.shutdown());
-        await cleanup(() => taskManager.shutdown());
         await cleanup(() => agentNotificationService.stop());
         await cleanup(() => backendManager.shutdown());
         // Remote clients must release their sessions before relays and gateways close.

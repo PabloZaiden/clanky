@@ -7,8 +7,13 @@
 import { z } from "zod";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
 import { ModelConfigSchema } from "./model";
-import { TaskNameSchema, MessageAttachmentsSchema } from "./task";
+import { EntityNameSchema, MessageAttachmentsSchema } from "./conversation";
 import { AgentProviderSchema } from "./workspace";
+
+export const ChatDiffFileQuerySchema = z.object({
+  path: z.string().min(1).refine((value) => !value.includes("\0"), "Invalid file path."),
+  base: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, "Use the comparison base from the change list."),
+}).strict();
 
 export const CreateChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
@@ -18,6 +23,7 @@ export const CreateChatRequestSchema = z.object({
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
   useSelectedBranchForWorktree: z.boolean().optional(),
   useChatNameAsBranch: z.boolean().optional(),
+  startWithPlan: z.boolean().optional(),
   baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
   quick: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
@@ -54,10 +60,11 @@ export const CreateExecutionHostChatRequestSchema = z.object({
   model: ModelConfigSchema.extend({
     providerID: AgentProviderSchema,
   }),
+  startWithPlan: z.boolean().optional(),
 }).strict();
 
 export const UpdateChatRequestSchema = z.object({
-  name: TaskNameSchema.optional(),
+  name: EntityNameSchema.optional(),
   model: ModelConfigSchema.optional(),
   baseBranch: z.string().optional(),
   useWorktree: z.boolean().optional(),

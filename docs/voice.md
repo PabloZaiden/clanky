@@ -30,7 +30,7 @@ phone or browser. The server must trust the provider's TLS certificate.
 Each signed-in user can configure their own endpoints; deployments must account
 for those users being able to connect to services reachable from the server.
 
-Assistant response blocks in chat, task, and automation-run transcripts can be
+Assistant response blocks in chat and automation-run transcripts can be
 translated to English or Spanish. Translation sends the selected block's text
 to the configured, validated shared text-generation model. Clanky returns the
 result to the browser for display in that block only; it does not modify or
@@ -61,7 +61,7 @@ sidebar, including on Home with no chat selected. No workspace agent or native
 adapter is required. Triple-click or triple-tap a non-interactive area of a chat
 transcript to start Live too. This gesture no longer starts Talk.
 
-The assistant can discover your chats, tasks, workspaces, servers and execution
+The assistant can discover your chats, workspaces, servers and execution
 hosts; read their state and content; create and manage work; send or queue
 instructions; answer interactions; and navigate the originating client. Common
 intents are available immediately; uncommon operations discover exact per-method
@@ -82,7 +82,7 @@ authorization and nonvoice human requests.
 Live and its delegated model are instructed to express your requests directly
 to the recipient, not narrate them as "the user asks". For example, "Ask the
 Backend chat to review the timeouts" becomes "Review the timeouts". This applies
-to chat messages, initial messages, task prompts, follow-ups and feedback,
+to chat messages, initial messages and follow-ups,
 preserving your language, intent, details and constraints without adding
 requirements or commitments. Reported speech is reserved for an explicitly
 requested quotation, summary or relay of another person's words. Approval
@@ -153,7 +153,7 @@ without stopping spoken output. If playback is blocked, use its speaker button
 
 The call remains active across in-app navigation in its originating tab. Stop
 releases the physical microphone promptly and closes media and sideband without
-cancelling delegated chat/task work. To stop that work, request its normal
+cancelling delegated chat work. To stop that work, request its normal
 interrupt/stop operation explicitly. Talk and Piper cannot start while global
 Live owns audio. Starting Live stops active summary playback; it reports a
 conflict instead of discarding an ongoing Talk recording or transcription.
@@ -191,7 +191,7 @@ provider session and starts one without its conversation text or remembered work
 references. Audio briefly reconnects, but the browser keeps the same microphone
 capture, audio player and mute state without requesting microphone access again.
 GPT-Live does not support clearing history within an existing provider session.
-The controls stay in their current location; chats/tasks and delegated work are
+The controls stay in their current location; chats and delegated work are
 unaffected. The button is disabled while connecting, changing conversations or
 ending a call. Stop or leaving the page cancels the change without restarting
 the microphone.
@@ -212,19 +212,18 @@ alongside the actual arguments in the same turn; both are frozen together.
 The original API validator, including cross-field requirements, is checked
 before approval is requested; hidden browser-supplied inputs are not model
 arguments. The server rechecks the target before dispatch. The model cannot
-approve the operation or override its arguments after approval. Task creation first
-reads the workspace's effective defaults, connected models and real host
-branches, then applies explicit intent and the browser's saved preferences.
+approve the operation or override its arguments after approval. Chat creation
+resolves the selected workspace or host, effective defaults and connected models.
 
 ### Direct common operations
 
-Twenty-two common intents are available to the textual model before discovery.
+Common intents are available to the textual model before discovery.
 Their names below have the `clanky_` prefix:
 
 | Tool | Useful operation |
 | --- | --- |
-| `recent_work` | Recent chats/tasks by actual activity, with Voice status categories and bounded literal previews. |
-| `waiting_work` | Questions, permissions and ready plans awaiting manual approval, with Voice status categories. |
+| `recent_work` | Recent chats by actual activity, with Voice status categories and bounded literal previews. |
+| `waiting_work` | Questions and permissions needing input, with Voice status categories. |
 | `list_chats` | Filter chats by workspace, exact name or raw status; results include a Voice status category. |
 | `read_chat` | Raw and Voice status, pending interactions and latest or earliest literal conversation. |
 | `send_chat_message` | Send one instruction to a named, identified or selected chat. |
@@ -233,18 +232,11 @@ Their names below have the `clanky_` prefix:
 | `interrupt_chat` | Interrupt active chat work, independently of stopping voice. |
 | `update_chat_lifecycle` | Mark a standalone chat done or move it to recoverable Trash after visual approval. |
 | `respond_chat_interaction` | Answer a specific or uniquely pending question, or decide a permission. |
-| `list_tasks` | Filter tasks, including Voice status, progress and required-intervention reasons. |
-| `read_task` | Raw and Voice status, plus literal conversation, prompt, plan or diff. |
-| `create_task` | Create a draft or planning task with actual defaults and model preferences. |
-| `instruct_task` | Send a follow-up or set the next-iteration prompt, with explicit intent. |
-| `control_task` | Start draft planning or stop execution; not a generic resume command. |
-| `review_task_plan` | Give feedback, accept, or discard the plan **and delete its task**. |
-| `finish_task` | Accept completed work locally or push it, preserving distinct approval policies. |
 | `list_workspaces` | Owned workspace metadata and execution context. |
 | `list_servers` | Local and Mesh hosts, without probing or credentials. |
 | `create_workspace` | Create at an explicit directory on a selected host with an explicit adapter/provider. |
 | `get_ui_state` | Fresh acknowledged route/selection and relevant browser preferences. |
-| `ui_action` | Open a named chat/task/workspace/server/host, or use canonical client actions. |
+| `ui_action` | Open a named chat/workspace/server/host, or use canonical client actions. |
 
 Read/action targets accept an ID, exact name and optional workspace, or
 `current` for the originating client's acknowledged selection. Names are
@@ -256,11 +248,7 @@ uses one `waiting_work` with `kind=all`.
 Voice work results preserve the API's raw `status` and add `voiceStatus` for
 simple spoken categories. Chats map `streaming` and `waiting` to `active`,
 `idle` to `idle`, `done` to `done`, and `starting`, `interrupting`,
-`reconnecting`, `stopped` and `failed` to `error`. Tasks map `planning`,
-`starting`, `running`, `waiting` and `resolving_conflicts` to `active`;
-`idle` and `draft` to `idle`; `completed`, `accepted_local`, `merged`,
-`pushed` and `deleted` to `done`; and `stopped`, `failed` and
-`max_iterations` to `error`. For broad category questions such as “active
+`reconnecting`, `stopped` and `failed` to `error`. For broad category questions such as “active
 chats”, leave the exact raw `status` filter null and use `voiceStatus`; do not
 filter on a made-up raw state such as `working`.
 For hosts, `current` requires an execution-host selection.
@@ -268,8 +256,7 @@ The fresh route's host kind and ID are
 matched against authorized resources, never guessed from a name.
 
 Creation resolves real connected models, branches and effective defaults.
-Task creation also reads fresh browser planning/model preferences; explicit
-overrides include the main and cheap models. Unavailable remembered models
+Unavailable remembered models
 require clarification rather than silent replacement. Workspace creation
 requires the execution host, directory and adapter/provider; cloning,
 provisioning and other uncovered operations use the catalog fallback.
@@ -282,8 +269,8 @@ occupy one mutation queue slot through the navigation acknowledgement. Other
 queued writes wait until the compound action completes or fails. Stages return
 their outcomes, including partial failure; they are never replayed.
 
-The session has **28 tools**: these twenty-two direct intents, the existing
-selective `watch_work`, the four generic list/find/describe/execute tools for
+The session combines these direct intents with the existing
+selective `watch_work`, the generic list/find/describe/execute tools for
 uncovered intents, and the `clanky_accept_goodbye` lifecycle tool.
 For an uncovered intent, call `clanky_list_operations` alone to receive the
 complete authorized compact index in one result, then describe the selected
@@ -311,7 +298,7 @@ standalone chats. Marking done does not interrupt active work; the chat API
 rejects busy or reconnecting chats. Moving a chat to Trash stops active work
 and keeps its history and worktree recoverable for 30 days, but requires the
 originating user's visual approval. This tool cannot set runtime statuses or
-permanently purge chats. Task chats remain task-managed, and automation chats are
+permanently purge chats. Automation chats are
 excluded because their existing delete path is permanent.
 
 `steer_queued_chat_message` operates only on messages already in a chat queue.
@@ -326,7 +313,7 @@ direct request to finish, call `clanky_accept_goodbye` by itself without a
 separate spoken response. Do not call it for an opening greeting or pause; a
 verbal promise to finish is not a substitute for the tool call. After calling
 it, do not use more tools or add speech.
-Delegated chat/task work continues.
+Delegated chat work continues.
 
 Live selects [compact API representations and literal conversation
 pages](API.md#compact-reads-and-literal-conversations) from the same route
@@ -405,90 +392,6 @@ stdout/container logs. To retrieve them through `GET /api/server/logs` or
 automatically enable capture or bypass the configured log level. Timing logs
 contain no prompts, transcripts, raw arguments/results or credentials.
 
-#### Measured provider experiment before direct intents
-
-On 2026-10-14, an isolated compiled Clanky app exercised four workflows using
-the configured `gpt-6-luna`, actual catalog/tools and synthetic chats/tasks
-backed by a normal external ACP process. Only the voice delegation was
-simulated. Each workflow had one default-reasoning baseline and three
-explicit-none runs; these small samples are diagnostic evidence, not a
-performance guarantee or a controlled load benchmark.
-Runs were sequential in the same app: message instructions changed one chat's
-history, and provider queuing/cache effects were not controlled.
-
-| Workflow | Default baseline | None median (range) | None model rounds |
-|---|---:|---:|---:|
-| Recent chats | 31.7 s | 27.9 s (11.3–45.6 s) | 7–10 |
-| Named-chat conversation | 11.7 s | 15.8 s (13.5–16.7 s) | 7–9 |
-| Send an instruction | 21.2 s | 15.2 s (14.4–27.7 s) | 8–13 |
-| Chats/tasks requiring input | 40.9 s, incomplete | 14.2–31.4 s, incomplete | 9–18 |
-
-The input-query runs found the waiting chat but omitted a task whose ready plan
-required review. Another none run could not discover the operations and ended
-after 4.0 s; it is a failure, not a fast answer, and is excluded from the table's
-latency range. This exposes catalog-discovery reliability and incomplete
-intervention metadata, not just latency. Message runs delivered separate
-explicit instructions to an existing synthetic chat, verified through its
-public conversation; they were not automatic retries.
-
-Default responses reported `medium` effort and 40–1,113 reasoning tokens per
-workflow. Every none response reported none and zero reasoning tokens.
-Across 155 local tool completions, median execution/serialization time was
-1.9 ms and maximum 28.8 ms. More than 99% of the measured end-to-end delegation
-time was inside external text-request/stream intervals, including network and
-provider queuing/generation, not just model computation. Generic discovery,
-contract reads, extra state reads and their serial model decisions still
-dominated with reasoning disabled. This baseline motivated the direct intents,
-authoritative intervention metadata and bounded latest-history reads above.
-
-A separate real `gpt-live-1` WebRTC smoke run accepted delegated none, reported
-zero reasoning tokens and spoke "Checking that now" while fetching the chat
-list. Its spoken-transcript event followed delegation creation by about 250 ms,
-so the instruction is not a strict protocol ordering guarantee. That smoke run
-used a continuous synthetic microphone; it does not measure physical-device
-audio quality or replace the simulated-voice workflow timings above.
-
-#### Measured direct-intent experiment
-
-The same four workflows were repeated on 2026-10-14 with the final direct
-schemas/instructions: three runs each, real `gpt-6-luna` Responses, compiled
-Clanky, actual tool execution and isolated synthetic work. Only Live voice
-delegation was simulated. All twelve final runs made **one direct function
-call and two model responses**, with no find/describe or preliminary listing
-for IDs. Reasoning was none, with zero reasoning tokens in every response.
-Named-chat content and actual message admission were checked through public
-conversation; intervention answers included both the pending question and
-the manually reviewable task plan.
-
-| Workflow | Median (range) | First response median | Final response median |
-| --- | ---: | ---: | ---: |
-| Recent chats | 6.15 s (5.33–6.38 s) | 3.23 s | 2.92 s |
-| Named-chat conversation | 5.98 s (5.45–7.33 s) | 2.70 s | 2.88 s |
-| Send an instruction | 5.67 s (5.48–6.24 s) | 2.76 s | 2.89 s |
-| Chats/tasks requiring input | 5.80 s (5.71–6.22 s), complete | 2.76 s | 2.97 s |
-
-First/final response columns measure the entire external request/stream
-interval, not audible feedback or just computation; separate medians need
-not sum to the median total. Local tool execution/serialization median was
-9.7 ms, maximum 21.1 ms. More than 99% of each total remained inside the
-external text intervals. An earlier 24-tool measurement serialized its schemas
-to 26,455 UTF-8 bytes;
-initial requests used 5,359–5,365 input tokens. The first recent-work request
-was uncached; later sequential requests largely cached approximately 5,300
-tokens. These small samples are not controlled cold-cache, load, p95 or
-physical voice measurements. Repeated send runs were distinct explicit commands,
-not automatic retries.
-
-An initial direct-schema experiment occasionally listed before reading or
-split the combined intervention query. The final instructions explicitly
-prefer exact-name targets and one `waiting_work kind=all`; the final table
-uses only the subsequent twelve runs. A separate native `gpt-live-1` admission
-probe accepted the final schemas/instructions through a Bun.WebView-generated
-WebRTC offer and real sideband validation (2.27 s), then closed the session.
-That verifies connection compatibility, not ASR, spoken feedback timing,
-physical playback quality or all tools' execution. No production settings or
-existing user work were changed for these experiments.
-
 ### Native audio playback
 
 Live uses the browser's native WebRTC adaptive buffering and media-element
@@ -533,7 +436,7 @@ An error is not evidence that an earlier mutation did not execute.
 Continuation history is limited to 64 text messages and 7,000 UTF-8 bytes per
 user. The server retains at most 64 recent user conversations; if that capacity
 is reached, the oldest inactive context is discarded. These limits do not
-remove ordinary chat/task data, which Live can read again.
+remove ordinary chat data, which Live can read again.
 
 There is one active call per user, a server capacity of eight calls and a
 limit of ten session openings per minute per endpoint/key. Provider `429`
@@ -631,7 +534,7 @@ streaming, the server uses its current in-memory content. The configured text
 model summarizes that content before Piper returns `audio/wav`.
 
 Saved subagent conversations expose the same bodyless speech action under
-their parent chat/task's subagent message route. The server resolves the
+their parent chat's subagent message route. The server resolves the
 assistant message from that child's saved transcript, never from the parent's
 message collection or caller-supplied text. Parent authority, validated text
 summaries, Piper availability and global browser audio ownership still apply.
@@ -644,7 +547,7 @@ transcription provider.
 `{"text":"<selected message text>","targetLanguage":"en"|"es"}` and returns
 `{"translatedText":"<translation>"}`. It requires the user's validated shared
 text-generation capability, accepts at most 30,000 characters, and does not
-persist or associate the submitted text with a chat, task, or automation run.
+persist or associate the submitted text with a chat or automation run.
 
 ## Upstream voice assets
 
