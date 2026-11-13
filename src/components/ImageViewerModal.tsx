@@ -26,7 +26,22 @@ interface ImageViewerModalProps {
 interface ImageOpenState {
   src: string;
   blob: Blob | null;
+  downloadUrl: string | null;
   error: string | null;
+}
+
+function downloadImage(url: string, filename: string): void {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener noreferrer";
+  link.referrerPolicy = "no-referrer";
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+  }
 }
 
 function openImageWindow(blob: Blob, image: ImageViewerModalImage): void {
@@ -79,6 +94,7 @@ export function ImageViewerModal({
     }
 
     const controller = new AbortController();
+    let downloadUrl: string | undefined;
     // Prepare bytes before the click so opening a tab remains a synchronous user action.
     void (async () => {
       try {
@@ -90,12 +106,14 @@ export function ImageViewerModal({
         if (controller.signal.aborted) {
           return;
         }
-        setOpenState({ src, blob, error: null });
+        downloadUrl = URL.createObjectURL(blob);
+        setOpenState({ src, blob, downloadUrl, error: null });
       } catch (error: unknown) {
         if (!controller.signal.aborted) {
           setOpenState({
             src,
             blob: null,
+            downloadUrl: null,
             error: error instanceof Error ? error.message : String(error),
           });
         }
@@ -104,6 +122,9 @@ export function ImageViewerModal({
 
     return () => {
       controller.abort();
+      if (downloadUrl) {
+        URL.revokeObjectURL(downloadUrl);
+      }
     };
   }, [src]);
 
@@ -114,7 +135,24 @@ export function ImageViewerModal({
       title={title ?? image?.title ?? "Image preview"}
       size="xl"
       footer={(
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={loading || !image || !currentOpenState?.downloadUrl}
+            onClick={() => {
+              if (!image || !currentOpenState?.downloadUrl) {
+                return;
+              }
+              try {
+                downloadImage(currentOpenState.downloadUrl, image.title);
+              } catch (error: unknown) {
+                toast.error(error instanceof Error ? error.message : String(error));
+              }
+            }}
+          >
+            Download
+          </Button>
           <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
@@ -158,7 +196,7 @@ export function ImageViewerModal({
             </button>
           </div>
           {currentOpenState?.error && (
-            <ErrorState title="Could not open image" description={currentOpenState.error} />
+            <ErrorState title="Could not prepare image" description={currentOpenState.error} />
           )}
           {image.description && (
             <p className="text-sm text-gray-500 dark:text-gray-400">

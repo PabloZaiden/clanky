@@ -1391,6 +1391,10 @@ identity may lose sessions and pairings.
 
 External top-level links open in the system browser. File selection uses WebKit's
 native picker; downloads use the Mac save panel or iPhone/iPad export sheet.
+The image preview dialog's **Download** action uses this same native flow with
+the displayed image's bytes and filename: **Save As** on Mac, or the share sheet
+on iPhone/iPad with the system's available sharing, copying and saving actions.
+Cancelling either dialog leaves the preview open and does not report a save.
 
 In the Mac, iPhone and iPad apps, STT and Live Voice use the app's normal system
 microphone permission without additional website permission dialogs for

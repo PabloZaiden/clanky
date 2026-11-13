@@ -253,6 +253,12 @@ retain loaded unchanged images across transcript updates, and preserve the
 existing click-to-enlarge interaction. Originals and provider uploads remain
 unchanged; see [Conversation attachments](../attachments.md).
 
+The shared image preview dialog offers **Download** once its image bytes are
+ready. It saves the displayed image with its filename and format, without
+re-encoding or fetching another copy on click. Browsers use their normal download
+behavior; the Apple apps use their native save/export flow. Opening the image
+in a new tab and closing the preview remain separate actions.
+
 ## Forms, effects, and feedback
 
 Use public unsaved-change handling for composite settings drafts. Save failure
