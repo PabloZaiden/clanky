@@ -63,7 +63,7 @@ export function isPersistedMessage(value: unknown): value is PersistedMessage {
   );
 }
 
-const TASK_LOG_LEVELS = new Set([
+const LOG_LEVELS = new Set([
   "agent",
   "user",
   "info",
@@ -78,7 +78,7 @@ export function isConversationLogEntry(value: unknown): value is ConversationLog
     isRecord(value)
     && isString(value["id"])
     && typeof value["level"] === "string"
-    && TASK_LOG_LEVELS.has(value["level"])
+    && LOG_LEVELS.has(value["level"])
     && isString(value["message"])
     && isString(value["timestamp"])
     && (

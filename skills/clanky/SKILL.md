@@ -1,6 +1,6 @@
 ---
 name: clanky
-description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, expose a workspace through local WebDAV, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor tasks, interact with chats or automations, stream events, mount a workspace, or automate Clanky through the `clanky` command.
+description: Use the Clanky CLI to inspect and operate an authenticated Clanky instance, execute commands or transfer files on workspaces and registered servers, expose a workspace through local WebDAV, preview remote services, or manage Mesh workers and relays when explicitly requested. Activate when a user wants to query Clanky state, discover API endpoints, create or monitor chats and automations, stream events, mount a workspace, or automate Clanky through the `clanky` command.
 compatibility: Requires `clanky` on PATH. Normal operations require existing CLI authentication and access to the target instance; worker bootstrap initializes its own API-key access.
 ---
 
@@ -52,7 +52,7 @@ unclean shutdown can leave protected staging on the execution host.
 
 ## Conversation files
 
-For chat/task/Automation inputs, discover the endpoint's `attachments` schema before
+For chat/Automation inputs, discover the endpoint's `attachments` schema before
 constructing the payload. Entries use `{ id, filename, mimeType, data, size }`,
 with canonical padded base64 and an exact decoded byte count. Any file type is
 accepted within 20 files, 20 MiB per file and 60 MiB per provider turn.
@@ -82,7 +82,7 @@ inside the shell command. Do not print it, use shell tracing, put its bytes in
 arguments or copy it into project files. Respect a declined request.
 The file is readable by agent commands and same-OS-user processes; a CLI may
 print or retain it. Restart invalidates old paths. There is no tool-to-tool
-secret reference or autonomous-task access, and no ACP fallback.
+secret reference or Automation/subagent access, and no ACP fallback.
 See [the native secret contract](../../docs/harnesses.md#private-secrets-for-cli-commands).
 
 ## Native Control chats
@@ -158,10 +158,8 @@ Compound chat creation requires a separate `afterCreationDescription` for the
 frozen initial-message/open intent; all stages share the visual approval and
 mutation queue slot through the client acknowledgement, reporting partial
 outcomes without replay. Known-invalid worktree overrides are rejected before
-approval. For generic task creation, read
-`GET /api/workspaces/:id/task-creation-context` before constructing task inputs;
-apply explicit intent and valid saved browser preferences without inventing a
-model or branch. Accepted/queued work is not completed work, and unknown
+approval. Apply explicit intent and valid saved browser preferences without
+inventing a model or branch. Accepted/queued work is not completed work, and unknown
 mutation outcomes must be inspected rather than automatically retried. Use
 `clanky_steer_queued_chat_message` only for an existing queued message: when
 several are queued, select a returned message ID or clarify instead of
@@ -183,7 +181,7 @@ reread current state, never replay earlier mutations, and obtain new visual
 approval as needed. Pending approvals and watches are not
 restored; client control belongs only to the newly originating tab.
 
-Ordinary API/CLI callers can use compact chat/task filters (`workspaceId`,
+Ordinary API/CLI callers can use compact chat filters (`workspaceId`,
 exact `name`, `status`, `needsInput`, `order=activity`) and conversation
 `range=latest`. Follow the same filters and range on continuation; latest reads
 also retain `limit`. Shared voice text requests always use reasoning none.
@@ -209,7 +207,7 @@ before attributing a slow voice answer to local data access.
 3. Inspect the request/response shape for the endpoint you plan to call:
 
    ```bash
-   clanky schema tasks
+   clanky schema chats
    clanky schema workspaces
    ```
 
@@ -217,8 +215,8 @@ before attributing a slow voice answer to local data access.
 
    ```bash
    clanky api workspaces --method GET
-   clanky api tasks --method GET
-   clanky api tasks/my-task-id --method GET
+   clanky api chats --method GET
+   clanky api chats/my-chat-id --method GET
    ```
 
 5. Stream live events when you need progress updates:
@@ -235,10 +233,10 @@ before attributing a slow voice answer to local data access.
 - Use `clanky help` for CLI help. Do not assume every subcommand accepts `--help`.
 - `clanky api` with no endpoint lists discoverable API endpoints.
 - `clanky api <endpoint>` calls authenticated REST endpoints and prints one JSON object.
-- Endpoint paths are relative to `/api`; use `tasks`, not `/api/tasks`.
+- Endpoint paths are relative to `/api`; use `chats`, not `/api/chats`.
 - Use `--method <METHOD>` for non-default methods.
 - Use `--payload '<json>'` for request bodies.
-- Use `clanky schema <endpoint>` before constructing payloads, especially for task, workspace, chat, or automation-related endpoints.
+- Use `clanky schema <endpoint>` before constructing payloads, especially for workspace, chat, or automation-related endpoints.
 - Use `clanky auth --base-url URL` to configure a profile for a server. Framework commands use the selected profile or the `CLANKY_BASE_URL`/`CLANKY_API_KEY` environment pair.
 - CLI access works against both combined and API-only servers without registering
   the client's host. A separately hosted frontend uses its own device session;
@@ -311,8 +309,8 @@ Owners select per-workspace permissions in invitations with
 closes affected interactive resources without cancelling admitted work.
 
 Execution and content remain on the controller's configured host. Revocation
-closes affected interactive resources but does not cancel admitted chats,
-tasks or schedules. Individual shared Trash restore/purge routes by reference;
+closes affected interactive resources but does not cancel admitted chats
+or schedules. Individual shared Trash restore/purge routes by reference;
 emptying Trash is local only. Pairing/invitation controls are local user actions,
 not capabilities delegated to a workspace guest.
 
@@ -466,7 +464,7 @@ operations.
 
 Worker lifecycle is independent, including automatic workspace provisioning,
 restart, rebuild, and deletion. Identify the worker node before maintenance:
-all workspaces sharing it can be interrupted, but tasks and chats on another
+all workspaces sharing it can be interrupted, but chats on another
 worker must continue. Inventory, unchanged endpoints, and health metadata do
 not cancel healthy conversations. Revocation or a changed route invalidates
 only that user's resources on the affected worker; inspect the reported
@@ -610,7 +608,6 @@ clanky preview --workspace <WORKSPACE_ID_OR_NAME> --port 3000
 clanky preview --server <SERVER_NAME_OR_ID> --port 8080 --local-port 18080 --open
 clanky code "Workspace name"
 clanky code "Workspace name" --chat "Existing chat"
-clanky code "Workspace name" --task "Existing task"
 ```
 
 Workspace targets accept IDs or exact names from the unified local/shared list.
@@ -618,11 +615,11 @@ For a shared workspace, authenticate the CLI to the invited instance as usual:
 both commands use its relay connection without a connection flag or controller
 credentials. Ambiguous names or an incomplete workspace list require an exact
 reference returned by `clanky api workspaces --method GET`; never decode remote
-references. Code chat/task names resolve only within that workspace, and qualified
+references. Code chat names resolve only within that workspace, and qualified
 selectors must belong to the same controller.
 
 `code` starts the workspace host's existing `code serve-web` executable and
-opens the workspace's current directory, or the selected chat/task directory.
+opens the workspace's current directory, or the selected chat directory.
 It does not install Code or prepare missing worktrees. Both the service port and
 Code process are on the selected execution host, not the invited/CLI machine.
 
@@ -643,15 +640,15 @@ Start broad, then narrow down by ID:
 clanky api
 clanky schema workspaces
 clanky api workspaces --method GET
-clanky schema tasks
-clanky api tasks --method GET
-clanky api tasks/<task-id> --method GET
+clanky schema chats
+clanky api chats --method GET
+clanky api chats/<chat-id> --method GET
 ```
 
 If JSON tooling is available, parse the response instead of relying on visual inspection:
 
 ```bash
-clanky api tasks --method GET | jq .
+clanky api chats --method GET | jq .
 clanky api workspaces --method GET | jq .
 ```
 
@@ -675,29 +672,38 @@ clanky api workspaces/ws-abc123 --method PUT \
 
 Send the full desired note in the payload. To clear it, send `{"scratchpad":""}`. CLI reads and writes the saved server copy only; unsaved drafts in a browser are local to that browser. See the [Scratchpad guide](../../docs/scratchpad.md) and [API reference](../../docs/API.md#workspaces) for the full contract.
 
-## Creating a task
+## Creating a chat
 
-Before creating a task, discover the exact current schema:
+Before creating a chat, discover the exact current schema:
 
 ```bash
-clanky schema tasks
+clanky schema chats
 clanky api workspaces --method GET
 ```
 
-Then create the task with the smallest payload accepted by the schema returned
+Then create the chat with the smallest payload accepted by the schema returned
 by that instance. Do not reuse provider, model, or branch values from old
 examples:
 
 ```bash
-clanky api tasks --method POST --payload '<JSON matching the current task schema>'
+clanky api chats --method POST --payload '<JSON matching the current chat schema>'
 ```
 
-After creation, inspect the returned JSON for the task ID and status. Then monitor it:
+After creation, inspect the returned JSON for the chat ID and status. Send the
+requirements through its ordinary message endpoint, then monitor it:
 
 ```bash
-clanky api tasks/<task-id> --method GET
+clanky api chats/<chat-id>/messages --method POST --payload '{"message":"<requirements>"}'
+clanky api chats/<chat-id> --method GET
 clanky ws
 ```
+
+For **Start with a plan**, set `startWithPlan: true` when creating the chat.
+Creation alone sends no prompt. Only the first requirements dispatch receives
+planning guidance; discussion, revisions and the explicit implementation request
+remain ordinary messages in that same conversation. Plan/status, read-only Diff
+and repository context are available through the
+[chat inspection routes](../../docs/API.md#planning-and-change-inspection).
 
 If the schema or endpoint list differs from this example, follow the local `clanky api` and `clanky schema` output instead of forcing the example.
 
@@ -742,8 +748,8 @@ clanky ws
 
 ### Realtime interests
 
-Native subagent conversations are saved resources beneath their parent chat or
-task. Discover the parent's subagent list/snapshot/tool operations through the
+Native subagent conversations are saved resources beneath their parent chat.
+Discover the parent's subagent list/snapshot/tool operations through the
 normal route catalog; pass the returned Clanky child ID, not a native Activity
 ID. Stored reads work without reconnecting the runtime and inherit parent
 authority. Respect explicit partial/unavailable history; do not infer missing
@@ -755,8 +761,8 @@ Send one subscription JSON object per stdin line on the open bridge. State
 changes and content streams are separate interests on the same connection:
 
 ```json
-{"type":"subscribe","subscriptionId":"tasks","generation":1,"interest":{"kinds":["state"],"resources":["tasks"]}}
-{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"TASK_ID"}}}
+{"type":"subscribe","subscriptionId":"chats","generation":1,"interest":{"kinds":["state"],"resources":["chats"]}}
+{"type":"subscribe","subscriptionId":"chat-content","generation":1,"interest":{"kinds":["content"],"targets":{"chatId":"CHAT_ID"}}}
 ```
 
 Wait for the matching `subscribed` acknowledgement before reading an
@@ -765,7 +771,7 @@ identities and generations; handle each publication once even if interests
 overlap. Stop an interest without closing the connection:
 
 ```json
-{"type":"unsubscribe","subscriptionId":"task-content","generation":1}
+{"type":"unsubscribe","subscriptionId":"chat-content","generation":1}
 ```
 
 After a disconnect, reopen the bridge, restore interests and read fresh
@@ -783,12 +789,12 @@ an implicit all-events feed are not supported.
 - If authentication fails, report that the existing CLI credentials are missing, expired, or for the wrong instance; do not start a new setup flow unless asked.
 - If an endpoint is absent, say it is not exposed by this Clanky instance/version and use the closest discoverable endpoint.
 - When creating or modifying data, prefer reading the current resource first, then send the smallest payload required by the schema.
-- For long-running tasks, prefer `clanky ws` for progress instead of repeatedly polling.
+- For long-running work, prefer `clanky ws` for progress instead of repeatedly polling.
 
 ## What not to do
 
 - Do not install Clanky.
 - Do not start or restart a Clanky server unless the user explicitly asks for
   lifecycle or Mesh-worker setup.
-- Do not assume server URLs, workspace IDs, task IDs, model IDs, or provider IDs; discover them from the instance.
+- Do not assume server URLs, workspace IDs, chat IDs, model IDs, or provider IDs; discover them from the instance.
 - Do not hardcode old CLI behavior when `clanky help`, `clanky api`, or `clanky schema` says otherwise.
