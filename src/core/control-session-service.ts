@@ -15,7 +15,7 @@ import { controlUiToolDefinitions, isControlUiToolName } from "./control-ui-tool
 import { executeControlTool } from "./control-tools";
 import { requireControlChat, resolveControlOrigin } from "./control-origin";
 import { controlUiActionService } from "./control-ui-action-service";
-import { chatEventEmitter, resourcePrivacyEventEmitter, taskEventEmitter } from "./event-emitter";
+import { chatEventEmitter, resourcePrivacyEventEmitter } from "./event-emitter";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 
 const log = createLogger("core:control-sessions");
@@ -84,9 +84,6 @@ export class ControlSessionService {
       resourcePrivacyEventEmitter.subscribe((_event, context) => this.refreshPrivacy(context.userId)),
       chatEventEmitter.subscribe((event, context) => {
         if (event.type === "chat.deleted" || event.type === "chat.trash.changed") this.refreshPrivacy(context.userId);
-      }),
-      taskEventEmitter.subscribe((event, context) => {
-        if (event.type === "task.deleted") this.refreshPrivacy(context.userId);
       }),
     ];
   }

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { ExecutionHostBindingSchema } from "./execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { getMessageAttachmentKind, MESSAGE_ATTACHMENT_LIMIT, MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
-import { MessageAttachmentsSchema } from "./task";
+import { MessageAttachmentsSchema } from "./conversation";
 
 export const HarnessConversationBindingSchema = z.object({
   adapter: z.enum(HARNESS_ADAPTER_IDS),

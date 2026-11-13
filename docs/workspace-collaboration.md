@@ -2,7 +2,7 @@
 
 Connect your local Clanky to another controller to work in selected shared
 workspaces. Your instance remains a normal Clanky application, not an execution
-worker. The controller keeps the conversations, tasks, automations, files and execution
+worker. The controller keeps the conversations, automations, files and execution
 resources; your instance stores the pairing, not a replica of that content.
 Shared conversation and scratchpad drafts remain in browser memory rather than
 local draft storage; reload discards unsent text.
@@ -38,7 +38,7 @@ name, with **Revoke invitation** alongside those details.
 To grant **Work** access everywhere, select **All workspaces**
 instead of individual workspaces. This includes all your current and future
 workspaces, even if none exist when the invitation is accepted. The collaborator
-can use them, including scratchpad, chats, tasks and automations, but cannot create,
+can use them, including scratchpad, chats and automations, but cannot create,
 configure, archive or delete your workspaces. This also prevents changing
 **Clanky Context**, the execution host or provider. Server, user, credential and
 collaboration-invitation administration are not granted. Existing all-workspaces
@@ -70,9 +70,9 @@ There is no connection flag or separate remote mode. Preserve the reference
 returned by the API when reading or modifying a shared resource; do not extract
 or construct its underlying controller ID.
 
-Collaborators with **Work** access can work with existing and new conversations, tasks/plans,
+Collaborators with **Work** access can work with existing and new conversations and plans,
 workspace automations, scratchpad, Git/files, transfers, terminals and previews.
-Chats and tasks show their creator. They cannot delete or administer the
+Chats show their creator. They cannot delete or administer the
 workspace, change its host/provider, manage controller credentials or invite
 another collaborator.
 
@@ -100,7 +100,7 @@ workspace creation or controller-wide connection tests/host discovery.
 
 Managed native and deterministic executions automatically receive scoped
 application control for their own project. Supported native agents manage
-project chats/tasks with their registered tools; deterministic code uses
+project chats with their registered tools; deterministic code uses
 `ctx.clanky.call()`. Neither requires **Allow general Clanky access** or a Quick
 Chat preference. Existing `workspace.prompt()` remains bound to that
 execution's conversation. Authority comes from the live execution source and
@@ -136,7 +136,7 @@ Permissions are assigned separately for each collaborator and workspace. A
 collaborator can review one workspace while working in another. Existing grants
 and invitations preserve their **Read only** or **Work** access after upgrading.
 
-**Read only** allows reading conversations, tasks/plans, automations, transcripts,
+**Read only** allows reading conversations and plans, automations, transcripts,
 logs, scratchpad, files and Git information, downloading files, and receiving
 authorized realtime updates. The UI marks the workspace as read-only and
 disables or removes modification controls. Controller credentials and other
@@ -157,7 +157,7 @@ the browser-only client. Changes return HTTP `403` with the
 `collaboration_read_only` code. This includes sending messages, answering
 questions or permission requests, starting/stopping work, changing schedules,
 editing scratchpad/files, uploads, Git changes and arbitrary commands. Provider
-execution, including task-title generation, also requires **Work** access.
+execution, including automatic chat naming, also requires **Work** access.
 Filesystem metadata reads remain available even though their API uses POST.
 Interactive terminals, Code and application previews require **Work** access;
 they cannot provide a read-only guarantee.
@@ -167,7 +167,7 @@ workspace with its compact **Read only** checkbox, without creating another
 invitation. Unchecked grants retain **Work** access. Reducing access to **Read only**
 closes that collaborator's existing terminals and previews in the workspace.
 Realtime reconnects and refreshes the effective permissions. Already admitted
-tasks, chats and schedules continue, and other workspace grants are unchanged.
+chats and schedules continue, and other workspace grants are unchanged.
 Permission changes persist across restarts.
 Unsaved Scratchpad edits remain in the open view when access changes, but
 cannot be saved while read-only. Reloading still discards shared drafts.
@@ -203,14 +203,14 @@ workspace. Keep your usual CLI profile connected to your invited instance:
 clanky preview --workspace "Shared workspace" --port 3000
 clanky code "Shared workspace"
 clanky code "Shared workspace" --chat "Shared planning"
-clanky code "Shared workspace" --task "Existing task"
+clanky code "Shared workspace" --chat "Existing chat"
 ```
 
 HTTP and WebSocket traffic uses the invitation's Direct or Relay route. The
 application port and Code process belong to the controller's selected workspace host; the printed
 browser URL is on your CLI machine. Keep the command running while using it.
 If workspace names collide across local or shared sources, select the exact
-workspace reference returned by your instance instead. Chat/task names are
+workspace reference returned by your instance instead. Chat names are
 resolved only within the selected workspace; their qualified references also
 work. Code requires a compatible `code serve-web` CLI on the workspace host;
 see [Preview and Code](API.md#live-previews-from-the-cli) for prerequisites.
@@ -258,7 +258,7 @@ On the controller, revoke one workspace or the whole collaborator from
 close, and new requests are denied. Other granted workspaces remain usable.
 For all-workspaces access, revoke the whole collaborator.
 
-Already admitted chats, tasks and automation schedules continue under the controller.
+Already admitted chats and automation schedules continue under the controller.
 Revocation does not cancel them, delete shared content or undo commands.
 Disconnecting a pairing on the invited instance also leaves controller work
 intact. Neither action can retract information already seen or downloaded.

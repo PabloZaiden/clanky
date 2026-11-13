@@ -107,7 +107,6 @@ export class ControlActions {
       case "open_workspace":
       case "open_workspace_file": operationId = "GET /api/workspaces/:id"; id = action.workspaceId; break;
       case "open_chat": operationId = "GET /api/chats/:id"; id = action.chatId; break;
-      case "open_task": operationId = "GET /api/tasks/:id"; id = action.taskId; break;
       case "open_automation": operationId = "GET /api/automations/:id"; id = action.automationId; break;
       case "open_terminal": operationId = "GET /api/terminal-sessions/:id"; id = action.terminalSessionId; break;
       case "open_execution_host": {

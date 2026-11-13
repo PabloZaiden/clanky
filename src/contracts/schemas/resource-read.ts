@@ -8,7 +8,7 @@ export const ReadSectionSchema = z.enum([
   "details", "questions", "permissions", "inputs", "activity", "prompt",
   "content", "output", "plan", "diff", "models", "providers", "files",
   "directories", "branches", "jobs", "runs", "automations", "templates", "addresses",
-  "items", "entries", "sessions", "servers", "workspaces", "chats", "tasks",
+  "items", "entries", "sessions", "servers", "workspaces", "chats",
   "workers", "enrollments", "activities", "variants", "previews", "nodes",
   "grants", "candidates", "issues", "comments", "logs",
 ]);

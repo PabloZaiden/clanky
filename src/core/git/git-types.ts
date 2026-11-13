@@ -148,8 +148,8 @@ export interface MergeAttemptResult {
 export interface FileDiff {
   path: string;
   status: "added" | "modified" | "deleted" | "renamed";
-  additions: number;
-  deletions: number;
+  additions: number | null;
+  deletions: number | null;
   oldPath?: string;
 }
 

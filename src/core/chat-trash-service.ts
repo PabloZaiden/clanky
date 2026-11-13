@@ -1,5 +1,5 @@
 /**
- * Recoverable standalone chat deletion; task/automation cleanup stays permanent.
+ * Recoverable standalone chat deletion; Automation cleanup stays permanent.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CHAT_TRASH_RETENTION_MS, isStandaloneChat } from "@/shared/chat";

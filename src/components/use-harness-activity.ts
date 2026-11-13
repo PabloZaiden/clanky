@@ -8,7 +8,7 @@ export function useHarnessActivity({
   entityId,
   snapshot,
 }: {
-  kind: "chat" | "task";
+  kind: "chat";
   entityId: string;
   snapshot?: HarnessActivitySnapshot;
 }) {

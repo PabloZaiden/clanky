@@ -1,5 +1,5 @@
 /**
- * Command execution abstraction for Clanky Tasks Management System.
+ * Command execution abstraction for Clanky.
  * Provides a unified interface for running shell commands and file operations
  * that works both locally and on Mesh execution hosts.
  */

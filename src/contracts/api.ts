@@ -1,5 +1,5 @@
 /**
- * API type definitions for Clanky Tasks Management System.
+ * API request and response types for Clanky.
  * 
  * These types define the request and response shapes for the REST API.
  * They are used for type safety in both the API route handlers and clients.
@@ -13,28 +13,19 @@
 
 import type {
   Chat,
-  Task,
-  HarnessInputAdmission,
-  ReviewComment,
-  TerminalSession,
   WorkspaceFileEntry,
   WorkspaceFileKind,
   WorkspaceFileNode,
 } from "@/shared";
 import {
-  CreateTaskRequestSchema,
   CreateChatRequestSchema,
   CreateExecutionHostChatRequestSchema,
   ExecutionHostWorkingDirectorySchema,
-  GenerateTaskTitleRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   ReconnectChatRequestSchema,
   SendChatMessageRequestSchema,
-  UpdateTaskRequestSchema,
   UpdateChatRequestSchema,
-  AddressCommentsRequestSchema,
-  PlanAcceptRequestSchema,
   CheckExecutionHostPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
   CreateWorkspaceRequestSchema,
@@ -50,7 +41,6 @@ import {
   RestartAutomaticWorkspacesResultSchema,
   RestartAutomaticWorkspacesResponseSchema,
   CreateTerminalSessionRequestSchema,
-  CreateTaskTerminalSessionRequestSchema,
   UpdateTerminalSessionRequestSchema,
   ListFileExplorerRequestSchema,
   GetFileExplorerTreeRequestSchema,
@@ -187,59 +177,10 @@ export interface ModelInfo {
   variants?: string[];
 }
 
-/**
- * Request body for POST /api/tasks endpoint.
- * 
- * Creates a new Clanky Task. Non-draft tasks start plan generation and may
- * return with `planning` status while the engine initializes. A task with
- * `draft: true` is saved for later editing.
- * 
- * Every task starts by creating or importing a plan. `autoAcceptPlan` controls
- * whether the task waits for manual approval before execution.
- * 
- * The task name is required and must be provided by the client.
- * 
- * The `workspaceId` is required - tasks must be created within a workspace.
- * The directory is automatically derived from the workspace.
- * 
- * Type is derived from CreateTaskRequestSchema - the Zod schema is the
- * single source of truth for both validation and TypeScript types.
- */
-export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
-
-export interface TaskInputAdmissionResponse {
-  task: Task;
-  admission: HarnessInputAdmission;
-}
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 export type CreateExecutionHostChatRequest = z.infer<typeof CreateExecutionHostChatRequestSchema>;
 export type ExecutionHostWorkingDirectory = z.infer<typeof ExecutionHostWorkingDirectorySchema>;
 
-/**
- * Request body for POST /api/tasks/title endpoint.
- *
- * Requests explicit AI-assisted title generation for the current prompt
- * using the selected workspace and model context.
- */
-export type GenerateTaskTitleRequest = z.infer<typeof GenerateTaskTitleRequestSchema>;
-
-/**
- * Response from POST /api/tasks/title endpoint.
- */
-export interface GenerateTaskTitleResponse {
-  title: string;
-}
-
-/**
- * Request body for PATCH /api/tasks/:id endpoint.
- * All fields are optional - only provided fields are updated. Name updates
- * are accepted only while the task is still a draft; planning settings have
- * additional restrictions while planning or after plan approval.
- * 
- * Type is derived from UpdateTaskRequestSchema - the Zod schema is the
- * single source of truth for both validation and TypeScript types.
- */
-export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
 export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
 export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
@@ -434,11 +375,6 @@ export type WorkspaceFileConflictResponse = FileExplorerConflictResponse;
 export type CreateTerminalSessionRequest = z.infer<typeof CreateTerminalSessionRequestSchema>;
 
 /**
- * Request body for POST /api/tasks/:id/terminal-session.
- */
-export type CreateTaskTerminalSessionRequest = z.infer<typeof CreateTaskTerminalSessionRequestSchema>;
-
-/**
  * Request body for PATCH /api/terminal-sessions/:id.
  */
 export type UpdateTerminalSessionRequest = z.infer<typeof UpdateTerminalSessionRequestSchema>;
@@ -452,158 +388,6 @@ export type CheckExecutionHostPrerequisitesRequest = z.infer<typeof CheckExecuti
  * Request body for POST /api/execution-hosts/:kind/:id/devbox-templates.
  */
 export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;
-
-/**
- * Request body for POST /api/tasks/:id/address-comments endpoint.
- * Used to submit reviewer comments for the task to address.
- * 
- * Type is derived from AddressCommentsRequestSchema - the Zod schema is the
- * single source of truth for both validation and TypeScript types.
- */
-export type AddressCommentsRequest = z.infer<typeof AddressCommentsRequestSchema>;
-
-/**
- * Request body for POST /api/tasks/:id/plan/accept endpoint.
- */
-export type PlanAcceptRequest = z.infer<typeof PlanAcceptRequestSchema>;
-
-/**
- * Response from POST /api/tasks/:id/address-comments endpoint.
- * Uses discriminated union for type-safe success/error handling.
- */
-export type AddressCommentsResponse =
-  | {
-      success: true;
-      /** The review cycle number (1-based, increments each time comments are addressed) */
-      reviewCycle: number;
-      /** The branch being worked on */
-      branch: string;
-      /** IDs of the comment records created */
-      commentIds: string[];
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
-    };
-
-/**
- * Response from GET /api/tasks/:id/comments endpoint.
- * Uses discriminated union for type-safe success/error handling.
- */
-export type GetCommentsResponse =
-  | {
-      success: true;
-      /** Array of review comments for the task */
-      comments: ReviewComment[];
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
-    };
-
-/**
- * Review history information for a task.
- * Returned by GET /api/tasks/:id/review-history endpoint.
- */
-export interface ReviewHistory {
-  /** Whether the task can still receive reviewer comments */
-  addressable: boolean;
-  /** How the task was last finalized */
-  completionAction: "local" | "push";
-  /** Number of review cycles completed (times comments were addressed) */
-  reviewCycles: number;
-}
-
-/**
- * Response from GET /api/tasks/:id/review-history endpoint.
- * Uses discriminated union for type-safe success/error handling.
- */
-export type ReviewHistoryResponse =
-  | {
-      success: true;
-      /** The review history data */
-      history: ReviewHistory;
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
-    };
-
-/**
- * Response from POST /api/tasks/:id/accept endpoint.
- * Uses discriminated union for type-safe success/error handling.
- */
-export type AcceptResponse =
-  | {
-      success: true;
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
-    };
-
-/**
- * Response from POST /api/tasks/:id/push endpoint.
- * Uses discriminated union for type-safe success/error handling.
- *
- * When syncStatus is "conflicts_being_resolved", the push is deferred
- * (no remoteBranch yet). The task will auto-push after conflict resolution.
- */
-export type PushResponse =
-  | {
-      success: true;
-      /** The name of the remote branch that was pushed */
-      remoteBranch: string;
-      /** Sync status with base branch */
-      syncStatus: "already_up_to_date" | "clean";
-    }
-  | {
-      success: true;
-      /** Sync status — push is deferred until conflict resolution completes */
-      syncStatus: "conflicts_being_resolved";
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
-    };
-
-/**
- * Response from POST /api/tasks/:id/plan/accept endpoint.
- */
-export type PlanAcceptResponse =
-  | {
-      success: true;
-      /** Which acceptance path was taken */
-      mode: "start_task";
-    }
-  | {
-      success: true;
-      /** Which acceptance path was taken */
-      mode: "open_terminal";
-      /** Linked workspace terminal session created or reused for the task */
-      terminalSession: TerminalSession;
-    };
-
-/**
- * Error response returned when directory has uncommitted changes.
- * 
- * This error (HTTP 409) indicates the task cannot start because the
- * working directory has uncommitted git changes. The user must commit
- * or stash changes manually before starting the task.
- */
-export interface UncommittedChangesError {
-  /** Error code for this specific error type */
-  error: "uncommitted_changes";
-  /** Human-readable error description */
-  message: string;
-  /** List of files with uncommitted changes */
-  changedFiles: string[];
-}
 
 /**
  * Generic error response format used by all API endpoints.
@@ -626,26 +410,30 @@ export interface HealthResponse {
 }
 
 /**
- * File diff information returned by GET /api/tasks/:id/diff endpoint.
- * Represents changes to a single file in the task's working branch.
+ * File diff information returned by GET /api/chats/:id/diff.
  */
 export interface FileDiff {
   /** File path relative to repository root */
   path: string;
   /** Type of change made to the file */
   status: "added" | "modified" | "deleted" | "renamed";
-  /** Number of lines added */
-  additions: number;
-  /** Number of lines deleted */
-  deletions: number;
+  /** Number of lines added; null until an untracked file is opened */
+  additions: number | null;
+  /** Number of lines deleted; null until an untracked file is opened */
+  deletions: number | null;
   /** Old path (only present for renames) */
   oldPath?: string;
-  /** The actual diff patch content in unified diff format */
-  patch?: string;
+}
+
+/** Response from GET /api/chats/:id/diff/file. */
+export interface FileDiffContent extends FileDiff {
+  additions: number;
+  deletions: number;
+  patch: string;
 }
 
 /**
- * Response from GET /api/tasks/:id/plan and /api/tasks/:id/status-file endpoints.
+ * Response from GET /api/chats/:id/plan and /api/chats/:id/status-file.
  */
 export interface FileContentResponse {
   /** The file contents (empty string if file doesn't exist) */
@@ -654,21 +442,4 @@ export interface FileContentResponse {
   exists: boolean;
 }
 
-/**
- * Response from GET /api/tasks/:id/pull-request endpoint.
- */
-export type PullRequestDestinationResponse =
-  | {
-      enabled: true;
-      /** Where the destination came from */
-      destinationType: "existing_pr" | "create_pr";
-      /** URL to open when the action is available */
-      url: string;
-    }
-  | {
-      enabled: false;
-      /** Disabled state for the Go to PR action */
-      destinationType: "disabled";
-      /** Human-readable reason shown in the UI */
-      disabledReason: string;
-    };
+export type { ChatRepositoryContext } from "@/shared/chat";

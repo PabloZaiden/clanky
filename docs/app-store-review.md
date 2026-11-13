@@ -37,7 +37,7 @@ separately approved requirement calls for custom terms.
 ## Suggested store description
 
 > Connect your iPhone or iPad to your own Clanky controller and manage your coding
-> agents remotely. Follow tasks and conversations, browse project files, review
+> agents remotely. Follow conversations, browse project files, review
 > changes, and use voice and file attachments from the existing Clanky interface.
 >
 > Clanky is a client for independently operated, self-hosted controllers. It does
@@ -109,7 +109,7 @@ dashboard, the following journeys use only fictional, in-memory content:
    name, and choose **Create**. Send a message in the new conversation.
 3. In the workspace's actions menu, choose **Code Explorer**. Expand `src` and
    open `greeting.ts` to read the fictional source.
-4. Open **Demo: add a star greeting**, select **Diff**, and expand
+4. Open **Demo: explore the observatory**, select **Diff**, and expand
    `src/greeting.ts` to inspect the sample change.
 5. Open **Demo imaginary Mesh server** from the dashboard to inspect its
    fictional chat and worker directory.
@@ -118,9 +118,9 @@ dashboard, the following journeys use only fictional, in-memory content:
    commands, including `ls` with arguments, are invalid. This is a local
    simulation using the terminal interface, not a Bash interpreter.
 
-The sample task, its associated chat, and its files are read-only. Task
-creation/execution/review mutations and terminal creation/management are not
-offered as working demo actions. Standalone demo chats remain interactive.
+The fictional source files and sample chat diff are read-only. Demo chats remain
+interactive; their replies are simulated rather than agent execution. Terminal
+creation and management are not offered as working demo actions.
 Automations are not simulated; their demo scenario remains undefined.
 
 Operations such as **Pull Latest Changes** report that the action is not
@@ -143,7 +143,7 @@ instruction to select "Data Not Collected" without assessing the final build.
 | Information | Normal processing |
 | --- | --- |
 | Sessions, connection details, preferences, drafts, and caches | Persistent client storage; sessions are used with the selected controller |
-| Messages, attachments, instructions, repositories, and task output | Selected controller, authorized execution hosts, and configured providers |
+| Messages, attachments, instructions, repositories, and conversation output | Selected controller, authorized execution hosts, and configured providers |
 | Voice audio | Device capture, selected controller, and configured voice provider |
 | Native/session diagnostics | Limited local history, not automatically uploaded to the publisher |
 | Collaboration and configured integration traffic | The destinations selected by the controller operator |

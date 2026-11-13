@@ -8,11 +8,10 @@ import { DomainError } from "../domain/domain-error";
 import {
   PromptTemplateListSchema,
   QuickChatSettingsSchema,
-  SetDashboardViewModeRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
   SetMarkdownRenderingRequestSchema,
 } from "../contracts/schemas/preferences";
-import { CheapModelSelectionSchema, ModelConfigSchema } from "../contracts/schemas/model";
+import { ModelConfigSchema } from "../contracts/schemas/model";
 import { CollaborationNameSchema } from "../contracts/schemas/collaboration";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "../shared/preferences";
 
@@ -79,9 +78,7 @@ export const browserPreferences = {
   quickChat: createPreference("quick-chat", QuickChatSettingsSchema, DEFAULT_QUICK_CHAT_SETTINGS),
   markdown: createPreference("markdown-rendering", SetMarkdownRenderingRequestSchema.shape.enabled, true),
   fullTree: createPreference("file-explorer-full-tree", SetFileExplorerFullTreeRequestSchema.shape.enabled, true),
-  viewMode: createPreference("dashboard-view-mode", SetDashboardViewModeRequestSchema.shape.mode, "rows"),
   promptTemplates: createPreference("prompt-templates", PromptTemplateListSchema, []),
   lastModel: createPreference("last-model", ModelConfigSchema.nullable(), null),
-  lastCheapModel: createPreference("last-cheap-model", CheapModelSelectionSchema.nullable(), null),
   collaborationName: createPreference("collaboration-name", CollaborationNameSchema.nullable(), null),
 };

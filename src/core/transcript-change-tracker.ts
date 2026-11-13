@@ -6,7 +6,7 @@ import {
   type TranscriptEntryPayload,
   type TranscriptEntryUpsert,
   type PersistedMessage,
-  type TaskLogEntry,
+  type ConversationLogEntry,
   type ToolCallRecord,
 } from "@/shared";
 
@@ -60,7 +60,7 @@ export class TranscriptChangeTracker {
 
   snapshot(state: {
     messages: PersistedMessage[];
-    logs: TaskLogEntry[];
+    logs: ConversationLogEntry[];
     toolCalls: ToolCallRecord[];
   }): TranscriptChangeSnapshot {
     const upserts: TranscriptEntryUpsert[] = [];

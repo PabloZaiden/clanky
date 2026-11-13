@@ -99,8 +99,8 @@ export function createClankyCli() {
       },
       mesh: createMeshCommand(),
       code: {
-        description: "Open an existing workspace, chat, or task directory in a VS Code web preview.",
-        usage: "code WORKSPACE [--chat NAME_OR_ID | --task NAME_OR_ID] [--open]",
+        description: "Open an existing workspace or chat directory in a VS Code web preview.",
+        usage: "code WORKSPACE [--chat NAME_OR_ID] [--open]",
         handler: previewHandler(parseCodeCommandArgs),
       },
       preview: {

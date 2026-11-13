@@ -7,9 +7,7 @@ export {
   loadChat,
   loadChatMetadata,
   loadChatStreamControlState,
-  loadTaskChat,
   deleteChat,
-  deleteChatsByTaskId,
   listChats,
   listChatsByWorkspace,
   listChatSummaries,
@@ -22,6 +20,7 @@ export {
   updateChatState,
   updateChatStreamState,
   updateChatConfig,
+  claimChatPlanningKickoff,
 } from "./chats/index";
 export {
   getChatTranscriptMeta,

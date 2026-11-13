@@ -1,5 +1,5 @@
 /**
- * Shared formatting utilities for the Clanky Tasks Management System.
+ * Shared formatting utilities for the Clanky.
  */
 
 /**

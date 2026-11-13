@@ -6,15 +6,15 @@ import type { ControlToolContext } from "./control-tool-context";
 
 export const controlUiToolSchemas = {
   clanky_get_ui_state: z.object({
-    section: z.enum(["route", "preferences"]).nullable().default(null),
+    section: z.literal("route").nullable().default(null),
     cursor: z.string().max(4096).nullable().default(null),
   }).strict(),
   clanky_ui_action: z.object({ action: ControlNavigationIntentSchema }).strict(),
 };
 
 export const controlUiToolDescriptions = {
-  clanky_get_ui_state: "Read fresh acknowledged originating-client context, not authoritative entity state. Start with section/cursor null; use route/preferences sections and nextCursor if the snapshot is large. Preferences include saved planning booleans and canonical model JSON.",
-  clanky_ui_action: "Navigate or control the originating client's sidebar. open_named resolves an exact chat/task/workspace/host name or ID directly, with optional workspace. Other actions use known canonical IDs. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
+  clanky_get_ui_state: "Read fresh acknowledged originating-client navigation context, not authoritative entity state. Start with section/cursor null; use the route section and nextCursor if the snapshot is large.",
+  clanky_ui_action: "Navigate or control the originating client's sidebar. open_named resolves an exact chat/workspace/host name or ID directly, with optional workspace. Other actions use known canonical IDs. Returns success only after that tab acknowledges the effect. Never supplies confirmation approval.",
 };
 
 export const controlUiToolDefinitions: ControlToolDefinition[] = Object.entries(controlUiToolSchemas).map(([name, schema]) => ({
@@ -34,11 +34,8 @@ export async function executeControlUiTool(context: ControlToolContext, name: ke
   const outcome = await context.options.actions.getUiState(context.options.requestId);
   if (outcome.status !== "context") return outcome;
   if (!section && !cursor && readBytes(outcome) <= context.options.maxBytes) return outcome;
-  if (!section) return { status: "context", revision: outcome.context.revision, sections: ["route", "preferences"] };
-  const source = section === "route" ? outcome.context.route : {
-    planningPreferences: outcome.context.planningPreferences ?? null,
-    modelPreferences: outcome.context.modelPreferences ?? null,
-  };
+  if (!section) return { status: "context", revision: outcome.context.revision, sections: ["route"] };
+  const source = outcome.context.route;
   return contentReadPage({
     source, options: { ...(cursor ? { cursor } : {}), maxBytes: context.options.maxBytes },
     scope: readRevision(["originating_ui", section]),

@@ -34,11 +34,11 @@ export interface ParseAndValidateOptions {
  *
  * @example
  * ```typescript
- * const result = validateRequest(CreateTaskRequestSchema, await req.json());
+ * const result = validateRequest(CreateChatRequestSchema, await req.json());
  * if (!result.success) {
  *   return result.response;
  * }
- * const data = result.data; // Typed as CreateTaskRequest
+ * const data = result.data; // Typed as CreateChatRequest
  * ```
  */
 export function validateRequest<T>(
@@ -157,11 +157,11 @@ async function readRequestBody(req: Request, maxBodyBytes?: number): Promise<str
  *
  * @example
  * ```typescript
- * const result = await parseAndValidate(CreateTaskRequestSchema, req);
+ * const result = await parseAndValidate(CreateChatRequestSchema, req);
  * if (!result.success) {
  *   return result.response;
  * }
- * const data = result.data; // Typed as CreateTaskRequest
+ * const data = result.data; // Typed as CreateChatRequest
  * ```
  */
 export async function parseAndValidate<T>(

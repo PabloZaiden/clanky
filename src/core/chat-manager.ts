@@ -7,7 +7,6 @@ import type {
   ChatSnapshot,
   ChatStatus,
   SessionInfo,
-  Task,
   TranscriptSnapshotOptions,
   ToolCallRecord,
 } from "@/shared";
@@ -26,6 +25,7 @@ import { ChatQuestionService } from "./chat-question-service";
 import { ChatHistoryExportService } from "./chat-history-export-service";
 import { ChatHistoryRecoveryService } from "./chat-history-recovery-service";
 import { ChatAttachmentService } from "./chat-attachment-service";
+import { ChatDirectoryService } from "./chat-directory-service";
 import type {
   ChatConfigUpdates,
   DeleteChatOptions,
@@ -35,7 +35,6 @@ import type {
   CreateAutomationRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  DeleteTaskChatResult,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 import type { Backend } from "../backends/types";
@@ -49,7 +48,6 @@ export type {
   CreateAutomationRunChatOptions,
   CreateChatOptions,
   CreateExecutionHostChatOptions,
-  DeleteTaskChatResult,
   ReconnectChatOptions,
 } from "./chat-service-contracts";
 
@@ -234,21 +232,33 @@ export class ChatManager {
       .map((chat) => this.services.conversation.withLiveActivity(chat));
   }
 
-  async getChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]> {
-    return this.services.state.getChatsByWorkspace(workspaceId, options);
+  async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
+    return this.services.state.getChatsByWorkspace(workspaceId);
   }
 
   async getWorkingDirectory(chat: Chat): Promise<string> {
     return (await this.services.worktree.resolveWorkingDirectory(chat, { prepareWorkspace: false })).directory;
   }
 
+  getDiff(chatId: string) {
+    return new ChatDirectoryService(this.services.state).getDiff(chatId);
+  }
+
+  getFileDiff(chatId: string, base: string, path: string) {
+    return new ChatDirectoryService(this.services.state).getFileDiff(chatId, base, path);
+  }
+
+  getPlanningFile(chatId: string, file: "plan" | "status") {
+    return new ChatDirectoryService(this.services.state).getPlanningFile(chatId, file);
+  }
+
+  getRepositoryContext(chatId: string) {
+    return new ChatDirectoryService(this.services.state).getRepositoryContext(chatId);
+  }
+
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
     return (await this.services.state.getChatSummariesByWorkspace(workspaceId))
       .map((chat) => this.services.conversation.withLiveActivity(chat));
-  }
-
-  async getTaskChat(taskId: string): Promise<Chat | null> {
-    return this.services.state.getTaskChat(taskId);
   }
 
   async getChatSnapshot(
@@ -271,14 +281,6 @@ export class ChatManager {
     if (!await this.services.state.getChatSummary(chatId)) return null;
     const tool = this.services.conversation.getLiveTranscript(chatId)?.toolCalls.find((tool) => tool.id === toolCallId);
     return tool ? withLiveToolCallRevision(tool) : this.services.state.getChatToolCall(chatId, toolCallId);
-  }
-
-  async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {
-    return this.services.lifecycle.getOrCreateTaskChat(taskId, task);
-  }
-
-  async deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult> {
-    return this.services.lifecycle.deleteTaskChat(taskId);
   }
 
   async updateChat(chatId: string, updates: ChatConfigUpdates): Promise<Chat | null> {

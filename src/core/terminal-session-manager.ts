@@ -23,19 +23,14 @@ import {
   countTerminalSessionsByWorkspace,
   deleteTerminalSession,
   getTerminalSession,
-  getTerminalSessionByTaskId,
   listTerminalSessions,
-  listTerminalSessionsByTaskId,
   listTerminalSessionsByWorkspace,
   saveTerminalSession,
   resetTerminalConnections,
 } from "../persistence/terminal-sessions";
-import { loadTask } from "../persistence/tasks";
-import { backendManager } from "./backend-manager";
 import { terminalSessionEventEmitter } from "./event-emitter";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { buildPersistentSessionDeleteCommand } from "./terminal/persistent-session";
-import { isUniqueConstraint } from "../persistence/errors";
 import { DomainError } from "../domain/domain-error";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
@@ -45,6 +40,7 @@ import {
   unblockTerminalAttachment,
 } from "./terminal-attachment-registry";
 import { executionHostService } from "./execution-host-service";
+import { closeCommandExecutor } from "./command-executor";
 import { getInteractiveResourceInternal } from "./collaboration-interactive";
 
 const log = createLogger("core:terminal-session-manager");
@@ -57,11 +53,6 @@ function buildDefaultTerminalSessionName(workspaceName: string, existingSessionC
   const normalizedWorkspaceName = workspaceName.trim() || "Terminal";
   const normalizedCount = Math.max(0, Math.floor(existingSessionCount));
   return `${normalizedWorkspaceName} ${String(normalizedCount + 1)}`;
-}
-
-function buildTaskTerminalSessionName(taskName: string): string {
-  const normalizedTaskName = taskName.trim() || "Task";
-  return `${normalizedTaskName} Terminal`;
 }
 
 async function requireWorkspace(workspaceId: string): Promise<Workspace> {
@@ -97,8 +88,13 @@ export class TerminalSessionManager {
     return await getTerminalSession(id);
   }
 
-  async getSessionByTaskId(taskId: string): Promise<TerminalSession | null> {
-    return await getTerminalSessionByTaskId(taskId);
+  async disposeSessionRuntime(session: TerminalSession): Promise<void> {
+    await blockAndCloseTerminalAttachment(session.config.id);
+    try {
+      await this.deletePersistentSession(session);
+    } finally {
+      unblockTerminalAttachment(session.config.id);
+    }
   }
 
   async createSession(
@@ -199,58 +195,6 @@ export class TerminalSessionManager {
       return;
     }
     await withWorkspaceExecutionLock(workspaceId, operation);
-  }
-
-  async getOrCreateTaskSession(
-    taskId: string,
-    requestedDirectory?: string,
-  ): Promise<TerminalSession> {
-    const { taskManager } = await import("./task-manager");
-    const task = await taskManager.getTask(taskId) ?? await loadTask(taskId);
-    if (!task) {
-      throw new DomainError("task_not_found", "Task not found", {
-        details: { taskId },
-      });
-    }
-
-    const workspace = await requireWorkspace(task.config.workspaceId);
-    return await withWorkspaceExecutionLock(workspace.id, async () => {
-      const existingSession = await getTerminalSessionByTaskId(taskId);
-      if (existingSession) {
-        return existingSession;
-      }
-
-      const currentWorkspace = await requireWorkspace(workspace.id);
-      await touchWorkspace(currentWorkspace.id);
-
-      const taskDirectory = task.config.useWorktree
-        ? task.state.git?.worktreePath ?? null
-        : task.config.directory;
-      const directory = requestedDirectory?.trim() || taskDirectory;
-      if (!directory) {
-        throw new DomainError(
-          "task_working_directory_unavailable",
-          "Task working directory is not available",
-          { details: { taskId } },
-        );
-      }
-
-      return await this.createAndSaveSession({
-        workspace: currentWorkspace,
-        name: buildTaskTerminalSessionName(task.config.name),
-        directory,
-        taskId,
-        connectionMode: DEFAULT_TERMINAL_CONNECTION_MODE,
-        useTmux: DEFAULT_TERMINAL_USE_TMUX,
-      });
-    });
-  }
-
-  async deleteSessionByTaskId(taskId: string): Promise<boolean> {
-    for (const session of await listTerminalSessionsByTaskId(taskId)) {
-      await this.deleteSession(session.config.id);
-    }
-    return true;
   }
 
   async markStatus(id: string, status: TerminalSessionStatus, error?: string): Promise<TerminalSession> {
@@ -368,7 +312,6 @@ export class TerminalSessionManager {
     workspace: Workspace;
     name: string;
     directory: string;
-    taskId?: string;
     connectionMode: TerminalConnectionMode;
     useTmux: boolean;
   }): Promise<TerminalSession> {
@@ -383,7 +326,6 @@ export class TerminalSessionManager {
         id: sessionId,
         name: options.name,
         workspaceId: options.workspace.id,
-        taskId: options.taskId,
         directory: options.directory,
         connectionMode: options.connectionMode,
         useTmux: options.useTmux,
@@ -398,17 +340,7 @@ export class TerminalSessionManager {
       },
     };
 
-    try {
-      await saveTerminalSession(session);
-    } catch (error) {
-      if (options.taskId && isUniqueConstraint(error, "terminal_sessions", "task_id")) {
-        const existingSession = await getTerminalSessionByTaskId(options.taskId);
-        if (existingSession) {
-          return existingSession;
-        }
-      }
-      throw error;
-    }
+    await saveTerminalSession(session);
 
     terminalSessionEventEmitter.emit({
       type: "terminal_session.created",
@@ -461,38 +393,8 @@ export class TerminalSessionManager {
   }
 
   private async deletePersistentSessionBestEffort(session: TerminalSession): Promise<void> {
-    if (!isPersistentTerminalSession(session)) {
-      return;
-    }
-
     try {
-      executionHostService.validateBinding(
-        session.config.executionHostBinding,
-      );
-      const workspace = session.config.workspaceId
-        ? await getWorkspace(session.config.workspaceId)
-        : null;
-      const executor = workspace
-        ? await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory)
-        : await executionHostService.getCommandExecutor(
-            session.config.executionHostBinding!,
-            {
-              operationId: `terminal-cleanup:${session.config.id}`,
-              directory: session.config.directory,
-            },
-          );
-      // Reuse the same persistent session delete command, passing a compatible object
-      const killResult = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand({
-        config: {
-          id: session.config.id,
-          remoteSessionName: session.config.remoteSessionName,
-        },
-      })], {
-        cwd: session.config.directory,
-      });
-      if (!killResult.success) {
-        throw new Error(killResult.stderr.trim() || killResult.stdout.trim() || "Failed to stop remote persistent session");
-      }
+      await this.deletePersistentSession(session);
     } catch (error) {
       log.warn("Failed to stop remote persistent session during deletion", {
         terminalSessionId: session.config.id,
@@ -501,6 +403,28 @@ export class TerminalSessionManager {
         status: session.state.status,
         error: String(error),
       });
+    }
+  }
+
+  private async deletePersistentSession(session: TerminalSession): Promise<void> {
+    if (!isPersistentTerminalSession(session)) {
+      return;
+    }
+
+    executionHostService.validateBinding(session.config.executionHostBinding);
+    const executor = await executionHostService.getCommandExecutor(session.config.executionHostBinding, {
+      operationId: `terminal-cleanup:${session.config.id}`,
+      directory: session.config.directory,
+    });
+    try {
+      const killResult = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
+        cwd: session.config.directory,
+      });
+      if (!killResult.success) {
+        throw new Error(killResult.stderr.trim() || killResult.stdout.trim() || "Failed to stop remote persistent session");
+      }
+    } finally {
+      closeCommandExecutor(executor);
     }
   }
 }

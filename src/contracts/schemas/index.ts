@@ -20,9 +20,7 @@ export { TokenCountsSchema, HarnessUsageSnapshotSchema, TokenUsageSummarySchema 
 
 export {
   ModelConfigSchema,
-  CheapModelSelectionSchema,
   type ModelConfig,
-  type CheapModelSelection,
 } from "./model";
 
 export {
@@ -48,24 +46,7 @@ export {
   type ExecutionHostWorkingDirectory,
 } from "./execution-host";
 
-// Task schemas
-export {
-  GitConfigSchema,
-  TaskNameSchema,
-  IssueNumberSchema,
-  MessageAttachmentSchema,
-  MessageAttachmentsSchema,
-  CreateTaskRequestSchema,
-  GenerateTaskTitleRequestSchema,
-  UpdateTaskRequestSchema,
-  AddressCommentsRequestSchema,
-  PlanFeedbackRequestSchema,
-  PlanAcceptRequestSchema,
-  PendingPromptRequestSchema,
-  SetPendingRequestSchema,
-  StartDraftRequestSchema,
-  FollowUpRequestSchema,
-} from "./task";
+export * from "./conversation";
 
 // Chat schemas
 export {
@@ -146,12 +127,10 @@ export {
 // Preferences schemas
 export {
   SetLastModelRequestSchema,
-  SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetGithubUsernameRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
-  SetDashboardViewModeRequestSchema,
   SetSchedulerTimezoneRequestSchema,
   SchedulerTimezoneQuerySchema,
   QuickChatSettingsSchema,
@@ -181,7 +160,6 @@ export {
 export {
   TerminalConnectionModeSchema,
   CreateTerminalSessionRequestSchema,
-  CreateTaskTerminalSessionRequestSchema,
   UpdateTerminalSessionRequestSchema,
 } from "./terminal-session";
 

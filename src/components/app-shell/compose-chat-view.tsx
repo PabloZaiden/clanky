@@ -20,7 +20,7 @@ import {
   modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
-import { BranchSelector } from "../create-task/branch-selector";
+import { BranchSelector } from "../common/branch-selector";
 import {
   ErrorState,
   SelectField,
@@ -99,6 +99,7 @@ export function ComposeChatView({
   } = dashboardData;
   const storedChatModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
+  const [startWithPlan, setStartWithPlan] = useState(false);
   const [workspaceSelectionId, setWorkspaceSelectionId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
   const [useWorktree, setUseWorktree] = useState(true);
@@ -316,6 +317,7 @@ export function ComposeChatView({
           ? { baseBranch: selectedWorkspaceBaseBranch }
           : {}),
         quick: false,
+        ...(startWithPlan ? { startWithPlan: true } : {}),
       });
       if (!chat) {
         showError("Failed to create chat");
@@ -411,6 +413,16 @@ export function ComposeChatView({
             emptyText="Select a workspace to load models"
           />
         </div>
+
+        <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={startWithPlan}
+            onChange={(event) => setStartWithPlan(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700"
+          />
+          Start with a plan
+        </label>
 
         {selectedWorkspace?.workspaceType === "git" && (
           <BranchSelector

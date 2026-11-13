@@ -1,5 +1,5 @@
 import { memo, useCallback } from "react";
-import type { TaskLogEntry } from "@/shared";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import { LazyDetails } from "./lazy-details";
 import type { TranscriptFileLinkContext } from "./types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
@@ -7,7 +7,7 @@ import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 
 interface LogEntryItemProps {
-  data: TaskLogEntry;
+  data: ConversationLogEntry;
   showTimestamp: boolean;
   showDate: boolean;
   showGroupHeader: boolean;

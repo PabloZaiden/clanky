@@ -4,14 +4,13 @@
  * Combines API modules into Clanky's authenticated route table.
  * 
  * Route Modules:
- * - tasks: Task CRUD, lifecycle, transcript, control, data, and review operations
  * - models: AI model listing and user preferences
  * - settings: Server configuration and connection management
  * - git: Git repository and GitHub information
  * - workspaces: Workspace CRUD, server settings, previews, and file operations
  * - terminal-sessions: Transport-neutral terminal sessions
  * - provisioning: Remote workspace provisioning jobs
- * - chats: Standalone and task-linked chat sessions
+ * - chats: Resumable chat sessions
  * - automations: Scheduled automation management and runs
  * - previews: Workspace and direct server preview management
  * - mesh: Controller-managed worker enrollment and transport
@@ -22,7 +21,6 @@
 
 import { defineRoutes, type RouteDefinition, type RouteTable } from "@/platform/server";
 import { runWithCurrentUser } from "../context/user-context";
-import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
 import { gitRoutes } from "./git";
@@ -42,7 +40,6 @@ import { executionHostFilesRoutes } from "./execution-host-files";
 import { voiceRoutes } from "./voice";
 import { liveVoiceRoutes } from "./live-voice";
 import { controlUiActionRoutes } from "./control-ui-actions";
-import { taskCreationContextRoutes } from "./task-creation-context";
 import { withResourceReads } from "./resource-reads";
 import { collaborationRoutes, workspaceClientInternalRoutes } from "./collaboration";
 import { withUnifiedWorkspaceResources } from "./workspace-federation";
@@ -55,7 +52,6 @@ import { controlRoutes } from "./control";
  * realtime endpoint is registered by Clanky's account transport composition.
  */
 export const nativeApiRoutes = {
-  ...tasksRoutes,
   ...modelsAndPreferencesRoutes,
   ...settingsRoutes,
   ...gitRoutes,
@@ -76,7 +72,6 @@ export const nativeApiRoutes = {
   ...liveVoiceRoutes,
   ...controlUiActionRoutes,
   ...controlRoutes,
-  ...taskCreationContextRoutes,
   ...collaborationRoutes,
 };
 
@@ -108,7 +103,6 @@ export const apiRoutes = defineRoutes({
 
 // Re-export individual route modules
 export * from "./helpers";
-export * from "./tasks";
 export * from "./models";
 export * from "./settings";
 export * from "./git";
@@ -129,5 +123,4 @@ export * from "./execution-host-files";
 export * from "./voice";
 export * from "./live-voice";
 export * from "./control-ui-actions";
-export * from "./task-creation-context";
 export * from "./collaboration";

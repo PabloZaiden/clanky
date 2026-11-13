@@ -8,7 +8,7 @@ import type {
   HarnessHistoryRecovery,
   MessageAttachment,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallRecord,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
@@ -86,7 +86,7 @@ type ChatHistoryExportEntry =
       sequence: number;
       message: ExportedHistoryMessage;
     }
-  | { kind: "log"; id: string; timestamp: string; sequence: number; log: TaskLogEntry }
+  | { kind: "log"; id: string; timestamp: string; sequence: number; log: ConversationLogEntry }
   | {
       kind: "tool_call";
       id: string;
@@ -101,7 +101,7 @@ export interface ChatHistoryPromptContext {
   close(): void;
 }
 
-function isTaskLogEntry(value: unknown): value is TaskLogEntry {
+function isConversationLogEntry(value: unknown): value is ConversationLogEntry {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
@@ -468,7 +468,7 @@ export class ChatHistoryExportService {
       }
 
       if (storedEntry.kind === "log") {
-        if (!isTaskLogEntry(storedEntry.payload)
+        if (!isConversationLogEntry(storedEntry.payload)
           || storedEntry.payload.id !== storedEntry.id) {
           throw new DomainError(
             "chat_history_export_incomplete",

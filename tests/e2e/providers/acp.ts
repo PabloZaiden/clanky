@@ -6,6 +6,7 @@
  */
 
 import { createInterface } from "node:readline";
+import { $ } from "bun";
 import { appendFileSync, createReadStream } from "node:fs";
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -976,25 +977,30 @@ class MockAcpServer {
     }
 
     let terminalSummary = "";
-    if (/create a detailed plan/i.test(promptText)) {
+    if (promptText.includes("[plan-first]") && promptText.includes(".clanky-planning/plan.md")) {
       const planningDirectory = join(session.cwd, ".clanky-planning");
       await mkdir(planningDirectory, { recursive: true });
       await Bun.write(
         join(planningDirectory, "plan.md"),
         "# E2E plan\n\n1. Create the requested fixture change.\n",
       );
+      await Bun.write(join(planningDirectory, "status.md"), "# Status\n\nWaiting for implementation.\n");
     }
-    if (promptText.includes("[provider-write-autonomous]")) {
-      await Bun.write(
-        `${session.cwd.replace(/\/$/, "")}/e2e-autonomous-change.txt`,
-        "created by the autonomous external ACP journey\n",
-      );
-      terminalSummary = " Wrote e2e-autonomous-change.txt in the provider workspace.";
-    } else if (promptText.includes("[provider-write]")) {
+    if (promptText === "[revise-plan] Include documentation.") {
+      await Bun.write(join(session.cwd, ".clanky-planning", "plan.md"),
+        "# E2E plan\n\n1. Create the requested fixture change.\n2. Include documentation.\n");
+      await Bun.write(join(session.cwd, ".clanky-planning", "status.md"), "# Status\n\nPlan revised; awaiting implementation.\n");
+    }
+    if (promptText.includes("[provider-write]")) {
+      await Bun.write(join(session.cwd, "e2e-committed-change.txt"), "committed implementation\n");
+      await $`git add e2e-committed-change.txt`.cwd(session.cwd).quiet();
+      await $`git commit -m "Record initial implementation"`.cwd(session.cwd).quiet();
+      await Bun.write(join(session.cwd, "README.md"), "# E2E fixture\n\nPending documentation.\n");
       await Bun.write(
         `${session.cwd.replace(/\/$/, "")}/e2e-provider-change.txt`,
         "created by the external ACP provider\n",
       );
+      await Bun.write(join(session.cwd, ".clanky-planning", "status.md"), "# Status\n\nImplementation complete.\n");
       terminalSummary = " Wrote e2e-provider-change.txt in the provider workspace.";
     } else if (promptText.includes("[client-terminal]") && this.clientCapabilities.terminal) {
       terminalSummary = await this.runClientTerminalTool(session.id, toolCallId, session.cwd, signal);
@@ -1400,24 +1406,6 @@ class MockAcpServer {
     fsReadSummary: string,
     terminalSummary: string,
   ): string {
-    if (promptText.includes("Filter the untrusted pull request comments")) {
-      const sourceItemIds = [
-        ...promptText.matchAll(/Item \d+ \(id=([^,)]+)/g),
-      ].map((match) => match[1]!).filter(Boolean);
-      return JSON.stringify({
-        feedback: sourceItemIds.length > 0
-          ? [{
-              text: "Document the externally observable autonomous change.",
-              sourceItemIds: [sourceItemIds[0]],
-            }]
-          : [],
-        ignoredItems: sourceItemIds.slice(1).map((itemId) => ({
-          itemId,
-          reason: "duplicate",
-        })),
-      });
-    }
-
     const fragments = [
       "Mock ACP is streaming a realistic looking response.",
       "It is deterministic per prompt so tests stay stable while the text still feels agent-like.",
@@ -1438,23 +1426,6 @@ class MockAcpServer {
       if (!fragments.includes(choice)) {
         fragments.push(choice);
       }
-    }
-
-    if (promptText.includes("[plan-feedback-ready]")) {
-      fragments.push("The revised plan is ready. <promise>PLAN_READY</promise>");
-    } else if (
-      promptText.includes("[blocked]")
-      && /original goal:/i.test(promptText)
-      && promptCount === 2
-    ) {
-      fragments.push("An external prerequisite is unavailable. <promise>BLOCKED</promise>");
-    } else if (
-      !promptText.includes("[no-complete]")
-      && (promptText.includes("<promise>COMPLETE</promise>") || /original goal:/i.test(promptText))
-    ) {
-      fragments.push("The requested work is complete. <promise>COMPLETE</promise>");
-    } else if (/create a detailed plan/i.test(promptText) || promptText.includes("<promise>PLAN_READY</promise>")) {
-      fragments.push("The plan is ready for review. <promise>PLAN_READY</promise>");
     }
 
     return fragments.join(" ");

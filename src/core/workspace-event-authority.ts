@@ -31,9 +31,6 @@ export function resolveWorkspaceEventAuthority(
     if (type === "subagent.transcript") {
       resource = "subagent";
       id = target["subagentId"];
-    } else if (type.startsWith("task.")) {
-      resource = "task";
-      id = target["taskId"];
     } else if (type.startsWith("chat.")) {
       resource = "chat";
       id = target["chatId"];

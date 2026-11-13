@@ -20,19 +20,15 @@ import {
   isWorkerUpdateJobTerminal,
   type Chat,
   type ExecutionHostDescriptor,
-  type Task,
   type Workspace,
 } from "@/shared";
-import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { ChatDetails } from "../ChatDetails";
-import { TaskDetails } from "../TaskDetails";
 import { TerminalSessionDetails } from "../terminal/terminal-session-details";
 import { OverviewView, WorkspaceView } from "./shell-views";
-import { DraftTaskComposer } from "./shell-composers";
 import { ComposeView, isComposeKind } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ExecutionHostView } from "./execution-host-view";
@@ -52,14 +48,9 @@ import type {
 import { getProvisioningReturnRoute, getRouteString } from "./route-fields";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
-import type {
-  CreateTaskFormActionState,
-} from "../CreateTaskForm";
-import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
-import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
 
 export interface ShellMainContentProps {
   trashActions: ChatTrashActions;
@@ -70,11 +61,9 @@ export interface ShellMainContentProps {
   shellLoading: boolean;
   shellErrors: string[];
   missingRouteTarget: boolean;
-  taskRouteLoading: boolean;
   navigateWithinShell: (route: WebAppRoute) => void;
 
   // Data
-  tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
   pendingControlFileOpen: PendingControlFileOpen | null;
@@ -83,25 +72,19 @@ export interface ShellMainContentProps {
   executionHosts: ExecutionHostDescriptor[];
   executionHostsLoading: boolean;
   executionHostNodes: SidebarExecutionHostNode[];
-  workspaceGroups: WorkspaceGroup[];
+  workspaceGroups: { workspace: Workspace }[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   workspacesLoading: boolean;
   workspacesSaving: boolean;
   workspaceError: string | null;
 
   // Selections
-  selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
 
-  // Task actions
-  refreshTasks: () => Promise<void>;
-  markTaskStarting: (taskId: string, status: "starting" | "planning") => void;
-  clearOptimisticTaskStart: (taskId: string) => void;
   refreshChats: () => Promise<void>;
-  purgeTask: (taskId: string) => Promise<boolean>;
   refreshExecutionHosts: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
   createTerminalSession: (request: import("@/contracts").CreateTerminalSessionRequest) => Promise<import("@/shared").TerminalSession>;
@@ -114,9 +97,6 @@ export interface ShellMainContentProps {
   onSavedAutomationEdit: (automation: import("@/shared").Automation) => void;
 
   // Compose state
-  composeActionState: CreateTaskFormActionState | null;
-  setComposeActionState: (state: CreateTaskFormActionState | null) => void;
-  handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
   startAutomationImport: (workspaceId: string) => void;
   pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
@@ -155,10 +135,6 @@ function getCodeExplorerTarget(route: WebAppRoute): CodeExplorerTarget | undefin
     case "workspace": {
       const workspaceId = getRouteString(route, "workspaceId");
       return workspaceId ? { contentType, workspaceId, startDirectory, filePath } : undefined;
-    }
-    case "task": {
-      const taskId = getRouteString(route, "taskId");
-      return taskId ? { contentType, taskId, startDirectory, filePath } : undefined;
     }
     case "execution-host": {
       const hostKind = getRouteString(route, "hostKind");
@@ -443,7 +419,6 @@ function renderMainContent(props: ShellMainContentProps) {
     route,
     shellLoading,
     navigateWithinShell,
-    tasks,
     chats,
     workspaces,
     terminalSessions,
@@ -453,12 +428,9 @@ function renderMainContent(props: ShellMainContentProps) {
     sidebarWorkspaceGroups,
     workspacesLoading,
     workspaceError,
-    selectedTask,
     selectedChat,
     selectedWorkspace,
-    refreshTasks,
     refreshWorkspaces,
-    purgeTask,
     deleteWorkspace,
     createTerminalSession,
     dashboardData,
@@ -502,91 +474,6 @@ function renderMainContent(props: ShellMainContentProps) {
         defaultBranch={dashboardData.defaultBranch}
         loading={automations.loading}
         error={automations.error}
-      />
-    );
-  }
-
-  if (route.view === "task") {
-    const taskId = getRouteString(route, "taskId");
-    if (!taskId) {
-      return missingRouteParameter(route.view, "taskId");
-    }
-    if (!selectedTask) {
-      return shellLoading ? (
-        <LoadingState title="Loading task" />
-      ) : (
-        <ErrorState
-          title="Task not found"
-          description="The selected task no longer exists. Use the sidebar or home button to continue."
-        />
-      );
-    }
-
-    if (selectedTask.state.status === "draft" && selectedWorkspace?.access !== "read"
-      && workspaces.find((workspace) => workspace.id === selectedTask.config.workspaceId)?.access !== "read") {
-      return (
-        <DraftTaskComposer
-          task={selectedTask}
-          workspaces={workspaces}
-          models={dashboardData.models}
-          modelsLoading={dashboardData.modelsLoading}
-          lastModel={dashboardData.lastModel}
-          lastCheapModel={dashboardData.lastCheapModel}
-          setLastModel={dashboardData.setLastModel}
-          setLastCheapModel={dashboardData.setLastCheapModel}
-          onWorkspaceChange={dashboardData.handleWorkspaceChange}
-          planningWarning={dashboardData.planningWarning}
-          branches={dashboardData.branches}
-          branchesLoading={dashboardData.branchesLoading}
-          branchesWorkspaceId={dashboardData.branchesWorkspaceId}
-          currentBranch={dashboardData.currentBranch}
-          defaultBranch={dashboardData.defaultBranch}
-          workspaceError={workspaceError}
-          workspacesLoading={workspacesLoading}
-          onRefresh={refreshTasks}
-          onDeleteDraft={purgeTask}
-          onMarkTaskStarting={props.markTaskStarting}
-          onClearOptimisticTaskStart={props.clearOptimisticTaskStart}
-          onNavigate={navigateWithinShell}
-        />
-      );
-    }
-
-    return (
-      <TaskDetails
-        key={`task:${taskId}`}
-        taskId={taskId}
-        onMissingEntity={() => navigateWithinShell({ view: "home" })}
-        showActivity={props.activityRoute?.view === "task" && props.activityRoute["taskId"] === taskId}
-        onCloseActivity={props.closeHarnessActivity}
-        onOpenActivity={() => props.openHarnessActivity({ view: "task", taskId })}
-        onBack={() => {
-          navigateWithinShell({ view: "home" });
-          void refreshTasks();
-        }}
-        onSelectTerminalSession={(terminalSessionId) => navigateWithinShell({ view: "terminal", terminalSessionId })}
-      />
-    );
-  }
-
-  if (route.view === "task-files") {
-    const taskId = getRouteString(route, "taskId");
-    if (!taskId) {
-      return missingRouteParameter(route.view, "taskId");
-    }
-    return (
-      <CodeExplorerView
-        routeTarget={{
-          contentType: "task",
-          taskId,
-          startDirectory: getRouteString(route, "startDirectory"),
-        }}
-        tasks={tasks}
-        chats={chats}
-        workspaces={workspaces}
-        terminalSessions={terminalSessions}
-        createTerminalSession={createTerminalSession}
-        onNavigate={navigateWithinShell}
       />
     );
   }
@@ -646,7 +533,6 @@ function renderMainContent(props: ShellMainContentProps) {
         />
       );
     }
-    const relatedTasks = tasks.filter((task) => task.config.workspaceId === selectedWorkspace.id);
     const relatedChats = chats.filter((chat) => chat.config.workspaceId === selectedWorkspace.id);
     const relatedTerminalSessions = terminalSessions.filter(
       (terminal) => terminal.config.workspaceId === selectedWorkspace.id,
@@ -655,7 +541,6 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <WorkspaceView
         workspace={selectedWorkspace}
-        relatedTasks={relatedTasks}
         relatedChats={relatedChats}
         relatedTerminalSessions={relatedTerminalSessions}
         relatedAutomations={relatedAutomations}
@@ -695,7 +580,6 @@ function renderMainContent(props: ShellMainContentProps) {
           workspaceId,
           startDirectory: getRouteString(route, "startDirectory"),
         }}
-        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         terminalSessions={terminalSessions}
@@ -799,7 +683,6 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <CodeExplorerView
         routeTarget={getCodeExplorerTarget(route)}
-        tasks={tasks}
         chats={chats}
         executionHosts={executionHosts}
         workspaces={workspaces}
@@ -892,9 +775,6 @@ function renderMainContent(props: ShellMainContentProps) {
         composeWorkspace={props.composeWorkspace}
         composeExecutionHost={props.composeExecutionHost}
         navigateWithinShell={navigateWithinShell}
-        composeActionState={props.composeActionState}
-        setComposeActionState={props.setComposeActionState}
-        handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
         startAutomationImport={props.startAutomationImport}
         dashboardData={dashboardData}
@@ -932,16 +812,11 @@ function renderMainContent(props: ShellMainContentProps) {
 }
 
 function usesFullViewportLayout(props: ShellMainContentProps): boolean {
-  if (props.route.view === "task") {
-    return props.selectedTask?.state.status !== "draft";
-  }
-
   return props.route.view === "automation-run"
     || props.route.view === "chat"
     || props.route.view === "code-explorer"
     || props.route.view === "scratchpad"
     || props.route.view === "terminal"
-    || props.route.view === "task-files"
     || props.route.view === "workspace-files"
     || props.route.view === "workspace-settings"
     || props.route.view === "execution-host-files";
@@ -967,7 +842,7 @@ export function AppRouteContent(props: ShellMainContentProps) {
   const fullViewport = usesFullViewportLayout(props);
   return (
     <Page layout={fullViewport ? "full" : "padded"}>
-      {readOnly ? <p role="status" className="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{getClankyClientCapabilities().taskExecution ? "Read-only workspace" : "Read-only task"}</p> : null}
+      {readOnly ? <p role="status" className="shrink-0 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Read-only workspace</p> : null}
       <WorkspaceConnectionsNotice />
       {props.shellErrors.length > 0 && (
         <ErrorState
@@ -977,8 +852,6 @@ export function AppRouteContent(props: ShellMainContentProps) {
       )}
       {props.missingRouteTarget ? (
         <LoadingState title="Returning home" />
-      ) : props.taskRouteLoading ? (
-        <LoadingState title="Loading task" />
       ) : fullViewport
         ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">

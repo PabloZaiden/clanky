@@ -30,7 +30,7 @@ phone or browser. The server must trust the provider's TLS certificate.
 Each signed-in user can configure their own endpoints; deployments must account
 for those users being able to connect to services reachable from the server.
 
-Assistant response blocks in chat, task, and automation-run transcripts can be
+Assistant response blocks in chat and automation-run transcripts can be
 translated to English or Spanish. Translation sends the selected block's text
 to the configured, validated shared text-generation model. Clanky returns the
 result to the browser for display in that block only; it does not modify or
@@ -61,7 +61,7 @@ sidebar, including on Home with no chat selected. No workspace agent or native
 adapter is required. Triple-click or triple-tap a non-interactive area of a chat
 transcript to start Live too. This gesture no longer starts Talk.
 
-The assistant can discover your chats, tasks, workspaces, servers and execution
+The assistant can discover your chats, workspaces, servers and execution
 hosts; read their state and content; create and manage work; send or queue
 instructions; answer interactions; and navigate the originating client. Common
 intents are available immediately; uncommon operations discover exact per-method
@@ -82,7 +82,7 @@ authorization and nonvoice human requests.
 Live and its delegated model are instructed to express your requests directly
 to the recipient, not narrate them as "the user asks". For example, "Ask the
 Backend chat to review the timeouts" becomes "Review the timeouts". This applies
-to chat messages, initial messages, task prompts, follow-ups and feedback,
+to chat messages, initial messages and follow-ups,
 preserving your language, intent, details and constraints without adding
 requirements or commitments. Reported speech is reserved for an explicitly
 requested quotation, summary or relay of another person's words. Approval
@@ -153,7 +153,7 @@ without stopping spoken output. If playback is blocked, use its speaker button
 
 The call remains active across in-app navigation in its originating tab. Stop
 releases the physical microphone promptly and closes media and sideband without
-cancelling delegated chat/task work. To stop that work, request its normal
+cancelling delegated chat work. To stop that work, request its normal
 interrupt/stop operation explicitly. Talk and Piper cannot start while global
 Live owns audio. Starting Live stops active summary playback; it reports a
 conflict instead of discarding an ongoing Talk recording or transcription.
@@ -191,7 +191,7 @@ provider session and starts one without its conversation text or remembered work
 references. Audio briefly reconnects, but the browser keeps the same microphone
 capture, audio player and mute state without requesting microphone access again.
 GPT-Live does not support clearing history within an existing provider session.
-The controls stay in their current location; chats/tasks and delegated work are
+The controls stay in their current location; chats and delegated work are
 unaffected. The button is disabled while connecting, changing conversations or
 ending a call. Stop or leaving the page cancels the change without restarting
 the microphone.
@@ -212,19 +212,18 @@ alongside the actual arguments in the same turn; both are frozen together.
 The original API validator, including cross-field requirements, is checked
 before approval is requested; hidden browser-supplied inputs are not model
 arguments. The server rechecks the target before dispatch. The model cannot
-approve the operation or override its arguments after approval. Task creation first
-reads the workspace's effective defaults, connected models and real host
-branches, then applies explicit intent and the browser's saved preferences.
+approve the operation or override its arguments after approval. Chat creation
+resolves the selected workspace or host, effective defaults and connected models.
 
 ### Direct common operations
 
-Twenty-two common intents are available to the textual model before discovery.
+Common intents are available to the textual model before discovery.
 Their names below have the `clanky_` prefix:
 
 | Tool | Useful operation |
 | --- | --- |
-| `recent_work` | Recent chats/tasks by actual activity, with Voice status categories and bounded literal previews. |
-| `waiting_work` | Questions, permissions and ready plans awaiting manual approval, with Voice status categories. |
+| `recent_work` | Recent chats by actual activity, with Voice status categories and bounded literal previews. |
+| `waiting_work` | Questions and permissions needing input, with Voice status categories. |
 | `list_chats` | Filter chats by workspace, exact name or raw status; results include a Voice status category. |
 | `read_chat` | Raw and Voice status, pending interactions and latest or earliest literal conversation. |
 | `send_chat_message` | Send one instruction to a named, identified or selected chat. |
@@ -233,18 +232,11 @@ Their names below have the `clanky_` prefix:
 | `interrupt_chat` | Interrupt active chat work, independently of stopping voice. |
 | `update_chat_lifecycle` | Mark a standalone chat done or move it to recoverable Trash after visual approval. |
 | `respond_chat_interaction` | Answer a specific or uniquely pending question, or decide a permission. |
-| `list_tasks` | Filter tasks, including Voice status, progress and required-intervention reasons. |
-| `read_task` | Raw and Voice status, plus literal conversation, prompt, plan or diff. |
-| `create_task` | Create a draft or planning task with actual defaults and model preferences. |
-| `instruct_task` | Send a follow-up or set the next-iteration prompt, with explicit intent. |
-| `control_task` | Start draft planning or stop execution; not a generic resume command. |
-| `review_task_plan` | Give feedback, accept, or discard the plan **and delete its task**. |
-| `finish_task` | Accept completed work locally or push it, preserving distinct approval policies. |
 | `list_workspaces` | Owned workspace metadata and execution context. |
 | `list_servers` | Local and Mesh hosts, without probing or credentials. |
 | `create_workspace` | Create at an explicit directory on a selected host with an explicit adapter/provider. |
 | `get_ui_state` | Fresh acknowledged route/selection and relevant browser preferences. |
-| `ui_action` | Open a named chat/task/workspace/server/host, or use canonical client actions. |
+| `ui_action` | Open a named chat/workspace/server/host, or use canonical client actions. |
 
 Read/action targets accept an ID, exact name and optional workspace, or
 `current` for the originating client's acknowledged selection. Names are
@@ -256,11 +248,7 @@ uses one `waiting_work` with `kind=all`.
 Voice work results preserve the API's raw `status` and add `voiceStatus` for
 simple spoken categories. Chats map `streaming` and `waiting` to `active`,
 `idle` to `idle`, `done` to `done`, and `starting`, `interrupting`,
-`reconnecting`, `stopped` and `failed` to `error`. Tasks map `planning`,
-`starting`, `running`, `waiting` and `resolving_conflicts` to `active`;
-`idle` and `draft` to `idle`; `completed`, `accepted_local`, `merged`,
-`pushed` and `deleted` to `done`; and `stopped`, `failed` and
-`max_iterations` to `error`. For broad category questions such as “active
+`reconnecting`, `stopped` and `failed` to `error`. For broad category questions such as “active
 chats”, leave the exact raw `status` filter null and use `voiceStatus`; do not
 filter on a made-up raw state such as `working`.
 For hosts, `current` requires an execution-host selection.
@@ -268,8 +256,7 @@ The fresh route's host kind and ID are
 matched against authorized resources, never guessed from a name.
 
 Creation resolves real connected models, branches and effective defaults.
-Task creation also reads fresh browser planning/model preferences; explicit
-overrides include the main and cheap models. Unavailable remembered models
+Unavailable remembered models
 require clarification rather than silent replacement. Workspace creation
 requires the execution host, directory and adapter/provider; cloning,
 provisioning and other uncovered operations use the catalog fallback.
@@ -282,8 +269,8 @@ occupy one mutation queue slot through the navigation acknowledgement. Other
 queued writes wait until the compound action completes or fails. Stages return
 their outcomes, including partial failure; they are never replayed.
 
-The session has **28 tools**: these twenty-two direct intents, the existing
-selective `watch_work`, the four generic list/find/describe/execute tools for
+The session combines these direct intents with the existing
+selective `watch_work`, the generic list/find/describe/execute tools for
 uncovered intents, and the `clanky_accept_goodbye` lifecycle tool.
 For an uncovered intent, call `clanky_list_operations` alone to receive the
 complete authorized compact index in one result, then describe the selected
@@ -311,7 +298,7 @@ standalone chats. Marking done does not interrupt active work; the chat API
 rejects busy or reconnecting chats. Moving a chat to Trash stops active work
 and keeps its history and worktree recoverable for 30 days, but requires the
 originating user's visual approval. This tool cannot set runtime statuses or
-permanently purge chats. Task chats remain task-managed, and automation chats are
+permanently purge chats. Automation chats are
 excluded because their existing delete path is permanent.
 
 `steer_queued_chat_message` operates only on messages already in a chat queue.
@@ -326,7 +313,7 @@ direct request to finish, call `clanky_accept_goodbye` by itself without a
 separate spoken response. Do not call it for an opening greeting or pause; a
 verbal promise to finish is not a substitute for the tool call. After calling
 it, do not use more tools or add speech.
-Delegated chat/task work continues.
+Delegated chat work continues.
 
 Live selects [compact API representations and literal conversation
 pages](API.md#compact-reads-and-literal-conversations) from the same route
@@ -406,6 +393,10 @@ automatically enable capture or bypass the configured log level. Timing logs
 contain no prompts, transcripts, raw arguments/results or credentials.
 
 #### Measured provider experiment before direct intents
+
+The two experiments below predate Task retirement. Their Task/plan-approval
+workloads and catalog sizes are historical measurements, not currently
+available workflows or tools.
 
 On 2026-10-14, an isolated compiled Clanky app exercised four workflows using
 the configured `gpt-6-luna`, actual catalog/tools and synthetic chats/tasks
@@ -533,7 +524,7 @@ An error is not evidence that an earlier mutation did not execute.
 Continuation history is limited to 64 text messages and 7,000 UTF-8 bytes per
 user. The server retains at most 64 recent user conversations; if that capacity
 is reached, the oldest inactive context is discarded. These limits do not
-remove ordinary chat/task data, which Live can read again.
+remove ordinary chat data, which Live can read again.
 
 There is one active call per user, a server capacity of eight calls and a
 limit of ten session openings per minute per endpoint/key. Provider `429`
@@ -631,7 +622,7 @@ streaming, the server uses its current in-memory content. The configured text
 model summarizes that content before Piper returns `audio/wav`.
 
 Saved subagent conversations expose the same bodyless speech action under
-their parent chat/task's subagent message route. The server resolves the
+their parent chat's subagent message route. The server resolves the
 assistant message from that child's saved transcript, never from the parent's
 message collection or caller-supplied text. Parent authority, validated text
 summaries, Piper availability and global browser audio ownership still apply.
@@ -644,7 +635,7 @@ transcription provider.
 `{"text":"<selected message text>","targetLanguage":"en"|"es"}` and returns
 `{"translatedText":"<translation>"}`. It requires the user's validated shared
 text-generation capability, accepts at most 30,000 characters, and does not
-persist or associate the submitted text with a chat, task, or automation run.
+persist or associate the submitted text with a chat or automation run.
 
 ## Upstream voice assets
 

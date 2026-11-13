@@ -11,10 +11,8 @@ import {
   removeSidebarPin,
   getControlApprovalRequired,
   setControlApprovalRequired,
-  getDashboardViewMode as getDashboardViewModeRecord,
   getFileExplorerFullTreeEnabled as getFileExplorerFullTreeEnabledRecord,
   getGithubUsername as getGithubUsernameRecord,
-  getLastCheapModel as getLastCheapModelRecord,
   getLastDirectory as getLastDirectoryRecord,
   getLastModel as getLastModelRecord,
   getMarkdownRenderingEnabled as getMarkdownRenderingEnabledRecord,
@@ -22,10 +20,8 @@ import {
   getQuickChatSettings as getQuickChatSettingsRecord,
   getSchedulerTimezone as getSchedulerTimezoneRecord,
   getWorkerUpdatePreferences as getWorkerUpdatePreferencesRecord,
-  setDashboardViewMode as setDashboardViewModeRecord,
   setFileExplorerFullTreeEnabled as setFileExplorerFullTreeEnabledRecord,
   setGithubUsername as setGithubUsernameRecord,
-  setLastCheapModel as setLastCheapModelRecord,
   setLastDirectory as setLastDirectoryRecord,
   setLastModel as setLastModelRecord,
   setMarkdownRenderingEnabled as setMarkdownRenderingEnabledRecord,
@@ -35,9 +31,8 @@ import {
   rememberWorkerUpdateMode as rememberWorkerUpdateModeRecord,
 } from "../persistence/preferences";
 import type { SidebarPin } from "@pablozaiden/webapp/contracts";
-import type { CheapModelSelection } from "@/contracts/schemas/model";
 import type { PromptTemplate } from "@/shared/prompt-templates";
-import type { DashboardViewMode, QuickChatSettings } from "@/shared/preferences";
+import type { QuickChatSettings } from "@/shared/preferences";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
 import { workspaceConnections } from "./workspace-connections";
@@ -97,14 +92,6 @@ export class PreferencesManager {
     await setLastModelRecord(model);
   }
 
-  async getLastCheapModel(): Promise<CheapModelSelection | undefined> {
-    return await getLastCheapModelRecord();
-  }
-
-  async setLastCheapModel(selection: CheapModelSelection): Promise<void> {
-    await setLastCheapModelRecord(selection);
-  }
-
   async getLastDirectory(): Promise<string | undefined> {
     return await getLastDirectoryRecord();
   }
@@ -135,14 +122,6 @@ export class PreferencesManager {
 
   async setFileExplorerFullTreeEnabled(enabled: boolean): Promise<void> {
     await setFileExplorerFullTreeEnabledRecord(enabled);
-  }
-
-  async getDashboardViewMode(): Promise<DashboardViewMode> {
-    return await getDashboardViewModeRecord();
-  }
-
-  async setDashboardViewMode(mode: DashboardViewMode): Promise<void> {
-    await setDashboardViewModeRecord(mode);
   }
 
   async getQuickChatSettings(): Promise<QuickChatSettings> {

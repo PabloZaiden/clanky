@@ -1,5 +1,5 @@
 /**
- * Workspace API endpoints for Clanky Tasks Management System.
+ * Workspace API endpoints for Clanky.
  *
  * @module api/workspaces
  */

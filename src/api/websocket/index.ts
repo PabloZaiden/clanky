@@ -1,5 +1,5 @@
 /**
- * WebSocket handlers for Clanky Tasks Management System.
+ * WebSocket handlers for Clanky.
  *
  * Supports raw websocket surfaces:
  * - WS /api/terminal for canonical terminal streams

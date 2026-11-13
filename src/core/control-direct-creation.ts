@@ -3,15 +3,12 @@
  */
 import { z } from "zod";
 import { DomainError } from "../domain/domain-error";
-import { CreateTaskRequestSchema } from "@/contracts/schemas/task";
 import { CreateChatRequestSchema } from "@/contracts/schemas/chat";
 import { CreateWorkspaceRequestSchema, AgentProviderSchema } from "@/contracts/schemas/workspace";
-import { ModelConfigSchema, CheapModelSelectionSchema, type ModelConfig } from "@/contracts/schemas/model";
-import { TaskCreationContextResponseSchema } from "@/contracts/schemas/task-creation-context";
+import { ModelConfigSchema, type ModelConfig } from "@/contracts/schemas/model";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
-import { getTaskCreationDefaults, resolveTaskCreationModel, resolveTaskCreationCheapModel } from "@/shared/task-creation";
 import type { DirectToolInput } from "./control-tool-contracts";
 import { directRecord, ControlToolContext } from "./control-tool-context";
 import type { OperationResult } from "./clanky-operation-service";
@@ -19,18 +16,15 @@ import type { ConfirmedWriteExecutor } from "./control-actions";
 import { createLogger } from "@pablozaiden/webapp/server";
 
 const log = createLogger("core:voice-direct-creation");
-const ModelsSchema = TaskCreationContextResponseSchema.shape.models.shape.available;
+const ModelsSchema = z.array(z.object({
+  providerID: z.string(),
+  providerName: z.string(),
+  modelID: z.string(),
+  modelName: z.string(),
+  connected: z.boolean(),
+  variants: z.array(z.string()).optional(),
+}));
 type Models = z.infer<typeof ModelsSchema>;
-
-function savedPreference<T>(schema: z.ZodType<T>, raw: string | null | undefined): T | null {
-  if (!raw) return null;
-  let value: unknown;
-  try { value = JSON.parse(raw); }
-  catch (cause) { throw new DomainError("voice_saved_preference_invalid", "The saved browser model preference is invalid; select a model explicitly.", { cause }); }
-  const result = schema.safeParse(value);
-  if (!result.success) throw new DomainError("voice_saved_preference_invalid", "The saved browser model preference is invalid; select a model explicitly.");
-  return result.data;
-}
 
 function requireAvailable(models: Models, preference: ModelConfig | null): void {
   if (!preference) return;
@@ -44,50 +38,15 @@ function requireAvailable(models: Models, preference: ModelConfig | null): void 
 
 function chooseModel(models: Models, preference: ModelConfig | null): ModelConfig {
   requireAvailable(models, preference);
-  const model = resolveTaskCreationModel({ models, initialModel: preference });
+  const model = preference
+    ? models.find((entry) => entry.providerID === preference.providerID && entry.modelID === preference.modelID && entry.connected)
+    : models.find((entry) => entry.connected);
   if (!model) throw new DomainError("voice_model_required", "No connected model is available for this target.");
-  return model;
-}
-
-export async function directCreateTask(context: ControlToolContext, input: DirectToolInput<"clanky_create_task">): Promise<unknown> {
-  const workspaceTarget = input.workspace ?? context.options.origin?.workspaceId;
-  if (!workspaceTarget) throw new DomainError("voice_workspace_required", "Choose a workspace for the task.");
-  const workspaceId = String((await context.resolve("workspace", workspaceTarget))["id"]);
-  const [ui, creation] = await Promise.all([
-    context.creationPreferences(),
-    context.readExact("GET /api/workspaces/:id/task-creation-context", { id: workspaceId }),
-  ]);
-  const available = TaskCreationContextResponseSchema.parse(creation);
-  const models = available.models.available;
-  const preference = input.model ?? savedPreference(ModelConfigSchema, ui.modelPreferences?.taskModelJson) ?? available.models.lastModel;
-  const cheapPreference = input.cheapModel ?? savedPreference(CheapModelSelectionSchema, ui.modelPreferences?.cheapModelJson) ?? available.models.lastCheapModel;
-  requireAvailable(models, cheapPreference?.mode === "custom" ? cheapPreference.model : null);
-  const model = chooseModel(models, preference);
-  const cheapModel = resolveTaskCreationCheapModel({ models, initialCheapModel: cheapPreference });
-  const baseBranch = input.baseBranch ?? available.defaults.baseBranch;
-  if (!baseBranch || !available.git.branches.some((branch) => branch.name === baseBranch)) {
-    throw new DomainError("voice_branch_required", "Choose an existing branch on the workspace host.", {
-      details: { branches: available.git.branches.slice(0, 12).map(({ name }) => name) },
-    });
-  }
-  const unresolved = available.requirements.filter((requirement) =>
-    !["task_base_branch_required", "task_model_required", "task_model_unavailable", "task_cheap_model_unavailable"].includes(requirement.code),
-  );
-  if (unresolved.length) throw new DomainError("voice_creation_not_ready", "The selected workspace is not ready to create tasks.", { details: { requirements: unresolved } });
-  if (input.useWorktree === true && !available.capabilities.worktrees) {
-    throw new DomainError("voice_worktree_unavailable", "Worktrees are disabled for this workspace.");
-  }
-  const defaults = getTaskCreationDefaults({
-    initial: available.defaults, planningPreferences: ui.planningPreferences,
-    worktreesAllowed: available.capabilities.worktrees,
-  });
-  const body = CreateTaskRequestSchema.parse({
-    ...defaults, name: input.name, prompt: input.prompt, workspaceId, model, cheapModel, baseBranch,
-    attachments: [], draft: input.draft, useWorktree: input.useWorktree ?? defaults.useWorktree,
-    autoAcceptPlan: input.autoAcceptPlan ?? defaults.autoAcceptPlan,
-    fullyAutonomous: input.fullyAutonomous ?? defaults.fullyAutonomous,
-  });
-  return await context.execute({ operationId: "POST /api/tasks", body, confirmationDescription: input.confirmationDescription });
+  return {
+    providerID: model.providerID,
+    modelID: model.modelID,
+    variant: preference?.variant || model.variants?.[0] || "",
+  };
 }
 
 async function afterChatCreation(options: {
@@ -154,14 +113,17 @@ export async function directCreateChat(context: ControlToolContext, input: Direc
     const useWorktree = input.useWorktree ?? (worktreesAllowed && DEFAULT_CHAT_CONFIG.useWorktree);
     let baseBranch = input.baseBranch;
     if (useWorktree) {
-      const creation = TaskCreationContextResponseSchema.parse(await context.readExact("GET /api/workspaces/:id/task-creation-context", { id: workspaceId }));
-      baseBranch ??= creation.defaults.baseBranch;
-      if (!baseBranch || !creation.git.branches.some((branch) => branch.name === baseBranch)) {
+      const branches = z.object({
+        currentBranch: z.string(),
+        branches: z.array(z.object({ name: z.string() })),
+      }).parse(await context.readExact("GET /api/git/branches", {}, { query: { workspaceId } }));
+      baseBranch ??= branches.currentBranch || null;
+      if (!baseBranch || !branches.branches.some((branch) => branch.name === baseBranch)) {
         throw new DomainError("voice_branch_required", "Choose a valid branch on the workspace host.");
       }
     }
     body = CreateChatRequestSchema.parse({
-      workspaceId, model, useWorktree, ...(input.name ? { name: input.name } : {}),
+      workspaceId, model, useWorktree, startWithPlan: input.startWithPlan, ...(input.name ? { name: input.name } : {}),
       ...(baseBranch ? { baseBranch } : {}), ...(input.directory ? { directory: input.directory } : {}),
     });
   } else {
@@ -177,7 +139,7 @@ export async function directCreateChat(context: ControlToolContext, input: Direc
     const models = ModelsSchema.parse(await context.readExact("POST /api/execution-hosts/:kind/:id/chat-models", parameters, {
       body: { providerID, directory: input.directory },
     }));
-    body = { directory: input.directory, model: chooseModel(models, preference), ...(input.name ? { name: input.name } : {}) };
+    body = { directory: input.directory, model: chooseModel(models, preference), startWithPlan: input.startWithPlan, ...(input.name ? { name: input.name } : {}) };
     operationId = "POST /api/execution-hosts/:kind/:id/chats";
   }
   const compound = Boolean(input.initialMessage || input.open);

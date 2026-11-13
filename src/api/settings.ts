@@ -4,7 +4,7 @@ import {
   RestartAutomaticWorkspacesResponseSchema,
 } from "@/contracts/schemas";
 /**
- * Settings API endpoints for Clanky Tasks Management System.
+ * Settings API endpoints for Clanky.
  * 
  * This module provides endpoints for:
  * - Starting restart jobs for automatic workspaces
@@ -94,7 +94,7 @@ export const settingsRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Reset all persisted settings and recreate the database.",
     operations: {
-      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes all tasks, chats, workspaces, settings, and credentials." } },
+      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes all chats, workspaces, settings, and credentials." } },
     },
     /**
      * POST /api/settings/reset-all - Delete database and reinitialize.
@@ -104,7 +104,7 @@ export const settingsRoutes = defineRoutes({
      * 2. Deletes the database file
      * 3. Recreates the database with all migrations applied
      * 
-     * All tasks, sessions, workspaces, and preferences will be permanently deleted.
+     * All chats, sessions, workspaces, and preferences will be permanently deleted.
      * 
      * @returns Success response with message
      */
@@ -136,48 +136,4 @@ export const settingsRoutes = defineRoutes({
     },
   },
 
-  "/api/settings/purge-terminal-tasks": {
-    auth: "owner",
-    sameOrigin: "mutations",
-    description: "Purge terminal-state tasks across all workspaces.",
-    operations: {
-      POST: { requestSchema: undefined, querySchema: undefined, automation: { policy: "confirm", reason: "Permanently deletes eligible tasks across every workspace.", completion: "admission" } },
-    },
-    /**
-     * POST /api/settings/purge-terminal-tasks - Purge terminal-state tasks across all workspaces.
-     *
-     * This is a DESTRUCTIVE operation that permanently deletes tasks in terminal states
-     * while leaving workspaces, sessions, and preferences intact.
-     */
-    async POST(_req: Request, ctx: RouteContext): Promise<Response> {
-       ctx.server?.timeout(_req, 0);
-       log.warn("POST /api/settings/purge-terminal-tasks - Purging terminal-state tasks across all workspaces");
-
-      try {
-        const result = await settingsMaintenanceService.purgeTerminalTasks();
-        log.info("POST /api/settings/purge-terminal-tasks - Completed", {
-          workspaceCount: result.totalWorkspaces,
-          totalArchived: result.totalArchived,
-          purgedCount: result.purgedCount,
-          failureCount: result.failures.length,
-        });
-
-        return successResponse({ ...result });
-      } catch (error) {
-        if (isDomainError(error) && error.code === "purge_terminal_tasks_failed") {
-          return internalErrorResponse(error, {
-            error: "purge_terminal_tasks_failed",
-            message: "Failed to purge terminal-state tasks",
-            status: 500,
-          }, undefined, "settings");
-        }
-        log.error("Failed to purge terminal-state tasks across all workspaces", { error: String(error) });
-        return internalErrorResponse(error, {
-          error: "purge_terminal_tasks_failed",
-          message: "Failed to purge terminal-state tasks",
-          status: 500,
-        });
-      }
-    },
-  },
 });

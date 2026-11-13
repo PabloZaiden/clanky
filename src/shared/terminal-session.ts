@@ -47,8 +47,6 @@ export interface TerminalSessionConfig {
   name: string;
   /** Workspace that owns this session, absent for direct host sessions */
   workspaceId?: string;
-  /** Optional task associated with this session */
-  taskId?: string;
   /** Working directory for the terminal shell */
   directory: string;
   /** How this session connects (dtach or direct) */

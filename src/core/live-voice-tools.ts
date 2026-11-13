@@ -27,7 +27,7 @@ const schemas = {
   clanky_watch_work: z.object({
     command: z.enum(["add", "remove", "list"]),
     targets: z.array(z.object({
-      kind: z.enum(["chat", "task", "provisioning"]),
+      kind: z.enum(["chat", "provisioning"]),
       id: z.string().min(1).max(500),
     }).strict()).max(16),
   }).strict(),
@@ -37,7 +37,7 @@ const schemas = {
 const descriptions: Record<keyof typeof schemas, string> = {
   ...controlToolDescriptions,
   ...controlUiToolDescriptions,
-  clanky_watch_work: "Watch selected owned chats/tasks/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
+  clanky_watch_work: "Watch selected owned chats/provisioning jobs for meaningful state changes. Ending voice stops watching, not the work.",
   clanky_accept_goodbye: LIVE_VOICE_GOODBYE_TOOL_GUIDANCE,
 };
 

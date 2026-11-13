@@ -103,7 +103,7 @@ export function withWorkspaceAccess<T>(
 }
 
 export function recordCollaborationCreator(
-  kind: "chat" | "task",
+  kind: "chat",
   resourceId: string,
   workspaceId: string,
 ): CollaborationAuthorship {
@@ -130,7 +130,7 @@ export function recordCollaborationCreator(
 }
 
 export function getCollaborationCreator(
-  kind: "chat" | "task",
+  kind: "chat",
   resourceId: string,
   workspaceId: string,
 ): CollaborationAuthorship | undefined {

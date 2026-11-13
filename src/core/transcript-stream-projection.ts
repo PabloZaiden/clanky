@@ -2,7 +2,7 @@ import type {
   MessageData,
   PersistedMessage,
   PersistedToolCall,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallExtra,
   StreamPosition,
 } from "@/shared";
@@ -13,7 +13,7 @@ import { StreamVersion } from "./stream-version";
 
 export interface TranscriptStreamState {
   messages: PersistedMessage[];
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   toolCalls: PersistedToolCall[];
 }
 
@@ -29,7 +29,7 @@ export interface TranscriptStreamProjectionLimits {
 }
 
 /**
- * Shared in-memory transcript projection for task and automation-run streams.
+ * Shared in-memory transcript projection for conversation and automation-run streams.
  *
  * Domain owners still decide when to persist and how to publish state. This
  * class owns only indexed collections, eviction, and incremental change
@@ -39,7 +39,7 @@ export class TranscriptStreamProjection {
   readonly changes = new TranscriptChangeTracker();
   readonly version = new StreamVersion();
   private messageMemory: TranscriptMemoryIndex<PersistedMessage>;
-  private logMemory: TranscriptMemoryIndex<TaskLogEntry>;
+  private logMemory: TranscriptMemoryIndex<ConversationLogEntry>;
   private toolMemory: TranscriptMemoryIndex<PersistedToolCall>;
   private readonly limits: TranscriptStreamProjectionLimits;
 
@@ -71,7 +71,7 @@ export class TranscriptStreamProjection {
     return this.messageMemory.values;
   }
 
-  get logs(): TaskLogEntry[] {
+  get logs(): ConversationLogEntry[] {
     return this.logMemory.values;
   }
 
@@ -83,7 +83,7 @@ export class TranscriptStreamProjection {
     return this.messageMemory.get(id);
   }
 
-  getLog(id: string): TaskLogEntry | undefined {
+  getLog(id: string): ConversationLogEntry | undefined {
     return this.logMemory.get(id);
   }
 
@@ -108,7 +108,7 @@ export class TranscriptStreamProjection {
     }
   }
 
-  upsertLog(entry: TaskLogEntry): void {
+  upsertLog(entry: ConversationLogEntry): void {
     const { evicted } = this.logMemory.upsert(entry);
     this.recordEvictions("log", evicted);
     if (this.logMemory.has(entry.id)) {

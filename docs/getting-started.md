@@ -1,6 +1,6 @@
 # Getting started
 
-This guide takes you from an installed Clanky binary to a first task.
+This guide takes you from an installed Clanky binary to a first conversation.
 
 ## Requirements
 
@@ -62,8 +62,8 @@ After authentication, discover and call endpoints with:
 
 ```bash
 clanky api
-clanky schema tasks
-clanky api tasks --method GET
+clanky schema chats
+clanky api chats --method GET
 clanky ws
 ```
 
@@ -78,38 +78,57 @@ logs.
 2. Create a workspace and select its repository, host and harness adapter.
    ACP additionally selects a known harness preset.
 3. Wait for the workspace to become ready.
-4. Open a chat for interactive work, or create a task for an autonomous run.
+4. Open a chat for interactive work, optionally selecting **Start with a plan**.
 
 Automatic Devbox workspaces use a dedicated Mesh worker by default. If you
 need a remote host, a worker, or a relay, start with the
 [Mesh worker guide](mesh-worker.md).
 
-## Run and review a task
+## Plan and implement in one chat
 
-Chat composition and task creation share your personal prompt templates. The
+Chat composition offers your personal prompt templates. The
 upgrade copies the existing **Start a PR with automerge** and **Start a PR**
 templates once to users who already exist; new users start with an empty list.
 Manage your templates in **Settings → Content → Templates**. Selecting a
 template fills the composer; review or edit the message before sending it.
 
-Write the task prompt and choose the model and variant. Plan mode lets you
-review a generated plan before code changes begin. During and after execution
-you can inspect logs, the diff, and the task state.
+Choose the model and variant, then write your requirements in the normal
+composer. **Start with a plan** adds guidance only to that first message:
+investigate, ask questions, write `.clanky-planning/plan.md` and `status.md`,
+and wait for your instruction before implementation. This is guidance, not a
+technical filesystem restriction. Later discussion, plan revisions and the
+instruction to implement are ordinary messages, without approval buttons or
+an automatic implementation transition.
 
-Image previews from supported image-reading tools appear directly in chat, task,
-and automation conversations, with the filename below the image. Select an image to
+Open **Plan** in the chat's top-right menu to read the plan followed by
+**Status**, the agent's progress, remaining work and blockers. The same composer
+stays visible below the documents on desktop and mobile. Switching back to the
+conversation preserves your draft and attachments; the files remain accessible
+during implementation, even in chats not started with planning.
+Use **Back to chat** beside **Created by** above Plan or Diff content to return
+to the messages without changing conversations or adding a separate title row.
+
+**Diff**, beside **Activity**, shows committed branch changes and pending
+changes, including new files. Individual patches load only when you expand a
+file; new-file line counts appear after opening it. Repository details live in
+the composer options panel containing
+**Usage**: the actual branch and an existing open PR link, when lookup is available. These are passive
+reads; Git changes, publication and review remain ordinary agent instructions
+or your own tools.
+
+Image previews from supported image-reading tools appear directly in chat and automation conversations, with the filename below the image. Select an image to
 open the full-size viewer. Images stay visible between independently collapsible
 tool or thinking groups, including when reopening or loading older conversation
 history. These image entries replace the tool's technical disclosure in the
 transcript; calls without a valid preview keep their ordinary tool details.
 
-Active thinking and tool-activity labels in chat and task transcripts use a
+Active thinking and tool-activity labels in chat transcripts use a
 dot and a gentle breathing effect across the whole label. Active text uses
 contrasting colors and stays at or above 50% opacity throughout the pulse.
 Completed activity keeps its static, muted styling. The effect is disabled
 when your system requests reduced motion.
 
-When the browser tab is hidden, chat, task, and automation transcripts defer grouping
+When the browser tab is hidden, chat and automation transcripts defer grouping
 and rendering new content, pause the activity animation, and stop automatic
 scrolling. Event reception and data updates continue. Returning to the tab
 reopens realtime subscriptions and recovers the current state without a page
@@ -119,8 +138,7 @@ Unchanged message rows are reused during streaming and transcript refreshes,
 and unchanged Markdown is not reparsed for playback or local UI updates.
 Content changes, display preferences, and message actions still update normally.
 
-Messages longer than 100,000 characters initially show a preview in chat, task,
-and automation conversations. Select **Show full message** beside the character count
+Messages longer than 100,000 characters initially show a preview in chat and automation conversations. Select **Show full message** beside the character count
 to display that message in full; opening a very large message may briefly pause
 the browser. Shorter messages and attachments are unchanged. This display limit
 does not shorten saved messages, API responses, transcript exports, or the text
@@ -155,13 +173,13 @@ metadata. New views and explicit chat creation can still load initial state.
 Open chats keep their transcript live without republishing operational state
 solely because an activity timestamp or revision advanced.
 
-Chat, task, and automation transcripts publish streamed text, reasoning, and tool
+Chat and automation transcripts publish streamed text, reasoning, and tool
 extras to React as their events arrive, without an app-owned batching timer.
 Complete messages, interactions, status changes, and explicit transcript loads
 also publish immediately. Snapshot refresh coalescing and gap recovery remain
 independent of streamed delta delivery.
 
-New assistant prose in chats, including embedded task chats, uses a brief
+New assistant prose in chats uses a brief
 opacity and light-blur reveal as streamed fragments arrive. It does not queue
 or delay text delivery, animate user messages, or replay loaded history.
 Code blocks, tables, diagrams, and explicit links keep their normal rendering.
@@ -170,20 +188,11 @@ the system requests reduced motion.
 Each arriving fragment finishes its 400 ms reveal while subsequent fragments
 arrive; new text does not cancel or restart the preceding fragment's fade.
 
-Automation, chat, and task status text and transcript activity summaries use a brief
+Automation and chat status text and transcript activity summaries use a brief
 fade, light blur, and small vertical movement when their actual state changes.
 The latest status is shown immediately, without queuing previous labels or
 simulating progress. Initial rendering, hidden-tab updates, and reduced-motion
 preferences do not trigger the transition.
-
-When the result is ready:
-
-- accept it locally when you want to keep the worktree without pushing;
-- push it when the branch is ready for review;
-- discard it when the changes should not be kept.
-
-Completed or accepted work can receive follow-up prompts and review comments.
-The dashboard exposes these actions from the task view.
 
 Dashboard **History** uses the same detailed rows as **Active Work**: workspace
 identity or server name, status, time since the last interaction, and item type.
@@ -194,8 +203,8 @@ and re-blurs in 0.5 seconds when the pointer leaves. **Show private items**
 reveals them immediately.
 
 In Dashboard **Resources**, each workspace's **sessions** count includes its
-tasks and standalone chats, including history. Embedded task and automation chats
-are not counted again; terminal sessions remain separate.
+standalone chats, including history. Automation conversations are not counted
+again; terminal sessions remain separate.
 
 ## Manage files in Code Explorer
 
@@ -252,5 +261,5 @@ the original Mermaid code. Raw HTML and diagram click callbacks are not enabled.
 
 - [Deploy Clanky with Docker or a reverse proxy](deployment.md)
 - [Configure a Mesh worker or relay](mesh-worker.md)
-- [Automate tasks and workspaces](API.md)
+- [Automate conversations and workspaces](API.md)
 - [Run and test Clanky from source](development.md)

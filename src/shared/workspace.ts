@@ -1,8 +1,8 @@
 /**
- * Workspace type definitions for Clanky Tasks Management System.
+ * Workspace type definitions for Clanky.
  * 
  * Workspaces are identified by UUID and provide the execution context for
- * Clanky Tasks. Their directory is the location where workspace operations run.
+ * Clanky. Their directory is the location where workspace operations run.
  * 
  * Request types for validated endpoints are derived from Zod schemas,
  * making the schemas the single source of truth for both runtime validation
@@ -27,7 +27,7 @@ export interface WorkspaceIconMetadata {
 }
 
 /**
- * A workspace represents a user-selected execution context for Clanky Tasks.
+ * A workspace represents a user-selected execution context for Clanky.
  *
  * Workspaces are selected by ID; the directory is an execution location and
  * does not identify the workspace.
@@ -44,7 +44,7 @@ export interface Workspace {
   directory: string;
   /** Workspace-scoped Markdown notes */
   scratchpad: string;
-  /** Whether the workspace exposes Git-backed task and branch capabilities */
+  /** Whether the workspace exposes Git branch capabilities */
   workspaceType: WorkspaceType;
   /** Whether new worktree-backed execution contexts may be created */
   allowWorktrees?: boolean;

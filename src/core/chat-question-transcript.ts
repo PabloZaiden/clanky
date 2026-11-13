@@ -2,7 +2,7 @@
  * Restores answer originals before projecting metadata-only question updates.
  */
 
-import type { PersistedMessage } from "@/shared/task";
+import type { PersistedMessage } from "@/shared/conversation";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import { projectQuestionMessages } from "@/shared/question-transcript";
 import { HarnessError } from "../backends/harness-errors";

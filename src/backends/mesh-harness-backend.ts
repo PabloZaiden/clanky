@@ -195,7 +195,7 @@ export class MeshHarnessBackend implements Backend {
 
   private requireQuestionPolicy(policy: HarnessConversationBinding["questionPolicy"]): void {
     if (policy && this.capabilities.questionPolicy !== "session") {
-      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support interactive chat and unattended task question policies.");
+      throw new HarnessError("harness_unsupported_feature", "Update the Mesh worker to support interactive and unattended conversation question policies.");
     }
   }
 

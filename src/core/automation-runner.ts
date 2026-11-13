@@ -15,7 +15,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { automationEventEmitter, chatEventEmitter } from "./event-emitter";
 import { executeDeterministicAutomation } from "./deterministic-automation-runtime";
 import { DeterministicAutomationOutput } from "./deterministic-automation-output";
-import { MAX_PERSISTED_LOGS } from "./engine/engine-types";
+import { MAX_PERSISTED_LOGS } from "./conversation-limits";
 import { AutomationRunStreamPersistence } from "./automation-run-stream-persistence";
 import { getWorkspace } from "../persistence/workspaces";
 import { assertWorktreesAllowed } from "./workspace-capabilities";

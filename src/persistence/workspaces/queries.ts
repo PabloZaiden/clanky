@@ -51,21 +51,7 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 }
 
 /**
- * Get the count of tasks for a workspace.
- */
-export async function getWorkspaceTaskCount(workspaceId: string): Promise<number> {
-  log.debug("Getting workspace task count", { workspaceId });
-  const db = getDatabase();
-  const userId = requireResourcePersistenceUserId("workspace", workspaceId, workspaceId);
-  const stmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ? AND user_id = ?");
-  const row = stmt.get(workspaceId, userId) as { count: number };
-  log.debug("Workspace task count retrieved", { workspaceId, count: row.count });
-  return row.count;
-}
-
-/**
  * Touch a workspace to update its updated_at timestamp.
- * Called when a task is created in this workspace.
  */
 export async function touchWorkspace(id: string): Promise<void> {
   log.debug("Touching workspace", { id });

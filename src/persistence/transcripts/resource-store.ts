@@ -1,14 +1,14 @@
 /**
  * Resource-fixed transcript adapters over the shared SQL implementation.
  *
- * Callers select chat, task, or automation-run at this boundary so SQL remains
+ * Callers select the conversation resource at this boundary so SQL remains
  * shared without making resource identifiers part of higher-level contracts.
  */
 import type { Database } from "bun:sqlite";
 import type {
   ChatTranscriptStorageEntry,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallRecord,
   TranscriptChangeSet,
   TranscriptSnapshotOptions,
@@ -51,18 +51,18 @@ export interface TranscriptResourceStore {
     resourceId: string,
     userId: string,
     state: TranscriptStateLike,
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
   ): void;
   replaceForUser(
     resourceId: string,
     userId: string,
     state: TranscriptStateLike,
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
   ): void;
   replace(
     resourceId: string,
     state: TranscriptStateLike,
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
   ): void;
   syncInTransaction(
     db: Database,
@@ -70,13 +70,13 @@ export interface TranscriptResourceStore {
     userId: string,
     previousState: TranscriptStateLike,
     nextState: TranscriptStateLike,
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
   ): void;
   sync(
     resourceId: string,
     previousState: TranscriptStateLike,
     nextState: TranscriptStateLike,
-    shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+    shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
   ): void;
   applyChangeSetInTransaction(
     db: Database,

@@ -21,9 +21,7 @@ export interface AttachmentLocation {
 export function assertAttachmentContextActive(context: AttachmentContext): void {
   const db = getDatabase();
   const userId = requireResourcePersistenceUserId(context.kind, context.id);
-  const row = context.kind === "chat"
-    ? db.query("SELECT id FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(context.id, userId)
-    : db.query("SELECT id FROM tasks WHERE id = ? AND user_id = ? AND status != 'deleted'").get(context.id, userId);
+  const row = db.query("SELECT id FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(context.id, userId);
   if (!row) {
     throw new DomainError("attachment_context_unavailable", "The attachment conversation is no longer available.");
   }

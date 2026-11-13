@@ -23,10 +23,6 @@ import {
   type ChatSidebarContext,
 } from "./shell-sidebar-chat";
 import {
-  createTaskSidebarNode,
-  type TaskSidebarContext,
-} from "./shell-sidebar-task";
-import {
   createTerminalSessionSidebarNode,
   type TerminalSessionSidebarContext,
 } from "./shell-sidebar-terminal-session";
@@ -40,7 +36,6 @@ export interface WorkspaceSidebarContext {
 export interface WorkspaceSidebarBuilderContext {
   workspace: WorkspaceSidebarContext;
   chat: ChatSidebarContext;
-  task: TaskSidebarContext;
   terminal: TerminalSessionSidebarContext;
 }
 
@@ -50,7 +45,6 @@ function getWorkspaceSidebarActions(
 ): ActionMenuItem[] {
   const capabilities = getClankyClientCapabilities();
   const workspaceId = workspaceNode.workspace.id;
-  const isGitBacked = workspaceNode.workspace.workspaceType === "git";
   const actions = sidebarActionItems([
       {
         id: "new-chat",
@@ -61,16 +55,6 @@ function getWorkspaceSidebarActions(
           scopeId: workspaceId,
         }),
       },
-      ...(isGitBacked ? [{
-          id: "new-task",
-          label: "New Task",
-          disabled: !capabilities.taskExecution,
-          onClick: () => context.navigateWithinShell({
-            view: "compose",
-            kind: "task",
-            scopeId: workspaceId,
-          }),
-        }] : []),
       {
         id: "new-terminal-session",
         label: "New Terminal",
@@ -157,26 +141,6 @@ export function createWorkspaceSidebarNode(
   );
   const isGitBacked = workspaceNode.workspace.workspaceType === "git";
   const children = sortSidebarNodesByActivity([
-    ...(isGitBacked ? [...workspaceNode.tasks, ...workspaceNode.historyTasks].map((taskNode) => ({
-      lastActivityAt: getWorkItemLastInteractionAt(taskNode.task),
-      node: createTaskSidebarNode({
-        task: taskNode.task,
-        id: `task:${taskNode.task.config.id}`,
-        pinId: `task:${taskNode.task.config.id}`,
-        title: taskNode.title,
-        subtitle: workspaceNode.workspace.name,
-        badge: taskNode.badge,
-        badgeVariant: taskNode.badgeVariant,
-        badgeAppearance: "text",
-        itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem(
-          "Task",
-          getWorkItemLastInteractionAt(taskNode.task),
-          workspaceNode.workspace,
-        ),
-        ancestors: [workspaceNode.workspace],
-      }, context.task),
-    })) : []),
     ...[...workspaceNode.chats, ...workspaceNode.historyChats].map((chatNode) => ({
       lastActivityAt: getWorkItemLastInteractionAt(chatNode.chat),
       node: createChatSidebarNode({

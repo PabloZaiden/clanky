@@ -7,7 +7,6 @@ import { createLogger, useToast } from "@pablozaiden/webapp/web";
 import { type WebAppConfigState } from "@/platform/web/webapp-config";
 import { apiRequest } from "../../lib/api-client";
 import { isBrowserCollaborationClient } from "@/client-sdk/browser-runtime";
-import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
 const log = createLogger("useAppConfig");
 
@@ -15,9 +14,7 @@ export interface UseAppConfigResult {
   remoteOnly: boolean;
   version: string | null;
   appSettingsResetting: boolean;
-  appSettingsPurgingTerminalTasks: boolean;
   resetAllSettings: () => Promise<boolean>;
-  purgeTerminalTasks: () => Promise<PurgeTerminalTasksResult | null>;
 }
 
 export function useAppConfig(config: WebAppConfigState["config"]): UseAppConfigResult {
@@ -26,7 +23,6 @@ export function useAppConfig(config: WebAppConfigState["config"]): UseAppConfigR
   const remoteOnly = isBrowserCollaborationClient() || Boolean(config && "remoteOnly" in config && config.remoteOnly === true);
   const version = config?.version ?? null;
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
-  const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
 
   const resetAllSettings = useCallback(async () => {
     setAppSettingsResetting(true);
@@ -46,25 +42,10 @@ export function useAppConfig(config: WebAppConfigState["config"]): UseAppConfigR
     }
   }, [toast]);
 
-  const purgeTerminalTasks = useCallback(async (): Promise<PurgeTerminalTasksResult | null> => {
-    setAppSettingsPurgingTerminalTasks(true);
-    try {
-      return await purgeTerminalTasksApi();
-    } catch (error) {
-      log.error("Failed to purge terminal-state tasks:", error);
-      toast.error("Failed to purge terminal-state tasks");
-      return null;
-    } finally {
-      setAppSettingsPurgingTerminalTasks(false);
-    }
-  }, [toast]);
-
   return {
     remoteOnly,
     version,
     appSettingsResetting,
-    appSettingsPurgingTerminalTasks,
     resetAllSettings,
-    purgeTerminalTasks,
   };
 }

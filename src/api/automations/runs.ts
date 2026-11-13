@@ -8,7 +8,7 @@ import { defineRoutes } from "@/platform/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { AutomationRun, AutomationRunStatus } from "@/shared/automation";
 import type { DeterministicAutomationTestResult, DeterministicAutomationTestStreamEvent } from "@/shared/deterministic-automation";
-import type { TaskLogEntry } from "@/shared/task";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import type { Workspace } from "@/shared/workspace";
 import { AutomationRunsQuerySchema, DeleteAutomationRunsRequestSchema, RunAutomationRequestSchema, TestAutomationCodeRequestSchema } from "@/contracts/schemas";
 import type { TestAutomationCodeRequest } from "@/contracts/schemas";
@@ -92,7 +92,7 @@ function testOptionsFromPrepared(
   options: {
     signal?: AbortSignal;
     userId?: string;
-    onOutput?: (entry: TaskLogEntry) => void;
+    onOutput?: (entry: ConversationLogEntry) => void;
   } = {},
 ) {
   const { body, workspace } = prepared;

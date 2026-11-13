@@ -8,7 +8,7 @@ import type { Workspace } from "@/shared";
 import { formatSidebarRelativeTime } from "../../utils";
 import { ProviderIcon, WorkspaceIdentity } from "../common";
 
-export type ActiveWorkSidebarItemType = "Task" | "Chat" | "Terminal";
+export type ActiveWorkSidebarItemType = "Chat" | "Terminal";
 
 const ACTIVE_WORK_CLOCK_INTERVAL_MS = 60_000;
 const activeWorkClockSubscribers = new Set<() => void>();

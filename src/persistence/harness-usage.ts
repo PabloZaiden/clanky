@@ -18,8 +18,7 @@ import { isDeepStrictEqual } from "node:util";
 const log = createLogger("persistence:harness-usage");
 
 interface UsageRow {
-  chat_id: string | null;
-  task_id: string | null;
+  chat_id: string;
   snapshot_json: string;
   status: "current" | "stale";
 }
@@ -87,7 +86,7 @@ function sourceKey(binding: HarnessConversationBinding): string {
   return JSON.stringify([binding.adapter, binding.executionHost?.targetKey ?? "local", binding.nativeId]);
 }
 
-function updateSummaries(context: HarnessContext, row: Pick<UsageRow, "chat_id" | "task_id">): UsageChange {
+function updateSummaries(context: HarnessContext, row: Pick<UsageRow, "chat_id">): UsageChange {
   const db = getDatabase();
   const userId = requireResourcePersistenceUserId(context.kind, context.id);
   const contexts: HarnessContext[] = [context];
@@ -105,14 +104,6 @@ function updateSummaries(context: HarnessContext, row: Pick<UsageRow, "chat_id" 
     ).all(row.chat_id, userId));
     db.query("UPDATE automation_runs SET usage_json = ? WHERE chat_id = ? AND user_id = ?").run(json, row.chat_id, userId);
   }
-  if (row.task_id) {
-    const summary = summarize(db.query<UsageRow, [string, string]>(
-      "SELECT * FROM harness_usage WHERE user_id = ? AND task_id = ?",
-    ).all(userId, row.task_id));
-    db.query("UPDATE tasks SET usage_json = ? WHERE id = ? AND user_id = ?")
-      .run(JSON.stringify(summary), row.task_id, userId);
-    if (context.kind !== "task") contexts.push({ kind: "task", id: row.task_id });
-  }
   return { contexts, runs };
 }
 
@@ -125,13 +116,9 @@ export function saveHarnessUsage(
   const db = getDatabase();
   const userId = requireResourcePersistenceUserId(context.kind, context.id);
   return db.transaction(() => {
-    const owner = context.kind === "chat"
-      ? db.query<{ session_binding_json: string | null; task_id: string | null }, [string, string]>(
-          "SELECT session_binding_json, task_id FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
-        ).get(context.id, userId)
-      : db.query<{ session_binding_json: string | null; task_id: string }, [string, string]>(
-          "SELECT session_binding_json, id AS task_id FROM tasks WHERE id = ? AND user_id = ?",
-        ).get(context.id, userId);
+    const owner = db.query<{ session_binding_json: string | null }, [string, string]>(
+      "SELECT session_binding_json FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL",
+    ).get(context.id, userId);
     const current = owner ? parseStoredHarnessBinding(owner.session_binding_json, context.id) : undefined;
     if (!current || current.ownerId !== userId || current.contextId !== context.id
       || current.adapter !== binding.adapter || current.nativeId !== binding.nativeId) return undefined;
@@ -140,9 +127,8 @@ export function saveHarnessUsage(
     const previous = db.query<UsageRow, [string, string]>(
       "SELECT * FROM harness_usage WHERE user_id = ? AND source_key = ?",
     ).get(userId, key);
-    const chatId = context.kind === "chat" ? context.id : null;
-    const taskId = owner!.task_id;
-    if (previous && (previous.chat_id !== chatId || previous.task_id !== taskId)) {
+    const chatId = context.id;
+    if (previous && previous.chat_id !== chatId) {
       throw new HarnessError("harness_session_not_owned", "Token accounting belongs to another conversation.");
     }
     const previousSnapshot = previous ? readSnapshot(previous.snapshot_json) : undefined;
@@ -150,11 +136,11 @@ export function saveHarnessUsage(
     if (previous?.status === "current" && isDeepStrictEqual(previousSnapshot, merged)) {
       return { contexts: [], runs: [] };
     }
-    db.query(`INSERT INTO harness_usage (user_id, source_key, chat_id, task_id, snapshot_json, status)
-      VALUES (?, ?, ?, ?, ?, 'current')
+    db.query(`INSERT INTO harness_usage (user_id, source_key, chat_id, snapshot_json, status)
+      VALUES (?, ?, ?, ?, 'current')
       ON CONFLICT(user_id, source_key) DO UPDATE SET snapshot_json = excluded.snapshot_json, status = excluded.status`)
-      .run(userId, key, chatId, taskId, JSON.stringify(merged));
-    return updateSummaries(context, { chat_id: chatId, task_id: taskId });
+      .run(userId, key, chatId, JSON.stringify(merged));
+    return updateSummaries(context, { chat_id: chatId });
   })();
 }
 
@@ -165,7 +151,7 @@ export function markHarnessUsageStale(context: HarnessContext, binding: HarnessC
     const row = db.query<UsageRow, [string, string]>(
       "SELECT * FROM harness_usage WHERE user_id = ? AND source_key = ?",
     ).get(userId, sourceKey(binding));
-    if (!row || (context.kind === "chat" ? row.chat_id !== context.id : row.chat_id !== null || row.task_id !== context.id)) return undefined;
+    if (!row || row.chat_id !== context.id) return undefined;
     if (row.status === "stale") return { contexts: [], runs: [] };
     db.query("UPDATE harness_usage SET status = 'stale' WHERE user_id = ? AND source_key = ?")
       .run(userId, sourceKey(binding));

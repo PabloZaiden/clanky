@@ -225,14 +225,6 @@ export function sidebarNodeMatchesRoute(node: SidebarNode, route: WebAppRoute): 
 
 export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
   switch (route.view) {
-    case "task":
-      return getRouteString(route, "taskId")
-        ? { view: "task", taskId: getRouteString(route, "taskId")! }
-        : null;
-    case "task-files":
-      return getRouteString(route, "taskId")
-        ? { view: "task", taskId: getRouteString(route, "taskId")! }
-        : null;
     case "chat":
     case "chat-transcript":
       return getRouteString(route, "chatId")
@@ -268,9 +260,6 @@ export function getHeaderOwnerRoute(route: WebAppRoute): WebAppRoute | null {
         : null;
     case "code-explorer": {
       const contentType = getRouteString(route, "contentType");
-      if (contentType === "task" && getRouteString(route, "taskId")) {
-        return { view: "task", taskId: getRouteString(route, "taskId")! };
-      }
       if (contentType === "chat" && getRouteString(route, "chatId")) {
         return { view: "chat", chatId: getRouteString(route, "chatId")! };
       }

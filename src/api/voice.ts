@@ -14,7 +14,6 @@ import { chatManager } from "../core/chat-manager";
 import { voiceManager } from "../core/voice-manager";
 import { isDomainError } from "../domain/domain-error";
 import { DomainError } from "../domain/domain-error";
-import { detectTrailingPromiseMarker } from "../utils/promise-markers";
 import { domainErrorResponse, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import type { PersistedMessage } from "@/shared";
@@ -281,10 +280,8 @@ export async function assistantMessageSpeechResponse(
     if (!message) {
       return errorResponse("not_found", "Assistant message not found", 404);
     }
-    const speechContent = detectTrailingPromiseMarker(message.content)?.content
-      ?? message.content;
     const audio = await manager.synthesizeSummarySpeech(
-      speechContent,
+      message.content,
       req.signal,
     );
     return new Response(audio.audio, {

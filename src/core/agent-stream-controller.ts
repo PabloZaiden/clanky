@@ -1,5 +1,5 @@
 /**
- * Shared harness prompt lifecycle for chat and task streams.
+ * Shared harness prompt lifecycle for chat and Automation streams.
  *
  * Domain services own transcript materialization and state transitions. This
  * controller owns the transport boundary: subscribe before prompting, consume
@@ -9,7 +9,7 @@
 import type { PromptInput } from "../backends/types";
 import type { HarnessEvent as AgentEvent } from "@/shared/harness-events";
 import type { EventStream } from "../utils/event-stream";
-import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/task";
+import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/conversation";
 
 const DEFAULT_AGENT_STREAM_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
 const agentStreamTextEncoder = new TextEncoder();

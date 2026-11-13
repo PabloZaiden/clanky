@@ -10,12 +10,12 @@ import { directRecord, ControlToolContext } from "./control-tool-context";
 import { isReadRecord } from "../client-sdk/collaboration/resource-read";
 import { controlDirectSchemas, type DirectToolName } from "./control-tool-contracts";
 import { directList, directOverview, directRead, directServers, pendingInteractions } from "./control-direct-reads";
-import { directCreateChat, directCreateTask, directCreateWorkspace } from "./control-direct-creation";
+import { directCreateChat, directCreateWorkspace } from "./control-direct-creation";
 
 export const ControlNavigationIntentSchema = z.discriminatedUnion("type", [
   ...ControlNavigationActionSchema.options,
   z.object({
-    type: z.literal("open_named"), kind: z.enum(["chat", "task", "workspace", "host"]),
+    type: z.literal("open_named"), kind: z.enum(["chat", "workspace", "host"]),
     target: z.string().trim().min(1).max(500),
     workspace: z.string().trim().min(1).max(500).nullable().default(null),
   }).strict(),
@@ -38,8 +38,7 @@ export async function directUiAction(context: ControlToolContext, value: unknown
   const target = await context.resolve(action.kind, action.target, action.workspace);
   const id = String(target["id"]);
   const canonical = action.kind === "chat" ? { type: "open_chat" as const, chatId: id }
-    : action.kind === "task" ? { type: "open_task" as const, taskId: id }
-      : { type: "open_workspace" as const, workspaceId: id };
+    : { type: "open_workspace" as const, workspaceId: id };
   return await context.options.actions.uiAction(canonical, context.options.requestId);
 }
 
@@ -50,17 +49,11 @@ export async function executeDirectControlTool(context: ControlToolContext, name
     case "clanky_waiting_work":
       return await directOverview(context, true, controlDirectSchemas[name].parse(args));
     case "clanky_list_chats":
-      return await directList(context, "chat", controlDirectSchemas[name].parse(args));
-    case "clanky_list_tasks":
-      return await directList(context, "task", controlDirectSchemas[name].parse(args));
+      return await directList(context, controlDirectSchemas[name].parse(args));
     case "clanky_read_chat":
-      return await directRead(context, "chat", controlDirectSchemas[name].parse(args));
-    case "clanky_read_task":
-      return await directRead(context, "task", controlDirectSchemas[name].parse(args));
+      return await directRead(context, controlDirectSchemas[name].parse(args));
     case "clanky_create_chat":
       return await directCreateChat(context, controlDirectSchemas[name].parse(args));
-    case "clanky_create_task":
-      return await directCreateTask(context, controlDirectSchemas[name].parse(args));
     case "clanky_create_workspace":
       return await directCreateWorkspace(context, controlDirectSchemas[name].parse(args));
     case "clanky_list_workspaces": {
@@ -196,10 +189,10 @@ export async function executeDirectControlTool(context: ControlToolContext, name
       const id = String(target["id"]);
       const chat = directRecord(await context.readExact("GET /api/chats/:id", { id }));
       const config = directRecord(chat["config"]);
-      if (config["scope"] !== "workspace" || config["taskId"] !== undefined) {
+      if (config["scope"] !== "workspace") {
         throw new DomainError(
           "voice_chat_lifecycle_unsupported",
-          "Live voice lifecycle actions are available only for standalone chats; task chats are managed by their task and automation chats are not supported.",
+          "Live voice lifecycle actions are available only for standalone chats; automation chats are not supported.",
         );
       }
       if (input.action === "mark_done") {
@@ -230,44 +223,6 @@ export async function executeDirectControlTool(context: ControlToolContext, name
         operationId: `POST /api/chats/:id/${input.kind === "question" ? "questions" : "permissions"}/:requestId`,
         parameters: { id, requestId }, body: input.kind === "question" ? { answers: input.answers } : { decision: input.decision },
         confirmationDescription: input.confirmationDescription,
-      });
-    }
-    case "clanky_instruct_task": {
-      const input = controlDirectSchemas[name].parse(args);
-      const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
-      return await context.execute({
-        operationId: input.intent === "follow_up" ? "POST /api/tasks/:id/follow-up" : "PUT /api/tasks/:id/pending-prompt",
-        parameters: { id }, body: input.intent === "follow_up"
-          ? { message: input.message, model: null, attachments: [] } : { prompt: input.message, attachments: [] },
-      });
-    }
-    case "clanky_control_task": {
-      const input = controlDirectSchemas[name].parse(args);
-      const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
-      return await context.execute({
-        operationId: `POST /api/tasks/:id/${input.command === "start_planning" ? "draft/start" : "stop"}`,
-        parameters: { id }, ...(input.command === "start_planning" ? { body: { attachments: [] } } : {}),
-      });
-    }
-    case "clanky_review_task_plan": {
-      const input = controlDirectSchemas[name].parse(args);
-      if (input.action === "feedback" ? !input.feedback : input.feedback !== null) {
-        throw new DomainError("voice_plan_action_invalid", "Feedback is required only for the feedback action.");
-      }
-      const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
-      return await context.execute({
-        operationId: `POST /api/tasks/:id/plan/${input.action}`, parameters: { id },
-        ...(input.action === "feedback" ? { body: { feedback: input.feedback, attachments: [] } }
-          : input.action === "accept" ? { body: { mode: "start_task" } } : {}),
-        confirmationDescription: input.confirmationDescription,
-      });
-    }
-    case "clanky_finish_task": {
-      const input = controlDirectSchemas[name].parse(args);
-      const id = String((await context.resolve("task", input.target, input.workspace))["id"]);
-      return await context.execute({
-        operationId: `POST /api/tasks/:id/${input.action === "accept_local" ? "accept" : "push"}`,
-        parameters: { id }, confirmationDescription: input.confirmationDescription,
       });
     }
   }

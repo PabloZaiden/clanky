@@ -23,8 +23,7 @@ import type {
   ChatWorktreeState,
   ExecutionHostBinding,
   SessionInfo,
-  Task,
-  TaskLogEntry,
+  ConversationLogEntry,
   TranscriptChangeSet,
   TranscriptSnapshotOptions,
   ToolCallRecord,
@@ -45,13 +44,13 @@ export interface CreateChatOptions {
   name?: string;
   workspaceId: string;
   scope?: ChatConfig["scope"];
-  taskId?: string;
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
   useWorktree?: boolean;
   useSelectedBranchForWorktree?: boolean;
   useChatNameAsBranch?: boolean;
+  startWithPlan?: boolean;
   baseBranch?: string;
   directory?: string;
   expectedExecutionHostBinding?: ExecutionHostBinding;
@@ -59,7 +58,7 @@ export interface CreateChatOptions {
   prepareWorktreeOnCreate?: boolean;
 }
 
-export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, "scope" | "taskId"> {}
+export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, "scope" | "startWithPlan"> {}
 
 export interface CreateExecutionHostChatOptions {
   name?: string;
@@ -68,6 +67,7 @@ export interface CreateExecutionHostChatOptions {
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
+  startWithPlan?: boolean;
 }
 
 export interface ReconnectChatOptions {
@@ -82,13 +82,8 @@ export interface DeleteChatOptions {
   deferCleanup?: boolean;
 }
 
-export interface DeleteTaskChatResult {
-  deleted: boolean;
-  cleanup: Promise<boolean>;
-}
-
 export type ChatConfigUpdates = Partial<
-  Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId" | "deletedAt">
+  Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "deletedAt" | "startWithPlan" | "planningKickoffMessageId">
 >;
 
 export interface ChatMessageOptions {
@@ -114,6 +109,7 @@ export interface ChatStatePort {
   getChat(chatId: string): Promise<Chat | null>;
   getChatSummary(chatId: string): Promise<Chat | null>;
   hasSingleUserMessage(chatId: string): Promise<boolean>;
+  claimPlanningKickoff(chatId: string, messageId: string): Promise<boolean>;
   getChatMessage(chatId: string, messageId: string): Promise<MessageData | null>;
   getChatStreamControlState(chatId: string): Promise<ChatStreamControlState | null>;
   getChatSnapshot(
@@ -128,10 +124,9 @@ export interface ChatStatePort {
     options?: { fileAttachmentsOnly?: boolean },
   ): AsyncIterable<ChatTranscriptStorageEntry>;
   getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null>;
-  getTaskChat(taskId: string): Promise<Chat | null>;
   getAllChats(): Promise<Chat[]>;
   getChatSummaries(): Promise<Chat[]>;
-  getChatsByWorkspace(workspaceId: string, options?: { includeTaskChats?: boolean }): Promise<Chat[]>;
+  getChatsByWorkspace(workspaceId: string): Promise<Chat[]>;
   getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]>;
   getWorkspace(workspaceId: string): Promise<Workspace | null>;
   touchWorkspace(workspaceId: string): Promise<void>;
@@ -256,7 +251,7 @@ export interface ChatConversationPort {
   hasActiveStream(chatId: string): boolean;
   emitChatLog(
     chat: Chat,
-    level: TaskLogEntry["level"],
+    level: ConversationLogEntry["level"],
     message: string,
     details?: Record<string, unknown>,
   ): Promise<Chat>;
@@ -288,8 +283,6 @@ export interface ChatLifecyclePort {
   updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null>;
   markChatDone(chatId: string): Promise<Chat | null>;
   attachSession(chatId: string, session: SessionInfo): Promise<Chat | null>;
-  getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }>;
-  deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult>;
   deleteChat(chatId: string, options?: DeleteChatOptions): Promise<boolean>;
 }
 

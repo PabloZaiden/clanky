@@ -1,5 +1,5 @@
 /**
- * ACP backend facade for the Clanky Tasks Management System.
+ * ACP backend facade for the Clanky.
  *
  * `AcpBackend` implements the public {@link Backend} contract by composing
  * focused, single-responsibility collaborators with strictly one-way

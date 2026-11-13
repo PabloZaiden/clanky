@@ -4,7 +4,6 @@ import type { Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
-  PurgeTerminalTasksAction,
   WorkerUpdateAction,
   QuickChatModelRowContent,
   WorkersSettingsSection,
@@ -20,7 +19,6 @@ import {
 } from "../app-settings";
 import type {
   PrivateItemsPreference,
-  UseDashboardDataResult,
   UseFileExplorerFullTreePreferenceResult,
   UseGithubUsernameResult,
   UseMarkdownPreferenceResult,
@@ -47,14 +45,8 @@ export interface ShellSettingsCompositionOptions {
   markdownPreference: UseMarkdownPreferenceResult;
   fullTreePreference: UseFileExplorerFullTreePreferenceResult;
   privateItemsPreference: PrivateItemsPreference;
-  dashboardData: Pick<
-    UseDashboardDataResult,
-    | "purgeTerminalTasks"
-    | "appSettingsPurgingTerminalTasks"
-  >;
   workspaces: Workspace[];
   workspacesLoading: boolean;
-  refreshTasks: () => Promise<void>;
   mesh: UseMeshResult;
   workerUpdates: UseWorkerUpdateJobsResult;
   voiceSettings: UseVoiceSettingsResult;
@@ -72,10 +64,8 @@ export function buildShellSettingsSections({
   markdownPreference,
   fullTreePreference,
   privateItemsPreference,
-  dashboardData,
   workspaces,
   workspacesLoading,
-  refreshTasks,
   mesh,
   workerUpdates,
   voiceSettings,
@@ -377,16 +367,6 @@ export function buildShellSettingsSections({
       scope: "owner" as const,
       // Domain actions own async confirmation/results, using shared field rows.
       render: () => <>
-            <PurgeTerminalTasksAction
-              onPurgeTerminalTasks={async () => {
-                const result = await dashboardData.purgeTerminalTasks();
-                if (result) {
-                  await refreshTasks();
-                }
-                return result;
-              }}
-              purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
-            />
             <WorkerUpdateAction workerUpdates={workerUpdates} />
       </>,
     },

@@ -1,13 +1,11 @@
-import { CheapModelSelectionSchema, ModelConfigSchema } from "@/contracts/schemas/model";
-import type { CheapModelSelection, ModelConfig } from "@/shared";
+import { ModelConfigSchema } from "@/contracts/schemas/model";
+import type { ModelConfig } from "@/shared";
 import { clientScopedStorageKey } from "@/platform/web/client-session";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { getDemoStorage } from "@/client-sdk/demo/storage";
 
 const log = createLogger("modelSelectionPreferences");
 
-const TASK_MODEL_STORAGE_KEY = "clanky.taskModelPreference";
-const TASK_CHEAP_MODEL_STORAGE_KEY = "clanky.taskCheapModelPreference";
 const CHAT_MODEL_STORAGE_KEY = "clanky.chatModelPreference";
 
 export interface ModelPreferenceStorageLike {
@@ -111,48 +109,9 @@ function readStoredModelPreference(
   }
 }
 
-function readStoredCheapModelPreference(
-  dependencies: ModelSelectionPreferenceDependencies = {},
-): CheapModelSelection | null {
-  const storage = resolveStorage(dependencies.storage);
-  if (!storage) {
-    return null;
-  }
-
-  const raw = readStorageItem(storage, TASK_CHEAP_MODEL_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const validation = CheapModelSelectionSchema.safeParse(parsed);
-    if (!validation.success) {
-      log.warn("Removing invalid stored cheap-model preference", {
-        storageKey: TASK_CHEAP_MODEL_STORAGE_KEY,
-        issues: validation.error.issues.map((issue) => issue.message),
-      });
-      removeStoredPreference(storage, TASK_CHEAP_MODEL_STORAGE_KEY, {
-        issues: validation.error.issues.map((issue) => issue.message),
-      });
-      return null;
-    }
-    return validation.data;
-  } catch (error) {
-    log.warn("Removing invalid stored cheap-model preference", {
-      storageKey: TASK_CHEAP_MODEL_STORAGE_KEY,
-      error: String(error),
-    });
-    removeStoredPreference(storage, TASK_CHEAP_MODEL_STORAGE_KEY, {
-      error: String(error),
-    });
-    return null;
-  }
-}
-
 function writeStoredPreference(
   storageKey: string,
-  value: CheapModelSelection | ModelConfig,
+  value: ModelConfig,
   dependencies: ModelSelectionPreferenceDependencies = {},
 ): void {
   const storage = resolveStorage(dependencies.storage);
@@ -168,32 +127,6 @@ function writeStoredPreference(
       error: String(error),
     });
   }
-}
-
-export function getStoredTaskModelPreference(
-  dependencies: ModelSelectionPreferenceDependencies = {},
-): ModelConfig | null {
-  return readStoredModelPreference(TASK_MODEL_STORAGE_KEY, dependencies);
-}
-
-export function saveStoredTaskModelPreference(
-  model: ModelConfig,
-  dependencies: ModelSelectionPreferenceDependencies = {},
-): void {
-  writeStoredPreference(TASK_MODEL_STORAGE_KEY, model, dependencies);
-}
-
-export function getStoredTaskCheapModelPreference(
-  dependencies: ModelSelectionPreferenceDependencies = {},
-): CheapModelSelection | null {
-  return readStoredCheapModelPreference(dependencies);
-}
-
-export function saveStoredTaskCheapModelPreference(
-  selection: CheapModelSelection,
-  dependencies: ModelSelectionPreferenceDependencies = {},
-): void {
-  writeStoredPreference(TASK_CHEAP_MODEL_STORAGE_KEY, selection, dependencies);
 }
 
 export function getStoredChatModelPreference(

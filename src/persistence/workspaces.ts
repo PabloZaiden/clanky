@@ -1,5 +1,5 @@
 /**
- * Workspace persistence layer for Clanky Tasks Management System.
+ * Workspace persistence layer for Clanky.
  * Handles reading and writing workspace data to SQLite database.
  *
  * Note: Most exported functions are marked `async` despite using synchronous

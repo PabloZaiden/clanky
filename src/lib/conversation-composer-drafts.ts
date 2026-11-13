@@ -66,7 +66,7 @@ function getStorageKey(conversationId: string): string {
 }
 
 function isSharedConversation(conversationId: string): boolean {
-  // Composer keys prefix the resource reference with "chat:" or "task:".
+  // Composer keys prefix the resource reference with "chat:".
   return !!decodeCollaborationResourceReference(conversationId.slice(conversationId.indexOf(":") + 1));
 }
 

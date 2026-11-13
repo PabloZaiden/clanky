@@ -11,12 +11,3 @@ export interface ModelConfig {
   modelID: string;
   variant: string;
 }
-
-export type CheapModelSelection =
-  | {
-      mode: "same-as-task";
-    }
-  | {
-      mode: "custom";
-      model: ModelConfig;
-    };

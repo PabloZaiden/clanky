@@ -3,7 +3,6 @@ import type { ToastService, WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   Automation,
   Chat,
-  Task,
   Workspace,
   TerminalSession,
 } from "@/shared";
@@ -11,7 +10,6 @@ import type { CreateExecutionHostChatRequest } from "@/contracts";
 import { isWorkspaceChat } from "@/shared/chat";
 import { isAgentProvider } from "@/shared/settings";
 import {
-  stopTaskApi,
   type UseAutomationsResult,
   type UseChatsResult,
   type UseDashboardDataResult,
@@ -19,14 +17,11 @@ import {
   type UseMeshResult,
   type UseProvisioningJobResult,
   type UseQuickChatSettingsResult,
-  type UseTasksResult,
   type UseTerminalSessionsResult,
   type UseWorkspacesResult,
-  type WorkspaceGroup,
 } from "../../hooks";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
-import { useComposeState } from "./use-compose-state";
 import { useChatActions } from "./chat-actions";
 import { useShellDialogComposition } from "./shell-dialog-composition";
 
@@ -37,11 +32,7 @@ interface UseShellActionsOptions {
   mesh: UseMeshResult;
   createWorkspace: UseWorkspacesResult["createWorkspace"];
   refreshWorkspaces: UseWorkspacesResult["refresh"];
-  workspaceGroups: WorkspaceGroup[];
-  purgeArchivedWorkspaceTasks: UseTasksResult["purgeArchivedWorkspaceTasks"];
   pullLatestChanges: UseWorkspacesResult["pullLatestChanges"];
-  createTask: UseTasksResult["createTask"];
-  refreshTasks: UseTasksResult["refresh"];
   dashboardData: UseDashboardDataResult;
   toast: ToastService;
   markChatDone: UseChatsResult["markChatDone"];
@@ -50,7 +41,6 @@ interface UseShellActionsOptions {
   refreshChats: UseChatsResult["refresh"];
   updateChat: UseChatsResult["updateChat"];
   automations: UseAutomationsResult;
-  updateTask: UseTasksResult["updateTask"];
   updateTerminalSession: UseTerminalSessionsResult["updateSession"];
   deleteTerminalSession: UseTerminalSessionsResult["deleteSession"];
   createChat: UseChatsResult["createChat"];
@@ -68,11 +58,7 @@ export function useShellActions({
   mesh,
   createWorkspace,
   refreshWorkspaces,
-  workspaceGroups,
-  purgeArchivedWorkspaceTasks,
   pullLatestChanges,
-  createTask,
-  refreshTasks,
   dashboardData,
   toast,
   markChatDone,
@@ -81,7 +67,6 @@ export function useShellActions({
   refreshChats,
   updateChat,
   automations,
-  updateTask,
   updateTerminalSession,
   deleteTerminalSession,
   createChat,
@@ -112,8 +97,6 @@ export function useShellActions({
 
   const workspaceSettings = useWorkspaceSettingsShell({
     route,
-    workspaceGroups,
-    purgeArchivedWorkspaceTasks,
   });
 
   const pullLatestWorkspaceChanges = useCallback(async (workspaceId: string) => {
@@ -142,15 +125,6 @@ export function useShellActions({
       setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
     }
   }, [pullLatestChanges, refreshBranchDataIfCurrent, toast]);
-
-  const composeState = useComposeState({
-    route,
-    createTask,
-    refreshTasks,
-    navigateWithinShell,
-    dashboardData,
-    toast,
-  });
 
   const handleMarkChatDone = useCallback(async (chat: Chat): Promise<Chat | null> => {
     const updated = await markChatDone(chat.config.id);
@@ -226,13 +200,6 @@ export function useShellActions({
     chatActionModals: chatActions.modals,
   });
 
-  const toggleTaskPrivate = useCallback(async (task: Task): Promise<void> => {
-    const updated = await updateTask(task.config.id, { isPrivate: !task.config.isPrivate });
-    if (!updated) {
-      toast.error(task.config.isPrivate ? "Failed to unmark task as private" : "Failed to mark task as private");
-    }
-  }, [toast, updateTask]);
-
   const toggleChatPrivate = useCallback(async (chat: Chat): Promise<void> => {
     const updated = await updateChat(chat.config.id, { isPrivate: !chat.config.isPrivate });
     if (!updated) {
@@ -255,33 +222,17 @@ export function useShellActions({
     }
   }, [toast, updateTerminalSession]);
 
-  const stopSidebarTask = useCallback(async (task: Task): Promise<void> => {
-    try {
-      const stopped = await stopTaskApi(task.config.id);
-      if (!stopped) {
-        toast.error("Failed to stop task");
-        return;
-      }
-      await refreshTasks();
-    } catch (error) {
-      toast.error(String(error));
-    }
-  }, [refreshTasks, toast]);
-
   return {
     workspaceCreate,
     workspaceSettings,
-    composeState,
     chatActions,
     selectedChatActions,
     dialogs,
     pullingLatestWorkspaceIds,
     pullLatestWorkspaceChanges,
     getChatLifecycleActions: chatActions.getLifecycleActions,
-    toggleTaskPrivate,
     toggleChatPrivate,
     toggleAutomationPrivate,
     toggleTerminalSessionPrivate,
-    stopSidebarTask,
   };
 }

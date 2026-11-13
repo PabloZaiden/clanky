@@ -1,7 +1,6 @@
 import type {
   Chat,
   ExecutionHostDescriptor,
-  Task,
   Workspace,
   TerminalSession,
 } from "@/shared";
@@ -11,12 +10,11 @@ import {
 } from "@/shared";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTerminalSessionRequest } from "@/contracts";
-import { getOrCreateTaskTerminalSessionApi } from "../../hooks/task-actions/terminal-actions";
 import type { CodeExplorerTarget } from "./shell-types";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 
 type ExplorerSession = TerminalSession;
-type CodeExplorerOptionKind = "workspace" | "task" | "server" | "chat";
+type CodeExplorerOptionKind = "workspace" | "server" | "chat";
 
 export interface CodeExplorerTerminalOptions {
   useTmux?: boolean;
@@ -38,14 +36,12 @@ export interface CodeExplorerOptionGroup {
 
 const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerOptionKind[] = [
   "workspace",
-  "task",
   "server",
   "chat",
 ];
 
 const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerOptionKind, string> = {
   workspace: "Workspaces",
-  task: "Tasks",
   server: "Servers",
   chat: "Chats",
 };
@@ -77,7 +73,6 @@ export interface ResolvedCodeExplorerTarget {
 interface ResolveCodeExplorerTargetArgs {
   target?: CodeExplorerTarget;
   workspaces: Workspace[];
-  tasks: Task[];
   chats: Chat[];
   executionHosts: ExecutionHostDescriptor[];
   terminalSessions: TerminalSession[];
@@ -88,10 +83,6 @@ function trimDirectory(directory: string | null | undefined): string {
   return directory?.trim() || "/";
 }
 
-export function getTaskCodeExplorerRootDirectory(task: Task): string {
-  return trimDirectory(task.state.git?.worktreePath || task.config.directory);
-}
-
 export function getChatCodeExplorerRootDirectory(chat: Chat): string {
   return trimDirectory(chat.state.worktree?.worktreePath || chat.config.directory);
 }
@@ -100,8 +91,6 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   switch (target.contentType) {
     case "workspace":
       return target.workspaceId;
-    case "task":
-      return target.taskId;
     case "execution-host":
       return `${target.hostKind}:${target.hostId}`;
     case "chat":
@@ -109,22 +98,13 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   }
 }
 
-function supportsTaskTerminal(task: Task, terminalSessions: TerminalSession[]): boolean {
-  if (terminalSessions.some((session) => session.config.taskId === task.config.id)) {
-    return true;
-  }
-
-  return task.config.useWorktree || Boolean(task.state.git?.worktreePath);
-}
-
 export function getCodeExplorerOptions({
   workspaces,
-  tasks,
   chats,
   executionHosts,
 }: Pick<
   ResolveCodeExplorerTargetArgs,
-  "workspaces" | "tasks" | "chats" | "executionHosts"
+  "workspaces" | "chats" | "executionHosts"
 >): CodeExplorerOption[] {
   return [
     ...workspaces.map((workspace) => ({
@@ -133,13 +113,6 @@ export function getCodeExplorerOptions({
       label: getWorkspaceDisplayName(workspace),
       description: workspace.directory,
       target: { contentType: "workspace" as const, workspaceId: workspace.id },
-    })),
-    ...tasks.map((task) => ({
-      id: `task:${task.config.id}`,
-      kind: "task" as const,
-      label: task.config.name,
-      description: getTaskCodeExplorerRootDirectory(task),
-      target: { contentType: "task" as const, taskId: task.config.id },
     })),
     ...executionHosts
       .filter((host) => supportsExecutionHostCapability(
@@ -181,7 +154,6 @@ export function getCodeExplorerOptionGroups(options: CodeExplorerOption[]): Code
 export function resolveCodeExplorerTarget({
   target,
   workspaces,
-  tasks,
   chats,
   executionHosts,
   terminalSessions,
@@ -234,54 +206,6 @@ export function resolveCodeExplorerTarget({
           })
         ),
         canChooseTerminalTmux: true,
-        testIdPrefix: "workspace",
-        initialFilePath: target.filePath,
-      };
-    }
-    case "task": {
-      const task = tasks.find((candidate) => candidate.config.id === routeTargetId);
-      if (!task) {
-        return null;
-      }
-
-      const workspace = workspaces.find((candidate) => candidate.id === task.config.workspaceId);
-      if (!workspace) {
-        return null;
-      }
-
-      const defaultRootDirectory = getTaskCodeExplorerRootDirectory(task);
-      const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const taskTerminals = terminalSessions.filter((terminal) => terminal.config.taskId === task.config.id);
-      const hasTerminal = supportsTaskTerminal(task, taskTerminals);
-
-      return {
-        routeTarget: target,
-        title: `${task.config.name} code explorer`,
-        description: defaultRootDirectory,
-        defaultRootDirectory,
-        backLabel: "Back to task",
-        backRoute: { view: "task", taskId: task.config.id },
-        target: { type: "workspace", id: task.config.workspaceId, startDirectory: effectiveStartDirectory },
-        buildRoute: (startDirectory?: string) => ({
-          view: "code-explorer",
-          contentType: "task",
-          taskId: task.config.id,
-          startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
-            ? startDirectory.trim()
-            : undefined,
-        }),
-        sessions: taskTerminals,
-        hasTerminal,
-        emptyTerminalMessage: hasTerminal
-          ? "Choose the task terminal session or open the task terminal."
-          : "This task does not have a task-linked terminal yet. Open the task terminal from the info tab.",
-        terminalSelectLabel: "Select task terminal session",
-        onCreateTerminal: async (_options?: CodeExplorerTerminalOptions, startDirectory?: string) => (
-          await getOrCreateTaskTerminalSessionApi(task.config.id, {
-            directory: startDirectory?.trim() || defaultRootDirectory,
-          })
-        ),
-        canChooseTerminalTmux: false,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };

@@ -3,7 +3,7 @@ import type { Backend } from "../backends/types";
 import type { HarnessActivity, HarnessActivitySnapshot, HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessEvent } from "@/shared/harness-events";
 import type { Subagent, SubagentContext } from "@/shared/subagent";
-import type { PersistedMessage, TaskLogEntry, ToolCallRecord, TranscriptEntryUpsert, TranscriptStreamEvent, StreamPosition } from "@/shared";
+import type { PersistedMessage, ConversationLogEntry, ToolCallRecord, TranscriptEntryUpsert, TranscriptStreamEvent, StreamPosition } from "@/shared";
 import { createToolCallSummary, mergeToolCallRecord } from "@/shared";
 import { HarnessError } from "../backends/harness-errors";
 import { getSubagentLog, listSubagents, retainSubagent, updateSubagent, writeSubagentEntry } from "../persistence/subagents";
@@ -237,7 +237,7 @@ export class SubagentTranscriptObserver {
       const content = recovered || event.complete
         ? !event.complete && typeof oldText === "string" && oldText.startsWith(event.content) ? oldText : event.content
         : `${typeof oldText === "string" ? oldText : ""}${event.content}`;
-      const entry: TaskLogEntry = {
+      const entry: ConversationLogEntry = {
         id, level: "agent", message: "AI reasoning...", timestamp: previous?.timestamp ?? timestamp,
         details: { logKind: "reasoning", responseContent: content, complete: event.complete === true },
       };
@@ -254,7 +254,7 @@ export class SubagentTranscriptObserver {
       this.write(child, { id: tool.id, kind: "tool", timestamp: tool.timestamp, payload: tool },
         { type: "transcript.tool", tool: createToolCallSummary(tool) });
     } else if (event.type === "error" || event.type === "request.error") {
-      const entry: TaskLogEntry = {
+      const entry: ConversationLogEntry = {
         id: event.sourceEventId ?? crypto.randomUUID(), timestamp, level: "error", message: event.message,
         details: { logKind: "subagent-error" },
       };
@@ -265,7 +265,7 @@ export class SubagentTranscriptObserver {
       });
       this.changed(child);
     } else if (event.type === "question.asked" || event.type === "question.resolved" || event.type === "permission.asked") {
-      const entry: TaskLogEntry = {
+      const entry: ConversationLogEntry = {
         id: `interaction:${event.requestId}:${event.type}`, timestamp, level: "agent",
         details: { logKind: "interaction" },
         message: event.type === "question.asked"
@@ -287,14 +287,14 @@ export class SubagentTranscriptObserver {
     writeSubagentEntry(child.record, entry);
     child.version.advance();
     subagentEventEmitter.emit({
-      type: "subagent.transcript", subagentId: child.record.id, chatId: child.record.chatId, taskId: child.record.taskId,
+      type: "subagent.transcript", subagentId: child.record.id, chatId: child.record.chatId,
       timestamp: new Date().toISOString(), event, streamPosition: child.version.change,
     }, { userId: this.binding.ownerId });
   }
 
   private changed(child: Child): void {
     subagentEventEmitter.emit({
-      type: "subagent.changed", subagentId: child.record.id, chatId: child.record.chatId, taskId: child.record.taskId,
+      type: "subagent.changed", subagentId: child.record.id, chatId: child.record.chatId,
       timestamp: new Date().toISOString(),
     }, { userId: this.binding.ownerId });
   }

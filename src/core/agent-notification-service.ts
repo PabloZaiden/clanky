@@ -13,9 +13,8 @@ import {
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId, requireExecutionOwnerUserId } from "../context/user-context";
 import type { NotificationEventKind } from "@/shared/agent-notifications";
-import { automationEventEmitter, taskEventEmitter } from "./event-emitter";
+import { automationEventEmitter } from "./event-emitter";
 import { loadChatMetadata } from "../persistence/chats";
-import { loadTaskSummary } from "../persistence/tasks";
 import { loadAutomation, loadAutomationRunSummary } from "../persistence/automations";
 import { controlRequestPrivate, resourcePrivate } from "./control-request-privacy";
 import type { PreparedOperation } from "./clanky-operation-service";
@@ -24,7 +23,7 @@ import type { ManagedContextIdentity } from "@/shared/context-api-key";
 const log = createLogger("core:agent-notifications");
 
 type AutomaticNotificationSource =
-  | { kind: "Chat" | "Task" | "Automation run"; id: string; context?: string }
+  | { kind: "Chat" | "Automation run"; id: string; context?: string }
   | { kind: "Agent operation"; operation: PreparedOperation; context: string; origin?: ManagedContextIdentity };
 
 function boundedText(value: string, maximum: number): string {
@@ -61,19 +60,6 @@ class AgentNotificationService {
     this.controller = new AbortController();
     this.changed = changed;
     this.unsubscribe = [
-      taskEventEmitter.subscribe((event, context) => {
-        if (!context.userId) return;
-        switch (event.type) {
-          case "task.error": this.notify("error", { kind: "Task", id: event.taskId }, context.userId); break;
-          case "task.stopped":
-            if (event.blocked) this.notify("blocked", { kind: "Task", id: event.taskId }, context.userId);
-            break;
-          case "task.plan.ready":
-            if (event.requiresApproval) this.notify("planReady", { kind: "Task", id: event.taskId }, context.userId);
-            break;
-          case "task.completed": this.notify("completed", { kind: "Task", id: event.taskId }, context.userId); break;
-        }
-      }),
       automationEventEmitter.subscribe((event, context) => {
         if (!context.userId) return;
         if (event.type === "automation.run.failed") this.notify("error", { kind: "Automation run", id: event.automationId }, context.userId);
@@ -109,8 +95,8 @@ class AgentNotificationService {
       const origin = source.origin;
       if (!origin) return { context: source.context };
       let work: AutomaticNotificationSource;
-      if (origin.contextType === "chat" || origin.contextType === "task") {
-        work = { kind: origin.contextType === "chat" ? "Chat" : "Task", id: origin.contextId };
+      if (origin.contextType === "chat") {
+        work = { kind: "Chat", id: origin.contextId };
       } else if (origin.contextType === "automation_run") {
         const run = await loadAutomationRunSummary(origin.contextId);
         if (!run) return {};
@@ -121,9 +107,9 @@ class AgentNotificationService {
       const details = await this.sourceDetails(work);
       return details.name ? { ...details, context: source.context } : {};
     }
-    const resource = source.kind === "Chat" ? "chat" : source.kind === "Task" ? "task" : "automation";
+    const resource = source.kind === "Chat" ? "chat" : "automation";
     const work = source.kind === "Chat" ? await loadChatMetadata(source.id)
-      : source.kind === "Task" ? await loadTaskSummary(source.id) : await loadAutomation(source.id);
+      : await loadAutomation(source.id);
     if (!work || await resourcePrivate(resource, source.id)) return {};
     return { kind: source.kind, name: work.config.name, context: source.context };
   }
@@ -143,11 +129,9 @@ class AgentNotificationService {
         || generation !== getNotificationWebhookGeneration(ownerUserId)) return;
       const descriptions: Record<NotificationEventKind, string> = {
         error: "An error occurred.",
-        blocked: "Work is blocked and needs your attention.",
         question: "A question needs your answer.",
         secret: "A private secret request needs your attention.",
         approval: "A permission or approval request needs your decision.",
-        planReady: "A plan is ready for your approval.",
         completed: "Work has finished.",
       };
       const description = descriptions[event];

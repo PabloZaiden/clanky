@@ -7,11 +7,8 @@ import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import type { CreateTerminalSessionRequest } from "@/contracts";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { CreateTaskFormSubmitRequest } from "@/lib/task-request";
-import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { TerminalSessionComposer } from "./terminal-session-composer";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
-import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AutomationComposer } from "./automations-view";
@@ -19,11 +16,10 @@ import type { UseAutomationsResult } from "../../hooks/useAutomations";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 import { ExecutionHostTerminalComposer } from "./execution-host-terminal-composer";
 
-type ComposeKind = "task" | "chat" | "automation" | "workspace" | "terminal-session" | "execution-host-chat" | "execution-host-terminal";
+type ComposeKind = "chat" | "automation" | "workspace" | "terminal-session" | "execution-host-chat" | "execution-host-terminal";
 
 export function isComposeKind(value: string): value is ComposeKind {
   return [
-    "task",
     "chat",
     "automation",
     "workspace",
@@ -38,9 +34,6 @@ interface ComposeViewProps {
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   navigateWithinShell: (route: WebAppRoute) => void;
-  composeActionState: CreateTaskFormActionState | null;
-  setComposeActionState: (state: CreateTaskFormActionState | null) => void;
-  handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
   startAutomationImport: (workspaceId: string) => void;
   dashboardData: UseDashboardDataResult;
@@ -60,8 +53,6 @@ export function ComposeView(props: ComposeViewProps) {
     composeWorkspace,
     composeExecutionHost,
     navigateWithinShell,
-    setComposeActionState,
-    handleTaskSubmit,
     createChat,
     dashboardData,
     automations,
@@ -73,21 +64,6 @@ export function ComposeView(props: ComposeViewProps) {
     provisioning,
     workspacesSaving,
   } = props;
-
-  if (kind === "task") {
-    return (
-      <ComposeTaskView
-        composeWorkspace={composeWorkspace}
-        navigateWithinShell={navigateWithinShell}
-        setComposeActionState={setComposeActionState}
-        handleTaskSubmit={handleTaskSubmit}
-        dashboardData={dashboardData}
-        workspaces={workspaces}
-        workspacesLoading={workspacesLoading}
-        workspaceError={workspaceError}
-      />
-    );
-  }
 
   if (kind === "workspace") {
     return (

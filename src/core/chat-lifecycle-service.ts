@@ -2,7 +2,7 @@
  * Chat creation, configuration, and deletion workflows.
  */
 
-import type { Chat, ChatConfig, ChatStatus, SessionInfo, Task } from "@/shared";
+import type { Chat, ChatConfig, ChatStatus, SessionInfo } from "@/shared";
 import {
   DEFAULT_CHAT_CONFIG,
   createInitialChatState,
@@ -11,14 +11,10 @@ import {
   getCurrentChatDirectory,
   isChatBusyStatus,
   isStandaloneChat,
-  isTaskChat,
   getChatWorkspaceId,
   isWorkspaceChat,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
-import { getTaskWorkingDirectory } from "./task/task-types";
-import { taskManager, type TaskManager } from "./task-manager";
-import { isUniqueConstraint } from "../persistence/errors";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
@@ -33,7 +29,6 @@ import type {
   ChatConfigUpdates,
   ChatConversationPort,
   DeleteChatOptions,
-  DeleteTaskChatResult,
   ChatLifecyclePort,
   ChatSessionPort,
   ChatStatePort,
@@ -63,7 +58,6 @@ export interface ChatLifecycleServiceDependencies {
   session: ChatSessionPort;
   conversation: ChatConversationPort;
   historyExport: Pick<ChatHistoryExportService, "cleanup">;
-  taskManager: Pick<TaskManager, "getTask">;
 }
 
 export class ChatLifecycleService implements ChatLifecyclePort {
@@ -72,7 +66,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   private readonly session: ChatSessionPort;
   private readonly conversation: ChatConversationPort;
   private readonly historyExport?: Pick<ChatHistoryExportService, "cleanup">;
-  private readonly taskManager: Pick<TaskManager, "getTask">;
 
   constructor(dependencies: Partial<ChatLifecycleServiceDependencies> & Pick<
     ChatLifecycleServiceDependencies,
@@ -83,7 +76,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     this.session = dependencies.session;
     this.conversation = dependencies.conversation;
     this.historyExport = dependencies.historyExport;
-    this.taskManager = dependencies.taskManager ?? taskManager;
   }
 
   async createChat(options: CreateChatOptions): Promise<Chat> {
@@ -111,24 +103,17 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       1,
     );
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
-    if (options.directory !== undefined && scope !== "task") {
+    if (options.directory !== undefined) {
       await executionHostService.assertDirectoryExists(
         workspace.executionHostBinding,
         options.directory,
       );
     }
 
-    if (scope === "task" && !options.taskId) {
-      throw new Error("Task chats require a taskId");
-    }
-    if (scope === "workspace" && options.taskId) {
-      throw new Error("Standalone chats cannot specify a taskId");
-    }
     if (
       !isGitBackedWorkspace(workspace)
       && (
-        scope === "task"
-        || options.useWorktree === true
+        options.useWorktree === true
         || options.useSelectedBranchForWorktree === true
         || options.baseBranch !== undefined
       )
@@ -138,11 +123,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         "Directory workspaces do not support branches or worktrees.",
       );
     }
-    const useWorktree = scope === "task"
-      ? false
-      : isGitBackedWorkspace(workspace)
-        ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
-        : false;
+    const useWorktree = isGitBackedWorkspace(workspace)
+      ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
+      : false;
     if (useWorktree) {
       assertWorktreesAllowed(workspace);
     }
@@ -192,7 +175,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         },
         executionHostBinding: workspace.executionHostBinding,
         scope,
-        taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
         model: {
           providerID: options.modelProviderID,
@@ -200,6 +182,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           variant: options.modelVariant ?? "",
         },
         useWorktree,
+        startWithPlan: options.startWithPlan === true,
         useSelectedBranchForWorktree:
           useWorktree && options.useSelectedBranchForWorktree === true,
         ...(useWorktree && options.useChatNameAsBranch ? { useChatNameAsBranch: true } : {}),
@@ -214,8 +197,8 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     };
 
     const shouldPrepareWorktreeOnCreate =
-      !isTaskChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? false);
-    const initialChat = shouldPrepareWorktreeOnCreate || isTaskChat(chat) || !chat.config.useWorktree
+      chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? false);
+    const initialChat = shouldPrepareWorktreeOnCreate || !chat.config.useWorktree
       ? chat
       : {
           ...chat,
@@ -241,7 +224,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
     await timer.measure("chat_persistence", () => this.state.saveNewChat(preparedChat));
     this.state.emitChatCreated(preparedChat, now);
-    if (!shouldPrepareWorktreeOnCreate && !isTaskChat(preparedChat) && preparedChat.config.useWorktree) {
+    if (!shouldPrepareWorktreeOnCreate && preparedChat.config.useWorktree) {
       this.worktree.prepareWorktreeInBackground(preparedChat);
     }
     const timing = timer.complete();
@@ -339,6 +322,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           variant: options.modelVariant ?? "",
         },
         useWorktree: false,
+        startWithPlan: options.startWithPlan === true,
         autoApprovePermissions: true,
         createdAt: now,
         updatedAt: now,
@@ -352,55 +336,6 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     await this.state.saveNewChat(chat);
     this.state.emitChatCreated(chat, now);
     return chat;
-  }
-
-  async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {
-    const existing = await this.state.getTaskChat(taskId);
-    if (existing) {
-      return { chat: existing, created: false };
-    }
-
-    const targetTask = task ?? await this.taskManager.getTask(taskId);
-    if (!targetTask) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    const workingDirectory = getTaskWorkingDirectory(targetTask);
-    if (!workingDirectory) {
-      throw new Error(`Task ${taskId} does not currently have a working directory for chat creation`);
-    }
-
-    try {
-      const chat = await this.createChat({
-        name: targetTask.config.name,
-        workspaceId: targetTask.config.workspaceId,
-        scope: "task",
-        taskId,
-        modelProviderID: targetTask.config.model.providerID,
-        modelID: targetTask.config.model.modelID,
-        modelVariant: targetTask.config.model.variant,
-        useWorktree: false,
-        baseBranch: targetTask.config.baseBranch,
-        directory: workingDirectory,
-      });
-      return { chat, created: true };
-    } catch (error) {
-      if (isUniqueConstraint(error, "chats", "task_id")) {
-        const concurrent = await this.state.getTaskChat(taskId);
-        if (concurrent) {
-          return { chat: concurrent, created: false };
-        }
-      }
-      throw error;
-    }
-  }
-
-  async deleteTaskChat(taskId: string): Promise<DeleteTaskChatResult> {
-    const chat = await this.state.getTaskChat(taskId);
-    if (!chat) {
-      return { deleted: false, cleanup: Promise.resolve(true) };
-    }
-    return await this.deleteChatDeferred(chat);
   }
 
   async updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null> {
@@ -575,7 +510,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     if (historyRecovery && historyRecovery.status !== "complete") {
       historyExports.set(historyRecovery.id, historyRecovery);
     }
-    if (chat.config.scope !== "task" && isWorkspaceChat(chat)) {
+    if (isWorkspaceChat(chat)) {
       cleanupSteps.push({
         label: "managed credentials",
         run: async () => {
@@ -657,7 +592,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
   private async deleteChatDeferred(
     chat: Chat,
-  ): Promise<DeleteTaskChatResult> {
+  ): Promise<{ deleted: boolean; cleanup: Promise<boolean> }> {
     const user = requireExecutionOwnerUser();
     this.conversation.closeActiveStream(chat.config.id);
     const deleted = await this.state.deletePersistedChat(chat.config.id);

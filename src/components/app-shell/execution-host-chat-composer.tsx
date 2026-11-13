@@ -43,6 +43,7 @@ export function ExecutionHostChatComposer({
   const apiPath = useMemo(() => executionHostApiPath(host), [host.ref]);
   const storedModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
+  const [startWithPlan, setStartWithPlan] = useState(false);
   const [directory, setDirectory] = useState(host.repositoriesBasePath ?? "");
   const [directoryLoading, setDirectoryLoading] = useState(
     host.repositoriesBasePath === null,
@@ -151,6 +152,7 @@ export function ExecutionHostChatComposer({
       const request: CreateExecutionHostChatRequest = {
         name: name.trim() || `${host.name} chat`,
         directory: directory.trim(),
+        ...(startWithPlan ? { startWithPlan: true } : {}),
         model: {
           providerID: discovery.provider,
           modelID: model.modelID,
@@ -179,6 +181,7 @@ export function ExecutionHostChatComposer({
     name,
     navigateWithinShell,
     selectedModel,
+    startWithPlan,
   ]);
 
   const canSubmit = !submitting
@@ -202,6 +205,15 @@ export function ExecutionHostChatComposer({
         {error || discovery.error ? (
           <ErrorState description={error ?? discovery.error ?? ""} />
         ) : null}
+        <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={startWithPlan}
+            onChange={(event) => setStartWithPlan(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700"
+          />
+          Start with a plan
+        </label>
         <TextField
           id="execution-host-chat-name"
           label="Name"

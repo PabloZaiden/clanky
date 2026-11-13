@@ -1,5 +1,5 @@
 /**
- * User preferences persistence for Clanky Tasks Management System.
+ * User preferences persistence for Clanky.
  * Stores user preferences in SQLite database using a key-value pattern.
  * 
  * Note: Server settings are now stored per-workspace, not globally.
@@ -16,14 +16,12 @@ import type { SidebarPin } from "@pablozaiden/webapp/contracts";
 import { SidebarPinsSchema } from "@/contracts/schemas/sidebar-pins";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
-import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type DashboardViewMode, type QuickChatSettings } from "@/shared/preferences";
-import { CheapModelSelectionSchema } from "@/contracts/schemas/model";
+import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type QuickChatSettings } from "@/shared/preferences";
 import {
   normalizeQuickChatSettings,
   PromptTemplateListSchema,
 } from "@/contracts/schemas";
 import type { PromptTemplate } from "@/shared/prompt-templates";
-import type { CheapModelSelection } from "@/shared";
 import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
 import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/shared/agent-notifications";
@@ -115,21 +113,6 @@ export async function setControlApprovalRequired(required: boolean): Promise<voi
 }
 
 /**
- * Re-export DashboardViewMode so existing consumers of this module don't break.
- */
-export type { DashboardViewMode } from "@/shared/preferences";
-
-/**
- * Valid dashboard view mode values for validation.
- */
-const VALID_VIEW_MODES: DashboardViewMode[] = ["rows", "cards"];
-
-/**
- * Default dashboard view mode when no preference is set.
- */
-export const DEFAULT_VIEW_MODE: DashboardViewMode = "rows";
-
-/**
  * Default file explorer loading mode when no preference is set.
  */
 export const DEFAULT_FILE_EXPLORER_FULL_TREE = true;
@@ -145,9 +128,7 @@ export interface UserPreferences {
     /** Model variant (e.g., "thinking"). Empty string or undefined for default. */
     variant?: string;
   };
-  /** Last used helper-model selection for cheap operations */
-  lastCheapModel?: CheapModelSelection;
-  /** Last used working directory for task creation */
+  /** Last used working directory */
   lastDirectory?: string;
   /** GitHub username used to prefill automatic workspace repository URLs */
   githubUsername?: string;
@@ -155,8 +136,6 @@ export interface UserPreferences {
   markdownRenderingEnabled?: boolean;
   /** Whether the file explorer loads the entire tree in one request (defaults to true) */
   fileExplorerFullTreeEnabled?: boolean;
-  /** Dashboard view mode (defaults to "rows") */
-  dashboardViewMode?: DashboardViewMode;
   /** Quick chat workspace/model settings */
   quickChatSettings?: QuickChatSettings;
   /** IANA timezone used by schedules such as Automations */
@@ -259,43 +238,6 @@ export async function setLastModel(model: {
 }
 
 /**
- * Get the last used cheap helper-model selection.
- */
-export async function getLastCheapModel(): Promise<UserPreferences["lastCheapModel"]> {
-  log.debug("Getting last cheap model preference");
-  const lastCheapModelJson = getPreference("lastCheapModel");
-  if (!lastCheapModelJson) {
-    log.trace("No last cheap model preference found");
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(lastCheapModelJson);
-    const validation = CheapModelSelectionSchema.safeParse(parsed);
-    if (!validation.success) {
-      log.warn("Failed to validate last cheap model preference", {
-        issues: validation.error.issues.map((issue) => issue.message),
-      });
-      return undefined;
-    }
-    return validation.data;
-  } catch (error) {
-    log.warn("Failed to parse last cheap model preference", {
-      error: String(error),
-    });
-    return undefined;
-  }
-}
-
-/**
- * Set the last used cheap helper-model selection.
- */
-export async function setLastCheapModel(selection: CheapModelSelection): Promise<void> {
-  log.debug("Setting last cheap model preference", { mode: selection.mode });
-  setPreference("lastCheapModel", JSON.stringify(selection));
-}
-
-/**
  * Get the last used working directory.
  */
 export async function getLastDirectory(): Promise<string | undefined> {
@@ -387,37 +329,6 @@ export async function getFileExplorerFullTreeEnabled(): Promise<boolean> {
 export async function setFileExplorerFullTreeEnabled(enabled: boolean): Promise<void> {
   log.debug("Setting file explorer full-tree preference", { enabled });
   setPreference("fileExplorerFullTreeEnabled", String(enabled));
-}
-
-/**
- * Get the dashboard view mode preference.
- * Defaults to "rows" if not set.
- */
-export async function getDashboardViewMode(): Promise<DashboardViewMode> {
-  log.debug("Getting dashboard view mode preference");
-  const value = getPreference("dashboardViewMode");
-  if (value === null) {
-    log.trace("Dashboard view mode preference not set, using default", { default: DEFAULT_VIEW_MODE });
-    return DEFAULT_VIEW_MODE;
-  }
-  if (VALID_VIEW_MODES.includes(value as DashboardViewMode)) {
-    log.trace("Dashboard view mode preference", { mode: value });
-    return value as DashboardViewMode;
-  }
-  log.warn("Invalid dashboard view mode preference, using default", { storedValue: value, default: DEFAULT_VIEW_MODE });
-  return DEFAULT_VIEW_MODE;
-}
-
-/**
- * Set the dashboard view mode preference.
- */
-export async function setDashboardViewMode(mode: DashboardViewMode): Promise<void> {
-  log.debug("Setting dashboard view mode preference", { mode });
-  if (!VALID_VIEW_MODES.includes(mode)) {
-    log.error("Invalid dashboard view mode provided", { mode, validModes: VALID_VIEW_MODES });
-    throw new Error(`Invalid dashboard view mode: ${mode}. Valid modes are: ${VALID_VIEW_MODES.join(", ")}`);
-  }
-  setPreference("dashboardViewMode", mode);
 }
 
 export async function getQuickChatSettings(): Promise<QuickChatSettings> {

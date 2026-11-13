@@ -1,7 +1,7 @@
 import type { DeterministicAutomationTestResult } from "@/shared/deterministic-automation";
 import type { AutomationRun } from "@/shared/automation";
 import type { ModelConfig } from "@/shared/model";
-import type { TaskLogEntry } from "@/shared/task";
+import type { ConversationLogEntry } from "@/shared/conversation";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
 import { chatManager } from "./chat-manager";
@@ -26,7 +26,7 @@ export interface TestDeterministicAutomationCodeOptions {
   testRunId?: string;
   userId?: string;
   signal?: AbortSignal;
-  onOutput?: (entry: TaskLogEntry) => void;
+  onOutput?: (entry: ConversationLogEntry) => void;
 }
 
 function createTestRun(options: TestDeterministicAutomationCodeOptions): AutomationRun {

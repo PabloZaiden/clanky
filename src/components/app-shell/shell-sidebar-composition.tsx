@@ -48,13 +48,6 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
     toggleChatPrivate: handlers.toggleChatPrivate,
     showPrivateItems: handlers.showPrivateItems,
   };
-  const taskContext = {
-    openHarnessActivity: handlers.openHarnessActivity,
-    navigateWithinShell: handlers.navigateWithinShell,
-    stopSidebarTask: handlers.stopSidebarTask,
-    toggleTaskPrivate: handlers.toggleTaskPrivate,
-    showPrivateItems: handlers.showPrivateItems,
-  };
   const terminalContext = {
     toggleTerminalSessionPrivate: handlers.toggleTerminalSessionPrivate,
     openRenameTerminalSession: handlers.openRenameTerminalSession,
@@ -80,7 +73,6 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
   };
   const contexts: SidebarDomainBuilderContexts = {
     chat: chatContext,
-    task: taskContext,
     terminal: terminalContext,
     automation: agentContext,
     workspace: workspaceContext,
@@ -121,11 +113,7 @@ function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = 
       })),
     ],
   });
-  const accessResources = {
-    ...options,
-    tasks: options.sidebarWorkspaceGroups.flatMap((group) => group.workspaces.flatMap((workspace) =>
-      [...workspace.tasks, ...workspace.historyTasks].map((node) => node.task))),
-  };
+  const accessResources = options;
   function applyWorkspacePermissions(node: SidebarNode, inherited = false): SidebarNode {
     const readOnly = inherited || Boolean(node.route && isReadOnlyWorkspaceRoute(node.route, accessResources));
     const actions = readOnly ? node.actions?.filter(isReadOnlyWorkspaceAction) : node.actions;

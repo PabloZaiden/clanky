@@ -2,7 +2,7 @@
  * Automation type definitions for scheduled headless chat runs.
  *
  * Automations are workspace-scoped prompt schedules. Each run executes like a
- * non-interactive chat session and is intentionally separate from Tasks.
+ * non-interactive chat session with its own schedule and run history.
  */
 
 import type { ChatPermissionRequest, ChatWorktreeState } from "./chat";
@@ -13,8 +13,8 @@ import type {
   PersistedMessage,
   PersistedToolCall,
   SessionInfo,
-  TaskLogEntry,
-} from "./task";
+  ConversationLogEntry,
+} from "./conversation";
 
 export type AutomationScheduleIntervalUnit = "minutes" | "hours" | "days";
 
@@ -112,7 +112,7 @@ export interface AutomationRun {
   usage?: TokenUsageSummary;
   worktree?: ChatWorktreeState;
   messages: PersistedMessage[];
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   toolCalls: PersistedToolCall[];
   pendingPermissionRequests?: ChatPermissionRequest[];
   attachments?: MessageAttachment[];

@@ -1,14 +1,9 @@
-import {
-  getTaskStatusPill,
-  isSidebarHistoryTask,
-} from "../../utils";
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
 import {
   executionHostRefsEqual,
   type Automation,
   type Chat,
   type ExecutionHostDescriptor,
-  type Task,
   type TerminalSession,
   type Workspace,
 } from "@/shared";
@@ -31,13 +26,6 @@ export interface SidebarWorkspaceTerminalNode {
   createdAt: string;
 }
 
-export interface SidebarTaskNode {
-  task: Task;
-  title: string;
-  badge: string;
-  badgeVariant: BadgeVariant;
-}
-
 export interface SidebarChatNode {
   chat: Chat;
   title: string;
@@ -55,8 +43,6 @@ export interface SidebarAutomationNode {
 export interface SidebarWorkspaceNode {
   workspace: Workspace;
   key: string;
-  tasks: SidebarTaskNode[];
-  historyTasks: SidebarTaskNode[];
   chats: SidebarChatNode[];
   historyChats: SidebarChatNode[];
   terminalSessions: SidebarWorkspaceTerminalNode[];
@@ -87,13 +73,6 @@ export interface SidebarExecutionHostNode {
 }
 
 export type SidebarActiveWorkItem =
-  | {
-      kind: "task";
-      key: string;
-      workspace: Workspace;
-      workspaceName: string;
-      taskNode: SidebarTaskNode;
-    }
   | {
       kind: "chat";
       key: string;
@@ -148,12 +127,6 @@ export type CodeExplorerTarget =
       filePath?: string;
     }
   | {
-      contentType: "task";
-      taskId: string;
-      startDirectory?: string;
-      filePath?: string;
-    }
-  | {
       contentType: "execution-host";
       hostKind: "local" | "mesh";
       hostId: string;
@@ -191,15 +164,11 @@ export function getProvisioningStatusBadgeVariant(status: string | undefined): B
 
 function createWorkspaceTerminalNode(
   session: TerminalSession,
-  taskNameById: ReadonlyMap<string, string>,
 ): SidebarWorkspaceTerminalNode {
-  const linkedTaskName = session.config.taskId ? taskNameById.get(session.config.taskId) : undefined;
   return {
     session,
     title: session.config.name,
-    subtitle: linkedTaskName
-      ? `${linkedTaskName} · ${getTerminalConnectionModeLabel(session.config.connectionMode)}`
-      : getTerminalConnectionModeLabel(session.config.connectionMode),
+    subtitle: getTerminalConnectionModeLabel(session.config.connectionMode),
     badge: getTerminalSessionStatusLabel(session.state.status),
     badgeVariant: getTerminalSessionStatusBadgeVariant(session.state.status),
     createdAt: session.config.createdAt,
@@ -212,26 +181,15 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
 
 export function buildWorkspaceSidebarGroups({
   workspaces,
-  tasks,
   chats,
   terminalSessions = [],
 }: {
   workspaces: Workspace[];
-  tasks: Task[];
   chats: Chat[];
   terminalSessions?: TerminalSession[];
 }): SidebarWorkspaceGroupNode[] {
-  const tasksByWorkspaceId = new Map<string, Task[]>();
   const chatsByWorkspaceId = new Map<string, Chat[]>();
   const terminalsByWorkspaceId = new Map<string, TerminalSession[]>();
-  const taskNameById = new Map(tasks.map((task) => [task.config.id, task.config.name]));
-
-  for (const task of tasks) {
-    const workspaceTasks = tasksByWorkspaceId.get(task.config.workspaceId) ?? [];
-    workspaceTasks.push(task);
-    tasksByWorkspaceId.set(task.config.workspaceId, workspaceTasks);
-  }
-
   for (const chat of chats) {
     if (!isStandaloneChat(chat) || !isWorkspaceChat(chat)) {
       continue;
@@ -252,25 +210,13 @@ export function buildWorkspaceSidebarGroups({
   }
 
   const workspaceNodes = workspaces.map((workspace) => {
-    const workspaceTasks = tasksByWorkspaceId.get(workspace.id) ?? [];
     const workspaceChats = [...(chatsByWorkspaceId.get(workspace.id) ?? [])]
       .sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));
     const workspaceTerminals = sortByDesc(
       terminalsByWorkspaceId.get(workspace.id) ?? [],
       (terminal) => terminal.config.createdAt,
     )
-      .map((terminal) => createWorkspaceTerminalNode(terminal, taskNameById));
-    const taskNodes = workspaceTasks.map((task) => {
-      const statusPill = getTaskStatusPill(task);
-      return {
-        task,
-        title: task.config.name,
-        badge: statusPill.label,
-        badgeVariant: statusPill.variant,
-      };
-    });
-    const activeTaskNodes = taskNodes.filter((taskNode) => !isSidebarHistoryTask(taskNode.task.state.status));
-    const historyTaskNodes = taskNodes.filter((taskNode) => isSidebarHistoryTask(taskNode.task.state.status));
+      .map(createWorkspaceTerminalNode);
     const chatNodes = workspaceChats.map((chat) => ({
       chat,
       title: chat.config.name,
@@ -283,12 +229,10 @@ export function buildWorkspaceSidebarGroups({
     return {
       workspace,
       key: workspace.id,
-      tasks: activeTaskNodes,
-      historyTasks: historyTaskNodes,
       chats: activeChatNodes,
       historyChats: historyChatNodes,
       terminalSessions: workspaceTerminals,
-      hasActivity: activeTaskNodes.length > 0 || activeChatNodes.length > 0 || workspaceTerminals.length > 0,
+      hasActivity: activeChatNodes.length > 0 || workspaceTerminals.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
@@ -314,16 +258,6 @@ export function buildActiveWorkSidebarItems(
       }
 
       const workspaceName = workspaceNode.workspace.name;
-
-      for (const taskNode of workspaceNode.tasks) {
-        items.push({
-          kind: "task",
-          key: `task:${taskNode.task.config.id}`,
-          workspace: workspaceNode.workspace,
-          workspaceName,
-          taskNode,
-        });
-      }
 
       for (const chatNode of workspaceNode.chats) {
         items.push({
@@ -379,8 +313,6 @@ export function buildActiveWorkSidebarItems(
 
 export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string {
   switch (item.kind) {
-    case "task":
-      return getWorkItemLastInteractionAt(item.taskNode.task);
     case "chat":
     case "execution-host-chat":
       return getWorkItemLastInteractionAt(item.chatNode.chat);
@@ -390,7 +322,7 @@ export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string 
   }
 }
 
-export function getWorkItemLastInteractionAt(item: Chat | Task): string {
+export function getWorkItemLastInteractionAt(item: Chat): string {
   return item.state.lastUserMessageAt ?? item.config.createdAt;
 }
 

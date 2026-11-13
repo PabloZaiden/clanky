@@ -146,7 +146,7 @@ also present in echoed input.
 | Operation | Budget |
 | --- | --- |
 | Individual request, command, local poll, or WebSocket operation | 5 seconds |
-| Async task/chat/automation/terminal/provisioning/startup/recovery lifecycle | 10 seconds |
+| Async chat/automation/terminal/provisioning/startup/recovery lifecycle | 10 seconds |
 | Mesh E2E operation (`MESH_OPERATION_TIMEOUT_MS`) | 20 seconds |
 | Whole journey, final slow-CI backstop | 120 seconds |
 

@@ -1,6 +1,6 @@
 import type { TranscriptMessage } from "./transcript-attachments";
 import type { ChatTranscript } from "./chat-transcript";
-import type { TaskLogEntry } from "./task";
+import type { ConversationLogEntry } from "./conversation";
 import { isCountedAssistantResponse } from "./chat-transcript";
 import {
   mergeToolCallDisplayData,
@@ -26,12 +26,12 @@ export type TranscriptStreamEvent =
     }
   | {
       type: "transcript.log";
-      log: TaskLogEntry;
+      log: ConversationLogEntry;
     }
   | {
       type: "transcript.log.delta";
       logId: string;
-      level: TaskLogEntry["level"];
+      level: ConversationLogEntry["level"];
       message: string;
       logKind: string;
       delta: string;
@@ -179,7 +179,7 @@ export function applyTranscriptStreamEvent(
       if (typeof existingContent !== "string" || existingContent.length !== event.baseLength) {
         return { transcript: current, gapDetected: true };
       }
-      const log: TaskLogEntry = {
+      const log: ConversationLogEntry = {
         ...(existingIndex < 0 ? {} : current.logs[existingIndex]),
         id: event.logId,
         level: event.level,

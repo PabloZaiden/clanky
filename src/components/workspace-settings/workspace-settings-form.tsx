@@ -8,7 +8,6 @@ import {
   useHeaderActions, useToast, type SettingsCategory,
 } from "@pablozaiden/webapp/web";
 import { ServerSettingsForm } from "../server-settings-form";
-import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
 import { GeneralSettingsSection } from "./general-settings-section";
 import { useWorkspaceSettingsDraft } from "./use-workspace-settings-draft";
@@ -22,9 +21,9 @@ const CATEGORIES: SettingsCategory[] = [
 ];
 
 export function WorkspaceSettingsForm({
-  workspace, status, onSave, onWorkspaceIconChanged, onTest, onPurgeArchivedTasks,
-  onDeleteWorkspace, purgeableTaskCount = 0, workspaceTaskCount = 0,
-  saving = false, testing = false, purgingPurgeableTasks = false, remoteOnly = false,
+  workspace, status, onSave, onWorkspaceIconChanged, onTest,
+  onDeleteWorkspace,
+  saving = false, testing = false, remoteOnly = false,
   formId = "workspace-settings-form", onDeleted,
 }: WorkspaceSettingsFormProps) {
   const toast = useToast();
@@ -162,11 +161,8 @@ export function WorkspaceSettingsForm({
       </form>
       <div hidden={category !== "maintenance"}>
         <FormSection title="Maintenance">
-          {onPurgeArchivedTasks ? <PurgeTasksSection workspace={workspace}
-            onPurgeArchivedTasks={onPurgeArchivedTasks} purgeableTaskCount={purgeableTaskCount}
-            purgingPurgeableTasks={purgingPurgeableTasks} /> : null}
           {onDeleteWorkspace ? <DeleteWorkspaceSection workspace={workspace} onDeleteWorkspace={onDeleteWorkspace}
-            workspaceTaskCount={workspaceTaskCount} saving={busy} onDeleted={() => {
+            saving={busy} onDeleted={() => {
               model.reset();
               onDeleted?.();
             }} /> : null}

@@ -6,7 +6,6 @@
 
 import type { Backend } from "../../backends/types";
 import type { ExecutionHostBinding } from "@/shared/execution-host";
-import type { TaskEvent } from "@/shared/events";
 import { areServerSettingsEqual, type ConnectionStatus, type RuntimeServerSettings } from "@/shared/settings";
 
 export { type ConnectionStatus };
@@ -35,12 +34,12 @@ export interface WorkspaceConnectionState {
 }
 
 /**
- * Connection state for a task.
- * Each task gets its own dedicated backend connection.
- * The actual directory binding happens later when TaskEngine calls backend.connect()
+ * Connection state for a conversation.
+ * Each conversation gets its own dedicated backend connection.
+ * The actual directory binding happens later when conversation runtime calls backend.connect()
  * in setupSession() with the worktree directory.
  */
-export interface TaskConnectionState {
+export interface ConversationConnectionState {
   userId: string;
   backend: Backend;
   workspaceId: string;
@@ -92,8 +91,3 @@ export type ServerEvent =
 export function isServerEvent(event: { type?: unknown }): event is ServerEvent {
   return typeof event.type === "string" && event.type.startsWith("server.");
 }
-
-/**
- * Combined event type for the event emitter.
- */
-export type AppEvent = TaskEvent | ServerEvent;

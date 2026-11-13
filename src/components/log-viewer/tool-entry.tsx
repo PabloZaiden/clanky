@@ -3,7 +3,7 @@ import type { ToolCallData, ToolCallDisplayData } from "@/shared";
 import { isToolCallDetailsStale, isToolCallSummary } from "@/shared/tool-call";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { StateText } from "../common";
-import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
+import { DiffPatchViewer } from "../common/diff-patch-viewer";
 import { HighlightedJsonBlock } from "./highlighted-json-block";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";

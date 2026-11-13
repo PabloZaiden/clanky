@@ -58,7 +58,7 @@ interface HarnessInputReconciliationContextValue {
 }
 
 interface HarnessInputReconciliationProviderProps {
-  kind: "chat" | "task";
+  kind: "chat";
   entityId: string;
   inputs?: readonly HarnessInputReceipt[];
   onUpdated?: () => Promise<void>;
@@ -110,7 +110,7 @@ class HarnessInputReconciliationController {
   private disposed = false;
 
   constructor(
-    private readonly kind: "chat" | "task",
+    private readonly kind: "chat",
     private readonly entityId: string,
     private readonly publish: StatusPublisher,
   ) {}

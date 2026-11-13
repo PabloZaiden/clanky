@@ -1,5 +1,5 @@
 /**
- * Shared SQL implementation for chat, task, and automation-run transcript stores.
+ * Shared SQL implementation for conversation transcript stores.
  *
  * Resource-specific adapters live in separate modules; this file owns only
  * the parameterized persistence operations.
@@ -15,7 +15,7 @@ import type {
   ChatTranscriptStorageEntry,
   TranscriptChangeSet,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallRecord,
   TranscriptSnapshotOptions,
 } from "@/shared";
@@ -30,7 +30,7 @@ import {
 import {
   getToolPayload,
   isPersistedMessage,
-  isTaskLogEntry,
+  isConversationLogEntry,
   rowToStorageEntry,
   serializeJson,
 } from "./codec";
@@ -147,7 +147,7 @@ export function replaceTranscriptEntriesForUserInTransaction(
   resourceId: string,
   userId: string,
   state: TranscriptStateLike,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): void {
   assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
@@ -168,7 +168,7 @@ export function replaceTranscriptEntriesForUser(
   resourceId: string,
   userId: string,
   state: TranscriptStateLike,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): void {
   const db = getDatabase();
   db.transaction(() => {
@@ -187,7 +187,7 @@ export function replaceTranscriptEntries(
   resource: TranscriptResource,
   resourceId: string,
   state: TranscriptStateLike,
-  shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+  shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
 ): void {
   replaceTranscriptEntriesForUser(
     resource,
@@ -205,7 +205,7 @@ export function syncTranscriptEntriesInTransaction(
   userId: string,
   previousState: TranscriptStateLike,
   nextState: TranscriptStateLike,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): void {
   assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "chat") invalidateChatMetadata(db, userId, resourceId);
@@ -353,7 +353,7 @@ export function syncTranscriptEntries(
   resourceId: string,
   previousState: TranscriptStateLike,
   nextState: TranscriptStateLike,
-  shouldIncludeLog?: (entry: TaskLogEntry) => boolean,
+  shouldIncludeLog?: (entry: ConversationLogEntry) => boolean,
 ): void {
   const db = getDatabase();
   const userId = requireResourcePersistenceUserId(resource === "automation_run" ? "automation-run" : resource, resourceId);
@@ -430,7 +430,7 @@ export function getConversationAdmissionsForUser(
 ): Array<{ inputId: string; nativeMessageId: string | null; status: string }> {
   assertResourcePersistenceUser(resource === "automation_run" ? "automation-run" : resource, resourceId, userId);
   if (resource === "subagent") return [];
-  const table = resource === "task" ? "tasks" : "chats";
+  const table = "chats";
   const target = resource === "automation_run"
     ? getDatabase().prepare("SELECT chat_id FROM automation_runs WHERE id = ? AND user_id = ?")
       .get(resourceId, userId) as { chat_id: string | null } | null : null;
@@ -956,7 +956,7 @@ export function hydrateTranscriptStateForUser(
     true,
   );
   const messages: PersistedMessage[] = [];
-  const logs: TaskLogEntry[] = [];
+  const logs: ConversationLogEntry[] = [];
   const toolCalls: ToolCallRecord[] = [];
 
   for (const entry of [...entries].sort((left, right) => left.sequence - right.sequence)) {
@@ -967,7 +967,7 @@ export function hydrateTranscriptStateForUser(
       continue;
     }
     if (entry.kind === "log") {
-      if (isTaskLogEntry(entry.payload)) {
+      if (isConversationLogEntry(entry.payload)) {
         logs.push(entry.payload);
       }
       continue;

@@ -23,49 +23,146 @@ async function getDiffForBase(
   directory: string,
   diffBase: string
 ): Promise<FileDiff[]> {
-  const numstatArgs = ["diff", "--numstat", diffBase];
-  const result = await runGitCommand(executor, directory, numstatArgs);
+  const args = ["diff", "--no-ext-diff", "--no-textconv", "--find-renames", "--raw", "--numstat", "-z", diffBase, "--"];
+  const result = await runGitCommand(executor, directory, args);
   if (!result.success) {
-    throw gitError("Failed to get diff", result, numstatArgs);
+    throw gitError("Failed to get diff", result, args);
   }
 
-  const statusResult = await runGitCommand(executor, directory, ["diff", "--name-status", diffBase]);
-
-  const statusMap = new Map<string, string>();
-  if (statusResult.success) {
-    const statusLines = statusResult.stdout.replace(/\r\n/g, "\n").trim().split("\n").filter(Boolean);
-    for (const line of statusLines) {
-      const parts = line.split("\t");
-      const statusChar = parts[0]?.charAt(0) ?? "M";
-      const filePath = parts[parts.length - 1] ?? "";
-      if (filePath) {
-        statusMap.set(filePath, statusChar);
-      }
-    }
-  }
-
-  const lines = result.stdout.replace(/\r\n/g, "\n").trim().split("\n").filter(Boolean);
-  const diffs: FileDiff[] = [];
-
-  for (const line of lines) {
-    const [additions, deletions, path] = line.split("\t");
-    if (!path) continue;
-
-    const statusChar = statusMap.get(path) ?? "M";
-    let status: FileDiff["status"] = "modified";
-    if (statusChar === "A") status = "added";
-    else if (statusChar === "D") status = "deleted";
-    else if (statusChar === "R") status = "renamed";
-
+  const entries = result.stdout.split("\0");
+  const diffs: Array<Omit<FileDiff, "additions" | "deletions">> = [];
+  let index = 0;
+  while (entries[index]?.startsWith(":")) {
+    const header = entries[index++]!;
+    const change = header.slice(header.lastIndexOf(" ") + 1).charAt(0);
+    const sourcePath = entries[index++];
+    const path = change === "R" || change === "C" ? entries[index++] : sourcePath;
+    if (!path) throw new Error("Git returned an invalid changed-file record.");
     diffs.push({
       path,
-      status,
-      additions: additions === "-" ? 0 : parseInt(additions ?? "0", 10),
-      deletions: deletions === "-" ? 0 : parseInt(deletions ?? "0", 10),
+      status: change === "A" || change === "C" ? "added"
+        : change === "D" ? "deleted" : change === "R" ? "renamed" : "modified",
+      ...(change === "R" ? { oldPath: sourcePath } : {}),
     });
   }
+  const stats = parseNullDelimitedNumstat(entries.slice(index).join("\0"));
+  return diffs.map((file) => {
+    const counts = stats.get(file.path);
+    if (!counts) throw new Error("Git returned a changed file without its statistics.");
+    return { ...file, ...counts };
+  });
+}
 
-  return diffs;
+function parseNullDelimitedNumstat(output: string): Map<string, { additions: number; deletions: number }> {
+  const entries = output.split("\0");
+  const stats = new Map<string, { additions: number; deletions: number }>();
+  for (let index = 0; index < entries.length - 1;) {
+    const entry = entries[index++]!;
+    const firstTab = entry.indexOf("\t");
+    const secondTab = entry.indexOf("\t", firstTab + 1);
+    if (firstTab < 0 || secondTab < 0) continue;
+    let path = entry.slice(secondTab + 1);
+    if (!path) {
+      index++;
+      path = entries[index++] ?? "";
+    }
+    stats.set(path, {
+      additions: Number.parseInt(entry.slice(0, firstTab), 10) || 0,
+      deletions: Number.parseInt(entry.slice(firstTab + 1, secondTab), 10) || 0,
+    });
+  }
+  return stats;
+}
+
+async function getWorkingTreeDiffBase(
+  executor: CommandExecutor,
+  directory: string,
+  baseBranch: string,
+): Promise<{ repository: string; base: string; baseRef: string }> {
+  const rootArgs = ["rev-parse", "--show-toplevel"];
+  const root = await runGitCommand(executor, directory, rootArgs);
+  if (!root.success) throw gitError("Failed to locate the repository", root, rootArgs);
+  const repository = root.stdout.trim();
+  let baseRef: string;
+  let base: string;
+  const headArgs = ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"];
+  const head = await runGitCommand(executor, repository, headArgs, { allowFailure: true });
+  if (head.success) {
+    const resolved = await resolveDiffBaseRef(executor, repository, baseBranch);
+    if (!resolved) throw new Error(`The comparison branch '${baseBranch}' is unavailable.`);
+    baseRef = resolved;
+    const baseArgs = ["merge-base", "HEAD", baseRef];
+    const mergeBase = await runGitCommand(executor, repository, baseArgs);
+    if (!mergeBase.success || !mergeBase.stdout.trim()) {
+      throw gitError("Failed to determine the branch comparison base", mergeBase, baseArgs);
+    }
+    base = mergeBase.stdout.trim();
+  } else {
+    const symbolic = await runGitCommand(executor, repository, ["symbolic-ref", "--quiet", "HEAD"], { allowFailure: true });
+    const ref = symbolic.success
+      ? await runGitCommand(executor, repository, ["show-ref", "--verify", "--quiet", symbolic.stdout.trim()], { allowFailure: true })
+      : undefined;
+    if (ref?.exitCode !== 1) throw gitError("The repository HEAD could not be read", head, headArgs);
+    // hash-object without -w computes the empty tree without writing an object or index.
+    const emptyArgs = ["hash-object", "-t", "tree", "--", "/dev/null"];
+    const empty = await runGitCommand(executor, repository, emptyArgs);
+    if (!empty.success) throw gitError("Failed to compare the initial files", empty, emptyArgs);
+    base = empty.stdout.trim();
+    baseRef = "empty tree";
+  }
+  return { repository, base, baseRef };
+}
+
+export async function getWorkingTreeDiff(
+  executor: CommandExecutor,
+  directory: string,
+  baseBranch: string,
+): Promise<{ files: FileDiff[]; base: string; baseRef: string }> {
+  const { repository, base, baseRef } = await getWorkingTreeDiffBase(executor, directory, baseBranch);
+  const files = await getDiffForBase(executor, repository, base);
+  const untrackedArgs = ["ls-files", "--others", "--exclude-standard", "-z"];
+  const untracked = await runGitCommand(executor, repository, untrackedArgs);
+  if (!untracked.success) throw gitError("Failed to read untracked files", untracked, untrackedArgs);
+  for (const path of untracked.stdout.split("\0").filter(Boolean)) {
+    files.push({ path, status: "added", additions: null, deletions: null });
+  }
+  return { files, base, baseRef };
+}
+
+export async function getWorkingTreeFileDiff(
+  executor: CommandExecutor,
+  directory: string,
+  base: string,
+  path: string,
+) {
+  const rootArgs = ["rev-parse", "--show-toplevel"];
+  const root = await runGitCommand(executor, directory, rootArgs);
+  if (!root.success) throw gitError("Failed to locate the repository", root, rootArgs);
+  const repository = root.stdout.trim();
+  const tracked = (await getDiffForBase(executor, repository, base)).find((file) => file.path === path);
+  if (!tracked) {
+    const args = ["ls-files", "--others", "--exclude-standard", "-z"];
+    const untracked = await runGitCommand(executor, repository, args);
+    if (!untracked.success) throw gitError("Failed to read untracked files", untracked, args);
+    if (!untracked.stdout.split("\0").includes(path)) return null;
+  }
+  const args = [
+    "--literal-pathspecs", "diff",
+    ...(!tracked ? ["--no-index"] : ["--find-renames"]),
+    "--no-ext-diff", "--no-textconv", "--no-color", "--numstat", "--patch", "-z",
+    ...(tracked ? [base] : []), "--",
+    ...(!tracked ? ["/dev/null"] : []), path, ...(tracked?.oldPath ? [tracked.oldPath] : []),
+  ];
+  const result = await runGitCommand(executor, repository, args, { allowFailure: !tracked });
+  if (!result.success && !(!tracked && result.exitCode === 1)) {
+    throw gitError("Failed to read the file patch", result, args);
+  }
+  const stats = parseNullDelimitedNumstat(result.stdout).get(path);
+  if (!stats) throw new Error("The file changed while its patch was being read; refresh the change list.");
+  return {
+    ...(tracked ?? { path, status: "added" as const }), ...stats,
+    patch: result.stdout.slice(result.stdout.lastIndexOf("\0") + 1),
+  };
 }
 
 export async function getDiffSummary(

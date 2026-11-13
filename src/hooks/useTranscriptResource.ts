@@ -40,7 +40,7 @@ export interface TranscriptResourceState<TResource> {
 export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   resourceId: string;
   resourceLabel: string;
-  stream: "task" | "chat" | "automation.run" | "subagent";
+  stream: "chat" | "automation.run" | "subagent";
   baseUrl: string;
   metadataUrl?: string;
   initialResource?: TResource | null;
@@ -71,7 +71,6 @@ export interface UseTranscriptResourceResult<TResource> {
 type ContentEvent = TranscriptContentEvent;
 
 const STREAMS = {
-  task: { resource: "tasks", target: "taskId" },
   chat: { resource: "chats", target: "chatId" },
   "automation.run": { resource: "automation-runs", target: "automationRunId" },
   subagent: { resource: "subagents", target: "subagentId" },

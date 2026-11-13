@@ -7,14 +7,6 @@ export const ControlClientContextSchema = z.object({
   revision: z.number().int().nonnegative(),
   route: z.record(z.string().min(1).max(100), z.string().max(16_384))
     .refine((route) => Object.keys(route).length <= 24, "Too many route fields"),
-  planningPreferences: z.object({
-    autoAcceptPlan: z.boolean(),
-    fullyAutonomous: z.boolean(),
-  }).strict().optional(),
-  modelPreferences: z.object({
-    taskModelJson: z.string().max(4_000).nullable(),
-    cheapModelJson: z.string().max(4_000).nullable(),
-  }).strict().optional(),
 }).strict();
 export type ControlClientContext = z.infer<typeof ControlClientContextSchema>;
 

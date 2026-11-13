@@ -1,6 +1,6 @@
 # Clanky HTTP and CLI reference
 
-This document describes the REST API for the Clanky Task Management System.
+This document describes Clanky's REST API and authenticated CLI.
 
 ## Base URL
 
@@ -44,13 +44,13 @@ the execution-host file to exist, and transcript pagination is unchanged.
 destroying their history or worktrees. Use `GET /api/trash`,
 `POST /api/trash/:id/restore`, `DELETE /api/trash/:id` and `DELETE /api/trash`
 to list, restore, permanently delete or empty it. Retention is 30 days, checked
-at startup and daily. Tasks and their conversations are unchanged.
+at startup and daily. Automation conversations retain their permanent deletion path.
 See [Chat Trash](chat-trash.md) for pagination, cleanup and recovery semantics.
 
 ## Saved subagent conversations
 
-Chat and task APIs expose saved children under
-`/api/chats/:id/subagents` and `/api/tasks/:id/subagents`. The collection uses
+Chat APIs expose saved children under
+`/api/chats/:id/subagents`. The collection uses
 `{items,nextCursor}` with an optional opaque `before` cursor. A child ID is a
 persistent Clanky resource ID, not the native Activity ID used by Stop.
 
@@ -66,7 +66,7 @@ assistant message, using the normal summary/Piper policy. There are no child
 send, steer, model-change or continuation routes.
 
 Realtime uses the `subagents` state resource and `subagent.transcript` content
-events targeted by `subagentId`; parent `chatId` or `taskId` dimensions scope
+events targeted by `subagentId`; the parent `chatId` dimension scopes
 list updates. Content carries the shared transcript event and versioned
 `streamPosition`. Subscribe before reading the authoritative snapshot and
 refresh after epoch/revision gaps; there is no content replay.
@@ -149,7 +149,7 @@ selects that exact release and takes precedence over `--pre-release`.
 
 Normal private REST routes require an authenticated user and enforce
 same-origin protection for browser mutations. Automatic workspace restart,
-worker updates (servers and automatic workspaces), database reset, and terminal-task purge are owner-only.
+worker updates (servers and automatic workspaces) and database reset are owner-only.
 Preview and terminal WebSocket upgrades require an authenticated user and
 always enforce same-origin checks.
 
@@ -233,7 +233,7 @@ passing control authority to the ACP subprocess.
 
 ## Transcript snapshots
 
-Chat, task and automation-run `GET .../:id/snapshot` responses default to the
+Chat and automation-run `GET .../:id/snapshot` responses default to the
 latest 100 non-empty assistant responses. Without `view=conversation`, they
 accept mutually exclusive transcript-window options:
 
@@ -282,7 +282,7 @@ All catalogued collection reads share these parameters, including read-policy
 
 Collections return `{ "items": [...], "nextCursor": "..." | null }`, optionally
 with small `context` such as the resolved directory, activity coverage or
-source truncation. This applies to chats, tasks, workspaces, execution hosts,
+source truncation. This applies to chats, workspaces, execution hosts,
 automations/runs, terminals, provisioning/logs, models, previews,
 review comments, interactions, and exposed file/Git collections. File trees return flat entry
 pages; `loadOnExpand` still identifies deferred directories. Objects containing
@@ -290,13 +290,13 @@ multiple collections label rows with `collection` and the matching detail
 section. `nextCursor: null` completes the exposed source, not data that the
 underlying source explicitly reports as truncated or deferred.
 
-Chat/task/run collection and item metadata are read directly from storage
+Chat/run collection and item metadata are read directly from storage
 without loading their transcripts or expanded harness. Their stable order is
 descending creation time, then ID. Metadata includes identity, status, source,
 model and actionable input counts when available. Unreadable persisted state
 is marked `stateUnavailable`, not reported as an empty healthy state.
 
-Compact **chat/task collections** additionally accept:
+Compact **chat collections** additionally accept:
 
 | Parameter | Meaning |
 | --- | --- |
@@ -308,10 +308,8 @@ Compact **chat/task collections** additionally accept:
 
 Activity order uses the persisted work-activity timestamp, falling back to
 creation; configuration edits are not activity. Metadata includes
-`lastActivityAt`, `lastUserMessageAt` and `interventionReasons` (`question`,
-`permission`, `plan_approval`). A ready task plan in planning with manual
-approval required counts as input. Available accept/push actions on completed
-tasks are separate `availableActions`, not required intervention.
+`lastActivityAt`, `lastUserMessageAt` and `interventionReasons` (`question`
+and `permission`). Planning documents do not introduce a separate approval state.
 `needsInput=true` also includes unavailable persisted state, explicitly marked,
 so callers do not mistake missing state for proof that nothing needs attention.
 These new selectors apply to compact collection reads; requests without the
@@ -351,7 +349,7 @@ budgets count UTF-8 bytes of serialized JSON.** Chunks never split a surrogate
 pair. `section=details` retrieves the original response/item without compact
 field projection.
 
-Chat, task and automation-run `/snapshot` endpoints also accept
+Chat and automation-run `/snapshot` endpoints also accept
 `view=conversation`. They return chronological literal user/assistant text:
 `{ id, role, timestamp, content, offset, complete }`, with minimal optional
 delivery/attachment-count markers. Actual question/answer messages are
@@ -374,7 +372,7 @@ changes retain the existing stale-cursor behavior. For example:
 
 ```text
 GET /api/chats?view=compact&order=activity&limit=5
-GET /api/tasks?view=compact&needsInput=true
+GET /api/chats?view=compact&needsInput=true
 GET /api/chats/CHAT_ID/snapshot?view=conversation&range=latest&limit=6
 ```
 
@@ -414,10 +412,10 @@ clanky auth --base-url http://localhost:3000
 clanky api
 
 # Invoke an authenticated API request (prints one JSON object)
-clanky api tasks/my-task --method GET
+clanky api chats/my-chat --method GET
 
 # Inspect the schema metadata for an endpoint
-clanky schema tasks
+clanky schema chats
 
 # Stream websocket events over stdio
 clanky ws
@@ -438,7 +436,7 @@ Example CLI output:
     "ok": true
   },
   "response": {
-    "id": "my-task",
+    "id": "my-chat",
     "status": "running"
   }
 }
@@ -533,7 +531,6 @@ its existing HTTP loopback listener.
 ```bash
 clanky code "my-workspace"
 clanky code "my-workspace" --chat "chat-name-or-id"
-clanky code "my-workspace" --task "task-name-or-id" --open
 
 # Open the preview in the default browser:
 clanky code "my-workspace" --open
@@ -545,12 +542,11 @@ Connect the CLI to your invited instance to open a shared workspace through its
 relay; the Code process runs on the controller's selected workspace host, not
 on the invited instance or CLI machine.
 
-`--chat` and `--task` are
-mutually exclusive and are resolved only within that workspace. Duplicate
+`--chat` is resolved only within that workspace. Duplicate
 names require an ID; shared selectors accept exact names or the qualified
 references returned by your instance, never references from another controller.
-Chat/task selectors open their existing effective working
-directory, including managed worktrees and task-linked chats; a missing worktree fails without
+Chat selectors open their existing effective working
+directory, including managed worktrees; a missing worktree fails without
 creating it or starting an agent.
 
 The selected workspace host (local or Mesh) must already have a `code`
@@ -622,7 +618,7 @@ This integrates your installed VS Code for individual development, not a
 shared hosted IDE offering.
 
 The authenticated raw `/api/previews/bridge` accepts a `hello` with an optional
-`code: { chat?, task? }` (use `{}` for the workspace directory). Code starts require a
+`code: { chat? }` (use `{}` for the workspace directory). Code starts require a
 workspace target, `remoteHost: "127.0.0.1"`, `remotePort: 0`, and a loopback
 local URL at `/`. A successful `ready` additionally includes
 `code: { directory, remotePort }`. Errors include a stable `code` and safe
@@ -669,11 +665,53 @@ filesystem permissions. Access outside the initial directory is intentional
 and an accepted product risk; authentication, workspace ownership and
 execution-host authorization still apply.
 
+### Planning and change inspection
+
+Chat creation accepts optional `startWithPlan: true` for workspace and direct-host
+chats. No prompt runs until the first user message supplies the requirements.
+Only that prompt gains guidance to investigate, ask questions, write
+`.clanky-planning/plan.md` and `status.md`, and wait for an explicit implementation
+request. The transcript retains the original requirements. Subsequent messages
+are unchanged ordinary chat; there is no plan-ready, approval or handoff state.
+The kickoff is durably claimed before dispatch, so reconnecting does not inject
+it again or replay the user's message.
+
+| Read | Response |
+| --- | --- |
+| `GET /api/chats/:id/plan` | `{ exists, content }` from `plan.md` |
+| `GET /api/chats/:id/status-file` | `{ exists, content }` from `status.md` |
+| `GET /api/chats/:id/diff` | `FileDiff[]` metadata, including untracked files, without patches |
+| `GET /api/chats/:id/diff/file?base=<commit>&path=<relative-path>` | One file's metadata, line counts and `patch` |
+| `GET /api/chats/:id/repository-context` | `{ isGitRepo, branch, pullRequest, pullRequestLookup, message? }` |
+
+Diff compares the current working tree with the merge base of HEAD and the
+chat's original or repository-default branch. `X-Clanky-Diff-Base` gives the
+comparison commit and `X-Clanky-Diff-Base-Ref` the selected ref. It includes
+committed branch changes, pending tracked changes and untracked files without
+staging or changing the index. Missing Git context or unavailable directories
+are explicit errors, not an empty diff.
+
+The initial listing uses aggregate Git reads rather than one request per file.
+Untracked files have `additions: null` and `deletions: null` until opened; they
+are not read just to populate the list. Expanding a file requests its patch with
+the listing's comparison commit and URL-encoded relative path. The file read
+returns numeric counts, handles renamed and binary files, and returns 404 if
+the path is no longer changed. Patches are not loaded for collapsed files.
+
+Repository context reads the actual branch on the bound host. `pullRequest`
+is `{ number, url }` or null; `pullRequestLookup` distinguishes `found`, `none`
+and `unavailable`. These reads never fetch, push, create or change a PR.
+Document reads work independently of the planning checkbox. A missing file
+returns `exists: false`; an unprepared worktree or failed host read is an error.
+Managed worktree preparation installs the local `.clanky-planning` Git exclusion;
+planning kickoff also installs it when working directly in a Git repository.
+Already tracked files are not untracked.
+
 ### Automatic chat names
 
 Workspace chats created without a name start with `<workspace name> - <number>`.
 After the first user message is accepted by the backend, Clanky generates a
-short name asynchronously using the configured helper model. This applies to
+short name asynchronously using the chat's model. This applies to
 ACP and native chats and does not delay the conversation. The generated name
 is persisted only while the chat still has one user message and retains its
 provisional name; manually chosen names are preserved. If generation fails,
@@ -1014,6 +1052,11 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/chats/:id/new-here` | Create an empty chat in the source chat's current workspace directory and execution target. |
 | GET | `/api/chats/:id/activity` | Observe owned native background work. |
 | POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned native child or process. |
+| GET | `/api/chats/:id/diff` | List accumulated committed, pending and untracked changes with comparison-base headers; no patches. |
+| GET | `/api/chats/:id/diff/file` | Read the selected file's patch and counts using the listing's comparison base and relative path. |
+| GET | `/api/chats/:id/plan` | Read the chat's current planning document. |
+| GET | `/api/chats/:id/status-file` | Read its agent-maintained progress document. |
+| GET | `/api/chats/:id/repository-context` | Read the current branch and an existing open PR without Git mutations. |
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
@@ -1030,7 +1073,6 @@ not expose authentication or raw transport protocols; see
 | GET | `/api/chats/:id/tool-calls/:toolCallId` | Read the full details for one chat tool call. |
 | GET | `/api/chats/:id/transcript.html` | Open a chat transcript as a standalone HTML document. |
 | GET | `/api/chats/:id/transcript.md` | Download a chat transcript as Markdown. |
-| GET | `/api/check-planning-dir` | Inspect a workspace's `.clanky-planning` files. |
 | GET | `/api/execution-hosts` | List execution hosts available to the current user. |
 | POST | `/api/execution-hosts/:kind/:id/exec` | Execute one non-interactive command on a registered execution host. |
 | GET, POST | `/api/execution-hosts/:kind/:id/working-directory` | Resolve the configured or current execution-host directory. |
@@ -1074,10 +1116,8 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/mesh/workers/revoke` | Revoke one controller-to-worker grant. |
 | GET | `/api/models` | List available AI models for a workspace. |
 | GET | `/api/models/variants` | List available model variants for a workspace. |
-| GET, PUT | `/api/preferences/dashboard-view-mode` | Persist the preferred dashboard layout. |
 | GET, PUT | `/api/preferences/file-explorer-full-tree` | Persist file explorer tree loading preferences. |
 | GET, PUT | `/api/preferences/github-username` | Persist the user's optional GitHub username. |
-| GET, PUT | `/api/preferences/last-cheap-model` | Persist the user's most recently used cheap model. |
 | GET, PUT | `/api/preferences/last-directory` | Persist the user's last selected directory. |
 | GET, PUT | `/api/preferences/last-model` | Persist the user's most recently used model. |
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
@@ -1093,49 +1133,10 @@ not expose authentication or raw transport protocols; see
 | GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
 | POST | `/api/server-settings/test` | Test a server connection without creating a workspace. |
 | POST | `/api/settings/restart-automatic-workspaces` | Start restart jobs for the current user's automatically provisioned workspaces. |
-| POST | `/api/settings/purge-terminal-tasks` | Purge terminal-state tasks across all workspaces. |
 | POST | `/api/settings/reset-all` | Reset all persisted settings and recreate the database. |
 | GET, POST | `/api/terminal-sessions` | List or create a workspace or direct execution-host terminal session. |
 | GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a terminal session. |
 | GET | `/api/terminal` | Open the raw websocket bridge for a terminal session. |
-| GET, POST | `/api/tasks` | List tasks or create a new task. |
-| GET, PUT, PATCH, DELETE | `/api/tasks/:id` | Read, update, or delete a task. |
-| GET | `/api/tasks/:id/activity` | Observe owned native task background work. |
-| POST | `/api/tasks/:id/activity/:activityId/stop` | Stop one owned native child or process. |
-| POST | `/api/tasks/:id/accept` | Accept a completed or max-iteration task locally without pushing. |
-| POST | `/api/tasks/:id/address-comments` | Address review comments for a task. |
-| POST | `/api/tasks/:id/automatic-pr-flow/start` | Enable automatic pull request monitoring for a task. |
-| POST | `/api/tasks/:id/automatic-pr-flow/stop` | Disable automatic pull request monitoring for a task. |
-| GET, POST | `/api/tasks/:id/chat` | Read or create the chat session attached to a task. |
-| POST | `/api/tasks/:id/close-local` | Close a locally accepted task without PR actions. |
-| GET | `/api/tasks/:id/comments` | List review comments for a task. |
-| GET | `/api/tasks/:id/diff` | Read the git diff produced by a task. |
-| POST | `/api/tasks/:id/discard` | Discard a task and remove its working branch. |
-| POST | `/api/tasks/:id/draft/start` | Start draft generation for a task. |
-| POST | `/api/tasks/:id/follow-up` | Send a follow-up message to a task. |
-| POST | `/api/tasks/:id/manual-complete` | Promote a stopped or failed task to completed. |
-| POST | `/api/tasks/:id/mark-merged` | Mark a task as merged after an external merge. |
-| GET | `/api/tasks/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned task. |
-| POST, DELETE | `/api/tasks/:id/pending` | Apply pending values through the interrupt-first path, or clear them. |
-| PUT, DELETE | `/api/tasks/:id/pending-prompt` | Set the pending prompt used for the next task iteration. |
-| POST | `/api/tasks/:id/pending-inputs/:inputId/steer` | Admit the queued input into the current native execution. |
-| POST | `/api/tasks/:id/pending-inputs/:inputId/reconcile` | Recover delivery from the original owned native conversation. |
-| GET | `/api/tasks/:id/plan` | Read a task's planning document. |
-| POST | `/api/tasks/:id/plan/accept` | Accept a generated task plan. |
-| POST | `/api/tasks/:id/plan/discard` | Discard a generated task plan and delete the task. |
-| POST | `/api/tasks/:id/plan/feedback` | Submit feedback on a generated task plan. |
-| GET | `/api/tasks/:id/pull-request` | Read pull request navigation details for a task. |
-| POST | `/api/tasks/:id/pull-request/auto-merge` | Enable pull request auto-merge for a task. |
-| POST | `/api/tasks/:id/purge` | Permanently delete a task from storage. |
-| POST | `/api/tasks/:id/push` | Push a completed, max-iteration, or locally accepted task branch to the remote repository. |
-| GET | `/api/tasks/:id/review-history` | Read review history for a task. |
-| GET | `/api/tasks/:id/snapshot` | Read a task transcript snapshot, paged by non-empty assistant responses (page size 100). |
-| GET, POST | `/api/tasks/:id/terminal-session` | Read or create a task-backed terminal session. |
-| GET | `/api/tasks/:id/status-file` | Read a task's status tracking document. |
-| POST | `/api/tasks/:id/stop` | Stop an active task run. |
-| GET | `/api/tasks/:id/tool-calls/:toolCallId` | Read one complete task tool-call payload. |
-| POST | `/api/tasks/:id/update-branch` | Sync a pushed task branch with its base branch. |
-| POST | `/api/tasks/title` | Generate a task title from a prompt. |
 | GET, PUT | `/api/voice/settings` | Read or update transcription, shared text-generation, and Live model settings, plus local Piper support status. |
 | POST | `/api/voice/validate` | Validate the configured transcription, text-generation, or Live Voice capability. |
 | POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
@@ -1151,8 +1152,6 @@ not expose authentication or raw transport protocols; see
 | GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
 | GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
 | GET, PUT, DELETE | `/api/workspaces/:id` | Read, update, or delete a workspace. |
-| GET | `/api/workspaces/:id/task-creation-context` | Read effective task defaults, connected models and usable branches on the selected host. |
-| POST | `/api/workspaces/:id/archived-tasks/purge` | Purge archived tasks for a workspace. |
 | POST | `/api/workspaces/:id/automations/import` | Import a portable scheduled-automation configuration into a workspace. |
 | POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
 | GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
@@ -1194,1009 +1193,6 @@ descriptors. Harness availability is part of each descriptor:
 The optional `workspaceId` or connected `workspaceWorkerEnrollmentId` query
 includes that user's dedicated worker. Its reference retains the workspace or
 enrollment scope; dedicated workers are not listed in global host discovery.
-
-### Tasks CRUD
-
-Before constructing a task, read
-`GET /api/workspaces/:id/task-creation-context`. It returns workspace
-capabilities, effective `defaults`, model preferences and available models,
-real host Git branches, unmet `requirements`, and `ready`. Nullable model or
-branch selections are not invented defaults. Apply explicit choices and valid
-browser-saved preferences using `preferencePrecedence`; then submit through the
-ordinary task API. This read uses the workspace's selected execution host and
-does not expose credentials or change ordinary creation authorization.
-
-The global [voice assistant](voice.md#live-voice) discovers per-method schemas
-and automation policies from actual route definitions. Reads/writes use the
-normal authenticated framework dispatch; high-risk operations require a visual
-confirmation with a short model-written action description. The voice-only tool
-field `confirmationDescription` is required (1–500 trimmed characters for
-`confirm`, `null` otherwise); it is not part of the target API body. The browser
-receives the frozen description, request identifier and expiry, not private
-operation arguments. Approval executes only the bound, revalidated operation,
-and background admission is distinct from completed work.
-Credential-management, raw transport and binary protocols remain outside its
-JSON operation surface.
-
-#### GET /api/tasks
-
-List all tasks.
-
-**Query Parameters**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-
-**Response**
-
-```json
-[
-  {
-    "config": {
-      "id": "uuid",
-      "name": "My Task",
-      "directory": "/path/to/project",
-      "prompt": "Implement feature X",
-      "createdAt": "2026-01-20T10:00:00.000Z",
-      "updatedAt": "2026-01-20T10:00:00.000Z",
-      "stopPattern": "<promise>COMPLETE</promise>$",
-      "git": {
-        "branchPrefix": "",
-        "commitScope": ""
-      }
-    },
-    "state": {
-      "id": "uuid",
-      "status": "idle",
-      "currentIteration": 0,
-      "recentIterations": []
-    }
-  }
-]
-```
-
-#### POST /api/tasks
-
-Create a new task.
-
-**Request Body**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Task name shown in the UI. The dashboard can generate a suggested name with `POST /api/tasks/title`, but the final value is submitted by the client. |
-| `workspaceId` | string | Yes | ID of the workspace to create the task in |
-| `prompt` | string | Yes | Task prompt/PRD (non-empty) |
-| `issueNumber` | positive integer | No | GitHub issue number linked to the task; automatic PR descriptions include `Closes #<issueNumber>` |
-| `attachments` | array | Yes | Message attachments; use an empty array when there are none |
-| `model` | object | Yes | Model selection |
-| `model.providerID` | string | Yes | Provider ID (e.g., "anthropic") |
-| `model.modelID` | string | Yes | Model ID (e.g., "claude-sonnet-4-20250514") |
-| `model.variant` | string | Yes | Model variant (e.g., `"thinking"`); use `""` for the default variant |
-| `cheapModel` | object | Yes | Helper-model selection: `{ "mode": "same-as-task" }` or `{ "mode": "custom", "model": { ... } }` |
-| `useWorktree` | boolean | Yes | Whether to run the task in a dedicated git worktree |
-| `maxIterations` | number \| null | Yes | Maximum iterations; use `null` for unlimited |
-| `maxConsecutiveErrors` | number | Yes | Maximum consecutive errors before the failsafe stops the task |
-| `activityTimeoutSeconds` | number \| null | No | Seconds without events before ending the current turn normally. Defaults to 330 seconds when omitted or `null`; finite values must be at least 60 seconds. |
-| `stopPattern` | string | Yes | Completion regex. A trailing `<promise>BLOCKED</promise>` always stops safely without completion or automatic push. |
-| `git` | object | Yes | Git configuration |
-| `git.branchPrefix` | string | Yes | Prefix prepended before the generated `title-hash` branch name; use `""` for no prefix |
-| `git.commitScope` | string | Yes | Conventional Commit scope override; use `""` for a scope-less commit |
-| `baseBranch` | string | Yes | Base branch to create the task from |
-| `clearPlanningFolder` | boolean | Yes | Clear `.clanky-planning` before starting |
-| `autoAcceptPlan` | boolean | Yes | Automatically accept a ready plan |
-| `fullyAutonomous` | boolean | Yes | Continue through the configured autonomous post-approval flow |
-| `draft` | boolean | Yes | Save as draft without starting |
-| `uploadedPlan` | object | No | Optional uploaded plan with required `planContent` and optional `statusContent`; cannot be combined with `draft: true` |
-
-`completed` means the agent matched the completion pattern, not that its branch
-has been published. With `fullyAutonomous: true`, Clanky finalizes the workspace
-and its commit, pushes the branch, then starts the automatic PR flow. Normal
-backend cleanup waits for this continuation, including publication after
-conflict resolution. Successful publication advances the task to `pushed`;
-`state.automaticPrFlow` reports PR-flow progress or errors. A failed autonomous
-operation is not retried automatically.
-
-**Example Request**
-
-```json
-{
-  "name": "implement-dark-mode-toggle",
-  "workspaceId": "ws-abc123",
-  "prompt": "Implement a dark mode toggle in the settings page. Use CSS variables for theming.",
-  "issueNumber": 123,
-  "attachments": [],
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514",
-    "variant": ""
-  },
-  "cheapModel": { "mode": "same-as-task" },
-  "useWorktree": true,
-  "maxIterations": 10,
-  "maxConsecutiveErrors": 10,
-  "activityTimeoutSeconds": 330,
-  "stopPattern": "<promise>COMPLETE</promise>$",
-  "git": { "branchPrefix": "", "commitScope": "" },
-  "baseBranch": "main",
-  "clearPlanningFolder": false,
-  "autoAcceptPlan": false,
-  "fullyAutonomous": false,
-  "draft": false
-}
-```
-
-Use `POST /api/tasks/title` if you want Clanky to suggest a name from the prompt before calling this endpoint.
-
-**Response**
-
-Returns the created task object with status `201 Created`.
-
-- If `draft: true`, the task is saved with status `draft` and no git branch is created.
-- Otherwise, Clanky generates a plan and the task enters `planning`. The plan is
-  accepted automatically when `autoAcceptPlan` is `true`; otherwise it waits
-  for user acceptance.
-- If `uploadedPlan` is provided, Clanky uses it instead of generating a plan
-  and starts execution from it.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Missing or invalid fields |
-| 400 | `invalid_json` | Request body is not valid JSON |
-| 400 | `model_not_enabled` | The selected model is not available or not connected |
-| 400 | `provider_not_found` | The specified provider was not found |
-| 400 | `model_not_found` | The specified model was not found on the provider |
-| 404 | `workspace_not_found` | Workspace not found for the given workspaceId |
-| 500 | `start_plan_failed` | Task created but failed to start planning |
-| 500 | `start_uploaded_plan_failed` | Task created but failed to start from the uploaded plan |
-| 500 | `create_failed` | Task creation failed |
-
-#### POST /api/tasks/title
-
-Generate a suggested task title from a prompt and workspace context.
-
-**Request Body**
-
-```json
-{
-  "workspaceId": "ws-abc123",
-  "prompt": "Implement JWT-based authentication with login and signup endpoints",
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514",
-    "variant": ""
-  },
-  "cheapModel": { "mode": "same-as-task" }
-}
-```
-
-**Response**
-
-```json
-{
-  "title": "implement-jwt-authentication"
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `workspace_not_found` | Workspace not found |
-| 400 | `validation_error` | Missing or invalid request fields |
-| 500 | `title_generation_failed` | Failed to generate a title |
-
-#### GET /api/tasks/:id
-
-Get a specific task by ID.
-
-**Response**
-
-Returns the task object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
-#### PATCH /api/tasks/:id
-
-Update a task's configuration. Active execution tasks must be stopped first.
-While a task is in planning, only `autoAcceptPlan`, `fullyAutonomous`, and
-`isPrivate` may be updated. After plan approval, only `fullyAutonomous` and
-`isPrivate` remain mutable while the task is in an editable post-approval
-state.
-
-**Request Body**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Update the task name |
-| `directory` | string | Update working directory |
-| `prompt` | string | Update prompt |
-| `issueNumber` | positive integer \| null | Update the linked GitHub issue number; send `null` to clear the existing issue link |
-| `model` | object | Update model; `variant` is required when a model is supplied |
-| `cheapModel` | object | Update helper-model selection |
-| `maxIterations` | number \| null | Update max iterations; `null` means unlimited |
-| `maxConsecutiveErrors` | number | Update max consecutive errors |
-| `activityTimeoutSeconds` | number \| null | Update activity timeout; inactivity ends the current turn normally (`null` resets it to the 330-second default; omitting this field leaves it unchanged) |
-| `stopPattern` | string | Update stop pattern |
-| `baseBranch` | string | Update base branch |
-| `useWorktree` | boolean | Update worktree usage before the task has started |
-| `clearPlanningFolder` | boolean | Update clear planning folder flag |
-| `autoAcceptPlan` | boolean | Update whether a ready plan is accepted automatically |
-| `fullyAutonomous` | boolean | Update the autonomous post-approval flow |
-| `isPrivate` | boolean | Update task visibility |
-| `git` | object | Update git config with `branchPrefix` and `commitScope` |
-
-**Response**
-
-Returns the updated task object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Invalid fields (e.g., empty name) |
-| 400 | `invalid_json` | Request body is not valid JSON |
-| 404 | `not_found` | Task not found |
-| 409 | `base_branch_immutable` | Cannot change base branch after task has started |
-| 409 | `use_worktree_immutable` | Cannot change worktree usage after task has started |
-| 500 | `update_failed` | Update operation failed |
-
-#### PUT /api/tasks/:id
-
-Update a draft task's configuration. Only works for tasks in `draft` status.
-
-**Request Body**
-
-Same fields as PATCH.
-
-**Response**
-
-Returns the updated task object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `not_draft` | Only draft tasks can be updated via PUT |
-| 400 | `validation_error` | Invalid fields (e.g., empty name) |
-| 400 | `invalid_json` | Request body is not valid JSON |
-| 404 | `not_found` | Task not found |
-| 409 | `base_branch_immutable` | Cannot change base branch after task has started |
-| 409 | `use_worktree_immutable` | Cannot change worktree usage after task has started |
-| 500 | `update_failed` | Update operation failed |
-
-#### DELETE /api/tasks/:id
-
-Logically delete a task. The deleted status is persisted before provider,
-terminal-session, linked-chat, managed-credential, or Git cleanup is attempted.
-Cleanup runs best-effort; a failure can leave an external resource behind but
-does not block or undo task deletion.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
----
-
-### Task Control
-
-Tasks start by generating a plan when created (unless `draft: true`). Plans can
-be accepted manually or automatically with `autoAcceptPlan`. The following
-endpoints control task lifecycle after creation.
-
-#### POST /api/tasks/:id/draft/start
-
-Start a draft task. Transitions the task from `draft` status to `planning`.
-
-**Request Body**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `attachments` | array | Yes | Message attachments; use an empty array when there are none |
-
-**Response**
-
-Returns the updated task object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `not_draft` | Task is not in draft status |
-| 400 | `invalid_json` | Request body is not valid JSON |
-| 500 | `start_plan_failed` | Failed to start planning |
-
-#### POST /api/tasks/:id/accept
-
-Accept a completed or max-iteration task locally without pushing or merging its branch. The task
-transitions to `accepted_local`, leaving its commits in the local task branch
-and enabling the review/follow-up flow.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `accept_failed` | Cannot accept (e.g., task still running) |
-
-#### POST /api/tasks/:id/push
-
-Push a completed, max-iteration, or locally accepted task's branch to the
-remote for PR workflow.
-
-**Response**
-
-When the push succeeds normally:
-
-```json
-{
-  "success": true,
-  "remoteBranch": "origin/add-dark-mode-toggle-a1b2c3d",
-  "syncStatus": "clean"
-}
-```
-
-When the branch is already up to date with the remote:
-
-```json
-{
-  "success": true,
-  "remoteBranch": "origin/add-dark-mode-toggle-a1b2c3d",
-  "syncStatus": "already_up_to_date"
-}
-```
-
-When merge conflicts are detected and being resolved (push deferred):
-
-```json
-{
-  "success": true,
-  "syncStatus": "conflicts_being_resolved"
-}
-```
-
-Note: When `syncStatus` is `"conflicts_being_resolved"`, the `remoteBranch` field is absent.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `push_failed` | Cannot push (e.g., task still running or no remote) |
-
-#### POST /api/tasks/:id/update-branch
-
-Update a pushed task's branch by syncing it with the latest base branch and re-pushing if possible.
-
-If the sync is clean, the task remains in `pushed` status and the updated branch is pushed immediately. If conflicts are detected, Clanky starts the conflict-resolution flow and auto-pushes when that flow completes.
-
-**Response**
-
-Uses the same response shape as `POST /api/tasks/:id/push`.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `update_branch_failed` | Cannot update the pushed branch |
-
-#### POST /api/tasks/:id/discard
-
-Mark a task deleted and attempt best-effort provider, session, credential, and
-Git cleanup. A failure does not block deletion. Dedicated worktrees can remain
-until the task is purged.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `discard_failed` | Cannot discard |
-
-#### POST /api/tasks/:id/purge
-
-Permanently delete a draft or archived task from storage. Purge accepts
-`draft`, `accepted_local`, `merged`, `pushed`, and `deleted` statuses.
-The task record is removed before provider, terminal-session, credential, and
-Git cleanup runs. Cleanup failures do not block purging. A worktree is removed
-only when the execution engine and workspace safety checks confirm that no
-writer remains; otherwise it is left in place.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `purge_failed` | Cannot purge (task is not in a purgeable archived state) |
-
-#### GET /api/tasks/:id/terminal-session
-
-Get the terminal session linked to a task.
-
-**Response**
-
-Returns the terminal session object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task or linked terminal session not found |
-| 500 | `terminal_session_error` | Failed to read terminal session data |
-
-#### POST /api/tasks/:id/terminal-session
-
-Create or reuse the terminal session linked to a task.
-
-**Request Body** (optional)
-
-```json
-{
-  "directory": "/path/to/working/directory"
-}
-```
-
-`directory` sets the working directory only when a new task-linked terminal
-session is created. If a session already exists, it is returned unchanged.
-When omitted, a new session uses the task's worktree directory, if configured,
-or its task directory otherwise.
-
-**Response**
-
-Returns the terminal session object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 500 | `terminal_session_error` | Failed to create the terminal session |
-
-#### POST /api/tasks/:id/mark-merged
-
-Mark a pushed task as externally merged and transition it to `merged`.
-
-This is useful when a task branch was merged outside Clanky (for example through a hosted pull-request flow) and you want to synchronize the task state without performing an in-app merge. In worktree-backed flows, branch/worktree cleanup remains part of the normal discard/purge lifecycle.
-
-Only works for tasks in `pushed` or `merged` status.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `mark_merged_failed` | Cannot mark as merged (e.g., task is still running) |
-
----
-
-### Pending Values
-
-Set or clear pending message and/or model for the next iteration. This is the primary way to interact with running tasks.
-
-#### POST /api/tasks/:id/pending
-
-Set a pending message and/or model for the next iteration. Running tasks use the interrupt-first flow so the pending values are applied on the next iteration.
-
-Works for active tasks (running, waiting, planning, starting) and can also jumpstart tasks in supported stopped states (completed, stopped, failed, max_iterations).
-
-**Request Body**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `message` | string \| null | Yes | Message to apply on the next iteration; use `null` when changing only the model |
-| `model` | object \| null | Yes | Model change: `{ providerID, modelID, variant }`; use `null` when changing only the message |
-| `attachments` | array | Yes | Message attachments; use an empty array when there are none |
-
-At least one of `message` or `model` must be non-null.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Neither message nor model provided, or message is empty |
-| 400 | `model_not_enabled` | The selected model is not available |
-| 404 | `not_found` | Task not found |
-| 409 | `not_running` | Task is not in an active or jumpstart-eligible state |
-
-#### DELETE /api/tasks/:id/pending
-
-Clear all pending values (message and model).
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 409 | `not_running` | Task is not in an active state |
-
----
-
-### Pending prompt
-
-Modify the prompt for the next iteration while a task is running.
-
-#### PUT /api/tasks/:id/pending-prompt
-
-Set the pending prompt for the next iteration without interrupting the current
-execution. Read its stable ID from `state.pendingInput.id` in the task snapshot
-before using native Steer or reconciliation.
-
-**Request Body**
-
-```json
-{
-  "prompt": "Also update the tests for the feature",
-  "attachments": []
-}
-```
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 409 | `not_running` | Task is not running |
-| 400 | `validation_error` | Prompt is empty |
-
-#### DELETE /api/tasks/:id/pending-prompt
-
-Clear the pending prompt.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 409 | `not_running` | Task is not running |
-
----
-
-### Task Data
-
-#### GET /api/tasks/:id/diff
-
-Get the git diff for a task's changes.
-
-**Response**
-
-```json
-[
-  {
-    "path": "src/components/Button.tsx",
-    "status": "modified",
-    "additions": 15,
-    "deletions": 3,
-    "patch": "@@ -1,5 +1,10 @@\n import React from 'react';\n..."
-  },
-  {
-    "path": "src/styles/dark.css",
-    "status": "added",
-    "additions": 42,
-    "deletions": 0,
-    "patch": "@@ -0,0 +1,42 @@\n+:root {\n+..."
-  }
-]
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `no_git_branch` | No git branch was created for this task |
-| 400 | `no_worktree` | Task has no worktree path |
-| 500 | `diff_failed` | Diff operation failed |
-
-#### GET /api/tasks/:id/plan
-
-Get the contents of `.clanky-planning/plan.md` from the task's worktree directory.
-
-**Response**
-
-```json
-{
-  "content": "# Project Plan\n\n## Goals\n...",
-  "exists": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `no_worktree` | Task has no worktree path |
-
-#### GET /api/tasks/:id/status-file
-
-Get the contents of `.clanky-planning/status.md` from the task's worktree directory.
-
-**Response**
-
-```json
-{
-  "content": "# Status\n\n## Completed\n...",
-  "exists": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `no_worktree` | Task has no worktree path |
-
-#### GET /api/tasks/:id/pull-request
-
-Get pull-request navigation metadata for a task.
-
-Returns an existing GitHub pull-request URL, a compare URL for creating a pull request, or a disabled state when Clanky cannot determine a safe destination.
-
-**Response (existing pull request)**
-
-```json
-{
-  "enabled": true,
-  "destinationType": "existing_pr",
-  "url": "https://github.com/example/repo/pull/123"
-}
-```
-
-**Response (create pull request)**
-
-```json
-{
-  "enabled": true,
-  "destinationType": "create_pr",
-  "url": "https://github.com/example/repo/compare/main...feature-branch?expand=1"
-}
-```
-
-**Response (disabled)**
-
-```json
-{
-  "enabled": false,
-  "destinationType": "disabled",
-  "disabledReason": "GitHub CLI is not available in the task environment."
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
-#### GET /api/tasks/:id/comments
-
-Get all review comments for a task.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "comments": [
-    {
-      "id": "uuid",
-      "taskId": "task-uuid",
-      "reviewCycle": 1,
-      "commentText": "Please fix the error handling in the auth module",
-      "createdAt": "2026-01-25T10:00:00.000Z",
-      "status": "addressed",
-      "addressedAt": "2026-01-25T12:00:00.000Z"
-    }
-  ]
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
----
-
-### Plan Mode
-
-Plan mode allows reviewing and refining a plan before execution begins.
-
-#### POST /api/tasks/:id/plan/feedback
-
-Send feedback to refine the plan during planning phase.
-
-**Request Body**
-
-```json
-{
-  "feedback": "Please also consider error handling for edge cases",
-  "attachments": []
-}
-```
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 409 | `not_running` | Task is not running or not found |
-| 400 | `not_planning` | Task is not in planning status |
-| 400 | `validation_error` | Feedback is empty |
-
-#### POST /api/tasks/:id/plan/accept
-
-Accept the plan and either start autonomous execution or open a terminal for the task.
-
-The request body is required and selects the acceptance path.
-
-**Request Body**
-
-```json
-{
-  "mode": "start_task"
-}
-```
-
-**Response**
-
-```json
-{
-  "success": true,
-  "mode": "start_task"
-}
-```
-
-When the accepted plan opens the task terminal:
-
-```json
-{
-  "success": true,
-  "mode": "open_terminal",
-  "terminalSession": {
-    "config": {
-      "id": "terminal-uuid",
-      "name": "Task Shell",
-      "workspaceId": "ws-abc123",
-      "taskId": "abc-123",
-      "directory": "/path/to/project",
-      "remoteSessionName": "clanky-abc-123",
-      "createdAt": "2026-01-20T10:00:00.000Z",
-      "updatedAt": "2026-01-20T10:00:00.000Z"
-    },
-    "state": {
-      "status": "ready"
-    }
-  }
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 409 | `not_running` | Task is not running |
-| 400 | `not_planning` | Task is not in planning status |
-| 400 | `plan_not_ready` | Plan is not ready yet (still generating) |
-
-#### POST /api/tasks/:id/plan/discard
-
-Discard the plan and delete the task.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
----
-
-### Review Comments
-
-After a task is pushed or accepted locally, reviewers can submit comments that
-the task will address while its review state remains addressable.
-
-#### POST /api/tasks/:id/address-comments
-
-Start addressing reviewer comments. Creates a new review cycle and restarts the task.
-
-**Request Body**
-
-```json
-{
-  "comments": "Please fix the type errors in the auth module and add unit tests",
-  "attachments": []
-}
-```
-
-**Response**
-
-```json
-{
-  "success": true,
-  "reviewCycle": 1,
-  "branch": "add-dark-mode-toggle-a1b2c3d-review-1",
-  "commentIds": ["uuid-1", "uuid-2"]
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-| 400 | `validation_error` | Comments field is required/empty |
-| 409 | `already_running` | Task is already running |
-
-#### GET /api/tasks/:id/review-history
-
-Get the review history for a task, including past review cycles.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "history": {
-    "addressable": true,
-    "completionAction": "push",
-    "reviewCycles": 2,
-    "reviewBranches": ["add-dark-mode-toggle-a1b2c3d-review-1", "add-dark-mode-toggle-a1b2c3d-review-2"]
-  }
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Task not found |
-
-#### POST /api/tasks/:id/follow-up
-
-Resume task execution from a restartable terminal state.
-
-The message is sent as a direct user turn. Completed and pushed tasks reuse
-their existing task session when it is still available and continue the normal
-task loop. Stopped, failed, and max-iteration tasks restart from their existing
-branch when possible. Review comments use the separate
-`POST /api/tasks/:id/address-comments` endpoint.
-
-**Request Body**
-
-```json
-{
-  "message": "Please address the latest review feedback and keep the existing branch history clean.",
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514",
-    "variant": ""
-  },
-  "attachments": []
-}
-```
-
-The `model` override is optional; when supplied, include `variant` (use `""`
-for the default). `attachments` is required and may be an empty array.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Message is empty or invalid |
-| 400 | `provider_not_found` | The selected provider does not exist for the workspace |
-| 400 | `model_not_found` | The selected model does not exist on the provider |
-| 400 | `model_not_enabled` | The selected model provider is not connected |
-| 400 | `invalid_state` | The task cannot accept follow-up work in its current state |
-| 404 | `not_found` | Task not found |
-
----
 
 ### Models
 
@@ -2313,47 +1309,6 @@ Set the last used model.
 }
 ```
 
-#### GET /api/preferences/last-cheap-model
-
-Get the last used helper-model selection.
-
-**Response**
-
-```json
-{
-  "mode": "same-as-task"
-}
-```
-
-Returns `null` if no selection has been stored.
-
-#### PUT /api/preferences/last-cheap-model
-
-Set the helper-model selection used by lightweight operations.
-
-**Request Body**
-
-```json
-{
-  "mode": "custom",
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-haiku-4-20250514",
-    "variant": ""
-  }
-}
-```
-
-Use `{ "mode": "same-as-task" }` to reuse the task model.
-
-**Response**
-
-```json
-{
-  "success": true
-}
-```
-
 #### GET /api/preferences/last-directory
 
 Get the last used working directory.
@@ -2460,50 +1415,6 @@ Set full-tree or lazy file-explorer loading.
   "success": true
 }
 ```
-
-#### GET /api/preferences/dashboard-view-mode
-
-Get the dashboard view mode preference.
-
-**Response**
-
-```json
-{
-  "mode": "rows"
-}
-```
-
-Defaults to `"rows"` if not set.
-
-#### PUT /api/preferences/dashboard-view-mode
-
-Set the dashboard view mode preference.
-
-**Request Body**
-
-```json
-{
-  "mode": "cards"
-}
-```
-
-Valid modes: `"rows"` or `"cards"`.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "mode": "cards"
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Mode must be "rows" or "cards" |
-| 500 | `save_failed` | Failed to save preference |
 
 #### GET /api/preferences/quick-chat
 
@@ -2670,51 +1581,9 @@ Set the scheduler timezone to a valid IANA timezone, such as
 
 ---
 
-### Utilities
-
-#### GET /api/check-planning-dir
-
-Check if a workspace has a `.clanky-planning` folder with files.
-
-**Query Parameters**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `workspaceId` | Yes | Workspace ID |
-
-**Response** (directory exists with files)
-
-```json
-{
-  "exists": true,
-  "hasFiles": true,
-  "files": ["plan.md", "status.md"]
-}
-```
-
-**Response** (directory doesn't exist)
-
-```json
-{
-  "exists": false,
-  "hasFiles": false,
-  "files": []
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `missing_workspace_id` | `workspaceId` query parameter is required |
-| 404 | `workspace_not_found` | Workspace not found |
-| 500 | `check_failed` | Failed to check the planning directory |
-
----
-
 ### Workspaces
 
-Workspaces represent projects managed by Clanky. Each workspace is identified by its ID, has its own server connection settings, and can have multiple tasks. The workspace selects an execution host; its configured directory is the default execution location, not a filesystem sandbox.
+Workspaces represent projects managed by Clanky. Each workspace is identified by its ID, has its own server connection settings, and can have multiple chats and Automations. The workspace selects an execution host; its configured directory is the default execution location, not a filesystem sandbox.
 
 #### GET /api/workspaces
 
@@ -2769,7 +1638,7 @@ any existing directory.
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered local or Mesh execution-host reference |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 | `workspaceType` | string | No | `git` (default) or `directory` |
-| `allowWorktrees` | boolean | No | Whether task, chat, and automation worktrees may be created for this workspace (defaults to `true`) |
+| `allowWorktrees` | boolean | No | Whether chat and automation worktrees may be created for this workspace (defaults to `true`) |
 | `allowClankyContext` | boolean | No | Whether new execution contexts may receive authenticated Clanky CLI access (defaults to `false`) |
 
 **Response**
@@ -2814,7 +1683,7 @@ Update a workspace.
 | `isPrivate` | boolean | Hide the workspace when private items are hidden |
 | `archived` | boolean | Hide the workspace from active work surfaces |
 | `allowClankyContext` | boolean | Allow authenticated Clanky CLI access in new execution contexts |
-| `allowWorktrees` | boolean | Enable or disable creation of task, chat, and automation worktrees |
+| `allowWorktrees` | boolean | Enable or disable creation of chat and automation worktrees |
 | `scratchpad` | string | Replace the saved Markdown note (maximum 100,000 characters); send the complete content, or an empty string to clear it |
 
 **Response**
@@ -3048,39 +1917,6 @@ larger than the mesh JSON result limit are supported.
 | 413 | `upload_size_exceeded` | The request body exceeds the remaining declared upload size. |
 | 500 | `workspace_file_error` | Upload, completion, or cancellation failed. |
 
-#### POST /api/workspaces/:id/archived-tasks/purge
-
-Purge all archived tasks for a workspace.
-
-Only tasks matching the archived-task predicate for the target workspace are processed. Archived tasks are deleted tasks, plus merged, pushed, or accepted-local tasks that are no longer awaiting feedback. Pushed or accepted-local tasks that remain addressable for reviewer feedback are not purged. The response includes both successful purges and per-task failures.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "workspaceId": "ws-abc123",
-  "totalArchived": 3,
-  "purgedCount": 2,
-  "purgedTaskIds": ["task-1", "task-2"],
-  "failures": [
-    {
-      "taskId": "task-3",
-      "error": "Cannot purge task in current state"
-    }
-  ]
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `workspace_not_found` | Workspace not found |
-| 500 | `purge_archived_failed` | Failed to purge archived tasks for the workspace |
-
----
-
 ### Server Settings
 
 Server settings select the harness adapter and preset for a workspace. The execution host
@@ -3294,7 +2130,7 @@ failures are recorded in the provisioning job state.
 #### POST /api/settings/reset-all
 
 Delete the database and reinitialize it. This destructive operation deletes all
-tasks, workspaces, sessions, and preferences before recreating the current
+chats, workspaces, sessions, and preferences before recreating the current
 schema.
 
 **Response**
@@ -3305,44 +2141,6 @@ schema.
   "message": "All settings have been reset. Database recreated."
 }
 ```
-
-#### POST /api/settings/purge-terminal-tasks
-
-Permanently delete archived terminal tasks across every workspace. This is a destructive operation that deletes task data only; workspaces, sessions, and preferences are preserved.
-
-The endpoint uses the same archived-task predicate as the workspace purge endpoint: deleted tasks are purged, and merged, pushed, or accepted-local tasks are purged only when they are no longer awaiting feedback. Pushed or accepted-local tasks that remain addressable for reviewer feedback are not purged, so not every pushed task is deleted.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "totalWorkspaces": 2,
-  "totalArchived": 3,
-  "purgedCount": 2,
-  "purgedTaskIds": ["task-1", "task-2"],
-  "failures": [
-    { "workspaceId": "workspace-2", "taskId": "task-3", "error": "permission denied" }
-  ],
-  "workspaces": [
-    {
-      "workspaceId": "workspace-1",
-      "totalArchived": 2,
-      "purgedCount": 2,
-      "purgedTaskIds": ["task-1", "task-2"],
-      "failures": []
-    }
-  ]
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 500 | `purge_terminal_tasks_failed` | Failed to purge terminal-state tasks |
-
----
 
 ### Terminal Sessions
 
@@ -4017,7 +2815,7 @@ GitHub URL and configured GitHub CLI credentials.
 ```json
 {
   "issues": [
-    { "number": 42, "title": "Improve task output" }
+    { "number": 42, "title": "Improve conversation output" }
   ]
 }
 ```
@@ -4040,7 +2838,7 @@ GitHub URL and configured GitHub CLI credentials.
 #### WS /api/ws
 
 Authenticated framework realtime endpoint for private resource invalidations and selected
-incremental task, chat, automation-run, and provisioning events. The endpoint is protected by
+incremental chat, automation-run, and provisioning events. The endpoint is protected by
 the framework's same-origin policy.
 
 **Dynamic Interests**
@@ -4050,9 +2848,9 @@ application events until it has an acknowledged interest. Subscribe and
 unsubscribe on that connection as the visible resources change:
 
 ```json
-{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"abc-123"}}}
-{"type":"subscribe","subscriptionId":"task-state","generation":1,"interest":{"kinds":["state"],"resources":["tasks"],"ids":["abc-123"]}}
-{"type":"unsubscribe","subscriptionId":"task-content","generation":1}
+{"type":"subscribe","subscriptionId":"chat-content","generation":1,"interest":{"kinds":["content"],"targets":{"chatId":"abc-123"}}}
+{"type":"subscribe","subscriptionId":"chat-state","generation":1,"interest":{"kinds":["state"],"resources":["chats"],"ids":["abc-123"]}}
+{"type":"unsubscribe","subscriptionId":"chat-content","generation":1}
 ```
 
 Wait for the matching `subscribed` acknowledgement before loading an
@@ -4062,11 +2860,11 @@ current interests from obsolete acknowledgements and delivery.
 | Interest field | Description |
 | --- | --- |
 | `kinds` | Required categories: `state` invalidations, `content` deltas, or transient `action` commands |
-| `resources` | Resource names such as `tasks`, `chats`, or `automation-runs` |
+| `resources` | Resource names such as `chats` or `automation-runs` |
 | `ids` | Entity IDs for resource invalidations |
 | `scopes` | Resource scopes, such as an automation ID for `automation-runs`, workspace ID for workspace `previews`, or serialized execution-host reference for direct server `previews` |
 | `types` | Concrete event names |
-| `targets` | Named publication targets, such as `taskId`, `chatId`, `automationId`, `automationRunId`, or `provisioningJobId`, with one or more accepted values |
+| `targets` | Named publication targets, such as `chatId`, `automationId`, `automationRunId`, or `provisioningJobId`, with one or more accepted values |
 
 At least one concrete selector besides `kinds` is required. Interests only
 narrow delivery; they cannot override authenticated user ownership. Use
@@ -4119,11 +2917,11 @@ Published events are wrapped in a framework envelope:
 {
   "type": "event",
   "subscriptions": [
-    { "subscriptionId": "task-state", "generation": 1 }
+    { "subscriptionId": "chat-state", "generation": 1 }
   ],
   "event": {
-    "type": "tasks.changed",
-    "resource": "tasks",
+    "type": "chats.changed",
+    "resource": "chats",
     "action": "changed",
     "id": "abc-123"
   }
@@ -4137,7 +2935,6 @@ Resource invalidations use these resource names and actions:
 
 | Event type | Description |
 |------------|-------------|
-| `tasks.changed`, `tasks.deleted` | Task collection or entity changed/deleted |
 | `chats.changed`, `chats.deleted` | Chat collection or entity changed/deleted |
 | `chat-activity.changed` | Compact chat activity timestamp/source update |
 | `automations.changed`, `automations.deleted` | Automation collection or entity changed/deleted |
@@ -4154,7 +2951,6 @@ event types are:
 
 | Area | Event types |
 |------|-------------|
-| Tasks | `task.message`, `task.message.delta`, `task.tool_call`, `task.tool_call.extra`, `task.log`, `task.log.delta`, `task.iteration.start`, `task.iteration.end`, `task.git.commit` |
 | Chats | `chat.message`, `chat.message.delta`, `chat.tool_call`, `chat.tool_call.extra`, `chat.log`, `chat.log.delta` |
 | Automation runs | `automation.run.message`, `automation.run.message.delta`, `automation.run.tool_call`, `automation.run.tool_call.extra`, `automation.run.log`, `automation.run.log.delta` |
 | Provisioning | `provisioning.step`, `provisioning.updated`, `provisioning.output` |
@@ -4163,10 +2959,6 @@ Provisioning execution/state transitions publish a positioned
 `provisioning.updated` job cut and owner-targeted resource invalidation.
 Output entries advance the same stream; active command state does not depend
 on polling or the next step transition.
-
-Other domain lifecycle notifications, including `task.accepted`, `task.merged`,
-`task.pushed`, and `task.discarded`, cause a resource invalidation rather than
-being sent with their domain event name.
 
 **Keep-Alive**
 
@@ -4183,9 +2975,7 @@ Send a JSON ping message to receive a pong response:
 **Example Events**
 
 ```json
-{"type":"event","subscriptions":[{"subscriptionId":"task-content","generation":1}],"event":{"type":"task.iteration.start","taskId":"abc-123","iteration":3,"timestamp":"2026-01-20T10:15:00.000Z"}}
-
-{"type":"event","subscriptions":[{"subscriptionId":"task-content","generation":1}],"event":{"type":"task.log","taskId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z","streamPosition":{"epoch":"run-incarnation","baseRevision":0,"revision":1}}}
+{"type":"event","subscriptions":[{"subscriptionId":"chat-content","generation":1}],"event":{"type":"chat.log","chatId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z","streamPosition":{"epoch":"conversation-incarnation","baseRevision":0,"revision":1}}}
 ```
 
 **JavaScript Example**
@@ -4196,11 +2986,11 @@ const ws = new WebSocket('ws://localhost:3000/api/ws');
 ws.onopen = () => {
   ws.send(JSON.stringify({
     type: 'subscribe',
-    subscriptionId: 'task-content',
+    subscriptionId: 'chat-content',
     generation: 1,
     interest: {
       kinds: ['content'],
-      targets: { taskId: 'abc-123' },
+      targets: { chatId: 'abc-123' },
     },
   }));
 };
@@ -4240,26 +3030,6 @@ The terminal socket emits events such as `terminal.connected`,
 
 ## Data Types
 
-### Task Status
-
-| Status | Description |
-|--------|-------------|
-| `idle` | Created but not started |
-| `draft` | Saved as draft, not started (no git branch or session) |
-| `planning` | Generating a plan or awaiting plan approval |
-| `starting` | Initializing backend connection |
-| `running` | Actively executing |
-| `waiting` | Between iterations |
-| `completed` | Stop pattern matched |
-| `stopped` | Manually stopped |
-| `failed` | Error occurred |
-| `max_iterations` | Hit iteration limit |
-| `resolving_conflicts` | Resolving merge conflicts with base branch before push |
-| `accepted_local` | Changes accepted while keeping commits on the local task branch |
-| `merged` | Changes merged into original branch |
-| `pushed` | Branch pushed to remote (can receive reviews) |
-| `deleted` | Soft-deleted and normally hidden from active task views |
-
 ### File Diff Status
 
 | Status | Description |
@@ -4271,7 +3041,7 @@ The terminal socket emits events such as `terminal.connected`,
 
 ### Log Levels
 
-Log levels used in `task.log` events:
+Log levels used in `chat.log` events:
 
 | Level | Description |
 |-------|-------------|
@@ -4283,214 +3053,21 @@ Log levels used in `task.log` events:
 | `debug` | Debug/verbose output |
 | `trace` | Detailed trace output |
 
-### Review Comment Status
+## Example: start with a plan
 
-| Status | Description |
-|--------|-------------|
-| `pending` | Comment is being worked on |
-| `addressed` | Comment has been addressed |
-
-### Iteration Outcome
-
-| Outcome | Description |
-|---------|-------------|
-| `continue` | Iteration complete, task continues |
-| `complete` | Stop pattern matched, task complete |
-| `error` | Error occurred during iteration |
-| `plan_ready` | Plan created and ready for review (planning mode) |
-
-### Commit Message Format
-
-Clanky generates commit messages following the
-[Conventional Commits](https://www.conventionalcommits.org/) specification:
-
-```
-type: description
-type(scope): description
-```
-
-Clanky defaults to scope-less commit messages. When `git.commitScope` is set, it should name a meaningful module, section, or topic touched by the change. Generic placeholder values such as `"clanky"` are omitted. Valid types: `feat`, `fix`, `refactor`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `perf`, `revert`.
-
-Examples:
-- `feat: add JWT authentication endpoint`
-- `fix(auth): handle token expiration edge case`
-- `chore(api): update task creation request docs`
-
-### TODO Item
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique identifier |
-| `content` | string | TODO item description |
-| `status` | string | "pending", "in_progress", "completed", or "cancelled" |
-| `priority` | string | "high", "medium", or "low" |
-
----
-
-## Examples
-
-### Create a Task
-
-Tasks start by generating a plan upon creation (unless `draft: true`).
+Create a workspace chat with `startWithPlan: true`, then send the original
+requirements through the normal messages endpoint:
 
 ```bash
-# Create a task (starts automatically)
-curl -X POST http://localhost:3000/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "implement-jwt-authentication",
-    "workspaceId": "ws-abc123",
-    "prompt": "Implement JWT-based authentication with login and signup endpoints",
-    "attachments": [],
-    "model": {
-      "providerID": "anthropic",
-      "modelID": "claude-sonnet-4-20250514",
-      "variant": ""
-    },
-    "cheapModel": { "mode": "same-as-task" },
-    "useWorktree": true,
-    "maxIterations": 10,
-    "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": 330,
-    "stopPattern": "<promise>COMPLETE</promise>$",
-    "git": { "branchPrefix": "", "commitScope": "" },
-    "baseBranch": "main",
-    "clearPlanningFolder": false,
-    "autoAcceptPlan": false,
-    "fullyAutonomous": false,
-    "draft": false
-  }'
-
-# Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
-
-# Connect using the configured profile
-clanky ws
+clanky api chats --method POST --payload '{"name":"Project change","workspaceId":"WORKSPACE_ID","model":{"providerID":"PROVIDER","modelID":"MODEL"},"startWithPlan":true}'
+clanky api chats/CHAT_ID/messages --method POST --payload '{"message":"Add a project summary page."}'
+clanky api chats/CHAT_ID/plan
+clanky api chats/CHAT_ID/status-file
+clanky api chats/CHAT_ID/messages --method POST --payload '{"message":"Include keyboard navigation in the plan."}'
+clanky api chats/CHAT_ID/messages --method POST --payload '{"message":"Implement the revised plan now."}'
+clanky api chats/CHAT_ID/diff
 ```
 
-Then send this JSON line on stdin:
-
-```json
-{"type":"subscribe","subscriptionId":"task-content","generation":1,"interest":{"kinds":["content"],"targets":{"taskId":"abc-123"}}}
-```
-
-### Create a Draft Task
-
-Draft tasks are saved without starting. You can edit them before starting.
-
-```bash
-# Create a draft task
-curl -X POST http://localhost:3000/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "implement-jwt-authentication",
-    "workspaceId": "ws-abc123",
-    "prompt": "Implement JWT-based authentication",
-    "attachments": [],
-    "model": {
-      "providerID": "anthropic",
-      "modelID": "claude-sonnet-4-20250514",
-      "variant": ""
-    },
-    "cheapModel": { "mode": "same-as-task" },
-    "useWorktree": true,
-    "maxIterations": 10,
-    "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": 330,
-    "stopPattern": "<promise>COMPLETE</promise>$",
-    "git": { "branchPrefix": "", "commitScope": "" },
-    "baseBranch": "main",
-    "clearPlanningFolder": false,
-    "autoAcceptPlan": false,
-    "fullyAutonomous": false,
-    "draft": true
-  }'
-
-# Response: {"config":{"id":"abc-123",...},"state":{"status":"draft",...}}
-
-# Later, update the draft
-curl -X PUT http://localhost:3000/api/tasks/abc-123 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Implement JWT-based authentication with refresh tokens"
-  }'
-
-# Start the draft
-curl -X POST http://localhost:3000/api/tasks/abc-123/draft/start \
-  -H "Content-Type: application/json" \
-  -d '{"attachments": []}'
-```
-
-### Create a Task and Auto-Accept Its Plan
-
-Set `autoAcceptPlan` to `true` to start executing the generated plan without
-waiting for manual approval.
-
-```bash
-# Create a task with an auto-accepted plan
-curl -X POST http://localhost:3000/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "refactor-auth-module",
-    "workspaceId": "ws-abc123",
-    "prompt": "Refactor the authentication module to use async/await",
-    "attachments": [],
-    "model": {
-      "providerID": "anthropic",
-      "modelID": "claude-sonnet-4-20250514",
-      "variant": ""
-    },
-    "cheapModel": { "mode": "same-as-task" },
-    "useWorktree": true,
-    "maxIterations": 10,
-    "maxConsecutiveErrors": 10,
-    "activityTimeoutSeconds": 330,
-    "stopPattern": "<promise>COMPLETE</promise>$",
-    "git": { "branchPrefix": "", "commitScope": "" },
-    "baseBranch": "main",
-    "clearPlanningFolder": false,
-    "autoAcceptPlan": true,
-    "fullyAutonomous": false,
-    "draft": false
-  }'
-
-# Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
-
-# Once the plan is ready, Clanky accepts it and starts execution automatically.
-```
-
-### Modify Next Iteration Prompt
-
-```bash
-# While task is running, set a pending prompt
-curl -X PUT http://localhost:3000/api/tasks/abc-123/pending-prompt \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Continue, but also add unit tests for the auth module", "attachments": []}'
-```
-
-### Accept Completed Task
-
-```bash
-# After task completes, review and accept
-curl -X POST http://localhost:3000/api/tasks/abc-123/accept
-# Response: {"success":true}
-```
-
-### Address Reviewer Comments
-
-After pushing a task, you can address reviewer comments:
-
-```bash
-# Push the task first
-curl -X POST http://localhost:3000/api/tasks/abc-123/push
-# Response: {"success":true,"remoteBranch":"add-dark-mode-toggle-a1b2c3d","syncStatus":"clean"}
-
-# Later, address reviewer comments
-curl -X POST http://localhost:3000/api/tasks/abc-123/address-comments \
-  -H "Content-Type: application/json" \
-  -d '{"comments": "Please fix the type errors and add error handling", "attachments": []}'
-# Response: {"success":true,"reviewCycle":1,"branch":"add-dark-mode-toggle-a1b2c3d-review-1"}
-
-# Get review history
-curl http://localhost:3000/api/tasks/abc-123/review-history
-# Response: {"success":true,"history":{"addressable":true,"completionAction":"push","reviewCycles":1,"reviewBranches":[]}}
-```
+Planning supplies first-message guidance, not a separate execution state or a
+technical write sandbox. Later messages are ordinary chat; there is no plan
+acceptance or automatic implementation endpoint.

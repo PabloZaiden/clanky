@@ -192,19 +192,8 @@ export async function updateWorkspace(
   return updated;
 }
 
-export async function countWorkspaceTasks(id: string): Promise<number> {
-  const db = getDatabase();
-  const userId = requireResourcePersistenceUserId("workspace", id, id);
-  const taskCountStmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ? AND user_id = ?");
-  const taskCountRow = taskCountStmt.get(id, userId) as { count: number };
-  return taskCountRow.count;
-}
-
 /**
  * Delete a workspace by ID.
- * Only succeeds if the workspace has no associated tasks.
- *
- * @returns true if deleted, false if not found or has tasks
  */
 export async function deleteWorkspace(id: string): Promise<boolean> {
   if (getCollaborationActor()?.kind === "guest") {
@@ -216,13 +205,6 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
   const workspace = await getWorkspace(id);
   if (!workspace) {
     log.debug("Workspace not found for deletion", { id });
-    return false;
-  }
-
-  const taskCount = await countWorkspaceTasks(id);
-
-  if (taskCount > 0) {
-    log.warn("Cannot delete workspace with tasks", { id, taskCount });
     return false;
   }
 

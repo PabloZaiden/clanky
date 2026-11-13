@@ -11,7 +11,7 @@ import { getCollaborationOwner } from "./collaboration-storage";
 import type { CollaborationCreator } from "@/shared/collaboration";
 
 export function recordWorkspaceResourceCreation(input: {
-  kind: "chat" | "task" | "terminal" | "preview";
+  kind: "chat" | "terminal" | "preview";
   id: string;
   ownerUserId: string;
   workspaceId: string | null | undefined;
@@ -33,7 +33,7 @@ export function recordWorkspaceResourceCreation(input: {
     if (!owner) throw new DomainError("collaboration_user_unavailable", "The resource owner is unavailable.");
     creator = { kind: "user", id: owner.id, name: owner.username };
   }
-  if (input.kind === "chat" || input.kind === "task") {
+  if (input.kind === "chat") {
     return setCollaborationAuthorshipOnce({ resourceKind: input.kind, resourceId: input.id,
       ownerUserId: input.ownerUserId, workspaceId: input.workspaceId, creator }).creator;
   } else {

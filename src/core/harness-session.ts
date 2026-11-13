@@ -6,7 +6,7 @@ import type { AgentSession, Backend, CreateSessionOptions } from "../backends/ty
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { HarnessError } from "../backends/harness-errors";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
-import type { SessionInfo } from "@/shared/task";
+import type { SessionInfo } from "@/shared/conversation";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 
 type SessionContext = Omit<HarnessConversationBinding, "adapter" | "nativeId">;

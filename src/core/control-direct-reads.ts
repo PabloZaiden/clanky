@@ -6,10 +6,8 @@ import { directItems, directRecord, ControlToolContext } from "./control-tool-co
 import type { DirectToolInput } from "./control-tool-contracts";
 import { isReadRecord, readBytes } from "../client-sdk/collaboration/resource-read";
 import type { ChatStatus } from "@/shared/chat";
-import type { TaskStatus } from "@/shared/task";
 
 type VoiceStatusCategory = "active" | "idle" | "done" | "error";
-type WorkKind = "chat" | "task";
 const MIN_COLLECTION_PAGE_BYTES = 1024;
 const VOICE_STATUS_PROPERTY_BYTES = readBytes({ voiceStatus: "active" }) + 1;
 
@@ -25,41 +23,16 @@ const CHAT_VOICE_STATUS: Record<ChatStatus, VoiceStatusCategory> = {
   done: "done",
 };
 
-const TASK_VOICE_STATUS: Record<TaskStatus, VoiceStatusCategory> = {
-  idle: "idle",
-  draft: "idle",
-  planning: "active",
-  starting: "active",
-  running: "active",
-  waiting: "active",
-  completed: "done",
-  stopped: "error",
-  failed: "error",
-  max_iterations: "error",
-  resolving_conflicts: "active",
-  accepted_local: "done",
-  merged: "done",
-  pushed: "done",
-  deleted: "done",
-};
-
 function voiceStatusCategory(
-  kind: WorkKind,
   status: unknown,
 ): VoiceStatusCategory {
   if (typeof status !== "string") {
     throw new DomainError("voice_operation_response", "The work item has no valid status.");
   }
-  if (kind === "chat") {
-    if (!Object.hasOwn(CHAT_VOICE_STATUS, status)) {
-      throw new DomainError("voice_operation_response", "The chat has an unknown status.");
-    }
-    return CHAT_VOICE_STATUS[status as ChatStatus];
+  if (!Object.hasOwn(CHAT_VOICE_STATUS, status)) {
+    throw new DomainError("voice_operation_response", "The chat has an unknown status.");
   }
-  if (!Object.hasOwn(TASK_VOICE_STATUS, status)) {
-    throw new DomainError("voice_operation_response", "The task has an unknown status.");
-  }
-  return TASK_VOICE_STATUS[status as TaskStatus];
+  return CHAT_VOICE_STATUS[status as ChatStatus];
 }
 
 function isDetailsOnly(item: Record<string, unknown>): boolean {
@@ -74,11 +47,10 @@ function detailsOnly(item: Record<string, unknown>): Record<string, unknown> | n
 }
 
 function withVoiceStatus(
-  kind: WorkKind,
   item: Record<string, unknown>,
 ): Record<string, unknown> {
   if (isDetailsOnly(item)) return item;
-  return { ...item, voiceStatus: voiceStatusCategory(kind, item["status"]) };
+  return { ...item, voiceStatus: voiceStatusCategory(item["status"]) };
 }
 
 function statusAwarePageOptions(
@@ -98,10 +70,9 @@ function statusAwarePageOptions(
 
 function fitVoiceStatusPage(
   page: Record<string, unknown>,
-  kind: WorkKind,
   maxBytes: number,
 ): Record<string, unknown> {
-  const items = directItems(page).map((item) => withVoiceStatus(kind, item));
+  const items = directItems(page).map((item) => withVoiceStatus(item));
   const result = () => ({ ...page, items });
   if (readBytes(result()) <= maxBytes) return result();
   for (let index = 0; index < items.length; index++) {
@@ -133,13 +104,13 @@ export function pendingInteractions(value: unknown): Record<string, unknown>[] {
 }
 
 export async function directList(
-  context: ControlToolContext, kind: "chat" | "task",
+  context: ControlToolContext,
   input: DirectToolInput<"clanky_list_chats">,
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
   const pageOptions = statusAwarePageOptions(context.options.maxBytes, input.limit ?? 8);
   const page = directRecord(await context.read({
-    operationId: `GET /api/${kind}s`,
+    operationId: "GET /api/chats",
     query: {
       order: "activity", limit: pageOptions.limit,
       ...(workspaceId ? { workspaceId } : {}), ...(input.name ? { name: input.name } : {}),
@@ -147,34 +118,32 @@ export async function directList(
     },
     maxBytes: pageOptions.maxBytes,
   }));
-  return fitVoiceStatusPage(page, kind, context.options.maxBytes);
+  return fitVoiceStatusPage(page, context.options.maxBytes);
 }
 
 export async function directRead(
-  context: ControlToolContext, kind: "chat" | "task",
-  input: DirectToolInput<"clanky_read_task"> | DirectToolInput<"clanky_read_chat">,
+  context: ControlToolContext,
+  input: DirectToolInput<"clanky_read_chat">,
 ): Promise<unknown> {
-  const target = withVoiceStatus(kind, await context.resolve(kind, input.target, input.workspace));
+  const target = withVoiceStatus(await context.resolve("chat", input.target, input.workspace));
   const id = String(target["id"]);
-  const section = "section" in input ? input.section : "conversation";
+  const section = "conversation";
   const budget = Math.max(1024, context.options.maxBytes - readBytes(target) - 1200);
   const content = await context.read({
-    operationId: section === "conversation" ? `GET /api/${kind}s/:id/snapshot`
-      : section === "prompt" ? "GET /api/tasks/:id" : `GET /api/tasks/:id/${section}`,
+    operationId: "GET /api/chats/:id/snapshot",
     parameters: { id },
     query: {
-      ...(section === "conversation" ? { view: "conversation", range: input.range, limit: input.limit ?? 6 }
-        : { section: section === "prompt" ? "prompt" : "details" }),
+      view: "conversation", range: input.range, limit: input.limit ?? 6,
       ...(input.cursor ? { cursor: input.cursor } : {}),
     },
     maxBytes: budget,
   });
-  const interactions = target["needsInput"] && kind === "chat"
+  const interactions = target["needsInput"]
     ? pendingInteractions(await context.readExact("GET /api/chats/:id", { id })) : [];
   return context.bounded({ target, interactions, section, content });
 }
 
-type OverviewCursor = { chat: string | null; task: string | null; scope: string; completed: string[] };
+type OverviewCursor = { chat: string | null; scope: string; completed: string[] };
 
 function overviewCursor(cursor: string | null, scope: string): OverviewCursor | null {
   if (!cursor) return null;
@@ -183,11 +152,11 @@ function overviewCursor(cursor: string | null, scope: string): OverviewCursor | 
   catch (cause) { throw new DomainError("read_cursor_invalid", "Invalid overview cursor.", { cause }); }
   const record = directRecord(value);
   if (record["scope"] !== scope || !Array.isArray(record["completed"])
-    || !record["completed"].every((kind: unknown) => kind === "chat" || kind === "task")
-    || !["chat", "task"].every((key) => record[key] === null || typeof record[key] === "string")) {
+    || !record["completed"].every((kind: unknown) => kind === "chat")
+    || !["chat"].every((key) => record[key] === null || typeof record[key] === "string")) {
     throw new DomainError("read_cursor_invalid", "This cursor belongs to a different overview.");
   }
-  return { scope, chat: record["chat"] as string | null, task: record["task"] as string | null, completed: record["completed"] as string[] };
+  return { scope, chat: record["chat"] as string | null, completed: record["completed"] as string[] };
 }
 
 export async function directOverview(
@@ -196,10 +165,10 @@ export async function directOverview(
 ): Promise<unknown> {
   const workspaceId = input.workspace ? String((await context.resolve("workspace", input.workspace))["id"]) : null;
   const status = "status" in input ? input.status : null;
-  const scope = JSON.stringify({ waiting, kind: input.kind, workspaceId, status });
+  const scope = JSON.stringify({ waiting, workspaceId, status });
   const previous = overviewCursor(input.cursor, scope);
-  const continuation: OverviewCursor = previous ?? { chat: null, task: null, scope, completed: [] };
-  const kinds = input.kind === "all" ? ["chat", "task"] as const : [input.kind];
+  const continuation: OverviewCursor = previous ?? { chat: null, scope, completed: [] };
+  const kinds = ["chat"] as const;
   const entries: Record<string, unknown>[] = [];
   const coverage: Record<string, unknown>[] = [];
   const requestedLimit = input.limit ?? 3;
@@ -215,7 +184,7 @@ export async function directOverview(
         ...(waiting ? { needsInput: "true" } : {}),
         ...(continuation[kind] ? { cursor: continuation[kind]! } : {}),
       }, maxBytes: pageOptions.maxBytes,
-    })), kind, pageBudget);
+    })), pageBudget);
     continuation[kind] = typeof page["nextCursor"] === "string" ? page["nextCursor"] : null;
     if (!continuation[kind]) continuation.completed.push(kind);
     const items = directItems(page);

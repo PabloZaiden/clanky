@@ -1,12 +1,12 @@
 import type {
   ChatTranscriptStorageEntry,
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallRecord,
   TranscriptEntryKind as SharedTranscriptEntryKind,
 } from "@/shared";
 
-export type TranscriptResource = "chat" | "task" | "automation_run" | "subagent";
+export type TranscriptResource = "chat" | "automation_run" | "subagent";
 export type TranscriptEntryKind = SharedTranscriptEntryKind;
 
 export interface TranscriptEntriesPage {
@@ -33,7 +33,7 @@ export interface TranscriptStoragePage {
 
 export interface TranscriptStateLike {
   messages: PersistedMessage[];
-  logs: TaskLogEntry[];
+  logs: ConversationLogEntry[];
   toolCalls: ToolCallRecord[];
 }
 
@@ -42,7 +42,7 @@ export interface TranscriptStateEntry {
   timestamp: string;
   kind: TranscriptEntryKind;
   order: number;
-  payload: PersistedMessage | TaskLogEntry | ToolCallRecord;
+  payload: PersistedMessage | ConversationLogEntry | ToolCallRecord;
 }
 
 export interface TranscriptMeta {
@@ -51,7 +51,7 @@ export interface TranscriptMeta {
 }
 
 export interface TranscriptTableConfig {
-  parentTable: "chats" | "tasks" | "automation_runs" | "harness_subagents";
+  parentTable: "chats" | "automation_runs" | "harness_subagents";
   entriesTable: string;
   metaTable: string;
   resourceColumn: string;

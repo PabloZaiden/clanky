@@ -1,6 +1,6 @@
 /**
  * Reusable collapsible section component for the dashboard.
- * Follows the same pattern as the collapsible sections in TaskDetails.tsx.
+ * Shared collapsible content section.
  */
 
 import { useState, useId } from "react";

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AutomationEvent,
   DeterministicAutomationTestResult,
-  TaskLogEntry,
+  ConversationLogEntry,
   Workspace,
 } from "@/shared";
 import type { TestAutomationCodeRequest } from "@/contracts/schemas";
@@ -28,7 +28,7 @@ export interface UseAutomationCodeTestOptions {
 
 export interface UseAutomationCodeTestResult {
   testResult: DeterministicAutomationTestResult | null;
-  testLogs: TaskLogEntry[];
+  testLogs: ConversationLogEntry[];
   isTestingCode: boolean;
   resetOutput: () => void;
   testCode: () => Promise<void>;
@@ -51,7 +51,7 @@ export function useAutomationCodeTest({
   const toastError = toast.error;
   const toastSuccess = toast.success;
   const [testResult, setTestResult] = useState<DeterministicAutomationTestResult | null>(null);
-  const [testLogs, setTestLogs] = useState<TaskLogEntry[]>([]);
+  const [testLogs, setTestLogs] = useState<ConversationLogEntry[]>([]);
   const [testStreamId, setTestStreamId] = useState<string | null>(null);
   const [isTestingCode, setIsTestingCode] = useState(false);
   const testAbortControllerRef = useRef<AbortController | null>(null);
@@ -61,7 +61,7 @@ export function useAutomationCodeTest({
     testAbortControllerRef.current?.abort();
   }, []);
 
-  const appendTestLog = useCallback((entry: TaskLogEntry): void => {
+  const appendTestLog = useCallback((entry: ConversationLogEntry): void => {
     if (testLogIdsRef.current.has(entry.id)) {
       return;
     }

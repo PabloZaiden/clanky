@@ -3,9 +3,7 @@
  */
 
 import type { Chat, ChatWorktreeState } from "@/shared";
-import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError, isTaskChat } from "@/shared/chat";
-import { getTaskWorkingDirectory } from "./task/task-types";
-import { taskManager, type TaskManager } from "./task-manager";
+import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError } from "@/shared/chat";
 import { backendManager } from "./backend";
 import { closeCommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
@@ -31,7 +29,6 @@ const log = createLogger("chat-worktree-service");
 
 export interface ChatWorktreeServiceDependencies {
   state: ChatStatePort;
-  taskManager?: Pick<TaskManager, "getTask">;
   executorProvider?: Pick<typeof backendManager, "getCommandExecutorAsync">;
 }
 
@@ -43,12 +40,10 @@ interface SelectedWorktreeBranch {
 export class ChatWorktreeService implements ChatWorktreePort {
   private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
   private readonly state: ChatStatePort;
-  private readonly taskManager: Pick<TaskManager, "getTask">;
   private readonly executorProvider: Pick<typeof backendManager, "getCommandExecutorAsync">;
 
   constructor(dependencies: ChatWorktreeServiceDependencies) {
     this.state = dependencies.state;
-    this.taskManager = dependencies.taskManager ?? taskManager;
     this.executorProvider = dependencies.executorProvider ?? backendManager;
   }
 
@@ -127,39 +122,6 @@ export class ChatWorktreeService implements ChatWorktreePort {
     options: { prepareWorkspace: boolean; signal?: AbortSignal },
   ): Promise<ChatDirectoryResolution> {
     throwIfAborted(options.signal);
-    if (isTaskChat(chat)) {
-      const taskId = chat.config.taskId;
-      if (!taskId) {
-        throw new Error(`Task chat ${chat.config.id} is missing its taskId`);
-      }
-      const task = await this.taskManager.getTask(taskId);
-      throwIfAborted(options.signal);
-      if (!task) {
-        throw new DomainError("chat_directory_unavailable", "The task linked to this chat no longer exists.");
-      }
-      const directory = getTaskWorkingDirectory(task);
-      if (!directory) {
-        throw new DomainError("chat_directory_unavailable", "The linked task worktree has not been prepared. Nothing was created.");
-      }
-      if (chat.config.workspaceId !== task.config.workspaceId) {
-        throw new Error(
-          `Task chat ${chat.config.id} belongs to workspace ${chat.config.workspaceId}, but task ${task.config.id} belongs to workspace ${task.config.workspaceId}`,
-        );
-      }
-      if (task.config.useWorktree) {
-        const executor = await this.executorProvider.getCommandExecutorAsync(
-          task.config.workspaceId,
-          task.config.directory,
-        );
-        const git = GitService.withExecutor(executor);
-        return {
-          chat,
-          directory: await git.assertCanonicalManagedWorktreePath(task.config.directory, task.config.id, directory),
-        };
-      }
-      return { chat, directory };
-    }
-
     if (!chat.config.useWorktree) {
       if (options.prepareWorkspace) {
         await this.ensureStandaloneChatBranch(chat, options.signal);
@@ -270,7 +232,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   async ensureWorktree(chat: Chat, options: { signal?: AbortSignal } = {}): Promise<Chat> {
-    if (isTaskChat(chat) || !chat.config.useWorktree) {
+    if (!chat.config.useWorktree) {
       return chat;
     }
 
@@ -298,10 +260,6 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   async cleanupWorktree(chat: Chat): Promise<void> {
-    if (isTaskChat(chat)) {
-      return;
-    }
-
     const worktreePath = chat.state.worktree?.worktreePath;
     if (!chat.config.useWorktree || !worktreePath) {
       return;
@@ -412,7 +370,7 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   private async ensureStandaloneChatBranch(chat: Chat, signal?: AbortSignal): Promise<void> {
-    if (isTaskChat(chat) || chat.config.useWorktree) {
+    if (chat.config.useWorktree) {
       return;
     }
 

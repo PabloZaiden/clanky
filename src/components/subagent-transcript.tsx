@@ -14,7 +14,7 @@ import type { TranscriptFileLinkContext } from "./log-viewer";
 export function SubagentTranscript({
   kind, entityId, initialSubagent, binding, fileLinkContext, onBack,
 }: {
-  kind: "chat" | "task";
+  kind: "chat";
   entityId: string;
   initialSubagent: Subagent;
   binding?: HarnessConversationBinding | null;

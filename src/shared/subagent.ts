@@ -5,14 +5,13 @@ import type { StreamDeltaPosition } from "./stream-position";
 import type { TranscriptStreamEvent } from "./transcript-events";
 
 export interface SubagentContext {
-  kind: "chat" | "task";
+  kind: "chat";
   id: string;
 }
 
 export interface Subagent {
   id: string;
   chatId?: string;
-  taskId?: string;
   workspaceId: string | null;
   binding: HarnessConversationBinding;
   activity: HarnessActivity;
@@ -43,7 +42,6 @@ export interface HarnessSubagentHistory {
 export type SubagentEvent = {
   subagentId: string;
   chatId?: string;
-  taskId?: string;
   timestamp: string;
 } & (
   | { type: "subagent.changed" }

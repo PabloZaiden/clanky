@@ -93,7 +93,7 @@ export const collaborationRoutes = defineRoutes({
   "/api/collaboration/guests/:id": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Revoke a collaborator; admitted tasks, chats and schedules continue.",
+    description: "Revoke a collaborator; admitted chats and schedules continue.",
     operations: { DELETE: { automation: { policy: "confirm", reason: "Closes this collaborator's terminals and previews and revokes workspace access." } } },
     async DELETE(_req, ctx) {
       try {

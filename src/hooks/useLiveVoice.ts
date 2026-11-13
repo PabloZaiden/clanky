@@ -10,10 +10,8 @@ import { apiRequest } from "../lib/api-client";
 import { LiveVoiceBrowser } from "../lib/live-voice-browser";
 import { acquireVoiceAudio } from "../lib/voice-audio-ownership";
 import { getClankyClientId } from "../lib/clanky-client-id";
-import { getStoredNewTaskPlanningPreferences } from "../lib/new-task-planning-preferences";
 import { useRealtime } from "@pablozaiden/webapp/web";
 import type { LiveVoiceActivityEvent } from "@/shared/live-voice";
-import { getStoredTaskModelPreference, getStoredTaskCheapModelPreference } from "../lib/model-selection-preferences";
 
 interface LiveVoiceUiState {
   status: "idle" | "connecting" | "active" | "closing";
@@ -67,16 +65,9 @@ export function useLiveVoice(options: { enabled: boolean; route: WebAppRoute }):
     context.current = { revision: context.current.revision + 1, route: safeRoute };
   }
   const getContext = useCallback((): ControlClientContext => {
-    const taskModel = getStoredTaskModelPreference();
-    const cheapModel = getStoredTaskCheapModelPreference();
     const { revision, ...previous } = context.current;
     const next = {
       route: context.current.route,
-      planningPreferences: getStoredNewTaskPlanningPreferences() ?? undefined,
-      modelPreferences: {
-        taskModelJson: taskModel ? JSON.stringify(taskModel) : null,
-        cheapModelJson: cheapModel ? JSON.stringify(cheapModel) : null,
-      },
     };
     if (JSON.stringify(previous) !== JSON.stringify(next)) context.current = { revision: revision + 1, ...next };
     return context.current;

@@ -24,23 +24,7 @@ export const ModelConfigSchema = z.object({
 });
 
 /**
- * Schema for choosing how helper-only operations should pick a model.
-  *
- * - `same-as-task`: use the task's main execution model
- * - `custom`: use a distinct model configuration for lightweight helper work
- */
-export const CheapModelSelectionSchema = z.discriminatedUnion("mode", [
-  z.object({
-    mode: z.literal("same-as-task"),
-  }),
-  z.object({
-    mode: z.literal("custom"),
-    model: ModelConfigSchema,
-  }),
-]);
-
-/**
  * Re-export the shared domain types for contract consumers that need both
  * validators and the corresponding type names.
  */
-export type { CheapModelSelection, ModelConfig } from "@/shared/model";
+export type { ModelConfig } from "@/shared/model";

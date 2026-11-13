@@ -32,10 +32,6 @@ export function WorkspaceSettingsView({
     testConnection: testWorkspaceConnection,
     updateWorkspace: updateWorkspaceSettings,
     workspaceSettingsWorkspaceId,
-    workspaceArchivedTasksPurging,
-    handlePurgeArchivedTasks,
-    selectedWorkspaceArchivedTaskCount,
-    selectedWorkspaceTaskCount,
   } = workspaceSettings;
   const loadedWorkspace = workspaceFromHook?.id === selectedWorkspace.id ? workspaceFromHook : null;
 
@@ -66,21 +62,13 @@ export function WorkspaceSettingsView({
             }}
             onWorkspaceIconChanged={refreshWorkspaces}
             onTest={testWorkspaceConnection}
-            onPurgeArchivedTasks={
-              workspaceSettingsWorkspaceId
-                ? async () => await handlePurgeArchivedTasks(workspaceSettingsWorkspaceId)
-                : undefined
-            }
             onDeleteWorkspace={
               workspaceSettingsWorkspaceId
                 ? async (options) => await deleteWorkspace(workspaceSettingsWorkspaceId, options)
                 : undefined
             }
-            purgeableTaskCount={selectedWorkspaceArchivedTaskCount}
-            workspaceTaskCount={selectedWorkspaceTaskCount}
             saving={workspaceSettingsSaving}
             testing={workspaceSettingsTesting}
-            purgingPurgeableTasks={workspaceArchivedTasksPurging}
             remoteOnly={dashboardData.remoteOnly}
             formId="workspace-settings-shell-form"
             onDeleted={() => navigateWithinShell({ view: "home" })}

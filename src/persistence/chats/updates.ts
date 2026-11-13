@@ -180,6 +180,8 @@ export async function updateChatConfig(
 
     const chat = rowToChat(row);
     config.creator = chat.config.creator;
+    config.startWithPlan = chat.config.startWithPlan;
+    config.planningKickoffMessageId = chat.config.planningKickoffMessageId;
     chat.config = config;
     const newRow = chatToRow(chat);
     const columns = Object.keys(newRow).filter((column) => column !== "id" && column !== "state_revision");
@@ -205,4 +207,22 @@ export async function updateChatConfig(
   })();
   if (saved) cacheChatMetadata(db, userId, saved);
   return saved !== null;
+}
+
+export function claimChatPlanningKickoff(chatId: string, messageId: string): boolean {
+  const db = getDatabase();
+  const userId = requireResourcePersistenceUserId("chat", chatId);
+  const result = db.query(`
+    UPDATE chats
+    SET planning_kickoff_message_id = ?, state_revision = state_revision + 1
+    WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+      AND start_with_plan = 1 AND planning_kickoff_message_id IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM chat_transcript_entries entry
+        WHERE entry.chat_id = chats.id AND entry.user_id = chats.user_id
+          AND entry.kind = 'message' AND entry.message_role = 'user' AND entry.entry_id != ?
+      )
+  `).run(messageId, chatId, userId, `message:${messageId}`);
+  if (result.changes > 0) invalidateChatMetadata(db, userId, chatId);
+  return result.changes > 0;
 }

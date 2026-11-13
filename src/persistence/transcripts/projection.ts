@@ -3,7 +3,7 @@
  */
 import type {
   PersistedMessage,
-  TaskLogEntry,
+  ConversationLogEntry,
   ToolCallRecord,
 } from "@/shared";
 import type {
@@ -38,7 +38,7 @@ export function sortTranscriptStateEntries(
 
 export function getTranscriptStateEntries(
   state: TranscriptStateLike,
-  shouldIncludeLog: (entry: TaskLogEntry) => boolean = () => true,
+  shouldIncludeLog: (entry: ConversationLogEntry) => boolean = () => true,
 ): TranscriptStateEntry[] {
   let order = 0;
   return [

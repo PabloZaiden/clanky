@@ -134,7 +134,7 @@ export interface MarkdownRendererProps {
   dimmed?: boolean;
   /** Whether to display raw markdown text instead of rendered content */
   rawMode?: boolean;
-  /** Optional chat/task-aware context for linking inline file paths. */
+  /** Optional conversation-aware context for linking inline file paths. */
   fileLinkContext?: TranscriptFileLinkContext;
   revealFrom?: number;
   /** The displayed source ends at a message preview boundary. */

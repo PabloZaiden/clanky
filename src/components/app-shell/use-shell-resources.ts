@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { WebAppConfigState } from "@/platform/web/webapp-config";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import {
@@ -14,8 +14,6 @@ import {
   useProvisioningJob,
   useQuickChatSettings,
   useSchedulerTimezone,
-  useTaskGrouping,
-  useTasks,
   useTerminalSessions,
   useWorkerUpdateJobs,
   useWorkspaces,
@@ -24,15 +22,9 @@ import {
 import { buildExecutionHostSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import {
   getShellRouteSelection,
-  getShellRouteTaskId,
   isMissingShellRouteTarget,
 } from "./shell-route-composition";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
-
-interface TaskRouteVerification {
-  taskId: string;
-  status: "checking" | "missing" | "present" | "failed";
-}
 
 export function useShellResources(route: WebAppRoute, isOwner: boolean, config: WebAppConfigState["config"]) {
   const capabilities = getClankyClientCapabilities();
@@ -49,19 +41,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     deleteChat,
   } = useChats();
   const automations = useAutomations();
-  const {
-    tasks,
-    loading: tasksLoading,
-    error: tasksError,
-    refresh: refreshTasks,
-    refreshTaskById,
-    markTaskStarting,
-    clearOptimisticTaskStart,
-    createTask,
-    updateTask,
-    purgeTask,
-    purgeArchivedWorkspaceTasks,
-  } = useTasks();
   const {
     sessions: terminalSessions,
     loading: terminalSessionsLoading,
@@ -94,25 +73,18 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
   const dashboardData = useDashboardData(config);
   const provisioning = useProvisioningJob({ enabled: capabilities.provisioning });
   const workerUpdates = useWorkerUpdateJobs({ enabled: isOwner && capabilities.controllerAdministration });
-  const { workspaceGroups: allWorkspaceGroups } = useTaskGrouping(
-    tasks,
-    workspaces,
-    !workspacesLoading,
-    { includeArchivedWorkspaces: true },
-  );
   const workspaceGroups = useMemo(
-    () => allWorkspaceGroups.filter(({ workspace }) => workspace.archived !== true),
-    [allWorkspaceGroups],
+    () => workspaces.filter((workspace) => workspace.archived !== true).map((workspace) => ({ workspace })),
+    [workspaces],
   );
 
   const sidebarWorkspaceGroups = useMemo(
     () => buildWorkspaceSidebarGroups({
       workspaces,
-      tasks,
       chats,
       terminalSessions,
     }),
-    [chats, tasks, terminalSessions, workspaces],
+    [chats, terminalSessions, workspaces],
   );
   const executionHostNodes = useMemo(
     () => buildExecutionHostSidebarNodes({
@@ -146,49 +118,13 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     quickChatWorkspace,
   ]);
 
-  const taskRouteId = getShellRouteTaskId(route);
-  const [taskRouteVerification, setTaskRouteVerification] = useState<TaskRouteVerification | null>(null);
-
-  useEffect(() => {
-    if (!taskRouteId) {
-      setTaskRouteVerification(null);
-      return;
-    }
-    if (tasksLoading || tasksError !== null) {
-      return;
-    }
-
-    const controller = new AbortController();
-    setTaskRouteVerification({ taskId: taskRouteId, status: "checking" });
-    void refreshTaskById(taskRouteId, controller.signal).then((exists) => {
-      if (controller.signal.aborted) {
-        return;
-      }
-      setTaskRouteVerification({
-        taskId: taskRouteId,
-        status: exists === false ? "missing" : exists === true ? "present" : "failed",
-      });
-    });
-    return () => controller.abort();
-  }, [refreshTaskById, taskRouteId, tasksError, tasksLoading]);
-
-  const routedTaskVerification = taskRouteVerification?.taskId === taskRouteId
-    ? taskRouteVerification
-    : null;
-  const taskRouteLoading = Boolean(taskRouteId)
-    && tasksError === null
-    && (routedTaskVerification === null || routedTaskVerification.status === "checking");
-  const missingTaskRouteTarget = routedTaskVerification?.status === "missing";
-
   const shellLoading = chatsLoading
-    || tasksLoading
     || terminalSessionsLoading
     || executionHosts.loading
     || workspacesLoading
     || automations.loading;
   const shellErrors = [
     chatsError,
-    tasksError,
     terminalSessionsError,
     workspaceError,
     automations.error,
@@ -197,13 +133,12 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     executionHosts.error,
   ].filter((error): error is string => Boolean(error));
   const routeSelection = getShellRouteSelection(route, {
-    tasks,
     chats,
     workspaces,
     executionHosts: executionHosts.hosts,
     automations: automations.automations,
   });
-  const missingRouteTarget = missingTaskRouteTarget || isMissingShellRouteTarget(route, {
+  const missingRouteTarget = isMissingShellRouteTarget(route, {
     chats: { items: chats, loading: chatsLoading, error: chatsError },
     workspaces: { items: workspaces, loading: workspacesLoading, error: workspaceError },
     executionHosts: {
@@ -231,16 +166,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     markChatDone,
     deleteChat,
     automations,
-    tasks,
-    tasksLoading,
-    tasksError,
-    refreshTasks,
-    markTaskStarting,
-    clearOptimisticTaskStart,
-    createTask,
-    updateTask,
-    purgeTask,
-    purgeArchivedWorkspaceTasks,
     terminalSessions,
     executionHosts: executionHosts.hosts,
     executionHostsLoading: executionHosts.loading,
@@ -273,7 +198,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     provisioning,
     workerUpdates,
     workspaceGroups,
-    allWorkspaceGroups,
     sidebarWorkspaceGroups,
     executionHostNodes,
     quickChatWorkspace,
@@ -281,7 +205,6 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     shellLoading,
     shellErrors,
     missingRouteTarget,
-    taskRouteLoading,
     ...routeSelection,
   };
 }
