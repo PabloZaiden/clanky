@@ -674,7 +674,9 @@ Only that prompt gains guidance to investigate, ask questions, write
 request. The transcript retains the original requirements. Subsequent messages
 are unchanged ordinary chat; there is no plan-ready, approval or handoff state.
 The kickoff is durably claimed before dispatch, so reconnecting does not inject
-it again or replay the user's message.
+it again or replay the user's message. Failures during directory, provider or
+attachment preparation do not consume it; a requirements retry still receives
+the initial guidance.
 
 | Read | Response |
 | --- | --- |

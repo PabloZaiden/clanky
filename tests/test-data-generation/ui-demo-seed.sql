@@ -10,21 +10,16 @@ BEGIN TRANSACTION;
 
 -- Remove only rows owned by this fixture, in child-to-parent order.
 DELETE FROM provisioning_job_logs WHERE job_id LIKE 'demo-%';
-DELETE FROM task_transcript_entries WHERE task_id LIKE 'demo-%';
-DELETE FROM task_transcript_meta WHERE task_id LIKE 'demo-%';
 DELETE FROM chat_transcript_entries WHERE chat_id LIKE 'demo-%';
 DELETE FROM chat_transcript_meta WHERE chat_id LIKE 'demo-%';
 DELETE FROM automation_run_transcript_entries WHERE automation_run_id LIKE 'demo-%';
 DELETE FROM automation_run_transcript_meta WHERE automation_run_id LIKE 'demo-%';
-DELETE FROM review_comments WHERE id LIKE 'demo-%' OR task_id LIKE 'demo-%';
 DELETE FROM automation_runs WHERE id LIKE 'demo-%' OR automation_id LIKE 'demo-%';
 DELETE FROM provisioning_jobs WHERE id LIKE 'demo-%';
 DELETE FROM terminal_sessions WHERE id LIKE 'demo-%';
 DELETE FROM preview_sessions WHERE id LIKE 'demo-%';
 DELETE FROM chats WHERE id LIKE 'demo-%';
 DELETE FROM automations WHERE id LIKE 'demo-%';
-DELETE FROM tasks WHERE id LIKE 'demo-%';
-DELETE FROM sessions WHERE task_id LIKE 'demo-%';
 DELETE FROM clanky_context_api_keys
 WHERE api_key_id LIKE 'demo-%' OR context_id LIKE 'demo-%';
 DELETE FROM workspace_worker_enrollments
@@ -59,13 +54,10 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO preferences (key, user_id, value) VALUES
   ('last-model', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5.2","variant":""}'),
-  ('last-cheap-model', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5-mini","variant":""}'),
   ('last-directory', 'demo-user', '/workspaces/demo-storefront'),
-  ('dashboard-view-mode', 'demo-user', '"cards"'),
   ('markdown-rendering', 'demo-user', '"rich"'),
   ('file-explorer-full-tree', 'demo-user', 'true'),
-  ('quick-chat', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5.2","variant":""}'),
-  ('new-task-planning', 'demo-user', '{"autoAcceptPlan":false,"fullyAutonomous":false}')
+  ('quick-chat', 'demo-user', '{"providerID":"copilot","modelID":"gpt-5.2","variant":""}')
 ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value;
 
 INSERT INTO execution_hosts (
@@ -272,177 +264,8 @@ ON CONFLICT(id) DO UPDATE SET
   provisioning_host_revision = excluded.provisioning_host_revision,
   allow_worktrees = excluded.allow_worktrees;
 
-INSERT INTO tasks (
-  id, user_id, name, directory, prompt, issue_number, created_at, updated_at, is_private,
-  workspace_id, model_provider_id, model_model_id, model_variant, cheap_model,
-  max_iterations, max_consecutive_errors, activity_timeout_seconds, stop_pattern,
-  git_branch_prefix, git_commit_scope, base_branch, use_worktree, clear_planning_folder,
-  plan_mode, plan_mode_auto_reply, auto_accept_plan, fully_autonomous, status,
-  current_iteration, started_at, completed_at, last_activity_at, session_id,
-  session_server_url, error_message, error_iteration, error_timestamp,
-  git_original_branch, git_working_branch, git_worktree_path, git_commits,
-  recent_iterations, consecutive_errors, pending_prompt, pending_prompt_mode,
-  pending_model_provider_id, pending_model_model_id, pending_model_variant,
-  plan_mode_active, plan_session_id, plan_server_url, plan_feedback_rounds,
-  plan_content, planning_folder_cleared, plan_is_ready, pending_plan_question,
-  review_mode, pull_request_monitoring, automatic_pr_flow, fully_autonomous_pending, mode
-) VALUES
-  (
-    'demo-task-planning', 'demo-user', 'Design dashboard filters',
-    '/workspaces/demo-storefront', 'Add saved filters and keyboard navigation to the dashboard.',
-    184, '2026-04-16T18:20:00.000Z', '2026-04-17T13:20:00.000Z', 0,
-    'demo-workspace-local', 'copilot', 'gpt-5.2', '', '{"mode":"custom","model":{"providerID":"copilot","modelID":"gpt-5-mini","variant":""}}',
-    12, 3, 900, 'TASK_COMPLETE', 'feature/', 'clanky', 'main', 1, 0,
-    1, 0, 0, 0, 'planning', 2, '2026-04-17T12:30:00.000Z', NULL,
-    '2026-04-17T13:20:00.000Z', 'demo-session-planning', 'http://127.0.0.1:4301',
-    NULL, NULL, NULL, 'main', 'feature/demo-dashboard-filters',
-    '/workspaces/demo-storefront/.clanky-worktrees/demo-task-planning',
-    '[]', '[{"iteration":1,"status":"completed"},{"iteration":2,"status":"waiting"}]',
-    NULL, NULL, NULL, NULL, NULL, NULL,
-    1, 'demo-plan-session', 'http://127.0.0.1:4301', 1,
-    '# Dashboard filters\n\n- [ ] Filter by owner\n- [ ] Persist selected filters\n- [ ] Add keyboard shortcuts',
-    0, 1, 'Should the filter state be shared across team members?',
-    '{"enabled":true,"cycle":1}', NULL, NULL, 0, 'task'
-  ),
-  (
-    'demo-task-running', 'demo-user', 'Refresh billing webhooks',
-    '/srv/workspaces/billing-api', 'Update webhook retries and add idempotency coverage.',
-    0, '2026-04-17T10:00:00.000Z', '2026-04-17T13:49:00.000Z', 0,
-    'demo-workspace-remote', 'copilot', 'gpt-5.2', 'fast',
-    '{"mode":"custom","model":{"providerID":"copilot","modelID":"gpt-5-mini","variant":""}}',
-    20, 5, 600, 'TASK_COMPLETE', 'fix/', 'clanky', 'main', 1, 1,
-    0, 1, 0, 1, 'planning', 4, '2026-04-17T12:20:00.000Z', NULL,
-    '2026-04-17T13:49:00.000Z', 'demo-session-running', 'http://127.0.0.1:4302',
-    NULL, NULL, NULL, 'main', 'fix/demo-webhook-retries',
-    '/srv/workspaces/billing-api/.clanky-worktrees/demo-task-running',
-    '[]', '[{"iteration":1,"status":"completed"},{"iteration":2,"status":"completed"},{"iteration":3,"status":"completed"}]',
-    '{"lastErrorMessage":"Rate limit recovered","lastErrorCode":"provider_rate_limit","count":1}',
-    NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, NULL, 0, 0, NULL,
-    NULL, '{"status":"open","number":92}', '{"status":"monitoring","cycle":1}',
-    0, 'task'
-  ),
-  (
-    'demo-task-completed', 'demo-user', 'Add audit event filters',
-    '/workspaces/demo-storefront', 'Add date and actor filters to the audit event table.',
-    0, '2026-04-15T09:00:00.000Z', '2026-04-16T16:30:00.000Z', 0,
-    'demo-workspace-local', 'openai', 'gpt-5.2', '',
-    '{"mode":"custom","model":{"providerID":"openai","modelID":"gpt-5-mini","variant":""}}',
-    10, 3, 900, 'TASK_COMPLETE', 'feature/', 'clanky', 'main', 1, 0,
-    0, 1, 1, 0, 'completed', 6, '2026-04-15T09:15:00.000Z',
-    '2026-04-16T16:30:00.000Z', '2026-04-16T16:29:00.000Z',
-    'demo-session-completed', 'http://127.0.0.1:4301', NULL, NULL, NULL,
-    'main', 'feature/demo-audit-filters',
-    '/workspaces/demo-storefront/.clanky-worktrees/demo-task-completed',
-    '[{"hash":"abc1234","message":"Add audit filters"}]',
-    '[{"iteration":1,"status":"completed"},{"iteration":2,"status":"completed"}]',
-    NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, NULL, 1, 1, NULL,
-    '{"enabled":true,"cycle":1}', '{"status":"merged","number":88}',
-    '{"status":"completed","cycle":1}', 0, 'task'
-  ),
-  (
-    'demo-task-failed', 'demo-user', 'Repair preview health check',
-    '/srv/mesh/analytics-lab', 'Investigate why the preview health check fails on ARM workers.',
-    0, '2026-04-17T08:30:00.000Z', '2026-04-17T11:42:00.000Z', 1,
-    'demo-workspace-mesh', 'codex', 'gpt-5.2', '',
-    '{"mode":"custom","model":{"providerID":"codex","modelID":"gpt-5-mini","variant":""}}',
-    8, 2, 300, 'TASK_COMPLETE', 'bugfix/', 'clanky', 'main', 0, 0,
-    0, 1, 0, 0, 'failed', 3, '2026-04-17T10:30:00.000Z', NULL,
-    '2026-04-17T11:42:00.000Z', NULL, NULL,
-    'Mesh worker lost connection while collecting port diagnostics.', 3,
-    '2026-04-17T11:42:00.000Z', 'main', 'bugfix/demo-preview-health', NULL, '[]',
-    '[{"iteration":1,"status":"completed"},{"iteration":2,"status":"failed"}]',
-    '{"lastErrorMessage":"Mesh worker lost connection","lastErrorCode":"mesh_disconnected","count":2}',
-    NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, NULL, 0, 0, NULL,
-    '{"enabled":true,"cycle":1}', '{"status":"error","number":0}',
-    '{"status":"error","cycle":1}', 0, 'task'
-  ),
-  (
-    'demo-task-draft', 'demo-user', 'Plan mobile navigation polish',
-    '/workspaces/demo-storefront', 'Prepare a short plan for improving the mobile navigation.',
-    0, '2026-04-17T13:00:00.000Z', '2026-04-17T13:00:00.000Z', 0,
-    'demo-workspace-local', 'claude', 'claude-sonnet', '',
-    '{"mode":"custom","model":{"providerID":"claude","modelID":"claude-haiku","variant":""}}',
-    NULL, NULL, 900, 'TASK_COMPLETE', 'chore/', 'clanky', 'main', 1, 0,
-    0, 1, 0, 0, 'draft', 0, NULL, NULL, '2026-04-17T13:00:00.000Z',
-    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '[]', NULL, NULL,
-    NULL, NULL, NULL, NULL, 0, NULL, NULL, 0, NULL, 0, 0, NULL, NULL, NULL, NULL, 0,
-    'task'
-  )
-ON CONFLICT(id) DO UPDATE SET
-  user_id = excluded.user_id,
-  name = excluded.name,
-  directory = excluded.directory,
-  prompt = excluded.prompt,
-  issue_number = excluded.issue_number,
-  created_at = excluded.created_at,
-  updated_at = excluded.updated_at,
-  is_private = excluded.is_private,
-  workspace_id = excluded.workspace_id,
-  model_provider_id = excluded.model_provider_id,
-  model_model_id = excluded.model_model_id,
-  model_variant = excluded.model_variant,
-  cheap_model = excluded.cheap_model,
-  max_iterations = excluded.max_iterations,
-  max_consecutive_errors = excluded.max_consecutive_errors,
-  activity_timeout_seconds = excluded.activity_timeout_seconds,
-  stop_pattern = excluded.stop_pattern,
-  git_branch_prefix = excluded.git_branch_prefix,
-  git_commit_scope = excluded.git_commit_scope,
-  base_branch = excluded.base_branch,
-  use_worktree = excluded.use_worktree,
-  clear_planning_folder = excluded.clear_planning_folder,
-  plan_mode = excluded.plan_mode,
-  plan_mode_auto_reply = excluded.plan_mode_auto_reply,
-  auto_accept_plan = excluded.auto_accept_plan,
-  fully_autonomous = excluded.fully_autonomous,
-  status = excluded.status,
-  current_iteration = excluded.current_iteration,
-  started_at = excluded.started_at,
-  completed_at = excluded.completed_at,
-  last_activity_at = excluded.last_activity_at,
-  session_id = excluded.session_id,
-  session_server_url = excluded.session_server_url,
-  error_message = excluded.error_message,
-  error_iteration = excluded.error_iteration,
-  error_timestamp = excluded.error_timestamp,
-  git_original_branch = excluded.git_original_branch,
-  git_working_branch = excluded.git_working_branch,
-  git_worktree_path = excluded.git_worktree_path,
-  git_commits = excluded.git_commits,
-  recent_iterations = excluded.recent_iterations,
-  consecutive_errors = excluded.consecutive_errors,
-  pending_prompt = excluded.pending_prompt,
-  pending_prompt_mode = excluded.pending_prompt_mode,
-  pending_model_provider_id = excluded.pending_model_provider_id,
-  pending_model_model_id = excluded.pending_model_model_id,
-  pending_model_variant = excluded.pending_model_variant,
-  plan_mode_active = excluded.plan_mode_active,
-  plan_session_id = excluded.plan_session_id,
-  plan_server_url = excluded.plan_server_url,
-  plan_feedback_rounds = excluded.plan_feedback_rounds,
-  plan_content = excluded.plan_content,
-  planning_folder_cleared = excluded.planning_folder_cleared,
-  plan_is_ready = excluded.plan_is_ready,
-  pending_plan_question = excluded.pending_plan_question,
-  review_mode = excluded.review_mode,
-  pull_request_monitoring = excluded.pull_request_monitoring,
-  automatic_pr_flow = excluded.automatic_pr_flow,
-  fully_autonomous_pending = excluded.fully_autonomous_pending,
-  mode = excluded.mode;
-
-INSERT INTO sessions (
-  backend_name, task_id, session_id, server_url, created_at
-) VALUES
-  ('copilot', 'demo-task-planning', 'demo-session-planning', 'http://127.0.0.1:4301', '2026-04-17T12:30:00.000Z'),
-  ('copilot', 'demo-task-running', 'demo-session-running', 'http://127.0.0.1:4302', '2026-04-17T12:20:00.000Z'),
-  ('openai', 'demo-task-completed', 'demo-session-completed', 'http://127.0.0.1:4301', '2026-04-15T09:15:00.000Z')
-ON CONFLICT(backend_name, task_id) DO UPDATE SET
-  session_id = excluded.session_id,
-  server_url = excluded.server_url,
-  created_at = excluded.created_at;
-
 INSERT INTO chats (
-  id, user_id, name, source_kind, workspace_id, scope, task_id, directory,
+  id, user_id, name, source_kind, workspace_id, scope, directory,
   created_at, updated_at, is_private, model_provider_id, model_model_id, model_variant,
   use_worktree, auto_approve_permissions, skip_base_branch_sync, base_branch, mode,
   status, started_at, completed_at, last_activity_at, session_id, session_server_url,
@@ -453,7 +276,7 @@ INSERT INTO chats (
 ) VALUES
   (
     'demo-chat-storefront', 'demo-user', 'Storefront pairing session', 'workspace',
-    'demo-workspace-local', 'workspace', 'demo-task-running', '/workspaces/demo-storefront',
+    'demo-workspace-local', 'workspace', '/workspaces/demo-storefront',
     '2026-04-17T12:40:00.000Z', '2026-04-17T13:49:00.000Z', 0,
     'copilot', 'gpt-5.2', '', 1, 0, 0, 'main', 'chat', 'idle',
     '2026-04-17T12:40:00.000Z', NULL, '2026-04-17T13:49:00.000Z',
@@ -465,7 +288,7 @@ INSERT INTO chats (
   ),
   (
     'demo-chat-host', 'demo-user', 'Direct Mesh host chat', 'execution_host',
-    NULL, 'workspace', NULL, '/srv/mesh/analytics-lab',
+    NULL, 'workspace', '/srv/mesh/analytics-lab',
     '2026-04-17T09:30:00.000Z', '2026-04-17T11:45:00.000Z', 1,
     'codex', 'gpt-5.2', '', 0, 1, 1, NULL, 'chat', 'done',
     '2026-04-17T09:30:00.000Z', '2026-04-17T11:45:00.000Z', '2026-04-17T11:44:00.000Z',
@@ -474,7 +297,7 @@ INSERT INTO chats (
   ),
   (
     'demo-chat-ops', 'demo-user', 'Operations incident triage', 'workspace',
-    'demo-workspace-remote', 'workspace', NULL, '/srv/workspaces/billing-api',
+    'demo-workspace-remote', 'workspace', '/srv/workspaces/billing-api',
     '2026-04-17T11:00:00.000Z', '2026-04-17T11:18:00.000Z', 0,
     'copilot', 'gpt-5.2', 'fast', 0, 1, 0, 'main', 'chat', 'failed',
     '2026-04-17T11:00:00.000Z', '2026-04-17T11:18:00.000Z', '2026-04-17T11:18:00.000Z',
@@ -488,7 +311,6 @@ ON CONFLICT(id) DO UPDATE SET
   source_kind = excluded.source_kind,
   workspace_id = excluded.workspace_id,
   scope = excluded.scope,
-  task_id = excluded.task_id,
   directory = excluded.directory,
   created_at = excluded.created_at,
   updated_at = excluded.updated_at,
@@ -636,27 +458,27 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at;
 
 INSERT INTO terminal_sessions (
-  id, user_id, name, workspace_id, task_id, directory, remote_session_name,
+  id, user_id, name, workspace_id, directory, remote_session_name,
   connection_mode, use_tmux, workspace_execution_target_revision,
   execution_host_id, execution_host_revision, created_at, updated_at, is_private,
   status, last_connected_at, error_message, runtime_connection_mode, notice_message
 ) VALUES
   (
     'demo-terminal-local', 'demo-user', 'Storefront shell', 'demo-workspace-local',
-    'demo-task-running', '/workspaces/demo-storefront', 'clanky-demo-storefront',
+    '/workspaces/demo-storefront', 'clanky-demo-storefront',
     'dtach', 1, 2, 'demo-host-local', 1, '2026-04-17T12:30:00.000Z',
     '2026-04-17T13:45:00.000Z', 0, 'connected', '2026-04-17T13:45:00.000Z',
     NULL, NULL, NULL
   ),
   (
     'demo-terminal-remote', 'demo-user', 'Billing direct shell', 'demo-workspace-remote',
-    NULL, '/srv/workspaces/billing-api', 'clanky-demo-billing-direct',
+    '/srv/workspaces/billing-api', 'clanky-demo-billing-direct',
     'direct', 0, 4, 'demo-host-build', 3, '2026-04-17T11:30:00.000Z',
     '2026-04-17T13:20:00.000Z', 0, 'ready', '2026-04-17T13:20:00.000Z',
     NULL, 'direct', 'Persistent dtach is unavailable; using a direct shell.'
   ),
   (
-    'demo-terminal-mesh', 'demo-user', 'Analytics worker shell', NULL, NULL,
+    'demo-terminal-mesh', 'demo-user', 'Analytics worker shell', NULL,
     '/srv/mesh/analytics-lab', 'clanky-demo-mesh-shell', 'direct', 0, NULL,
     'demo-host-mesh', 2, '2026-04-17T09:40:00.000Z', '2026-04-17T11:45:00.000Z',
     1, 'failed', '2026-04-17T11:44:00.000Z',
@@ -666,7 +488,6 @@ ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
   name = excluded.name,
   workspace_id = excluded.workspace_id,
-  task_id = excluded.task_id,
   directory = excluded.directory,
   remote_session_name = excluded.remote_session_name,
   connection_mode = excluded.connection_mode,
@@ -779,111 +600,6 @@ ON CONFLICT(id) DO UPDATE SET
   text = excluded.text,
   timestamp = excluded.timestamp,
   step = excluded.step;
-
-INSERT INTO review_comments (
-  id, user_id, task_id, review_cycle, comment_text, created_at, status, addressed_at
-) VALUES
-  (
-    'demo-review-comment-1', 'demo-user', 'demo-task-completed', 1,
-    'Please add a regression case for an empty date range.', '2026-04-16T14:00:00.000Z',
-    'addressed', '2026-04-16T15:10:00.000Z'
-  ),
-  (
-    'demo-review-comment-2', 'demo-user', 'demo-task-completed', 1,
-    'The filter labels should remain readable at the mobile breakpoint.', '2026-04-16T14:05:00.000Z',
-    'pending', NULL
-  ),
-  (
-    'demo-review-comment-3', 'demo-user', 'demo-task-running', 2,
-    'The retry backoff needs a maximum delay before the next attempt.', '2026-04-17T13:30:00.000Z',
-    'pending', NULL
-  )
-ON CONFLICT(id) DO UPDATE SET
-  user_id = excluded.user_id,
-  task_id = excluded.task_id,
-  review_cycle = excluded.review_cycle,
-  comment_text = excluded.comment_text,
-  created_at = excluded.created_at,
-  status = excluded.status,
-  addressed_at = excluded.addressed_at;
-
--- Normalized task transcript entries cover messages, tools and logs.
-INSERT INTO task_transcript_entries (
-  task_id, user_id, entry_id, kind, timestamp, sequence, payload,
-  tool_name, tool_status, tool_input, tool_output, tool_extras, message_role,
-  created_at, updated_at
-) VALUES
-  (
-    'demo-task-planning', 'demo-user', 'message:demo-task-planning-user', 'message',
-    '2026-04-17T12:31:00.000Z', 0,
-    '{"id":"demo-task-planning-user","role":"user","content":"I want filters that are useful on both desktop and mobile.","timestamp":"2026-04-17T12:31:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, 'user', '2026-04-17T12:31:00.000Z', '2026-04-17T12:31:00.000Z'
-  ),
-  (
-    'demo-task-planning', 'demo-user', 'message:demo-task-planning-assistant', 'message',
-    '2026-04-17T12:32:00.000Z', 1,
-    '{"id":"demo-task-planning-assistant","role":"assistant","content":"I drafted a responsive filter plan and need one product decision before implementation.","timestamp":"2026-04-17T12:32:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T12:32:00.000Z', '2026-04-17T12:32:00.000Z'
-  ),
-  (
-    'demo-task-planning', 'demo-user', 'tool:demo-task-planning-tool', 'tool',
-    '2026-04-17T12:33:00.000Z', 2, '{}', 'Glob', 'completed',
-    '{"pattern":"src/components/**/*filter*"}', '["src/components/dashboard/filters.tsx"]', '[]', NULL,
-    '2026-04-17T12:33:00.000Z', '2026-04-17T12:33:00.000Z'
-  ),
-  (
-    'demo-task-planning', 'demo-user', 'log:demo-task-planning-log', 'log',
-    '2026-04-17T12:34:00.000Z', 3,
-    '{"id":"demo-task-planning-log","level":"info","message":"Plan is ready for review.","timestamp":"2026-04-17T12:34:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, NULL, '2026-04-17T12:34:00.000Z', '2026-04-17T12:34:00.000Z'
-  ),
-  (
-    'demo-task-running', 'demo-user', 'message:demo-task-running-user', 'message',
-    '2026-04-17T13:41:00.000Z', 0,
-    '{"id":"demo-task-running-user","role":"user","content":"Please keep the retry behavior backwards compatible.","timestamp":"2026-04-17T13:41:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, 'user', '2026-04-17T13:41:00.000Z', '2026-04-17T13:41:00.000Z'
-  ),
-  (
-    'demo-task-running', 'demo-user', 'message:demo-task-running-assistant', 'message',
-    '2026-04-17T13:42:00.000Z', 1,
-    '{"id":"demo-task-running-assistant","role":"assistant","content":"I found the retry policy and am adding an idempotency test next.","timestamp":"2026-04-17T13:42:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T13:42:00.000Z', '2026-04-17T13:42:00.000Z'
-  ),
-  (
-    'demo-task-running', 'demo-user', 'tool:demo-task-running-tool', 'tool',
-    '2026-04-17T13:43:00.000Z', 2, '{}', 'Edit', 'running',
-    '{"filePath":"src/webhooks/retry.ts"}', NULL, '[]', NULL,
-    '2026-04-17T13:43:00.000Z', '2026-04-17T13:43:00.000Z'
-  ),
-  (
-    'demo-task-failed', 'demo-user', 'message:demo-task-failed-assistant', 'message',
-    '2026-04-17T11:41:00.000Z', 0,
-    '{"id":"demo-task-failed-assistant","role":"assistant","content":"The worker disconnected before I could collect the preview logs.","timestamp":"2026-04-17T11:41:00.000Z"}',
-    NULL, NULL, NULL, NULL, NULL, 'assistant', '2026-04-17T11:41:00.000Z', '2026-04-17T11:41:00.000Z'
-  )
-ON CONFLICT(task_id, entry_id) DO UPDATE SET
-  user_id = excluded.user_id,
-  kind = excluded.kind,
-  timestamp = excluded.timestamp,
-  sequence = excluded.sequence,
-  payload = excluded.payload,
-  tool_name = excluded.tool_name,
-  tool_status = excluded.tool_status,
-  tool_input = excluded.tool_input,
-  tool_output = excluded.tool_output,
-  tool_extras = excluded.tool_extras,
-  message_role = excluded.message_role,
-  updated_at = excluded.updated_at;
-
-INSERT INTO task_transcript_meta (task_id, user_id, revision, entry_count, updated_at) VALUES
-  ('demo-task-planning', 'demo-user', '4:2026-04-17T12:34:00.000Z:2026-04-17T12:34:00.000Z', 4, '2026-04-17T12:34:00.000Z'),
-  ('demo-task-running', 'demo-user', '3:2026-04-17T13:43:00.000Z:2026-04-17T13:43:00.000Z', 3, '2026-04-17T13:43:00.000Z'),
-  ('demo-task-failed', 'demo-user', '1:2026-04-17T11:41:00.000Z:2026-04-17T11:41:00.000Z', 1, '2026-04-17T11:41:00.000Z')
-ON CONFLICT(task_id) DO UPDATE SET
-  user_id = excluded.user_id,
-  revision = excluded.revision,
-  entry_count = excluded.entry_count,
-  updated_at = excluded.updated_at;
 
 INSERT INTO chat_transcript_entries (
   chat_id, user_id, entry_id, kind, timestamp, sequence, payload,
