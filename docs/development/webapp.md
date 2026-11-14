@@ -226,6 +226,8 @@ Viewport resizing, orientation changes, and transcript reflow also preserve
 bottom following. Layout-driven scroll adjustments must not release the bottom
 pin, while intentionally scrolling up still allows reading older messages
 without being pulled back to the end.
+Upward wheel, touch, and keyboard input releases following immediately, even
+while streamed text or images are resizing the transcript.
 
 Work-item lists and sidebar Active work share a composition: workspace/host
 name and status, then item name, then relative interaction time and type/provider.

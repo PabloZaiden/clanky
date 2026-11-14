@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type DependencyList } from "react";
 import { isDocumentVisible, useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { isEditableShortcutTarget } from "../app-shell/shell-shortcuts";
 
 const BOTTOM_THRESHOLD_PX = 48;
 
@@ -34,7 +35,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     if (!currentContainer) {
       return;
     }
-    const wasPinnedWhenScheduled = isPinnedToBottomRef.current || isNearBottom(currentContainer);
+    const wasPinnedWhenScheduled = isPinnedToBottomRef.current;
     const scheduledScrollTop = currentContainer.scrollTop;
     if (!wasPinnedWhenScheduled) {
       return;
@@ -105,6 +106,33 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
       clientWidth = container.clientWidth;
       scrollTop = container.scrollTop;
     };
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.defaultPrevented && event.deltaY < 0) {
+        releaseBottomPin();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableShortcutTarget(event.target)) {
+        return;
+      }
+      if (
+        event.key === "ArrowUp" || event.key === "PageUp" || event.key === "Home"
+        || event.key === " " && event.shiftKey
+      ) {
+        releaseBottomPin();
+      }
+    };
+    let touchY: number | null = null;
+    const handleTouchStart = (event: TouchEvent) => {
+      touchY = event.touches.length === 1 ? event.touches[0]?.clientY ?? null : null;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches.length === 1 ? event.touches[0]?.clientY ?? null : null;
+      if (touchY !== null && currentY !== null && currentY > touchY) {
+        releaseBottomPin();
+      }
+      touchY = currentY;
+    };
 
     const updatePinnedState = () => {
       if (!isDocumentVisible()) {
@@ -135,6 +163,10 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     };
 
     container.addEventListener("scroll", updatePinnedState, { passive: true });
+    container.addEventListener("wheel", handleWheel, { passive: true });
+    container.addEventListener("keydown", handleKeyDown);
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchmove", handleTouchMove, { passive: true });
     const content = contentRef.current;
     const observer = typeof ResizeObserver !== "undefined" && content
       ? new ResizeObserver(() => {
@@ -151,9 +183,13 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
 
     return () => {
       container.removeEventListener("scroll", updatePinnedState);
+      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("keydown", handleKeyDown);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
       observer?.disconnect();
     };
-  }, [visible, cancelScheduledScroll, scrollToBottomIfPinned]);
+  }, [visible, cancelScheduledScroll, scrollToBottomIfPinned, releaseBottomPin]);
 
   useLayoutEffect(() => {
     const resuming = visible && !wasVisibleRef.current;
