@@ -156,5 +156,6 @@ notes in [Scratchpad](scratchpad.md). Use **Code Explorer** to browse files and
 attach screenshots or documents to give your agent useful context.
 
 Use **Activity** to follow background work and **Diff** to review results.
-Set up **Automations** for recurring tasks. If you use Listen, choose the alerts
-you want under **Settings > Agents & integrations > Notifications**.
+Set up **Automations** for recurring tasks. If you use
+[Listen](control-chats.md#agent-notifications), choose the alerts you want under
+**Settings > Agents & integrations > Notifications**.
