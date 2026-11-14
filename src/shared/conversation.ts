@@ -25,7 +25,7 @@ export interface PersistedToolCall extends ToolCallRecord {}
 export interface SessionInfo {
   id: string;
   serverUrl?: string;
-  /** Null denotes a corrupt stored binding; it must never be resumed as legacy ACP. */
+  /** Null denotes an unsupported or corrupt stored binding; it must never be resumed. */
   binding?: HarnessConversationBinding | null;
 }
 

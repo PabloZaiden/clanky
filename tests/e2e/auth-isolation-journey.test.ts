@@ -39,7 +39,7 @@ test("authenticated users keep their private workspace and administration bounda
       method: "POST", apiKey: ownerKey,
       body: JSON.stringify({
         name: "Private project", directory: git.repositoryDirectory, executionHost: host.ref,
-        serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+        serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
       }),
     }, 201)).data;
     expect((await application.json<Array<{ id: string }>>("/api/workspaces", { apiKey: ownerKey }))

@@ -25,12 +25,12 @@ export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 export const WorkspaceTypeSchema = z.enum(["git", "directory"]);
 
 /**
- * Adapter selection is independent of the execution host. ACP selects a preset.
+ * Adapter selection is independent of the execution host.
  */
 export const AgentSettingsSchema = z.object({
   adapter: z.enum(HARNESS_ADAPTER_IDS),
   provider: AgentProviderSchema,
-}).strict().refine(isAgentSettings, { message: "The harness preset does not match the native adapter", path: ["provider"] });
+}).strict().refine(isAgentSettings, { message: "The provider does not match the native adapter", path: ["provider"] });
 
 /**
  * Schema for workspace server settings.

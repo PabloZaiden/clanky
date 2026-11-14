@@ -19,9 +19,9 @@ import { saveAutomationRun } from "../persistence/automations";
 const log = createLogger("automation-run-stream-persistence");
 
 /**
- * Keeps the automation-run projection current while its ACP chat is streaming.
+ * Keeps the automation-run projection current while its chat is streaming.
  *
- * The associated automation chat owns ACP consumption and its own transcript. This
+ * The associated automation chat owns harness consumption and its own transcript. This
  * projection is updated from chat events so automation-run recovery does not wait
  * for the stream to finish or rebuild the complete transcript on every delta.
  */

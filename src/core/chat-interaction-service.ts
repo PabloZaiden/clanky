@@ -662,7 +662,7 @@ export class ChatInteractionService implements ChatInteractionPort {
       if (latestChat) {
         const binding = latestChat.state.session?.binding;
         if (isDomainError(error) && error.code === "harness_transport_closed"
-          && binding && binding.adapter !== "acp") {
+          && binding) {
           log.warn("Queued chat admission lost its native transport; preserving recovery state", { chatId });
           return;
         }

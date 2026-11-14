@@ -16,6 +16,7 @@ export type HarnessErrorCode =
   | "harness_runtime_unavailable"
   | "harness_authentication_required"
   | "harness_connection_aborted"
+  | "harness_connection_timed_out"
   | "harness_model_not_available"
   | "harness_input_not_found"
   | "harness_input_unresolved"

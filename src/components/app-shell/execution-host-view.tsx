@@ -355,7 +355,7 @@ export function ExecutionHostView({
             disabled={directoryLoading}
             className="font-mono"
           />
-          {host.capabilities.acpRuntime ? (
+          {host.capabilities.commandExecution ? (
             <>
               <SelectField
                 id="execution-host-provider"

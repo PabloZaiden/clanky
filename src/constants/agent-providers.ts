@@ -7,12 +7,9 @@ export interface AgentProviderOption {
 }
 
 const AGENT_PROVIDER_LABELS = {
-  opencode: "OpenCode",
+  opencode: "OpenCode 2",
   copilot: "Copilot",
   codex: "Codex",
-  claude: "Claude Code",
-  pi: "Pi",
-  grok: "Grok Build",
 } satisfies Record<AgentProvider, string>;
 
 export const AGENT_PROVIDER_OPTIONS: readonly AgentProviderOption[] = AGENT_PROVIDER_IDS.map((id) => ({

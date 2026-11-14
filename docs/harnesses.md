@@ -12,7 +12,6 @@ harness subagents.
 | GitHub Copilot | `copilot` | `copilot` | Installed and authenticated current Copilot CLI |
 | Codex | `codex` | `codex` | Installed and authenticated current Codex CLI, using app-server |
 | OpenCode 2 | `opencode2` | `opencode` | Installed current `opencode2` runtime for generation 2 |
-| ACP | `acp` | Selected harness preset | Existing ACP-capable Copilot, Codex, OpenCode, Claude, Pi or Grok integration |
 
 Native adapters are experimental. Install and authenticate the harness on the
 selected execution host, not necessarily on the controller. The Clanky server
@@ -24,11 +23,17 @@ CLI in a private workspace prefix. See
 
 Local hosts and end-to-end Mesh v7 paths support native adapters. Every
 controller, relay, and worker on a Mesh route must use v7 over TLS.
-A native failure does not switch to ACP; select ACP explicitly when
-that is the desired integration. See [Mesh workers](mesh-worker.md) for setup
-details.
+A native failure does not switch adapters. See [Mesh workers](mesh-worker.md)
+for setup details.
 
-Existing workspace settings migrate to ACP with their original harness preset.
+New workspace creation defaults to native Copilot; generic server settings
+default to native OpenCode 2. Upgrades convert retired transport selections for
+Copilot, Codex and OpenCode to their native adapters. Install and authenticate
+the selected native runtime on the execution host before starting work.
+Workspaces selecting Claude, Pi or Grok prevent the upgrade: choose a supported
+native adapter with the previous application version first.
+Existing transcripts and saved conversation identities are preserved, but
+retired sessions cannot resume through a native adapter; start a new chat.
 Selecting a different adapter does not reinterpret a saved session ID. Start a
 new conversation when changing adapters; app transcript history is preserved.
 Clanky resumes its own sessions, but no longer imports external harness sessions
@@ -75,16 +80,14 @@ threads resume with their previously registered catalog and history, without
 catalog-change refusal, replacement threads or an MCP fallback. Invoked actions
 still require current server authorization and valid common-control inputs.
 
-ACP remains available for ordinary model execution, but receives no automatic
-Clanky control or CLI credentials, including with general access enabled.
 Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
 the server or worker environment. Other environment variables and
 provider authentication are preserved. Personal keys and interactive terminals
 are unchanged. Deterministic programs retain scoped control through their
-controller-owned runner adapter, without granting that authority to ACP.
+controller-owned runner adapter.
 
 For OpenCode 2, Clanky loads a managed native plugin and private loopback bridge on
-the execution host; no separate plugin installation, ACP adapter or MCP
+the execution host; no separate plugin installation or MCP
 configuration is needed. The installed runtime must support the generation-2
 Promise plugin API, including tool reload. Actual chat roots discover optional
 browser tools using their persisted real chat ID; scheduled-run roots do not claim a
@@ -104,7 +107,7 @@ OpenCode, Quick Chat and any selected chat or native adapter.
 Interactive native Copilot, Codex and OpenCode 2 chats on POSIX execution hosts
 provide `clanky_request_secret`. It is a host-local native tool, not a Control
 operation, approval, MCP tool or tool-to-tool secret reference. It needs no
-general-access grant. ACP and native subagent calls are unsupported. Autonomous
+general-access grant. Native subagent calls are unsupported. Autonomous
 scheduled runs and helper conversations do not receive the tool and
 cannot access its cache.
 
@@ -263,9 +266,8 @@ workers to enable it.
 **Partial** means some consumption could not be recovered, such as a Codex
 thread whose usage notification has not been observed. **Last known** means
 refresh failed; the saved number is retained instead of being reset to zero.
-A dash means no consumption count is available. ACP context-size reports are
-not used as consumption, and old usage cannot be reconstructed when the native
-provider no longer exposes it.
+A dash means no consumption count is available. Old usage cannot be
+reconstructed when the native provider no longer exposes it.
 
 ## Activity and individual Stop
 
@@ -282,7 +284,7 @@ siblings, worker or independently managed Clanky terminals/previews. A
 `stopping` or `unknown` result is not confirmed termination.
 
 An unavailable or partial observation does not prove that no work is running.
-ACP does not advertise native activity or steering. A principal response can
+A principal response can
 finish while native background work remains observable.
 
 ### Saved subagent conversations
@@ -316,8 +318,7 @@ parent is observed; no browser is required. Child failures and informational
 question/permission notices remain visible in the conversation, but answers
 and decisions still belong to the parent.
 Older Mesh workers can still serve content already saved on the controller;
-update the worker to enable native child-history recovery. ACP
-does not gain native subagent support.
+update the worker to enable native child-history recovery.
 
 Reasoning identifiers are opaque provider-native strings, not event UUIDs.
 Clanky preserves them unchanged in live events and recovered child history.
@@ -354,12 +355,12 @@ not promise to restart work stopped with the provider runtime. Missing,
 unsupported or over-limit history produces an explicit observation failure
 rather than silently reporting a complete transcript. Local and native Mesh
 conversations follow the same rules; a Mesh worker must advertise native history
-recovery support. ACP retains its existing turn-based behavior.
+recovery support.
 
 Native messages have independent lifecycles identified by their provider IDs.
 Several messages may be streaming before any of them completes; reasoning,
 tool events and another message's completion do not replace their pending text.
-ACP retains its turn-based projection. Chat switches checkpoint the outgoing block
+Chat switches checkpoint the outgoing block
 without closing it, so interleaving does not create extra transcript segments.
 Authoritative completions reconcile only their own message and transcript
 segments. Clanky never merges different message IDs because their text matches.
@@ -543,8 +544,6 @@ other hook trust decisions and YOLO permissions remain unchanged. A Codex
 profile that disables hooks or permits only managed hooks cannot enforce this
 policy and is rejected explicitly for unattended execution. Unexpected native
 human-input callbacks are rejected or cancelled, never answered automatically.
-ACP has no universal tool-exclusion mechanism; unsupported replies are explicit
-errors.
 
 Reloading the browser, reconnecting or opening the chat on another device
 retains answerable pending questions while the native request is still alive.

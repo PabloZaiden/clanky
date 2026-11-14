@@ -1,7 +1,7 @@
 /**
  * Transport-neutral authorization and attachment for inbound Mesh sockets.
  *
- * Direct Mesh routes and relay streams accept the same three socket routes
+ * Direct Mesh routes and relay streams accept the same socket routes
  * with the same session credentials and the same gateway lifecycle. This
  * helper owns that mapping once so a relay stream cannot reach a route, a
  * gateway, or an authorization path that the direct transport would refuse.
@@ -9,8 +9,6 @@
 
 import { createLogger } from "@pablozaiden/webapp/server";
 import { DomainError } from "../domain/domain-error";
-import { meshAcpGateway } from "./mesh-acp-gateway";
-import { meshExecutionGateway } from "./mesh-execution-gateway";
 import { meshTcpTunnelGateway } from "./mesh-tcp-tunnel-gateway";
 import { meshTerminalGateway } from "./mesh-terminal-gateway";
 import { requireMeshRuntimeRole } from "./mesh-runtime";
@@ -18,12 +16,10 @@ import { assertMeshTransportSecurity } from "./mesh-transport-security";
 
 const log = createLogger("core:mesh-inbound-socket");
 
-export const MESH_INBOUND_ACP_PATH = "/api/mesh/internal/execution/acp";
 export const MESH_INBOUND_TERMINAL_PATH = "/api/mesh/internal/terminal";
 export const MESH_INBOUND_TCP_TUNNEL_PATH = "/api/mesh/internal/tcp-tunnel";
 
 export const MESH_INBOUND_SOCKET_PATHS: ReadonlySet<string> = new Set([
-  MESH_INBOUND_ACP_PATH,
   MESH_INBOUND_TERMINAL_PATH,
   MESH_INBOUND_TCP_TUNNEL_PATH,
 ]);
@@ -80,27 +76,6 @@ export async function openMeshInboundSocket(
       "mesh_peer_target_invalid",
       `The Mesh socket route "${pathname}" is not available.`,
     );
-  }
-
-  if (pathname === MESH_INBOUND_ACP_PATH) {
-    const { sessionId, sessionToken } = requireSessionCredentials(
-      headers,
-      "mesh_execution_session_invalid",
-      "Mesh ACP session headers are required.",
-    );
-    assertMeshTransportSecurity(meshExecutionGateway.getSessionProtocolVersion(sessionId, sessionToken), options?.secureTransport === true);
-    await meshExecutionGateway.getAcpSessionConfig(sessionId, sessionToken);
-    await meshAcpGateway.open(socket, sessionId, sessionToken, options?.signal);
-    return {
-      path: pathname,
-      sessionId,
-      message: async (data) => {
-        await meshAcpGateway.message(sessionId, toGatewayPayload(data));
-      },
-      close: async () => {
-        await meshAcpGateway.close(sessionId);
-      },
-    };
   }
 
   if (pathname === MESH_INBOUND_TERMINAL_PATH) {

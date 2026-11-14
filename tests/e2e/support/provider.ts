@@ -1,12 +1,11 @@
 /**
- * Installs the deterministic ACP fixture as a normal provider executable.
+ * Installs deterministic native fixtures as normal provider executables.
  */
 
 import { chmod, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const ROOT_DIR = resolve(import.meta.dir, "../../..");
-const PROVIDER_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "acp.ts");
 const CODEX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "codex.ts");
 const COPILOT_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "copilot-native.ts");
 const OPENCODE_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "opencode-native.ts");
@@ -22,10 +21,6 @@ export async function installExternalCodexProvider(binDirectory: string): Promis
     `#!/bin/sh\nexec ${quote(executable)} ${quote(CODEX_PATH)} "$@"\n`,
   );
   await chmod(wrapperPath, 0o700);
-}
-
-export async function installExternalAcpProvider(binDirectory: string): Promise<void> {
-  await installProviderExecutable(binDirectory, "copilot", PROVIDER_PATH);
 }
 
 export async function installExternalNativeCopilotProvider(binDirectory: string): Promise<void> {

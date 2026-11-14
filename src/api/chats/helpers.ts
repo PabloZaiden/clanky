@@ -26,7 +26,7 @@ export function chatActionErrorResponse(error: unknown): Response | null {
     return null;
   }
 
-  if (error.code === "acp_connection_timed_out") {
+  if (error.code === "harness_connection_timed_out") {
     return errorResponse(
       "connection_timeout",
       "The agent connection timed out before it became ready",

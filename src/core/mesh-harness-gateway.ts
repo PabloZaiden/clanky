@@ -79,7 +79,7 @@ export class MeshHarnessGateway {
           throw new DomainError("control_unavailable", "The execution control channel must be ready before provider connection.");
         }
         await backend.connect({
-          directory: config.directory, transport: "stdio",
+          directory: config.directory,
           env: config.environment, managedEnvironment: config.environment,
           control,
         }, controller.signal);

@@ -202,10 +202,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticGithubUser,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
-    automaticProvider,
     automaticAdapter,
     setAutomaticAdapter,
-    setAutomaticProvider,
     automaticChannel,
     setAutomaticChannel,
     handleCreateWorkspace,
@@ -247,7 +245,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const automaticFormValid =
     (!automaticWorker || automaticChannel !== "default"
       || (channelPreferences.data !== undefined && !channelPreferences.error)) &&
-    (automaticAdapter === "acp" || !workspaceWorkerEnrollmentSelected) &&
+    !workspaceWorkerEnrollmentSelected &&
     workspaceName.trim().length > 0 &&
     (automaticExecutionHost !== null
       || (
@@ -563,9 +561,9 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
               />
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <HarnessRuntimeSelector idPrefix="automatic-" adapter={automaticAdapter} provider={automaticProvider}
-                  supportedAdapters={!workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : ["acp"]}
-                  onAdapterChange={setAutomaticAdapter} onProviderChange={setAutomaticProvider} />
+                <HarnessRuntimeSelector idPrefix="automatic-" adapter={automaticAdapter}
+                  supportedAdapters={!workspaceWorkerEnrollmentSelected ? HARNESS_ADAPTER_IDS : []}
+                  onAdapterChange={setAutomaticAdapter} />
               </div>
               {automaticWorker ? (
                 <>
@@ -580,8 +578,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   ) : null}
                 </>
               ) : null}
-              {automaticAdapter !== "acp" && workspaceWorkerEnrollmentSelected && (
-                <ErrorState title="Adapter unavailable" description="Select ACP for the enrolled worker." />
+              {workspaceWorkerEnrollmentSelected && (
+                <ErrorState title="Adapter unavailable" description="Native adapters require an automatic worker workspace." />
               )}
 
               <FormGroup

@@ -4,7 +4,7 @@
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type { HarnessActivity } from "./harness-control";
 
-export const HARNESS_ADAPTER_IDS = ["acp", "copilot", "codex", "opencode2"] as const;
+export const HARNESS_ADAPTER_IDS = ["copilot", "codex", "opencode2"] as const;
 export type HarnessAdapter = typeof HARNESS_ADAPTER_IDS[number];
 
 export interface HarnessNativeReferences {

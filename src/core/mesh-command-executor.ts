@@ -39,7 +39,6 @@ import {
   getManagedWorktreesCommandMinimumVersion,
   getUnavailableGitCommandCapability,
   MANAGED_WORKTREES_BASE_VERSION,
-  supportsPortableAcpRuntime,
   supportsExecutionHostCapability,
   type ExecutionHostCapabilities,
 } from "@/shared/execution-host";
@@ -127,13 +126,13 @@ export class MeshCommandExecutor implements CommandExecutor {
   }
 
   async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
-    if (supportsPortableAcpRuntime(this.capabilities)) {
+    if (supportsExecutionHostCapability(this.capabilities, "commandExecution")) {
       return await this.client.isAgentProviderAvailable(provider);
     }
     throw new DomainError(
       "execution_host_capability_unavailable",
-      "The selected Mesh execution host does not support acpRuntime.",
-      { details: { capability: "acpRuntime" } },
+      "The selected Mesh execution host does not support commandExecution.",
+      { details: { capability: "commandExecution" } },
     );
   }
 

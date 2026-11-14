@@ -3,6 +3,7 @@
  */
 
 import { mkdir } from "node:fs/promises";
+import { $ } from "bun";
 import { join } from "node:path";
 import { parseJsonRpcMessage, type JsonRpcId, type JsonRpcMessage } from "./codex-json-rpc";
 import { readCopilotImageReceipts } from "./image-input";
@@ -223,9 +224,40 @@ async function sendInput(session: Session | undefined, params: Record<string, un
         event(session, "session.error", { errorType: "protocol", message: String(error) });
         idle(session);
       });
-    } else if (!prompt.startsWith("Wait for a steering instruction")) execute(session);
+    } else if (!prompt.startsWith("Wait for a steering instruction")) {
+      if (!await handleProjectInput(session)) execute(session);
+    }
   }
   await save();
+}
+
+async function handleProjectInput(session: Session): Promise<boolean> {
+  const planningDirectory = join(session.directory, ".clanky-planning");
+  if (session.prompt.includes("[plan-first]") && session.prompt.includes(".clanky-planning/plan.md")) {
+    await mkdir(planningDirectory, { recursive: true });
+    await Bun.write(join(planningDirectory, "plan.md"), "# E2E plan\n\n1. Create the requested fixture change.\n");
+    await Bun.write(join(planningDirectory, "status.md"), "# Status\n\nWaiting for implementation.\n");
+    finish(session, "The implementation plan is ready for review.");
+    return true;
+  }
+  if (session.prompt.startsWith("[revise-plan] Include documentation.")) {
+    await Bun.write(join(planningDirectory, "plan.md"),
+      "# E2E plan\n\n1. Create the requested fixture change.\n2. Include documentation.\n");
+    await Bun.write(join(planningDirectory, "status.md"), "# Status\n\nPlan revised; awaiting implementation.\n");
+    finish(session, "The revised plan includes documentation.");
+    return true;
+  }
+  if (session.prompt.includes("[provider-write]")) {
+    await Bun.write(join(session.directory, "e2e-committed-change.txt"), "committed implementation\n");
+    await $`git add e2e-committed-change.txt`.cwd(session.directory).quiet();
+    await $`git commit -m "Record initial implementation"`.cwd(session.directory).quiet();
+    await Bun.write(join(session.directory, "README.md"), "# E2E fixture\n\nPending documentation.\n");
+    await Bun.write(join(session.directory, "e2e-provider-change.txt"), "created by the external Copilot provider\n");
+    await Bun.write(join(planningDirectory, "status.md"), "# Status\n\nImplementation complete.\n");
+    finish(session, "Implemented the revised plan.");
+    return true;
+  }
+  return false;
 }
 
 function startBackground(session: Session, work: BackgroundWork): Promise<void> {

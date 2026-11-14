@@ -17,8 +17,8 @@ export const DEMO_HOST: ExecutionHostDescriptor = {
   endpoint: null, meshRouteKind: null, repositoriesBasePath: DEMO_DIRECTORY,
   preferredModel: DEMO_MODEL, configurationRevision: 1, accessRequirement: { kind: "none" },
   acceptRemoteExecution: true, platform: { os: "linux", architecture: "arm64" },
-  capabilities: { fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3, acpRuntime: 2 },
-  harnessAdapters: ["acp"], revision: 1,
+  capabilities: { commandExecution: 1, fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3 },
+  harnessAdapters: ["copilot", "codex", "opencode2"], revision: 1,
 };
 export const DEMO_WORKER: ExecutionHostDescriptor = {
   ...DEMO_HOST, ref: { kind: "mesh", nodeId: "demo-worker" }, targetKey: "demo-worker",
@@ -80,7 +80,7 @@ export function demoWorkspace(now: string): Workspace {
     scratchpad: "# Demo Observatory\n\nA fictional project for exploring Clanky. Nothing runs on a real server.",
     workspaceType: "git", allowWorktrees: true, executionTargetRevision: 1,
     executionHostBinding: { host: DEMO_HOST.ref, targetKey: DEMO_HOST.targetKey, revision: 1 },
-    serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+    serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
     createdAt: now, updatedAt: now, allowClankyContext: false,
   };
 }

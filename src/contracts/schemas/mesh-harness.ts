@@ -1,5 +1,5 @@
 /**
- * Mesh native host contract. Never interpreted as ACP JSON-RPC.
+ * Mesh native host contract.
  */
 import { z } from "zod";
 import { HarnessActivitySchema, HarnessConversationBindingSchema, HarnessEventScopeSchema, HarnessQuestionInfoSchema } from "./harness";

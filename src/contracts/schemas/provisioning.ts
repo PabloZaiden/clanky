@@ -37,7 +37,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   devboxTemplate: z.string().trim().nullish(),
   githubUser: z.string().trim().nullish(),
   provider: AgentProviderSchema,
-  adapter: z.enum(HARNESS_ADAPTER_IDS).default("acp"),
+  adapter: z.enum(HARNESS_ADAPTER_IDS).default("copilot"),
   mode: ProvisioningJobModeSchema,
   createNewRepository: z.boolean().default(false),
   /** For rebuild/restart: directory on the host where the repo lives */
@@ -46,10 +46,9 @@ export const CreateProvisioningJobRequestSchema = z.object({
   workspaceId: z.string().trim().nullable(),
   channel: WorkerUpdateModeSchema.optional(),
 }).strict().refine((data) => AgentSettingsSchema.safeParse({ adapter: data.adapter, provider: data.provider }).success, {
-  message: "The harness preset does not match the native adapter",
+  message: "The provider does not match the native adapter",
   path: ["provider"],
-}).refine((data) => data.mode !== "provision" || data.adapter === "acp"
-  || !data.workspaceWorkerEnrollmentId, {
+}).refine((data) => data.mode !== "provision" || !data.workspaceWorkerEnrollmentId, {
   message: "Native adapters require an automatic worker workspace",
   path: ["adapter"],
 }).refine((data) => !data.channel

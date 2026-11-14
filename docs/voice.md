@@ -480,7 +480,7 @@ endpoints are removed rather than aliased.
 
 ### Validation scope
 
-The compiled-app global journey uses deterministic external Live and ACP
+The compiled-app global journey uses deterministic external Live and native
 providers, real persistence/Git boundaries, originating-tab UI
 acknowledgements and visual-approval protocols. Native
 Control journeys remain independent of Live. The protocol fixture is not proof

@@ -16,17 +16,16 @@ import {
   MESH_EXECUTION_ASYNC_POLL_INTERVAL_MS,
   MESH_EXECUTION_ASYNC_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_CHANNEL,
-  MESH_ACP_CHANNEL,
   MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_CONTROL_VERSION,
   MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TIMEOUT_MS,
   MESH_EXECUTION_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_SESSION_RENEWAL_LEAD_MS,
-  MESH_ACP_SESSION_REQUEST_TTL_MS,
+  MESH_HARNESS_SESSION_REQUEST_TTL_MS,
   MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
   MESH_EXECUTION_MAX_RESULT_BYTES,
-  MESH_ACP_SESSION_RENEWAL_LEAD_MS,
+  MESH_HARNESS_SESSION_RENEWAL_LEAD_MS,
   MESH_SESSION_RENEWAL_RETRY_MS,
   MESH_SESSION_RENEWAL_MAX_RETRY_MS,
   MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS,
@@ -87,8 +86,8 @@ export interface MeshCommandExecutorClientConfig {
   localUserId?: string;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
-  channel?: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
-  adapter?: Exclude<HarnessAdapter, "acp">;
+  channel?: typeof MESH_EXECUTION_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  adapter?: HarnessAdapter;
   sessionTtlMs?: number;
   managedEnvironment?: Record<string, string>;
   controlTools?: boolean;
@@ -281,8 +280,8 @@ export class MeshCommandExecutorClient {
   private readonly localUserId?: string;
   private readonly requestTimeoutMs: number;
   private readonly fetchImpl: typeof globalThis.fetch;
-  private readonly channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
-  private readonly adapter?: Exclude<HarnessAdapter, "acp">;
+  private readonly channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  private readonly adapter?: HarnessAdapter;
   private readonly sessionTtlMs: number;
   private readonly managedEnvironment?: Record<string, string>;
   private readonly controlTools: boolean;
@@ -312,7 +311,7 @@ export class MeshCommandExecutorClient {
     this.adapter = config.adapter;
     this.sessionTtlMs = config.sessionTtlMs
       ?? (this.channel !== MESH_EXECUTION_CHANNEL
-        ? MESH_ACP_SESSION_REQUEST_TTL_MS
+        ? MESH_HARNESS_SESSION_REQUEST_TTL_MS
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
     this.managedEnvironment = config.managedEnvironment;
     this.controlTools = config.controlTools === true;
@@ -613,7 +612,7 @@ export class MeshCommandExecutorClient {
     }
     const leadMs = this.channel === MESH_EXECUTION_CHANNEL
       ? MESH_EXECUTION_SESSION_RENEWAL_LEAD_MS
-      : MESH_ACP_SESSION_RENEWAL_LEAD_MS;
+      : MESH_HARNESS_SESSION_RENEWAL_LEAD_MS;
     const defaultDelayMs = Math.max(1, remainingMs - leadMs);
     const latestSafeDelayMs = remainingMs - MESH_SESSION_RENEWAL_SAFETY_MARGIN_MS;
     const delayMs = Math.max(
@@ -644,9 +643,7 @@ export class MeshCommandExecutorClient {
     const response = await this.post(
       executionRenewal
         ? "api/mesh/internal/execution/session"
-        : this.channel === MESH_HARNESS_CHANNEL
-          ? "api/mesh/internal/harness/renew"
-          : "api/mesh/internal/execution/acp/renew",
+        : "api/mesh/internal/harness/renew",
       request,
       {
         "x-clanky-mesh-protocol-version": String(session.protocolVersion),
@@ -718,7 +715,6 @@ export class MeshCommandExecutorClient {
         error.code === "mesh_execution_session_expired"
         || error.code === "mesh_execution_session_invalid"
         || error.code === "mesh_execution_context_changed"
-        || error.code === "mesh_acp_unavailable"
         || error.code === "mesh_execution_capability_unavailable"
         || error.code === "mesh_remote_execution_disabled"
         || error.code === "mesh_peer_not_trusted"

@@ -28,12 +28,12 @@ test("an MCP client reads its project and a user approves a requested change", a
     const workspace = await human<{ id: string }>("/api/workspaces", "POST", {
       name: "MCP project", directory: git.repositoryDirectory, executionHost: host.ref,
       allowClankyContext: false,
-      serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+      serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
     }, 201);
     const model = (await human<Array<{ connected: boolean; providerID: string; modelID: string }>>(
       `/api/models?workspaceId=${workspace.id}`,
     )).find((entry) => entry.connected && entry.providerID === "copilot");
-    if (!model) throw new Error("Deterministic ACP model unavailable");
+    if (!model) throw new Error("Deterministic Copilot model unavailable");
     const chat = await human<{ config: { id: string } }>("/api/chats", "POST", {
       name: "Project discussion", workspaceId: workspace.id, useWorktree: false,
       baseBranch: git.branch, model: { providerID: model.providerID, modelID: model.modelID, variant: "" },

@@ -1,5 +1,5 @@
 /**
- * Provider-neutral Mesh host proxy. ACP remains its own ordinary backend path.
+ * Provider-neutral Mesh host proxy.
  */
 import { z } from "zod";
 import type { Backend, BackendConnectionConfig, AgentSession, AgentResponse, CreateSessionOptions, ConfigOption, ConnectionInfo, PromptInput } from "./types";
@@ -86,7 +86,7 @@ export class MeshHarnessBackend implements Backend {
   private readonly observationFailures = new Map<string, Error>();
   private readonly deleting = new Set<string>();
 
-  constructor(private readonly options: { adapter: Exclude<HarnessAdapter, "acp">; workspaceId: string; executionNodeId: string }) {
+  constructor(private readonly options: { adapter: HarnessAdapter; workspaceId: string; executionNodeId: string }) {
     this.name = `${options.adapter}-mesh`;
     this.capabilities = { adapter: options.adapter, experimental: false, steering: "unsupported", activity: "unavailable", stopScopes: [] };
     const owner = this;

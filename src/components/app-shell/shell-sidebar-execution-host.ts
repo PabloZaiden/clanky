@@ -98,7 +98,7 @@ export function getExecutionHostSidebarActions(
     {
       id: "new-chat",
       label: "New Chat",
-      disabled: !usable || !host.capabilities.acpRuntime,
+      disabled: !usable || !host.capabilities.commandExecution,
       onClick: () => createExecutionHostChat(host, context),
     },
     {

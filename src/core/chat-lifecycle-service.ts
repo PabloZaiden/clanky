@@ -298,7 +298,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   async createExecutionHostChat(options: CreateExecutionHostChatOptions): Promise<Chat> {
     executionHostService.requireBindingCapability(
       options.executionHost,
-      "acpRuntime",
+      "commandExecution",
       undefined,
       1,
     );

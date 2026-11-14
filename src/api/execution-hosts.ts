@@ -323,7 +323,7 @@ export const executionHostRoutes = defineRoutes({
       try {
         await executionHostService.requireCapability(
           ref,
-          "acpRuntime",
+          "commandExecution",
           undefined,
           1,
         );
@@ -462,7 +462,7 @@ export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts/:kind/:id/chat-providers": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discover ACP providers available on an execution host.",
+    description: "Discover native harness providers available on an execution host.",
     requestSchema: DiscoverExecutionHostProvidersRequestSchema,
     operations: {
       POST: {
@@ -517,7 +517,7 @@ export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts/:kind/:id/chat-models": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discover ACP models for a provider on an execution host.",
+    description: "Discover native harness models for a provider on an execution host.",
     requestSchema: DiscoverExecutionHostModelsRequestSchema,
     operations: {
       POST: {
@@ -547,7 +547,7 @@ export const executionHostRoutes = defineRoutes({
       try {
         await executionHostService.requireCapability(
           ref,
-          "acpRuntime",
+          "commandExecution",
           undefined,
           1,
         );

@@ -228,7 +228,7 @@ export interface CommandExecutor {
   ): Promise<CommandResult>;
 
   /**
-   * Check whether a known ACP provider can be resolved on the execution host.
+   * Check whether a native provider executable is installed on the execution host.
    */
   isAgentProviderAvailable(provider: AgentProvider): Promise<boolean>;
 

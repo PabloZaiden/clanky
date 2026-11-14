@@ -1,5 +1,5 @@
 /**
- * Chat type definitions for long-lived ACP-backed chat sessions.
+ * Chat type definitions for long-lived harness-backed chat sessions.
  *
  * Chats represent one resumable agent session tied to a workspace or execution
  * host and optional git worktree, with persisted transcript and

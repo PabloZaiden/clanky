@@ -82,7 +82,7 @@ inside the shell command. Do not print it, use shell tracing, put its bytes in
 arguments or copy it into project files. Respect a declined request.
 The file is readable by agent commands and same-OS-user processes; a CLI may
 print or retain it. Restart invalidates old paths. There is no tool-to-tool
-secret reference or Automation/subagent access, and no ACP fallback.
+secret reference or Automation/subagent access.
 See [the native secret contract](../../docs/harnesses.md#private-secrets-for-cli-commands).
 
 ## Native Control chats
@@ -93,11 +93,10 @@ authorization gate. OpenCode eligibility follows the `opencode2` adapter,
 regardless of its model's upstream provider. Setup and restart requirements are in
 [`docs/control-chats.md`](../../docs/control-chats.md).
 
-ACP has no automatic Clanky access, even with general workspace access enabled.
-Ordinary ACP chats and prompts still work without application credentials.
-This does not disable trusted-runner `ctx.clanky.call()` for deterministic
-programs whose `workspace.prompt()` uses ACP; execution authority stays outside
-the ACP subprocess. Do not adapt legacy ACP CLI access as a fallback.
+Only native Copilot, Codex and OpenCode 2 adapters are supported.
+Deterministic programs retain trusted-runner `ctx.clanky.call()` independently
+of their prompt model. Do not substitute CLI credentials for execution-owned
+control authority.
 
 Prefer these tools when they are available. Cross-project work requires an
 explicit grant; delegate repository work through an authorized chat rather than

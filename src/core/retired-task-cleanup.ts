@@ -36,9 +36,6 @@ async function settleWriters(userId: string, inventory: RetiredTaskInventory): P
     if (binding.ownerId !== userId || binding.contextId !== saved.contextId || binding.nativeId !== saved.nativeId) {
       throw new Error("A retired execution's saved ownership does not match its cleanup inventory.");
     }
-    if (binding.adapter === "acp") {
-      throw new Error("Retired ACP cleanup is pending: its historical transport cannot prove that owned writers stopped.");
-    }
     const host = ExecutionHostBindingSchema.parse(binding.executionHost);
     await backendManager.withExecutionHostBackend({
       binding: host,

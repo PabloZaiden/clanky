@@ -181,7 +181,7 @@ export class DemoController {
       this.requireWorkspace(workspace[1] ?? null);
       if (method === "GET" && !workspace[2]) return this.workspace;
       if (method === "GET" && workspace[2] === "server-settings/status") {
-        return { connected: true, provider: "copilot", adapter: "acp", transport: "local", capabilities: [],
+        return { connected: true, provider: "copilot", adapter: "copilot", transport: "local", capabilities: [],
           directoryExists: true, isGitRepo: true, executionAvailability: "local" };
       }
     }

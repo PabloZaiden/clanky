@@ -6,10 +6,9 @@ This guide takes you from an installed Clanky binary to a first conversation.
 
 - Git
 - An installed harness runtime with its required authentication: native Copilot,
-  Codex, OpenCode 2, or an ACP-capable integration
+  Codex or OpenCode 2
 - Bun when running Clanky from source
 
-ACP presets can use their provider package through `npx` or `bunx` when supported.
 Native adapters require the installed CLI on the selected execution host.
 See [harness adapters](harnesses.md) for versions, host support and authentication.
 
@@ -76,7 +75,6 @@ logs.
 1. Open **Servers** and select an execution host. A local host is the simplest
    option; Mesh hosts run repository operations on another machine.
 2. Create a workspace and select its repository, host and harness adapter.
-   ACP additionally selects a known harness preset.
 3. Wait for the workspace to become ready.
 4. Open a chat for interactive work, optionally selecting **Start with a plan**.
 

@@ -22,10 +22,6 @@ export function createTransientHarnessSession(
 }
 
 export async function cleanupTransientHarnessSession(backend: Pick<Backend, "harness" | "abortSession" | "deleteSession">, sessionId: string): Promise<void> {
-  if (backend.harness.capabilities.adapter === "acp") {
-    await backend.abortSession(sessionId);
-    return;
-  }
   const result = await backend.harness.settleOwnedWork(sessionId);
   if (result.status !== "settled") throw new HarnessError("harness_request_failed", "Temporary native work did not settle.");
   await backend.deleteSession(sessionId);
@@ -39,7 +35,7 @@ export async function createOwnedHarnessSession(
   const session = await backend.createSession({ ...options, directory: context.directory, ownership: context });
   const binding: HarnessConversationBinding = { ...context, adapter: backend.harness.capabilities.adapter, nativeId: session.id };
   if (session.binding) requireMatchingHarnessBinding(JSON.stringify(session.binding), binding);
-  else if (binding.adapter !== "acp") throw new HarnessError("harness_session_not_owned", "The native adapter did not return an owned conversation.");
+  else throw new HarnessError("harness_session_not_owned", "The native adapter did not return an owned conversation.");
   return { ...session, binding };
 }
 
@@ -49,11 +45,6 @@ export async function resumeOwnedHarnessSession(
   context: SessionContext,
 ): Promise<AgentSession | null> {
   const expected: HarnessConversationBinding = { ...context, adapter: backend.harness.capabilities.adapter, nativeId: stored.id };
-  if (stored.binding === undefined && expected.adapter === "acp") {
-    const session = await backend.getSession(stored.id);
-    if (session && session.id !== stored.id) throw new HarnessError("harness_session_not_owned", "The legacy ACP conversation identity changed.");
-    return session ? { ...session, binding: expected } : null;
-  }
   requireMatchingHarnessBinding(JSON.stringify(stored.binding), expected);
   const session = await backend.resumeSession(expected);
   if (!session) return null;

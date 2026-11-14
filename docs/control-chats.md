@@ -24,8 +24,7 @@ enabled.
 
 For OpenCode 2, select `agent.adapter: "opencode2"` and configure a model in
 its isolated Clanky profile. Control eligibility for all three runtimes follows
-the native adapter, not the model's provider name. Selecting Codex or Copilot
-as an ACP provider does not enable Control.
+the native adapter, not the model's provider name.
 For external clients, scoped credentials, approvals and MCP setup, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
@@ -135,7 +134,7 @@ execution-host configuration, or logs.
 Native Copilot, Codex and OpenCode 2 workspace chats and managed Automation runs
 receive `clanky_send_notification` through the existing common control tools.
 It requires no general-access grant or extra confirmation. Local and Mesh
-executions share controller-owned delivery; ACP, standalone execution-host chats,
+executions share controller-owned delivery; standalone execution-host chats,
 and native subagents do not receive this integration. Existing Codex threads
 retain their previously registered tools: start a new conversation if the
 notification tool is missing.
@@ -260,13 +259,10 @@ and native subagents do not inherit them.
 Use the versions and execution hosts supported by the
 [harness guide](harnesses.md).
 
-ACP executions receive no automatic Clanky control or CLI credentials, even
-when general access is enabled. Clanky removes `CLANKY_BASE_URL` and
-`CLANKY_API_KEY` from their provider environment, including values inherited
-from the server or worker. Ordinary ACP model execution and
-provider credentials remain available. This does not disable personal API
-keys, interactive terminals or deterministic programs' controller-owned
-control. An ACP prompt subprocess does not inherit that authority.
+Clanky removes `CLANKY_BASE_URL` and `CLANKY_API_KEY` from provider environments,
+including values inherited from the server or worker. Provider authentication,
+personal API keys, interactive terminals and deterministic programs'
+controller-owned control remain unchanged.
 
 Codex registers the new control tools only when creating a new native thread.
 Existing threads retain the catalog registered with their history; resuming
@@ -292,7 +288,7 @@ The native adapter privately
 requires an active owned root turn before forwarding any tool call.
 
 OpenCode 2 loads a managed native Promise plugin on the selected execution
-host. It exposes the same shared tools directly, without an ACP or MCP server.
+host. It exposes the same shared tools directly, without an MCP server.
 The plugin forwards calls through a private authenticated loopback bridge.
 The application-control connection stays in Clanky; no application API key is
 put in the provider environment or plugin files.

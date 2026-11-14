@@ -89,13 +89,12 @@ not prove its external runtime is installed or authenticated.
 `payloadProtection` (`trusted-tls` or `unavailable`), and
 `fallbackReason` when TLS or peer/relay support is missing. This is route
 eligibility based on the last verified capabilities, not a live health probe.
-Worker status exposes v7 `activeSessions` counts for execution/native/ACP,
+Worker status exposes v7 `activeSessions` counts for execution/native,
 terminal and TCP leases.
 
 Before selecting a native adapter, check worker and relay generations in
 `clanky mesh status` and `clanky mesh relay status`. A native request rejected
-by a Mesh route is not retried through ACP. Explicitly select ACP on the
-workspace when that is the desired integration.
+by a Mesh route is not retried through another adapter.
 
 ### Managed controller certificates
 
@@ -297,18 +296,18 @@ Execution-host transport and harness are independent:
 
 | Execution host | Available adapters |
 | --- | --- |
-| Local | Copilot native, Codex native, OpenCode 2 native, ACP |
-| Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native, ACP |
+| Local | Copilot native, Codex native, OpenCode 2 native |
+| Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native |
 
 Install and authenticate the selected runtime under the **worker service
 account**, not just on the controller. Native support uses the current
 Copilot SDK and native CLI packages for Copilot, Codex app-server, and OpenCode
-runtime/client. ACP remains an independent provider with its own selected
-harness preset, never an automatic native fallback. Existing workspace presets
-migrate to the ACP adapter without changing their original preset.
+runtime/client. Upgrades convert equivalent retired workspace selections to
+native adapters without reinterpreting saved session identities; see
+[workspace configuration](harnesses.md#workspace-configuration).
 
-Native Mesh uses a provider-neutral versioned RPC/lifetime-event gateway,
-not ACP framing. The worker owns native subprocesses and performs repository
+Native Mesh uses a provider-neutral versioned RPC/lifetime-event gateway.
+The worker owns native subprocesses and performs repository
 operations on that host through `CommandExecutor`. Model catalogs, native
 conversation IDs, principal/child attribution, admission receipts, and scoped
 Stop retain the selected provider's capabilities and limitations.
@@ -317,7 +316,7 @@ Saved subagent transcripts use the optional native `subagentHistory` capability
 and an additive child-history read operation within Mesh v7. A controller never
 sends that operation to an older worker that does not advertise it. Stored
 controller-side child conversations remain readable without a worker
-connection; missing recovery support is explicit and does not fall back to ACP.
+connection; missing recovery support is explicit and does not switch adapters.
 The owned root lease, native lineage and cursors apply to child reads too.
 History is paginated; a large event is allowed to exceed the normal page
 batching target without invalidating the read.
@@ -828,16 +827,16 @@ Workspace creation selects **Worker connection**, not a worker address;
 provisioning does not publish a container worker port. Existing listener-based
 workers preserve their route and published endpoint during restart/rebuild.
 
-Automatic workspace creation selects **ACP**, **GitHub Copilot**, **Codex**, or
-**OpenCode 2**. ACP also selects a harness preset. Native adapters require a
+Automatic workspace creation selects **GitHub Copilot**, **Codex**, or
+**OpenCode 2**. Native adapters require a
 dedicated worker. The host running
 Devbox can use local or Mesh execution independently of the container's
 adapter.
 
 The persistent `.devbox/clanky-worker` startup assets store the selected
-adapter/preset and install only its current native CLI before starting the
-worker. Node/npm must be available in the container. ACP does not install an
-additional CLI. Installation uses a private prefix, validates only that the
+adapter/provider and install only its current native CLI before starting the
+worker. Node/npm must be available in the container.
+Installation uses a private prefix, validates only that the
 selected executable was installed, and adds a stable private bin directory to
 the worker's PATH. OpenCode 2 is exposed as `opencode2`, without replacing a
 system OpenCode generation-1 executable.
@@ -856,8 +855,9 @@ Rebuild/restart preserves the current workspace runtime. The Devbox
 `devbox rebuild` and `devbox arise`, without a running Clanky controller.
 Raw Docker restarts and other devcontainer tools do not invoke that Devbox
 hook. Existing automatic workspaces acquire these assets on their next
-Clanky-managed rebuild/restart or adapter change; existing ACP selections are
-not automatically converted to native adapters.
+Clanky-managed rebuild/restart or adapter change. Controller upgrades convert
+equivalent retired workspace selections but do not install runtimes or rewrite
+remote startup assets; rebuild/restart or save the adapter to update those assets.
 
 Maintenance jobs distinguish connection failure before dispatch, returned
 command failure, confirmed interruption, and an unconfirmed remote outcome.

@@ -6,6 +6,7 @@ import {
 } from "../../persistence/provisioning-jobs";
 import {
   isAgentSettings,
+  getHarnessAdapterForProvider,
   isProvisioningJobTerminal,
   type AgentSettings,
   type ProvisioningJob,
@@ -93,9 +94,9 @@ export class ProvisioningManager {
     }
     const runtime: AgentSettings = (mode === "rebuild" || mode === "restart") && options.workspaceId
       ? (await workspaceManager.requireWorkspace(options.workspaceId)).serverSettings.agent
-      : { adapter: options.adapter ?? "acp", provider: options.provider };
-    if (!isAgentSettings(runtime) || (mode !== "arise" && !automaticWorker && runtime.adapter !== "acp")) {
-      throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires a dedicated worker and matching harness preset.");
+      : { adapter: options.adapter ?? getHarnessAdapterForProvider(options.provider), provider: options.provider };
+    if (!isAgentSettings(runtime) || (mode !== "arise" && !automaticWorker)) {
+      throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires an automatic worker workspace and matching provider.");
     }
     const channel = options.channel ?? "default";
     const releaseChannel = !automaticWorker

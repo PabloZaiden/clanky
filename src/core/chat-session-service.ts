@@ -1,12 +1,7 @@
 /**
- * ACP backend connection and chat session lifecycle.
+ * Harness backend connection and chat session lifecycle.
  */
 
-import {
-  createAcpSessionNotFoundError,
-  getAcpErrorMessage,
-  isAcpErrorCode,
-} from "../backends/acp";
 import type {
   Backend,
 } from "../backends/types";
@@ -17,7 +12,7 @@ import {
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
-import type { AgentProvider } from "@/shared/settings";
+import { getHarnessAdapterForProvider, isAgentProvider } from "@/shared/settings";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { createExecutionControlConnection } from "./control-tool-transport";
@@ -79,8 +74,11 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async getChatAdapter(chat: Chat): Promise<HarnessCapabilities["adapter"]> {
-    // Standalone execution-host chats use ACP, independent of the model provider.
-    if (isExecutionHostChat(chat)) return "acp";
+    if (isExecutionHostChat(chat)) {
+      const provider = chat.config.model.providerID;
+      if (!isAgentProvider(provider)) throw new HarnessError("harness_model_not_available", "The selected execution-host provider is unsupported.");
+      return getHarnessAdapterForProvider(provider);
+    }
     const backend = await this.backendManager.getBackendAsync(getChatWorkspaceId(chat));
     return backend.harness.capabilities.adapter;
   }
@@ -100,7 +98,7 @@ export class ChatSessionService implements ChatSessionPort {
     const chat = await this.state.getChatSummary(chatId);
     if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
     const backend = this.directChatBackends.get(chatId) ?? this.backendManager.getInitializedContextBackend(chatId);
-    if (chat.state.session?.binding?.adapter === "acp" || backend?.harness.capabilities.activity === "unavailable") return { observation: "unavailable" as const, reason: "unsupported" as const };
+    if (backend?.harness.capabilities.activity === "unavailable") return { observation: "unavailable" as const, reason: "unsupported" as const };
     if (!backend?.isConnected()) return { observation: "unavailable" as const, reason: "disconnected" as const };
     const binding = chat.state.session?.binding;
     if (!binding) throw new HarnessError("harness_session_not_owned", "Activity requires an owned conversation.");
@@ -192,13 +190,13 @@ export class ChatSessionService implements ChatSessionPort {
         );
         throwIfAborted(options?.signal);
       } catch (error) {
-        if (isAcpErrorCode(error, "acp_session_not_found") || (error instanceof HarnessError && error.code === "harness_session_not_found")) {
+        if (error instanceof HarnessError && error.code === "harness_session_not_found") {
           await this.failLostSession(chat, error);
         }
         throw error;
       }
       if (!existing) {
-        const error = createAcpSessionNotFoundError(chat.state.session.id);
+        const error = new HarnessError("harness_session_not_found", "The saved harness session is unavailable.");
         await this.failLostSession(chat, error);
         throw error;
       }
@@ -315,7 +313,7 @@ export class ChatSessionService implements ChatSessionPort {
         context,
       );
       if (!existing) {
-        throw createAcpSessionNotFoundError(reconnectingChat.state.session.id);
+        throw new HarnessError("harness_session_not_found", "The saved harness session is unavailable.");
       }
       if (existing.binding) reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
         ...current.state, session: { id: existing.id, binding: existing.binding },
@@ -487,7 +485,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   private async observe(chatId: string, binding: HarnessConversationBinding, backend: Backend, recover = false): Promise<void> {
-    if (binding.adapter !== "acp" && this.onNativeSession) {
+    if (this.onNativeSession) {
       const chat = await this.state.getChat(chatId);
       if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
       await this.onNativeSession(chat, backend, binding, recover);
@@ -497,33 +495,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void> {
-    try {
-      await backend.setConfigOption(sessionId, "model", desiredModel);
-      return;
-    } catch (error) {
-      if (!isAcpErrorCode(error, "acp_method_not_found")) {
-        log.warn("Failed to configure chat session model via ACP config option", {
-          sessionId,
-          model: desiredModel,
-          error: String(error),
-        });
-        return;
-      }
-      log.debug("Chat session config option not supported, trying setSessionModel", {
-        sessionId,
-        model: desiredModel,
-      });
-    }
-
-    try {
-      await backend.setSessionModel(sessionId, desiredModel);
-    } catch (error) {
-      log.warn("Failed to configure chat session model via ACP session controls", {
-        sessionId,
-        model: desiredModel,
-        error: String(error),
-      });
-    }
+    await backend.setSessionModel(sessionId, desiredModel);
   }
 
   private async ensureExecutionHostBackendConnected(
@@ -535,10 +507,12 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
     }
     const directory = source.directory || chat.config.directory;
+    const provider = chat.config.model.providerID;
+    if (!isAgentProvider(provider)) throw new HarnessError("harness_model_not_available", "The selected execution-host provider is unsupported.");
     const existing = await this.backendManager.getConnectedExecutionHostBackend({
       connectionId: chat.config.id,
       binding: source.executionHost,
-      provider: chat.config.model.providerID as AgentProvider,
+      provider,
       directory,
     });
     if (existing) {
@@ -548,7 +522,7 @@ export class ChatSessionService implements ChatSessionPort {
     const { backend, settings } = await this.backendManager.createBackendForExecutionHost(
       chat.config.id,
       source.executionHost,
-      chat.config.model.providerID as AgentProvider,
+      provider,
     );
     this.directChatBackends.set(chat.config.id, backend);
     await backend.connect(buildConnectionConfig(settings, directory), options.signal);
@@ -560,7 +534,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   private async failChat(chat: Chat, error: unknown): Promise<Chat> {
-    const message = typeof error === "string" ? error : getAcpErrorMessage(error);
+    const message = error instanceof Error ? error.message : String(error);
     const errorCode = isDomainError(error) ? error.code : undefined;
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
     return this.state.markChatError(chat, message, errorCode);

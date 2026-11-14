@@ -6,7 +6,6 @@ import {
   startTerminalBridge,
 } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
-import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 
@@ -52,9 +51,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     terminalSessionId,
     terminalMode,
     previewBridgeMode,
-    meshAcpMode,
-    meshAcpSessionId,
-    meshAcpSessionToken,
     meshTerminalMode,
     meshTerminalSessionId,
     meshTerminalSessionToken,
@@ -92,21 +88,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   if (previewBridgeMode) {
     ws.send(JSON.stringify({ type: "connected" }));
     ws.data.previewBridgeKeepalive = startPreviewBridgeKeepalive(ws);
-    return;
-  }
-
-  if (meshAcpMode && meshAcpSessionId && meshAcpSessionToken) {
-    void meshAcpGateway.open(ws, meshAcpSessionId, meshAcpSessionToken).catch((error: Error) => {
-      log.warn("Failed to open mesh ACP relay", {
-        sessionId: meshAcpSessionId,
-        error: String(error),
-      });
-      let reason = error.message || "Mesh ACP relay unavailable";
-      while (Buffer.byteLength(reason, "utf8") > 123) {
-        reason = reason.slice(0, -1);
-      }
-      ws.close(1011, reason);
-    });
     return;
   }
 
@@ -187,12 +168,6 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
       log.error("Failed to close disconnected preview", { error: String(error) });
     });
   }
-  if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    meshAcpGateway.closeInBackground(
-      ws.data.meshAcpSessionId,
-      "socket disconnected",
-    );
-  }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     meshTerminalGateway.closeInBackground(
       ws.data.meshTerminalSessionId,
@@ -242,12 +217,6 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void previewSessionManager.closeBridgeSession(ws, "Preview bridge error").catch((error: unknown) => {
       log.error("Failed to close errored preview", { error: String(error) });
     });
-  }
-  if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-    meshAcpGateway.closeInBackground(
-      ws.data.meshAcpSessionId,
-      "socket errored",
-    );
   }
   if (ws.data.meshTerminalMode && ws.data.meshTerminalSessionId) {
     meshTerminalGateway.closeInBackground(

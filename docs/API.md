@@ -170,10 +170,6 @@ For external configuration, OAuth
 preregistration, service grants and human approval links, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
-Automatic Clanky access for ACP is currently unsupported, even when general
-workspace access is enabled. Ordinary ACP chats and prompts still work, but
-ACP subprocesses receive no managed Clanky control key.
-
 ## Deterministic automation execution
 
 The scheduled feature is named **Automations**. Its API uses `/api/automations`
@@ -228,8 +224,7 @@ behavior, waits for the conversation lifecycle rather than the tool deadline,
 and is scoped to the execution's exact chat. These
 restrictions apply to owner-started and collaborator-started runs alike.
 Direct `ctx.clanky.call()` access is independent of the selected prompt model
-or adapter: it remains available when `workspace.prompt()` uses ACP, without
-passing control authority to the ACP subprocess.
+or adapter and does not pass runner control authority to provider subprocesses.
 
 ## Transcript snapshots
 
@@ -648,8 +643,7 @@ use their documented content type instead of this JSON format.
 
 ## Workspaces and agent sessions
 
-Agent sessions use the adapter selected for the workspace; ACP additionally
-selects a harness preset. A workspace can
+Agent sessions use the native adapter selected for the workspace. A workspace can
 run locally or through a Mesh worker. Git, file, and command
 operations run on that workspace's execution host, while the API and
 application data remain on the controller.
@@ -717,8 +711,8 @@ Already tracked files are not untracked.
 
 Workspace chats created without a name start with `<workspace name> - <number>`.
 After the first user message is accepted by the backend, Clanky generates a
-short name asynchronously using the chat's model. This applies to
-ACP and native chats and does not delay the conversation. The generated name
+short name asynchronously using the chat's model without delaying the
+conversation. The generated name
 is persisted only while the chat still has one user message and retains its
 provisional name; manually chosen names are preserved. If generation fails,
 the provisional name remains and the failure is logged.
@@ -750,7 +744,7 @@ is rejected. The option is omitted or `false` by default, preserving the
 existing new-branch behavior. Multiple worktrees may use the same local branch,
 but they share one Git reference: commits in either worktree advance that
 branch for all of them. Deleting a chat removes its managed worktree, not the
-shared branch. This option works with ACP and native providers alike; the
+shared branch. This option works with all supported native providers; the
 workspace's execution host must advertise managed worktrees v3. If an older
 Mesh worker is still running, update/restart it and recheck the host before
 creating a chat. The new-chat form disables the option on unsupported hosts;
@@ -1087,8 +1081,8 @@ not expose authentication or raw transport protocols; see
 | POST | `/api/execution-hosts/:kind/:id/chats` | Create a direct chat on an execution host. |
 | POST | `/api/execution-hosts/:kind/:id/prerequisites` | Check prerequisites on an execution host. |
 | POST | `/api/execution-hosts/:kind/:id/devbox-templates` | List Devbox templates on an execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chat-providers` | Discover ACP providers available on an execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chat-models` | Discover ACP models for a provider on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chat-providers` | Discover installed native harness providers on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chat-models` | Discover native harness models for a provider on an execution host. |
 | GET | `/api/execution-hosts/:kind/:id/files` | List execution-host files in the active explorer root. |
 | GET | `/api/execution-hosts/:kind/:id/files/content` | Read an execution-host file. |
 | POST | `/api/execution-hosts/:kind/:id/files/filesystem` | Exact-path commands, preconditions and DAV locks on the selected host. |
@@ -1193,7 +1187,7 @@ descriptors. Harness availability is part of each descriptor:
 
 | Field | Contract |
 | --- | --- |
-| `harnessAdapters` | Available adapters: `acp`, `copilot`, `codex`, `opencode2`, constrained by the execution host and Mesh route. |
+| `harnessAdapters` | Available adapters: `copilot`, `codex`, `opencode2`, constrained by the execution host and Mesh route. |
 | `harnessAdapterError` | Optional `mesh_execution_protocol_mismatch` when route negotiation cannot be verified; `harnessAdapters` is empty. |
 
 The optional `workspaceId` or connected `workspaceWorkerEnrollmentId` query
@@ -1634,7 +1628,7 @@ The collection response omits `scratchpad` to avoid returning every note body. R
     },
     "serverSettings": {
       "agent": {
-        "adapter": "acp",
+        "adapter": "copilot",
         "provider": "copilot"
       }
     },
@@ -1656,7 +1650,7 @@ any existing directory.
 |-------|------|----------|-------------|
 | `name` | string | Yes | Workspace display name |
 | `directory` | string | Yes | Path to the directory on the selected execution host |
-| `serverSettings` | object | Yes | Adapter and harness preset, for example `{ "agent": { "adapter": "acp", "provider": "copilot" } }` |
+| `serverSettings` | object | Yes | Native adapter and matching provider, for example `{ "agent": { "adapter": "copilot", "provider": "copilot" } }` |
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered local or Mesh execution-host reference |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
 | `workspaceType` | string | No | `git` (default) or `directory` |
@@ -1941,24 +1935,26 @@ larger than the mesh JSON result limit are supported.
 
 ### Server Settings
 
-Server settings select the harness adapter and preset for a workspace. The execution host
+Server settings select the native harness adapter and provider for a workspace. The execution host
 is configured separately on the workspace through `executionHost`
 or `workspaceWorkerEnrollmentId`.
 
 ```json
 {
   "agent": {
-    "adapter": "acp",
+    "adapter": "opencode2",
     "provider": "opencode"
   }
 }
 ```
 
-Supported adapters are `acp`, `copilot`, `codex` and `opencode2`.
-ACP presets are `opencode`, `copilot`, `codex`, `claude`, `pi` and `grok`.
-Native adapters require their matching preset: `copilot`, `codex`, and
-`opencode` respectively. Existing persisted settings migrate to ACP; public
-settings requests must include the canonical adapter field.
+Supported adapters are `copilot`, `codex` and `opencode2`, with matching
+providers `copilot`, `codex` and `opencode` respectively. Public settings
+requests must include the canonical adapter field. New workspace creation
+defaults to Copilot; generic server defaults use OpenCode 2. See
+[workspace configuration](harnesses.md#workspace-configuration) for the
+automatic migration of equivalent retired selections, unsupported-provider
+upgrade refusal and preserved transcript history.
 
 #### GET /api/workspaces/:id/server-settings
 
@@ -1969,7 +1965,7 @@ Get server settings for a specific workspace.
 ```json
 {
   "agent": {
-    "adapter": "acp",
+    "adapter": "opencode2",
     "provider": "opencode"
   }
 }
@@ -1989,8 +1985,8 @@ Update server settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent.adapter` | string | Yes | `acp`, `copilot`, `codex` or `opencode2`, supported by the selected host/path |
-| `agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
+| `agent.adapter` | string | Yes | `copilot`, `codex` or `opencode2`, supported by the selected host/path |
+| `agent.provider` | string | Yes | The adapter's matching provider: `copilot`, `codex` or `opencode` |
 
 **Response**
 
@@ -2020,7 +2016,7 @@ Get connection status for a workspace.
 {
   "connected": true,
   "provider": "opencode",
-  "adapter": "acp",
+  "adapter": "opencode2",
   "transport": "mesh",
   "capabilities": ["createSession", "sendPromptAsync", "abortSession", "subscribeToEvents", "models"],
   "directoryExists": true,
@@ -2083,8 +2079,8 @@ Test a server connection before creating a workspace.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `settings` | object | Yes | Server settings to test |
-| `settings.agent.adapter` | string | Yes | `acp`, `copilot`, `codex` or `opencode2`, supported by the selected host/path |
-| `settings.agent.provider` | string | Yes | `opencode`, `copilot`, `codex`, `claude`, `pi`, or `grok` |
+| `settings.agent.adapter` | string | Yes | `copilot`, `codex` or `opencode2`, supported by the selected host/path |
+| `settings.agent.provider` | string | Yes | The adapter's matching provider: `copilot`, `codex` or `opencode` |
 | `directory` | string | Yes | Directory path to test against |
 | `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Registered execution-host reference |
 | `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Dedicated Mesh worker enrollment |
@@ -2272,8 +2268,7 @@ Create a provisioning job.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Provisioning job name |
-| `executionHost` | object | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Execution host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "mesh", "nodeId": "..." }` |
-| `workspaceWorkerEnrollmentId` | string | Exactly one of `executionHost` or `workspaceWorkerEnrollmentId` | Existing dedicated worker enrollment; only valid for `provision` mode |
+| `executionHost` | object | Yes | Provisioning host reference, such as `{ "kind": "local", "nodeId": "..." }` or `{ "kind": "mesh", "nodeId": "..." }`; new workspaces require an automatic managed worker |
 | `channel` | string | No | `default`, `stable`, or `latest` for the dedicated worker. New workspaces inherit the saved global channel in Default; Restart/Rebuild preserve the workspace's channel. Explicit choices persist only for that workspace. |
 | `workerEnrollmentRoute` | string | No | `direct` or `relay` for a new worker; when omitted, the controller selects its configured default |
 | `workerHostAddress` | string \| null | No | Historical listener-worker input; not used for new outbound workers |
@@ -2283,8 +2278,8 @@ Create a provisioning job.
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
 | `devboxTemplate` | string \| null | No | Devbox template when creating a new repository |
 | `githubUser` | string \| null | No | Optional GitHub user passed to devbox |
-| `adapter` | string | No | `acp` (default), `copilot`, `codex`, or `opencode2`; all adapters run on the dedicated worker |
-| `provider` | string | Yes | ACP harness preset, or the native adapter's matching provider (`opencode` for `opencode2`) |
+| `adapter` | string | No | `copilot` (default), `codex` or `opencode2`; all adapters run on the dedicated worker |
+| `provider` | string | Yes | The native adapter's matching provider (`opencode` for `opencode2`) |
 | `mode` | string | Yes | `provision`, `rebuild`, `restart`, or `arise` |
 | `createNewRepository` | boolean | No | Create a new repository with a devbox template; defaults to `false` |
 | `targetDirectory` | string \| null | Yes | Existing repository path for `rebuild` or `restart`; use `null` otherwise |
@@ -2313,8 +2308,8 @@ is replaced by `channel`.
 }
 ```
 
-`provider` accepts `"copilot"`, `"opencode"`, `"codex"`, `"claude"`, `"pi"`, or
-`"grok"`. Set `workerEnrollmentRoute` to `"relay"` to connect the new worker
+`provider` accepts `"copilot"`, `"opencode"` or `"codex"`.
+Set `workerEnrollmentRoute` to `"relay"` to connect the new worker
 outward through a paired relay, or `"direct"` to connect outward to the
 controller. Neither requires `workerHostAddress` or a published worker port.
 If the route is omitted, the controller preserves the existing default
@@ -2326,9 +2321,10 @@ mode-specific fields may be `null`.
 
 New worker workspaces persist the requested adapter. The Devbox provisioning
 host uses local or Mesh execution to create the dedicated worker.
-Rebuild/restart uses the workspace's current saved adapter/preset, not a stale
-selection in the submitted request. Existing jobs
-without an adapter retain ACP semantics. See
+Rebuild/restart uses the workspace's current saved adapter/provider, not a stale
+selection in the submitted request. Upgrades convert equivalent historical
+job selections to native adapters; unsupported historical selections cannot
+be retried. See
 [automatic runtime installation](mesh-worker.md#automatic-workspace-runtimes)
 for durable CLI installation and external Devbox rebuilds.
 

@@ -13,7 +13,6 @@ import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
-import { isAgentProvider } from "@/shared/settings";
 import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
@@ -23,6 +22,7 @@ import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes"
 import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
 import { dropLegacyAutomationTables, renameAutomations } from "./rename-automations";
 import { dropLegacyTaskTables, retireTasks, retireTaskPreferences } from "./retire-tasks";
+import { retireHarnessTransport } from "./retire-harness-transport";
 
 const log = createLogger("persistence:migrations");
 
@@ -493,8 +493,8 @@ export const migrations: Migration[] = [
         }
         const record = agent as Record<string, unknown>;
         if (record["adapter"] !== undefined) continue;
-        if (!isAgentProvider(record["provider"])) {
-          log.warn("Cannot migrate unknown workspace ACP preset", { workspaceId: row.id });
+        if (!["opencode", "copilot", "codex", "claude", "pi", "grok"].includes(String(record["provider"]))) {
+          log.warn("Cannot migrate unknown workspace harness provider", { workspaceId: row.id });
           continue;
         }
         update.run(JSON.stringify({ ...settings, agent: { ...record, adapter: "acp" } }), row.id);
@@ -991,6 +991,11 @@ export const migrations: Migration[] = [
     version: 96,
     name: "retire_task_preferences",
     up: retireTaskPreferences,
+  },
+  {
+    version: 97,
+    name: "retire_harness_transport",
+    up: retireHarnessTransport,
   },
 ];
 
