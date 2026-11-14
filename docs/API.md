@@ -671,8 +671,10 @@ Chat creation accepts optional `startWithPlan: true` for workspace and direct-ho
 chats. No prompt runs until the first user message supplies the requirements.
 Only that prompt gains guidance to investigate, ask questions, write
 `.clanky-planning/plan.md` and `status.md`, and wait for an explicit implementation
-request. The transcript retains the original requirements. Subsequent messages
-are unchanged ordinary chat; there is no plan-ready, approval or handoff state.
+request. The first user message in the transcript includes the actual guidance
+before the intact original requirements; the complete message is persisted.
+Subsequent messages are unchanged ordinary chat; there is no plan-ready,
+approval or handoff state.
 The kickoff is durably claimed before dispatch, so reconnecting does not inject
 it again or replay the user's message. Failures during directory, provider or
 attachment preparation do not consume it; a requirements retry still receives
@@ -701,8 +703,10 @@ returns numeric counts, handles renamed and binary files, and returns 404 if
 the path is no longer changed. Patches are not loaded for collapsed files.
 
 Repository context reads the actual branch on the bound host. `pullRequest`
-is `{ number, url }` or null; `pullRequestLookup` distinguishes `found`, `none`
-and `unavailable`. These reads never fetch, push, create or change a PR.
+is `{ number, url, state }` or null, with state `open`, `closed` or `merged`.
+An open PR takes priority; otherwise the most recently created PR for that
+branch is returned. `pullRequestLookup` distinguishes `found`, `none` and
+`unavailable`. These reads never fetch, push, create or change a PR.
 Document reads work independently of the planning checkbox. A missing file
 returns `exists: false`; an unprepared worktree or failed host read is an error.
 Managed worktree preparation installs the local `.clanky-planning` Git exclusion;
@@ -1058,7 +1062,7 @@ not expose authentication or raw transport protocols; see
 | GET | `/api/chats/:id/diff/file` | Read the selected file's patch and counts using the listing's comparison base and relative path. |
 | GET | `/api/chats/:id/plan` | Read the chat's current planning document. |
 | GET | `/api/chats/:id/status-file` | Read its agent-maintained progress document. |
-| GET | `/api/chats/:id/repository-context` | Read the current branch and an existing open PR without Git mutations. |
+| GET | `/api/chats/:id/repository-context` | Read the current branch and an existing PR with its state, preferring an open PR, without Git mutations. |
 | POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
 | POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
 | POST | `/api/chats/:id/messages` | Send a message to a chat session. |
@@ -1124,7 +1128,7 @@ not expose authentication or raw transport protocols; see
 | GET, PUT | `/api/preferences/last-model` | Persist the user's most recently used model. |
 | GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
 | GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
-| GET, PUT | `/api/preferences/prompt-templates` | Read or replace the authenticated user's ordered message templates. |
+| GET, PUT | `/api/preferences/prompt-templates` | Read or replace the authenticated user's ordered custom templates and built-in planning-template enablement and position. |
 | GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
 | GET | `/api/previews` | List active previews and previews with pending cleanup. |
 | DELETE | `/api/previews/:previewId` | Close a preview or retry its pending cleanup on the original host. |
@@ -1474,9 +1478,13 @@ non-empty.
 
 #### GET /api/preferences/prompt-templates
 
-Get the authenticated user's ordered message templates. Existing users receive
+Get the authenticated user's ordered custom message templates and built-in
+planning-template enablement and position. Existing users receive
 the current global templates once during upgrade; newly created users start
-with an empty list.
+with an empty custom list. **Prepare a plan** is enabled by default and is not
+stored in the custom list; its immutable definition is part of the application.
+`planningTemplateIndex` is its zero-based position among the custom templates,
+defaulting to zero. Settings and the enabled selector use the same order.
 
 **Response**
 
@@ -1489,7 +1497,9 @@ with an empty list.
       "description": "Starts a PR and addresses comments without requesting extra reviews.",
       "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
     }
-  ]
+  ],
+  "planningTemplateEnabled": true,
+  "planningTemplateIndex": 0
 }
 ```
 
@@ -1499,6 +1509,12 @@ Replace the authenticated user's ordered message-template list. Add, edit,
 delete, and reorder templates by sending the complete updated list. IDs must be
 unique; a user can store up to 100 templates. Names are limited to 120
 characters, descriptions to 500, and prompts to 50,000.
+Optional `planningTemplateEnabled` changes built-in enablement and optional
+`planningTemplateIndex` changes its position. Omitted values are preserved,
+except that the position is clamped to the custom list's length when it shrinks.
+The index must be an integer from zero to 100. Disabling does not reset position.
+These settings are per user, not per workspace or chat. Browser-only
+collaboration profiles store them in their scoped device preferences.
 
 **Request Body**
 
@@ -1511,7 +1527,9 @@ characters, descriptions to 500, and prompts to 50,000.
       "description": "Starts a PR and addresses comments without requesting extra reviews.",
       "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
     }
-  ]
+  ],
+  "planningTemplateEnabled": false,
+  "planningTemplateIndex": 1
 }
 ```
 
@@ -1527,7 +1545,9 @@ characters, descriptions to 500, and prompts to 50,000.
       "description": "Starts a PR and addresses comments without requesting extra reviews.",
       "prompt": "Start a PR, wait for comments and address them. Don’t ask for extra reviews"
     }
-  ]
+  ],
+  "planningTemplateEnabled": false,
+  "planningTemplateIndex": 1
 }
 ```
 

@@ -82,7 +82,7 @@ export interface ChatWorktreeState {
 export interface ChatRepositoryContext {
   isGitRepo: boolean;
   branch: string | null;
-  pullRequest: { number: number; url: string } | null;
+  pullRequest: { number: number; url: string; state: "open" | "closed" | "merged" } | null;
   pullRequestLookup: "found" | "none" | "unavailable";
   message?: string;
 }

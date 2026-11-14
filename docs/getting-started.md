@@ -88,14 +88,25 @@ need a remote host, a worker, or a relay, start with the
 
 Chat composition offers your personal prompt templates. The
 upgrade copies the existing **Start a PR with automerge** and **Start a PR**
-templates once to users who already exist; new users start with an empty list.
+templates once to users who already exist; new users start with no custom templates.
 Manage your templates in **Settings → Content → Templates**. Selecting a
 template fills the composer; review or edit the message before sending it.
+
+**Prepare a plan** is a built-in template, enabled by default. Its row in
+template settings can be enabled, disabled and moved up or down among your
+custom templates, but not edited or deleted. The selector follows that saved
+order; disabling the built-in does not lose its position.
+Selecting it adds visible planning instructions before your existing draft,
+without removing text or attachments or sending automatically. It uses the
+conversation so far, records completed and remaining work, and waits for your
+explicit implementation request. You can use it later in an ordinary chat.
 
 Choose the model and variant, then write your requirements in the normal
 composer. **Start with a plan** adds guidance only to that first message:
 investigate, ask questions, write `.clanky-planning/plan.md` and `status.md`,
-and wait for your instruction before implementation. This is guidance, not a
+and wait for your instruction before implementation. The complete guidance
+appears before your requirements in the first user message in the transcript,
+including after reloading; it is sent only once. This is guidance, not a
 technical filesystem restriction. Later discussion, plan revisions and the
 instruction to implement are ordinary messages, without approval buttons or
 an automatic implementation transition.
@@ -111,8 +122,11 @@ to the messages without changing conversations or adding a separate title row.
 **Diff**, beside **Activity**, shows committed branch changes and pending
 changes, including new files. Individual patches load only when you expand a
 file; new-file line counts appear after opening it. Repository details live in
-the composer options panel containing
-**Usage**: the actual branch and an existing open PR link, when lookup is available. These are passive
+the composer options panel containing **Usage**. A single compact row shows the
+actual branch, truncated when needed; select it to copy the complete name.
+An existing PR appears as a linked number with a green open, red closed or
+purple merged icon. An open PR takes priority; otherwise the most recently
+created PR for that branch is shown. These are passive
 reads; Git changes, publication and review remain ordinary agent instructions
 or your own tools.
 

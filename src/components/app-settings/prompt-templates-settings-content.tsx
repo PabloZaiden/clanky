@@ -14,10 +14,12 @@ import {
 import { ArrowDownIcon, ArrowUpIcon, CloseIcon, EditIcon } from "../common/Icons";
 import {
   PROMPT_TEMPLATE_LIMITS,
+  PREPARE_PLAN_TEMPLATE,
+  getOrderedPromptTemplates,
   type PromptTemplate,
 } from "@/shared/prompt-templates";
 import { usePromptTemplates } from "../../hooks";
-import { SettingsError } from "./settings-row-controls";
+import { SettingsCheckbox, SettingsError } from "./settings-row-controls";
 
 function createTemplateDraft(): PromptTemplate {
   return {
@@ -42,8 +44,12 @@ export function PromptTemplatesSettingsContent() {
     clearSaveError,
     refresh,
     updateTemplates,
+    planningTemplateEnabled,
+    planningTemplateIndex,
+    updatePlanningTemplateEnabled,
   } = promptTemplates;
   const templatesReady = loaded && !loading && !loadError;
+  const orderedTemplates = getOrderedPromptTemplates(promptTemplates);
 
   useEffect(() => {
     if (loadError) {
@@ -80,15 +86,18 @@ export function PromptTemplatesSettingsContent() {
     }
 
     const targetIndex = index + direction;
-    if (targetIndex < 0 || targetIndex >= templates.length) {
+    if (targetIndex < 0 || targetIndex >= orderedTemplates.length) {
       return;
     }
-    const nextTemplates = [...templates];
+    const nextTemplates = [...orderedTemplates];
     [nextTemplates[index], nextTemplates[targetIndex]] = [
       nextTemplates[targetIndex]!,
       nextTemplates[index]!,
     ];
-    await updateTemplates(nextTemplates);
+    await updateTemplates(
+      nextTemplates.filter((item) => item.value !== PREPARE_PLAN_TEMPLATE.id).map((item) => item.template),
+      nextTemplates.findIndex((item) => item.value === PREPARE_PLAN_TEMPLATE.id),
+    );
   }
 
   async function deleteTemplate(): Promise<void> {
@@ -96,7 +105,9 @@ export function PromptTemplatesSettingsContent() {
       return;
     }
     const nextTemplates = templates.filter((template) => template.id !== deleteTarget.id);
-    await updateTemplates(nextTemplates);
+    const deletedIndex = templates.findIndex((template) => template.id === deleteTarget.id);
+    await updateTemplates(nextTemplates, deletedIndex >= 0 && deletedIndex < planningTemplateIndex
+      ? planningTemplateIndex - 1 : planningTemplateIndex);
     setDeleteTarget(null);
   }
 
@@ -148,64 +159,74 @@ export function PromptTemplatesSettingsContent() {
       ) : null}
       {loading && templates.length === 0 ? <LoadingState title="Loading templates" /> : null}
       {loaded && !loading && !loadError && templates.length === 0 ? (
-        <EmptyState title="No templates" />
+        <EmptyState title="No custom templates" />
       ) : null}
-      {templates.length > 0 ? (
-        <DataList>
-          {templates.map((template, index) => (
-            <DataListRow
-              key={template.id}
-              className="max-sm:flex-col max-sm:!items-stretch"
-              title={(
-                <span className="max-sm:whitespace-normal max-sm:break-words">
-                  {template.name}
-                </span>
-              )}
-              description={template.description || undefined}
-              actions={(
-                <div className="flex flex-wrap justify-end gap-1 max-sm:w-full max-sm:max-w-none">
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={`Move ${template.name} up`}
-                    disabled={!templatesReady || saving || index === 0}
-                    onClick={() => void moveTemplate(index, -1)}
-                  >
-                    <ArrowUpIcon />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={`Move ${template.name} down`}
-                    disabled={!templatesReady || saving || index === templates.length - 1}
-                    onClick={() => void moveTemplate(index, 1)}
-                  >
-                    <ArrowDownIcon />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={`Edit ${template.name}`}
+      <DataList>
+        {orderedTemplates.map(({ value, template }, index) => (
+          <DataListRow
+            key={value}
+            className="max-sm:flex-col max-sm:!items-stretch"
+            title={(
+              <span className="max-sm:whitespace-normal max-sm:break-words">
+                {template.name}
+              </span>
+            )}
+            description={template.description || undefined}
+            actions={(
+              <div className="flex flex-wrap justify-end gap-1 max-sm:w-full max-sm:max-w-none">
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label={`Move ${template.name} up`}
+                  disabled={!templatesReady || saving || index === 0}
+                  onClick={() => void moveTemplate(index, -1)}
+                >
+                  <ArrowUpIcon />
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-label={`Move ${template.name} down`}
+                  disabled={!templatesReady || saving || index === orderedTemplates.length - 1}
+                  onClick={() => void moveTemplate(index, 1)}
+                >
+                  <ArrowDownIcon />
+                </Button>
+                {value === PREPARE_PLAN_TEMPLATE.id ? (
+                  <SettingsCheckbox
+                    role="switch"
+                    ariaLabel={`Enable ${template.name}`}
+                    checked={planningTemplateEnabled}
                     disabled={!templatesReady || saving}
-                    onClick={() => setDraft({ ...template })}
-                  >
-                    <EditIcon />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    aria-label={`Delete ${template.name}`}
-                    disabled={!templatesReady || saving}
-                    onClick={() => setDeleteTarget(template)}
-                  >
-                    <CloseIcon />
-                  </Button>
-                </div>
-              )}
-            />
-          ))}
-        </DataList>
-      ) : null}
+                    onChange={(event) => void updatePlanningTemplateEnabled(event.currentTarget.checked)}
+                  />
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      aria-label={`Edit ${template.name}`}
+                      disabled={!templatesReady || saving}
+                      onClick={() => setDraft({ ...template })}
+                    >
+                      <EditIcon />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      aria-label={`Delete ${template.name}`}
+                      disabled={!templatesReady || saving}
+                      onClick={() => setDeleteTarget(template)}
+                    >
+                      <CloseIcon />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          />
+        ))}
+      </DataList>
 
       <Modal
         isOpen={draft !== null}

@@ -2,11 +2,13 @@ import { useId, type ReactNode } from "react";
 
 import { useComposerActionsMenuClose } from "./ComposerActionsMenu";
 import { usePromptTemplates } from "../hooks";
+import { getOrderedPromptTemplates, PREPARE_PLAN_TEMPLATE } from "@/shared/prompt-templates";
 
 interface ConversationTemplateSelectorProps {
   selectedTemplate: string;
-  onChange: (templateId: string) => void;
+  onChange: (templateValue: string) => void;
   onPromptChange: (prompt: string) => void;
+  currentPrompt: string;
   disabled?: boolean;
   actions?: ReactNode;
 }
@@ -15,13 +17,16 @@ export function ConversationTemplateSelector({
   selectedTemplate,
   onChange,
   onPromptChange,
+  currentPrompt,
   disabled = false,
   actions,
 }: ConversationTemplateSelectorProps) {
   const templateSelectId = useId();
   const closeMenu = useComposerActionsMenuClose();
   const promptTemplates = usePromptTemplates();
-  const template = promptTemplates.templates.find((item) => item.id === selectedTemplate);
+  const templates = getOrderedPromptTemplates(promptTemplates)
+    .filter((item) => promptTemplates.planningTemplateEnabled || item.value !== PREPARE_PLAN_TEMPLATE.id);
+  const template = templates.find((item) => item.value === selectedTemplate)?.template;
 
   return (
     <div className="space-y-1">
@@ -29,24 +34,26 @@ export function ConversationTemplateSelector({
       <div className="flex items-center gap-3">
         <select
           id={templateSelectId}
-          value={selectedTemplate}
+          value={template ? selectedTemplate : ""}
           disabled={disabled || promptTemplates.loading}
           onChange={(event) => {
-            const templateId = event.target.value;
-            onChange(templateId);
-            const nextTemplate = promptTemplates.templates.find(
-              (item) => item.id === templateId,
+            const templateValue = event.target.value;
+            onChange(templateValue);
+            const nextTemplate = templates.find(
+              (item) => item.value === templateValue,
             );
             if (nextTemplate) {
-              onPromptChange(nextTemplate.prompt);
+              onPromptChange(nextTemplate.value === PREPARE_PLAN_TEMPLATE.id && currentPrompt.length > 0
+                ? `${nextTemplate.template.prompt}\n\n${currentPrompt}`
+                : nextTemplate.template.prompt);
               closeMenu?.();
             }
           }}
           className="clanky-composer-field clanky-composer-select block min-w-0 flex-1 w-full rounded-md px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="">No template (custom message)</option>
-          {promptTemplates.templates.map((promptTemplate) => (
-            <option key={promptTemplate.id} value={promptTemplate.id}>
+          {templates.map(({ value, template: promptTemplate }) => (
+            <option key={value} value={value}>
               {promptTemplate.name}
             </option>
           ))}

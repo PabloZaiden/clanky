@@ -1,10 +1,19 @@
-import { useLiveQuery } from "@pablozaiden/webapp/web";
+import { useLiveQuery, useToast } from "@pablozaiden/webapp/web";
 import type { ChatRepositoryContext } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import { SNAPSHOT_REQUEST_TIMEOUT_MS } from "../../lib/request-lifecycle";
 import { ComposerActionsMenuSection } from "../ComposerActionsMenu";
+import { PullRequestIcon } from "../common/Icons";
+import { writeTextToClipboard } from "../../utils/clipboard";
+
+const PR_STATE_COLORS = {
+  open: "text-green-600 dark:text-green-400",
+  closed: "text-red-600 dark:text-red-400",
+  merged: "text-purple-600 dark:text-purple-400",
+};
 
 export function ChatRepositorySection({ chatId }: { chatId: string }) {
+  const toast = useToast();
   const query = useLiveQuery<ChatRepositoryContext>({
     load: (signal) => apiRequest<ChatRepositoryContext>(
       `/api/chats/${encodeURIComponent(chatId)}/repository-context`,
@@ -17,28 +26,53 @@ export function ChatRepositorySection({ chatId }: { chatId: string }) {
     realtime: { resources: ["chats"], targets: { chatId } },
   });
   const repository = query.data;
+  async function copyBranch(): Promise<void> {
+    if (!repository?.branch) return;
+    try {
+      await writeTextToClipboard(repository.branch);
+      toast.success("Copied branch name");
+    } catch (error) {
+      toast.error(`Failed to copy branch name: ${String(error)}`);
+    }
+  }
+
   return (
     <ComposerActionsMenuSection label="Repository">
-      <div className="min-w-0 space-y-1 text-sm text-gray-600 dark:text-gray-300">
+      <div className="flex h-8 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
         {query.error ? (
-          <p role="status">Repository lookup unavailable.</p>
+          <p role="status" className="truncate">Repository lookup unavailable.</p>
         ) : !repository ? (
           <p>Loading repository…</p>
         ) : !repository.isGitRepo ? (
           <p>Not a Git repository.</p>
         ) : (
           <>
-            <p className="min-w-0 break-words [overflow-wrap:anywhere]">
-              <span className="text-gray-500 dark:text-gray-400">Branch: </span>
-              <span className="font-mono">{repository.branch ?? "Detached HEAD"}</span>
-            </p>
+            {repository.branch ? (
+              <button
+                type="button"
+                className="h-full min-w-0 flex-1 truncate text-left font-mono hover:underline"
+                title={repository.branch}
+                aria-label={`Copy branch ${repository.branch}`}
+                onClick={() => void copyBranch()}
+              >
+                {repository.branch}
+              </button>
+            ) : <span className="min-w-0 flex-1 truncate">Detached HEAD</span>}
             {repository.pullRequestLookup === "found" && repository.pullRequest ? (
-              <a href={repository.pullRequest.url} target="_blank" rel="noopener noreferrer" className="inline-block text-blue-600 underline dark:text-blue-400">
-                Pull request #{repository.pullRequest.number}
+              <a
+                href={repository.pullRequest.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-full shrink-0 items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+                title={`Pull request #${repository.pullRequest.number} (${repository.pullRequest.state})`}
+                aria-label={`Pull request #${repository.pullRequest.number}, ${repository.pullRequest.state}`}
+              >
+                <PullRequestIcon state={repository.pullRequest.state} className={PR_STATE_COLORS[repository.pullRequest.state]} />
+                #{repository.pullRequest.number}
               </a>
-            ) : (
-              <p>{repository.pullRequestLookup === "none" ? "No open pull request." : "Pull request lookup unavailable."}</p>
-            )}
+            ) : repository.pullRequestLookup === "unavailable" ? (
+              <span className="shrink-0 text-gray-500 dark:text-gray-400" role="status" title={repository.message ?? "Pull request lookup unavailable."} aria-label="Pull request lookup unavailable">PR unavailable</span>
+            ) : null}
           </>
         )}
       </div>

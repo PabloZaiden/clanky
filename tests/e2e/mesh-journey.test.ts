@@ -182,8 +182,10 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
       transcript: { messages: Array<{ role: string; content: string }> };
     }>(controller, `${chatPath}/snapshot?full=1`);
     expect(snapshot.status).toBe(200);
-    expect(snapshot.body.transcript.messages.find((message) => message.role === "user")?.content)
-      .toBe(requirements);
+    const firstMessage = snapshot.body.transcript.messages.find((message) => message.role === "user")?.content;
+    expect(firstMessage).toStartWith("Start with a plan for the user's request below.");
+    expect(firstMessage).toContain("Wait for an explicit user request before implementing");
+    expect(firstMessage).toEndWith(requirements);
     expect(snapshot.body.transcript.messages.some(
       (entry) => entry.role === "assistant" && entry.content.trim().length > 0,
     )).toBe(true);

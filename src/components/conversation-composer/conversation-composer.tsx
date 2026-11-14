@@ -221,6 +221,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
                       selectedTemplate={selectedTemplate}
                       onChange={setSelectedTemplate}
                       onPromptChange={setMessage}
+                      currentPrompt={message}
                       disabled={controlsDisabled}
                       actions={(attachmentsEnabled || voice?.available) && (
                         <div className="flex shrink-0 items-center gap-3" role="group" aria-label="Message tools">

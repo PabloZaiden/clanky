@@ -105,6 +105,8 @@ export const PromptTemplateListSchema = z.array(PromptTemplateSchema)
 
 export const SetPromptTemplatesRequestSchema = z.object({
   templates: PromptTemplateListSchema,
+  planningTemplateEnabled: z.boolean().optional(),
+  planningTemplateIndex: z.number().int().min(0).max(PROMPT_TEMPLATE_LIMITS.count).optional(),
 });
 
 export function normalizeQuickChatSettings(value: unknown): QuickChatSettings {

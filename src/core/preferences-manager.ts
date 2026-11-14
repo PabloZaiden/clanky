@@ -17,6 +17,8 @@ import {
   getLastModel as getLastModelRecord,
   getMarkdownRenderingEnabled as getMarkdownRenderingEnabledRecord,
   getPromptTemplates as getPromptTemplatesRecord,
+  getPlanningTemplateEnabled,
+  getPlanningTemplateIndex,
   getQuickChatSettings as getQuickChatSettingsRecord,
   getSchedulerTimezone as getSchedulerTimezoneRecord,
   getWorkerUpdatePreferences as getWorkerUpdatePreferencesRecord,
@@ -31,7 +33,7 @@ import {
   rememberWorkerUpdateMode as rememberWorkerUpdateModeRecord,
 } from "../persistence/preferences";
 import type { SidebarPin } from "@pablozaiden/webapp/contracts";
-import type { PromptTemplate } from "@/shared/prompt-templates";
+import type { PromptTemplate, PromptTemplatePreferences } from "@/shared/prompt-templates";
 import type { QuickChatSettings } from "@/shared/preferences";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
@@ -144,12 +146,17 @@ export class PreferencesManager {
     await setQuickChatSettingsRecord(settings);
   }
 
-  async getPromptTemplates(): Promise<PromptTemplate[]> {
-    return await getPromptTemplatesRecord();
+  async getPromptTemplates(): Promise<PromptTemplatePreferences> {
+    const templates = await getPromptTemplatesRecord();
+    return {
+      templates,
+      planningTemplateEnabled: getPlanningTemplateEnabled(),
+      planningTemplateIndex: Math.min(getPlanningTemplateIndex(), templates.length),
+    };
   }
 
-  async setPromptTemplates(templates: PromptTemplate[]): Promise<void> {
-    await setPromptTemplatesRecord(templates);
+  async setPromptTemplates(templates: PromptTemplate[], planningTemplateEnabled?: boolean, planningTemplateIndex?: number): Promise<void> {
+    await setPromptTemplatesRecord(templates, planningTemplateEnabled, planningTemplateIndex);
   }
 
   async validateQuickChatModel(request: QuickChatModelRequest): Promise<void> {

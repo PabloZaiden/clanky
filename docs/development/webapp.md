@@ -247,8 +247,20 @@ Chat composers place the conversation-options control between the
 message textbox and the send/queue/interrupt button. Its sliders icon
 distinguishes conversation controls and information from sidebar navigation;
 the options panel opens above it, aligned to the right.
-Repository details load inside that panel; long branches wrap without covering
-the composer. The shared `FloatingPanel` owns repositioning as content arrives.
+Repository details occupy one fixed-height row while loading and after lookup,
+so asynchronous results do not resize the panel. Show the branch without a
+label, truncate it and copy its full name on activation. A nonshrinking PR
+state icon and linked number share the row, without redundant prefixes.
+The shared `FloatingPanel` still owns positioning when other content changes.
+
+Template settings include a default-enabled **Prepare a plan** row with
+an enablement switch and the same up/down controls as custom templates, but no
+edit/delete controls. Persist its position separately from the custom list;
+settings and the selector use the same order, including after re-enabling it.
+It appears in the existing selector and prepends editable guidance without
+discarding a draft or attachments. Custom template behavior is unchanged. The creation checkbox's
+one-time guidance is part of the first persisted user message, not hidden prompt
+context or a synthetic system message.
 
 Transcript images load when their entries enter the visible conversation;
 non-image files load only when downloaded. Keep attachment bytes out of

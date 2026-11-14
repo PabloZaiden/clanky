@@ -20,6 +20,7 @@ import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTim
 import {
   normalizeQuickChatSettings,
   PromptTemplateListSchema,
+  SetPromptTemplatesRequestSchema,
 } from "@/contracts/schemas";
 import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
@@ -381,9 +382,33 @@ export async function getPromptTemplates(): Promise<PromptTemplate[]> {
   }
 }
 
-export async function setPromptTemplates(templates: PromptTemplate[]): Promise<void> {
-  const validatedTemplates = PromptTemplateListSchema.parse(templates);
-  setPreference("promptTemplates", JSON.stringify(validatedTemplates));
+export function getPlanningTemplateEnabled(): boolean {
+  const stored = getPreference("planningTemplateEnabled");
+  if (stored === null || stored === "true") return true;
+  if (stored === "false") return false;
+  throw new Error("The stored planning template preference is invalid.");
+}
+
+export function getPlanningTemplateIndex(): number {
+  const stored = getPreference("planningTemplateIndex");
+  return stored === null ? 0
+    : SetPromptTemplatesRequestSchema.shape.planningTemplateIndex.unwrap().parse(JSON.parse(stored));
+}
+
+export async function setPromptTemplates(
+  templates: PromptTemplate[],
+  planningTemplateEnabled?: boolean,
+  planningTemplateIndex?: number,
+): Promise<void> {
+  const validated = SetPromptTemplatesRequestSchema.parse({ templates, planningTemplateEnabled, planningTemplateIndex });
+  getDatabase().transaction(() => {
+    const index = Math.min(validated.planningTemplateIndex ?? getPlanningTemplateIndex(), validated.templates.length);
+    setPreference("promptTemplates", JSON.stringify(validated.templates));
+    setPreference("planningTemplateIndex", String(index));
+    if (validated.planningTemplateEnabled !== undefined) {
+      setPreference("planningTemplateEnabled", String(validated.planningTemplateEnabled));
+    }
+  })();
 }
 
 export async function getSchedulerTimezone(ownerUserId?: string): Promise<string> {

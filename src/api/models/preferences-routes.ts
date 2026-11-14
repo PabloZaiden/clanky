@@ -411,11 +411,11 @@ export const preferencesRoutes = defineRoutes({
   "/api/preferences/prompt-templates": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read and update the authenticated user's message templates.",
+    description: "Read and update the authenticated user's custom templates and built-in planning-template enablement and position.",
     requestSchema: SetPromptTemplatesRequestSchema,
     operations: {
       GET: {
-        description: "Read the authenticated user's ordered message templates.",
+        description: "Read the authenticated user's ordered custom templates and built-in planning-template enablement and position.",
         requestSchema: undefined,
         querySchema: undefined,
         automation: { policy: "read" },
@@ -427,8 +427,7 @@ export const preferencesRoutes = defineRoutes({
       },
     },
     async GET(_req: Request, _ctx: RouteContext): Promise<Response> {
-      const templates = await preferencesManager.getPromptTemplates();
-      return Response.json({ templates });
+      return Response.json(await preferencesManager.getPromptTemplates());
     },
 
     async PUT(req: Request, ctx): Promise<Response> {
@@ -438,9 +437,9 @@ export const preferencesRoutes = defineRoutes({
       }
 
       try {
-        await preferencesManager.setPromptTemplates(result.data.templates);
+        await preferencesManager.setPromptTemplates(result.data.templates, result.data.planningTemplateEnabled, result.data.planningTemplateIndex);
         ctx.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.promptTemplates);
-        return Response.json({ success: true, templates: result.data.templates });
+        return Response.json({ success: true, ...await preferencesManager.getPromptTemplates() });
       } catch (error) {
         logPreferenceSaveFailure("prompt-templates", error);
         return internalErrorResponse(error, {
