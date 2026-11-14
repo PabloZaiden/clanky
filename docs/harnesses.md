@@ -109,6 +109,8 @@ Install and authenticate Claude Code on the selected execution host, with
 `claude` available in its `PATH`. Select **Claude Agent** in the workspace or
 direct execution-host chat settings. Models and reasoning options come from
 the native catalog and the host's Claude Code configuration.
+For Mesh execution, upgrade the worker to a build with Claude support.
+Upgrading only the controller does not enable Claude on an older worker.
 
 Claude supports streaming conversations, session resume, interruption,
 active-session steering, and native subagent activity and history. Clanky

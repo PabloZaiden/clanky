@@ -58,7 +58,7 @@ interface Conversation {
   receivedInputs: Set<string>;
   activityChanged: Set<() => void>;
   faulted?: boolean;
-  pendingCompletion?: Extract<HarnessEvent, { type: "prompt.complete" }>;
+  pendingTerminal?: Extract<HarnessEvent, { type: "prompt.complete" | "error" }>;
   initialState: "idle" | "running" | "requires_action";
 }
 
@@ -418,14 +418,10 @@ export class ClaudeBackend implements Backend {
         }
         if (message.type === "result") conversation.modelUsage = message.modelUsage;
         for (const event of conversation.translator.translate(message)) {
-          if (event.scope.kind === "principal" && event.type === "prompt.complete") {
-            conversation.pendingCompletion = event;
+          if (event.scope.kind === "principal" && (event.type === "prompt.complete" || event.type === "error")) {
+            if (event.type === "error" || conversation.pendingTerminal?.type !== "error") conversation.pendingTerminal = event;
             this.finishIdleTurn(conversation);
             continue;
-          }
-          if (event.scope.kind === "principal" && event.type === "error") {
-            conversation.pendingCompletion = undefined;
-            this.endTurn(conversation);
           }
           this.events.publish(conversation.info.id, event);
           if (event.type === "activity.changed" || event.type === "prompt.complete" || event.type === "error") for (const changed of conversation.activityChanged) changed();
@@ -439,6 +435,7 @@ export class ClaudeBackend implements Backend {
       this.cancelQuestions(conversation.info.id);
       log.error("Claude native observation failed", { conversationId: conversation.info.id, errorType: error instanceof Error ? error.name : typeof error });
       this.events.failSession(conversation.info.id, error instanceof Error ? error : new Error("Claude native observation failed."));
+      for (const changed of conversation.activityChanged) changed();
     }
   }
 
@@ -446,12 +443,14 @@ export class ClaudeBackend implements Backend {
     const definitions = binding.controlTools ? await this.getControlTools().listTools({ chatId: binding.controlChatId }) : [];
     const secret = binding.questionPolicy === "interactive" && binding.secretFiles === 1;
     if (!definitions.length && !secret) return undefined;
+    const tools = [...definitions, ...(secret ? [{ ...secretToolDefinition, inputSchema: z.toJSONSchema(RequestSecretSchema) }] : [])];
     const server = createSdkMcpServer({ name: "clanky", version: "1.0.0" });
     server.instance.server.registerCapabilities({ tools: {} });
-    server.instance.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [...definitions, ...(secret ? [{ ...secretToolDefinition, inputSchema: z.toJSONSchema(RequestSecretSchema) }] : [])],
-    }));
+    server.instance.server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
     server.instance.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      if (!tools.some((tool) => tool.name === request.params.name)) {
+        throw new HarnessError("harness_session_not_owned", "The Clanky tool is not enabled for this conversation.");
+      }
       const conversation = current();
       const active = conversation.active;
       if (!active || active.abort.signal.aborted || conversation.closing) throw new HarnessError("harness_session_not_owned", "Clanky tool calls require an active owned turn.");
@@ -527,11 +526,11 @@ export class ClaudeBackend implements Backend {
   }
 
   private finishIdleTurn(conversation: Conversation): void {
-    const completion = conversation.pendingCompletion;
-    if (!completion || conversation.closing || this.processing(conversation)) return;
-    conversation.pendingCompletion = undefined;
+    const terminal = conversation.pendingTerminal;
+    if (!terminal || conversation.closing || conversation.faulted || this.processing(conversation)) return;
+    conversation.pendingTerminal = undefined;
     this.endTurn(conversation);
-    this.events.publish(conversation.info.id, completion);
+    this.events.publish(conversation.info.id, terminal);
     for (const changed of conversation.activityChanged) changed();
   }
 
@@ -663,11 +662,12 @@ export class ClaudeBackend implements Backend {
     ];
     if (pending().length) await new Promise<void>((resolve) => {
       const finish = () => { clearTimeout(timer); conversation.activityChanged.delete(changed); resolve(); };
-      const changed = () => { if (!pending().length) finish(); };
+      const changed = () => { if (conversation.faulted || !pending().length) finish(); };
       const timer = setTimeout(finish, 5_000);
       conversation.activityChanged.add(changed);
       changed();
     });
+    if (conversation.faulted) return { status: "unavailable", reason: "gap" };
     const activityIds = pending();
     return activityIds.length ? { status: "pending", activityIds } : { status: "settled", observedAt: new Date().toISOString() };
   }

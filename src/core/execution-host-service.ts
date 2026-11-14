@@ -12,6 +12,7 @@ import {
   createExecutionHostRuntimeSnapshot,
   executionHostRefsEqual,
   getExecutionHostAgentProvider,
+  getAgentExecutionHostCapability,
   executionHostReferenceMatches,
   isPrivateMeshExecutionHostRef,
   supportsExecutionHostCapability,
@@ -230,7 +231,11 @@ export class ExecutionHostService {
     if (available) {
       try {
         meshWorkerRouteVersion(worker);
-        harnessAdapters = [...HARNESS_ADAPTER_IDS];
+        harnessAdapters = HARNESS_ADAPTER_IDS.filter((adapter) => supportsExecutionHostCapability(
+          worker.workerCapabilities ?? {},
+          getAgentExecutionHostCapability(adapter),
+          1,
+        ));
       } catch (error) {
         if (!(error instanceof DomainError) || error.code !== "mesh_execution_protocol_mismatch") throw error;
         harnessAdapterError = error.code;

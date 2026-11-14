@@ -34,6 +34,7 @@ import {
 import { discoverMeshWorkerGeneration } from "./mesh-worker-generation";
 import { isSupportedMeshProtocolVersion } from "@/shared/mesh-protocol";
 import { assertHarnessMeshProtocol } from "./backend/harness-host-policy";
+import { getAgentExecutionHostCapability, supportsExecutionHostCapability } from "@/shared/execution-host";
 import type {
   MeshExecutionAsyncCommandSnapshot,
 } from "@/shared/mesh-execution";
@@ -450,6 +451,9 @@ export class MeshCommandExecutorClient {
     if (this.channel === MESH_HARNESS_CHANNEL) {
       if (!this.adapter) throw new DomainError("mesh_execution_protocol_mismatch", "A native Mesh lease requires an adapter.");
       assertHarnessMeshProtocol(this.adapter, protocolVersion);
+      if (!supportsExecutionHostCapability(registration.workerCapabilities ?? {}, getAgentExecutionHostCapability(this.adapter), 1)) {
+        throw new DomainError("execution_host_capability_unavailable", `The selected Mesh worker does not support the ${this.adapter} harness. Update the worker.`);
+      }
     }
 
     const channel = this.channel;

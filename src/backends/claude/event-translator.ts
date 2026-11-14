@@ -68,7 +68,7 @@ export class ClaudeEventTranslator {
       return [];
     }
     if (message.type === "assistant") {
-      if (message.error) return [wrap({ type: "error", code: "harness_request_failed", message: `Claude inference failed: ${message.error}.` })];
+      if (message.error) return [wrap({ type: "request.error", code: "harness_request_failed", message: `Claude inference failed: ${message.error}.` })];
       return this.content(message.message.content, message.message.id, scope, wrap);
     }
     if (message.type === "user") {

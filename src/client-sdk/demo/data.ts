@@ -18,7 +18,7 @@ export const DEMO_HOST: ExecutionHostDescriptor = {
   endpoint: null, meshRouteKind: null, repositoriesBasePath: DEMO_DIRECTORY,
   preferredModel: DEMO_MODEL, configurationRevision: 1, accessRequirement: { kind: "none" },
   acceptRemoteExecution: true, platform: { os: "linux", architecture: "arm64" },
-  capabilities: { commandExecution: 1, fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3 },
+  capabilities: { commandExecution: 1, claudeHarness: 1, fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3 },
   harnessAdapters: [...HARNESS_ADAPTER_IDS], revision: 1,
 };
 export const DEMO_WORKER: ExecutionHostDescriptor = {
