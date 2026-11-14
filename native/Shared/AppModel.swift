@@ -66,42 +66,44 @@ final class AppModel: ObservableObject {
                 ])
             }
             #if os(iOS)
-            if let preparedRoot {
-                root = preparedRoot
-            } else {
-                while preparedRoot == nil {
-                    let bundledRoot = root
-                    let channel = try FrontendChannel.selected()
-                    let previous = try FrontendChannel.applied()
-                    let explicitChoice = previous != nil || channel == .latest
-                    if startup == nil {
-                        startupChannel = channel
-                        startup = Task {
-                            try await self.prepareFrontend(
-                                channel, bundledRoot: bundledRoot,
-                                fallbackChannel: previous != channel ? previous : nil,
-                                force: previous != channel,
-                                confirmDevelopment: previous == channel || (previous == nil && !explicitChoice)
-                            )
+            if try FrontendChannel.updatesEnabled() {
+                if let preparedRoot {
+                    root = preparedRoot
+                } else {
+                    while preparedRoot == nil {
+                        let bundledRoot = root
+                        let channel = try FrontendChannel.selected()
+                        let previous = try FrontendChannel.applied()
+                        let explicitChoice = previous != nil || channel == .latest
+                        if startup == nil {
+                            startupChannel = channel
+                            startup = Task {
+                                try await self.prepareFrontend(
+                                    channel, bundledRoot: bundledRoot,
+                                    fallbackChannel: previous != channel ? previous : nil,
+                                    force: previous != channel,
+                                    confirmDevelopment: previous == channel || (previous == nil && !explicitChoice)
+                                )
+                            }
                         }
-                    }
-                    guard let startup else { throw CancellationError() }
-                    let prepared: PreparedFrontend
-                    do {
-                        prepared = try await startup.value
-                    } catch is CancellationError {
+                        guard let startup else { throw CancellationError() }
+                        let prepared: PreparedFrontend
+                        do {
+                            prepared = try await startup.value
+                        } catch is CancellationError {
+                            self.startup = nil
+                            guard try FrontendChannel.selected() != channel else { throw CancellationError() }
+                            continue
+                        }
                         self.startup = nil
-                        guard try FrontendChannel.selected() != channel else { throw CancellationError() }
-                        continue
+                        guard try FrontendChannel.selected() == channel else { continue }
+                        preparedRoot = prepared.root
+                        updateWarning = prepared.warning
+                        activeChannel = prepared.resolved ? channel : (previous ?? channel)
+                        channelSwitchPending = !prepared.resolved && previous != channel && explicitChoice
+                        if prepared.resolved { channel.recordApplied() }
+                        root = prepared.root
                     }
-                    self.startup = nil
-                    guard try FrontendChannel.selected() == channel else { continue }
-                    preparedRoot = prepared.root
-                    updateWarning = prepared.warning
-                    activeChannel = prepared.resolved ? channel : (previous ?? channel)
-                    channelSwitchPending = !prepared.resolved && previous != channel && explicitChoice
-                    if prepared.resolved { channel.recordApplied() }
-                    root = prepared.root
                 }
             }
             #endif
@@ -122,7 +124,9 @@ final class AppModel: ObservableObject {
             self.origin = origin
             #if os(iOS)
             if UIDevice.current.userInterfaceIdiom == .phone { NativeDiagnostics.record("app-started") }
-            if try FrontendChannel.selected() != startupChannel { frontendSettingsChanged() }
+            if try FrontendChannel.updatesEnabled(), try FrontendChannel.selected() != startupChannel {
+                frontendSettingsChanged()
+            }
             #endif
         } catch {
             await assets?.stop()
@@ -275,6 +279,7 @@ final class AppModel: ObservableObject {
 
     func frontendSettingsChanged() {
         do {
+            guard try FrontendChannel.updatesEnabled() else { return }
             let channel = try FrontendChannel.selected()
             guard origin != nil else {
                 if let startupChannel, startupChannel != channel {

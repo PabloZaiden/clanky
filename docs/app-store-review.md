@@ -68,6 +68,9 @@ credentials, real account information, or unsupported capabilities.
 > includes microphone permission, file selection/export, and platform-specific
 > navigation controls.
 >
+> The App Store build uses the frontend packaged in the signed app and does
+> not download frontend updates. Frontend changes require an app update.
+>
 > For an isolated demonstration, choose "Connect to an API" and enter
 > `https://demo-controller` in the existing server-address field. This is a
 > reserved client-side identifier, not a reachable network server. No login,
@@ -185,6 +188,11 @@ are preserved. Inherited metadata and screenshots must pass preflight, and
 changed behavior still needs updated store/reviewer information. The workflow
 must not be run just to validate tooling.
 
+Public App Store builds must use the bundled frontend and omit the frontend
+Settings bundle, regardless of saved channels or downloaded snapshots from an
+earlier installation. Ordinary internal TestFlight builds keep their existing
+frontend updates and Settings toggle.
+
 Before marking a version ready to submit:
 
 - Publish and check the policy and support URLs, enable the contact mailbox,
@@ -194,7 +202,8 @@ Before marking a version ready to submit:
 - Validate the shipping iPhone/iPad app, microphone denial, file selection/export,
   layout/keyboard behavior, and foreground recovery on supported devices.
 - Inspect the signed archive and exported app for `PrivacyInfo.xcprivacy`,
-  settings resources, declared permissions, signing, version, architecture, and
+  the bundled-only frontend policy and absence of the frontend Settings bundle,
+  declared permissions, signing, version, architecture, and
   accurate encryption/export declarations. Source files alone are not evidence
   that an exported app includes the correct resources.
 - Confirm Apple's acceptance of the demo review-access arrangement and address
