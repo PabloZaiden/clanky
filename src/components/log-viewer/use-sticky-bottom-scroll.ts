@@ -95,12 +95,34 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     if (!container) {
       return;
     }
+    let scrollHeight = container.scrollHeight;
+    let clientHeight = container.clientHeight;
+    let clientWidth = container.clientWidth;
+    let scrollTop = container.scrollTop;
+    const recordLayout = () => {
+      scrollHeight = container.scrollHeight;
+      clientHeight = container.clientHeight;
+      clientWidth = container.clientWidth;
+      scrollTop = container.scrollTop;
+    };
 
     const updatePinnedState = () => {
       if (!isDocumentVisible()) {
         return;
       }
       lastVisibleScrollTopRef.current = container.scrollTop;
+      const layoutChanged = scrollHeight !== container.scrollHeight
+        || clientHeight !== container.clientHeight
+        || clientWidth !== container.clientWidth;
+      const scrollChanged = scrollTop !== container.scrollTop;
+      recordLayout();
+      // Reflow and viewport resizing can move the scroll without user input.
+      if (layoutChanged || !scrollChanged) {
+        if (isPinnedToBottomRef.current) {
+          scrollToBottomIfPinned();
+        }
+        return;
+      }
       const isCurrentlyNearBottom = isNearBottom(container);
       if (
         animationFrameRef.current !== null &&
@@ -113,11 +135,25 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     };
 
     container.addEventListener("scroll", updatePinnedState, { passive: true });
+    const content = contentRef.current;
+    const observer = typeof ResizeObserver !== "undefined" && content
+      ? new ResizeObserver(() => {
+        if (isPinnedToBottomRef.current) {
+          scrollToBottomIfPinned();
+        }
+        recordLayout();
+      })
+      : null;
+    if (observer && content) {
+      observer.observe(content);
+      observer.observe(container);
+    }
 
     return () => {
       container.removeEventListener("scroll", updatePinnedState);
+      observer?.disconnect();
     };
-  }, [visible, cancelScheduledScroll]);
+  }, [visible, cancelScheduledScroll, scrollToBottomIfPinned]);
 
   useLayoutEffect(() => {
     const resuming = visible && !wasVisibleRef.current;
@@ -146,26 +182,6 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     scrollToBottomIfPinned();
     return cancelScheduledScroll;
   }, [...dependencies, visible, scrollToBottomIfPinned, cancelScheduledScroll]);
-
-  useEffect(() => {
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const content = contentRef.current;
-    if (!content) {
-      return;
-    }
-
-    const observer = new ResizeObserver(() => {
-      scrollToBottomIfPinned();
-    });
-    observer.observe(content);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [scrollToBottomIfPinned]);
 
   useEffect(() => cancelScheduledScroll, [cancelScheduledScroll]);
 

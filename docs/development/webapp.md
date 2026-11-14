@@ -222,6 +222,10 @@ scroll restoration during app switching must not be interpreted as user input,
 including notifications delivered before foreground visibility is announced.
 Presentation visibility follows the last document visibility notification;
 an unrelated render observing a changed raw hidden flag must not resume it early.
+Viewport resizing, orientation changes, and transcript reflow also preserve
+bottom following. Layout-driven scroll adjustments must not release the bottom
+pin, while intentionally scrolling up still allows reading older messages
+without being pulled back to the end.
 
 Work-item lists and sidebar Active work share a composition: workspace/host
 name and status, then item name, then relative interaction time and type/provider.
