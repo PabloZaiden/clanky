@@ -5,6 +5,9 @@ after Workspaces and Archived. Workspace chats and direct execution-server
 chats are included. Automation-owned conversations keep their existing
 permanent deletion behavior.
 
+Trash entries have a uniform, borderless presentation, including when opened
+from an individual deleted chat's sidebar entry.
+
 ## Recover and delete
 
 - **Restore** returns the same chat with its history, original attachments,
