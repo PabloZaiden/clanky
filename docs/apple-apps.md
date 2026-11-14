@@ -307,14 +307,10 @@ submissions block it before upload; it never includes unrelated review items.
 The Actions summary records submission, not approval or actual availability.
 Apple handles publication after approval; no runner waits for the review.
 
-Version creation, metadata updates, uploads and submission mutations are never
-retried automatically. If preparation is interrupted, inspect the matching draft
-and confirm its inherited content and What's New before rerunning: existing
-nonempty draft notes are deliberately preserved, even if they came from the
-previous listing. For an uncertain upload or submission, inspect the recorded
-build/submission in App Store Connect first. Existing pending reviews must be
-resolved there. Confirm actual creation/inheritance during the first authorized
-publication, not by running a live publication merely to validate the tooling.
+Uploads and submission mutations are never retried automatically. If a run
+fails or its outcome is uncertain, inspect the recorded build/submission in
+App Store Connect before rerunning. Existing pending reviews must be resolved
+there first. No upload or publication is needed merely to validate the tooling.
 
 The native shell includes `PrivacyInfo.xcprivacy`, declaring its own-container
 UserDefaults use with reason `CA92.1`. Xcode includes the shared resource;
