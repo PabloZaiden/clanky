@@ -475,6 +475,7 @@ final class BrowserModel: ObservableObject {
         }
         #endif
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        NativeClientCredentialLock.install(in: webView, origin: origin)
         webView.allowsBackForwardNavigationGestures = true
         #if os(iOS)
         // The shared web UI owns safe areas; WebKit owns keyboard avoidance.
@@ -524,6 +525,7 @@ final class BrowserModel: ObservableObject {
 
     func contentProcessTerminated() {
         NSLog("Clanky web content process terminated.")
+        NativeClientCredentialLock.contentProcessTerminated(in: webView)
         NativeDiagnostics.record("web-content-terminated")
         closePopup()
         #if os(iOS)

@@ -136,7 +136,11 @@ export async function initializeClientSession(): Promise<void> {
     const endpoint = state.endpoint;
     const generation = state.generation;
     try {
-      const saved = endpoint ? await readClientCredentials(store, endpoint) : undefined;
+      const saved = endpoint
+        ? await (window.clankyClientCredentialLock && store === browserClientCredentialStore
+          ? withClientCredentialLock(endpoint, () => readClientCredentials(store, endpoint), undefined, store)
+          : readClientCredentials(store, endpoint))
+        : undefined;
       if (state.generation !== generation) return;
       credentials = saved;
       recordClientSessionDiagnostic(saved ? "restored" : "credentials-missing");
@@ -177,7 +181,7 @@ export async function selectClientEndpoint(endpoint: string): Promise<void> {
     return;
   }
   const previous = state.endpoint;
-  if (previous) await withClientCredentialLock(previous, async () => { await store.remove(previous); });
+  if (previous) await withClientCredentialLock(previous, async () => { await store.remove(previous); }, undefined, store);
   const result = writeStorage(clientStorageKey("endpoint"), normalized);
   if (!result.ok) throw result.error;
   recordClientSessionDiagnostic("server-changed");
@@ -221,7 +225,7 @@ export async function loginClient(onVerification: (info: { url: string; code: st
       credentials = next;
       recordClientSessionDiagnostic("signed-in");
       update({ authenticated: true, generation: generation + 1, error: undefined });
-    }, controller.signal);
+    }, controller.signal, store);
   } finally {
     if (login === controller) login = undefined;
   }
@@ -242,7 +246,7 @@ export async function logoutClient(): Promise<void> {
       previous = await readClientCredentials(store, endpoint) ?? previous;
       await store.remove(endpoint);
       recordClientSessionDiagnostic("signed-out");
-    });
+    }, undefined, store);
     if (previous) await revokeClientCredentials(previous);
     window.location.reload();
   } catch (error) {
@@ -294,7 +298,7 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
     return next.accessToken;
   };
   try {
-    return await withClientCredentialLock(previous.baseUrl, renew);
+    return await withClientCredentialLock(previous.baseUrl, renew, undefined, store);
   } catch (error) {
     const diagnostic = error instanceof ClientAuthorizationError
       ? error.code === "session_changed"
@@ -312,7 +316,7 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
           await store.remove(previous.baseUrl);
           recordClientSessionDiagnostic("credentials-removed", diagnostic);
         }
-      });
+      }, undefined, store);
       invalidateClientSession();
     }
     throw error;

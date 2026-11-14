@@ -230,7 +230,15 @@ that origin, including injected XSS or another application, can read its stored
 credentials. Directory namespaces are not a security boundary between scripts
 on the same origin. Current browsers with secure-context Web Locks support
 coordinate refresh-token rotation across
-tabs. API changes reload the client, closing connections and discarding
+tabs. If a browser interrupts a credential lock after renewal has started,
+the client waits for that operation to finish before retiring that context's in-flight
+renewal. An interrupted request may still report an error, but it does not
+prematurely start a second exchange in that context with the same refresh token. Server-side
+expiry, revocation and replay rejection remain unchanged.
+The [Apple app shell](apple-apps.md#connections-and-web-behavior) provides
+additional app-owned coordination and confirmed credential snapshots between
+native windows; ordinary browser clients retain Web Locks.
+API changes reload the client, closing connections and discarding
 application caches; private drafts and preferences are scoped
 to the API/client session rather than shared with another server.
 
