@@ -151,6 +151,10 @@ workspace/server rows retain their own presentation.
 There are no type or History subsections and no subsection-level New buttons.
 Dashboard creation controls and entity context/header actions remain unchanged.
 
+Activating any sidebar tab, including the selected tab, returns the sidebar
+list to the top without changing main-content scroll. This is a Webapp default
+on desktop and in the mobile drawer, not Clanky-owned scroll handling.
+
 Sidebar disclosure spacing is framework-owned and decided separately for each
 sibling list. Servers and Workspaces align expandable and leaf rows when that
 list contains expandable items; leaf-only lists such as Automations and Pinned
