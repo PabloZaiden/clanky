@@ -51,6 +51,7 @@ export const CHAT_METADATA_COLUMNS = [
   "started_at",
   "completed_at",
   "last_activity_at",
+  "last_status_changed_at",
   "session_id",
   "session_server_url",
   "session_binding_json",
@@ -105,6 +106,7 @@ export async function saveChat(chat: Chat): Promise<void> {
     ...updateColumns.map((column) => column === "planning_kickoff_message_id"
       ? `${column} = COALESCE(chats.${column}, excluded.${column})`
       : `${column} = excluded.${column}`),
+    "last_status_changed_at = CASE WHEN chats.status <> excluded.status THEN ? ELSE chats.last_status_changed_at END",
     "state_revision = chats.state_revision + 1",
   ].join(", ");
 
@@ -117,7 +119,7 @@ export async function saveChat(chat: Chat): Promise<void> {
       VALUES (${placeholders})
       ON CONFLICT(id) DO UPDATE SET ${updateClause}
       WHERE chats.user_id = excluded.user_id AND chats.deleted_at IS NULL
-    `).run(...values);
+    `).run(...values, new Date().toISOString());
     if (!exists) recordWorkspaceResourceCreation({ kind: "chat", id: chat.config.id,
       ownerUserId: userId, workspaceId: chat.config.workspaceId });
     if (!db.query("SELECT 1 FROM chats WHERE id = ? AND user_id = ? AND deleted_at IS NULL")
@@ -133,6 +135,7 @@ export async function saveChat(chat: Chat): Promise<void> {
   })();
   chat.config.creator = saved.config.creator;
   chat.state.revision = saved.state.revision;
+  chat.state.lastStatusChangedAt = saved.state.lastStatusChangedAt;
   cacheChatMetadata(db, userId, saved);
 }
 

@@ -22,6 +22,7 @@ import { apiRequest } from "../../lib/api-client";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { isWorkspaceReadOnly } from "@/shared/workspace";
+import { getWorkItemLastInteractionAt } from "./shell-types";
 
 async function openWorkspaceGitHubUrl(
   workspace: Workspace,
@@ -153,7 +154,7 @@ export function WorkspaceView({
         title={chat.config.name}
         workspace={workspace}
         itemType="Chat"
-        lastInteractionAt={chat.state.lastUserMessageAt ?? chat.config.createdAt}
+        lastInteractionAt={getWorkItemLastInteractionAt(chat)}
         badge={<StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}><StateText>{formatStatusLabel(chat.state.status)}</StateText></StatusBadge>}
         onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
         privateHidden={privateHidden}

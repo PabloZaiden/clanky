@@ -104,11 +104,12 @@ export function markChatTrashed(chatId: string, checkpoint?: TranscriptChangeSet
     db.prepare(`
       UPDATE chats SET deleted_at = ?, state_revision = state_revision + 1,
         status = CASE WHEN status IN ('starting', 'streaming', 'waiting', 'interrupting', 'reconnecting') THEN 'stopped' ELSE status END,
+        last_status_changed_at = CASE WHEN status IN ('starting', 'streaming', 'waiting', 'interrupting', 'reconnecting') THEN ? ELSE last_status_changed_at END,
         connection_status = 'disconnected', startup_stage = NULL, active_message_id = NULL,
         interrupt_requested = 0, pending_permission_requests = '[]', queued_messages = '[]',
         harness_state_json = ?
       WHERE id = ? AND user_id = ? AND deleted_at IS NULL
-    `).run(now, harness ? JSON.stringify(harness) : null, chatId, userId);
+    `).run(now, now, harness ? JSON.stringify(harness) : null, chatId, userId);
     return loadTrashedChat(chatId);
   })();
 }

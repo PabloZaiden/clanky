@@ -160,6 +160,8 @@ export interface ChatState {
   lastActivityAt?: string;
   /** Latest persisted transcript message sent with the user role. */
   lastUserMessageAt?: string;
+  /** Server time of the latest persisted status transition. */
+  lastStatusChangedAt?: string;
   session?: SessionInfo;
   harness?: HarnessConversationState;
   usage?: TokenUsageSummary;

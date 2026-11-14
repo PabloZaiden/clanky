@@ -1005,6 +1005,15 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 98,
+    name: "add_chat_status_transition_timestamp",
+    up: (db) => {
+      if (!getTableColumns(db, "chats").includes("last_status_changed_at")) {
+        db.run("ALTER TABLE chats ADD COLUMN last_status_changed_at TEXT");
+      }
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

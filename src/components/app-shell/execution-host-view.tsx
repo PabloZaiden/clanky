@@ -38,6 +38,7 @@ import { ExecutionHostPrerequisitesSection } from "./execution-host-prerequisite
 import { useExecutionHostPrerequisites } from "./use-execution-host-prerequisites";
 import { ClankyListRow } from "./clanky-list-row";
 import { WorkItemRow } from "./work-item-row";
+import { getWorkItemLastInteractionAt } from "./shell-types";
 import { PreviewSessionsView } from "./preview-sessions-view";
 import { buildPreviewCliCommand } from "../../utils";
 import {
@@ -329,7 +330,7 @@ export function ExecutionHostView({
                 workspace={workspaces.find((workspace) => workspace.id === chat.config.workspaceId)}
                 subtitle={host.name}
                 itemType="Chat"
-                lastInteractionAt={chat.state.lastUserMessageAt ?? chat.config.createdAt}
+                lastInteractionAt={getWorkItemLastInteractionAt(chat)}
                 badge={(
                   <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
                     <StateText>{formatStatusLabel(chat.state.status)}</StateText>
