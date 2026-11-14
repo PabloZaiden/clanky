@@ -61,7 +61,6 @@ import { meshTerminalGateway } from "./core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "./core/mesh-tcp-tunnel-gateway";
 import { closeAllMeshTerminalConnections } from "./core/terminal";
 import { meshHarnessGateway } from "./core/mesh-harness-gateway";
-import { meshAcpGateway } from "./core/mesh-acp-gateway";
 import { runWithCurrentUser } from "./context/user-context";
 import {
   configureMeshRuntime,
@@ -758,7 +757,6 @@ export async function getWebAppServer(
         await cleanup(() => meshTcpTunnelGateway.closeAll());
         await cleanup(closeAllMeshTerminalConnections);
         await cleanup(() => meshHarnessGateway.closeAll());
-        await cleanup(() => meshAcpGateway.closeAll());
         await cleanup(() => harnessSecretFiles.close());
         if (errors.length > 0) throw new AggregateError(errors, "Clanky shutdown cleanup failed.");
       },

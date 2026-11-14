@@ -15,8 +15,8 @@ export function assertHarnessHostPolicy(agent: AgentSettings, host: ExecutionHos
   }
 }
 
-export function assertHarnessMeshProtocol(adapter: HarnessAdapter, generation: number): void {
-  if (adapter !== "acp" && !isSupportedMeshProtocolVersion(generation)) {
+export function assertHarnessMeshProtocol(_adapter: HarnessAdapter, generation: number): void {
+  if (!isSupportedMeshProtocolVersion(generation)) {
     throw new HarnessError("harness_unsupported_feature", "Native harnesses require a supported Mesh generation on the controller, worker and relay.");
   }
 }

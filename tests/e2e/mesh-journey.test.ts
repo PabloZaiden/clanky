@@ -15,7 +15,7 @@ import {
 } from "./support/mesh-cluster";
 import { pollUntil } from "./support/polling";
 import { currentEnvironment, requireCommand } from "./support/process";
-import { installExternalAcpProvider, installExternalGitHubProvider } from "./support/provider";
+import { installExternalNativeCopilotProvider, installExternalGitHubProvider } from "./support/provider";
 import { MESH_OPERATION_TIMEOUT_MS } from "./support/timeouts";
 
 interface ExecutionHost {
@@ -40,7 +40,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
   let failure: unknown;
   try {
     await Promise.all([
-      installExternalAcpProvider(bin),
+      installExternalNativeCopilotProvider(bin),
       installExternalGitHubProvider(bin),
       mkdir(controllerHome, { mode: 0o700 }),
       mkdir(workerHome, { mode: 0o700 }),
@@ -117,7 +117,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
         directory: git.repositoryDirectory,
         executionHost: host.ref,
         allowClankyContext: false,
-        serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+        serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
       },
     });
     expect(workspace.status, JSON.stringify(workspace.body)).toBe(201);
@@ -126,7 +126,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
     }>>(controller, `/api/models?workspaceId=${workspace.body.id}`);
     expect(models.status).toBe(200);
     const connected = models.body.find((entry) => entry.connected && entry.providerID === "copilot");
-    if (!connected) throw new Error("Deterministic ACP model unavailable");
+    if (!connected) throw new Error("Deterministic Copilot model unavailable");
     const chat = await meshJsonRequest<Chat>(controller, "/api/chats", {
       method: "POST",
       body: {
@@ -208,7 +208,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
       `${chatPath}/diff/file?${new URLSearchParams({ base, path: "e2e-provider-change.txt" })}`,
     );
     expect(selectedFile.status, JSON.stringify(selectedFile.body)).toBe(200);
-    expect(selectedFile.body.patch).toContain("+created by the external ACP provider");
+    expect(selectedFile.body.patch).toContain("+created by the external Copilot provider");
     const repository = await meshJsonRequest<{
       branch: string | null; pullRequestLookup: string;
     }>(controller, `${chatPath}/repository-context`);

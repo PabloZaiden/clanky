@@ -13,6 +13,7 @@ import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
 import { AutomationComposer } from "./automations-view";
 import type { UseAutomationsResult } from "../../hooks/useAutomations";
+import type { UseChatsResult } from "../../hooks/useChats";
 import { ExecutionHostChatComposer } from "./execution-host-chat-composer";
 import { ExecutionHostTerminalComposer } from "./execution-host-terminal-composer";
 
@@ -35,6 +36,7 @@ interface ComposeViewProps {
   composeExecutionHost: ExecutionHostDescriptor | null;
   navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   startAutomationImport: (workspaceId: string) => void;
   dashboardData: UseDashboardDataResult;
   automations: UseAutomationsResult;
@@ -54,6 +56,7 @@ export function ComposeView(props: ComposeViewProps) {
     composeExecutionHost,
     navigateWithinShell,
     createChat,
+    createExecutionHostChat,
     dashboardData,
     automations,
     workspaces,
@@ -122,6 +125,7 @@ export function ComposeView(props: ComposeViewProps) {
     return composeExecutionHost ? (
       <ExecutionHostChatComposer
         host={composeExecutionHost}
+        onCreateChat={createExecutionHostChat}
         navigateWithinShell={navigateWithinShell}
       />
     ) : null;

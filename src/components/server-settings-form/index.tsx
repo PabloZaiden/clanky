@@ -4,12 +4,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_SERVER_AGENT_PROVIDER,
+  getDefaultServerSettings,
   createAgentSettings,
   executionHostRefsEqual,
   parseExecutionHostRef,
   supportsWorkspaceExecutionHost,
-  type AgentProvider,
   type HarnessAdapter,
   type ExecutionHostRef,
   type ServerSettings,
@@ -89,10 +88,7 @@ export function ServerSettingsForm({
       : undefined,
     [initialExecutionHost, remoteOnly, targets],
   );
-  const [provider, setProvider] = useState<AgentProvider>(
-    initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER,
-  );
-  const [adapter, setAdapter] = useState<HarnessAdapter>(initialSettings?.agent.adapter ?? "acp");
+  const [adapter, setAdapter] = useState<HarnessAdapter>(initialSettings?.agent.adapter ?? getDefaultServerSettings().agent.adapter);
   const [executionHost, setExecutionHost] = useState<ExecutionHostRef | null>(
     initialExecutionHost,
   );
@@ -126,7 +122,7 @@ export function ServerSettingsForm({
           supportsWorkspaceExecutionHost(descriptor.capabilities, candidate))
         : [];
     }
-    return !host && dedicatedWorkerSelected ? ["acp"] : [];
+    return [];
   }
 
   function isSelectionValid(nextAdapter: HarnessAdapter, host: ExecutionHostRef | null): boolean {
@@ -137,35 +133,30 @@ export function ServerSettingsForm({
 
   function updateSelection(change: {
     adapter?: HarnessAdapter;
-    provider?: AgentProvider;
     executionHost?: ExecutionHostRef | null;
   }): void {
     const nextAdapter = change.adapter ?? adapter;
-    const nextProvider = change.provider ?? provider;
     const nextHost = change.executionHost === undefined ? executionHost : change.executionHost;
     setAdapter(nextAdapter);
-    setProvider(nextProvider);
     setExecutionHost(nextHost);
     setTestResult(null);
     onChangeRef.current(
-      { agent: createAgentSettings(nextAdapter, nextProvider) },
+      { agent: createAgentSettings(nextAdapter) },
       isSelectionValid(nextAdapter, nextHost),
       nextHost,
     );
   }
 
   useEffect(() => {
-    onChangeRef.current({ agent: createAgentSettings(adapter, provider) }, isValid, executionHost);
+    onChangeRef.current({ agent: createAgentSettings(adapter) }, isValid, executionHost);
   }, [isValid]);
 
   useEffect(() => {
-    const nextProvider =
-      initialSettings?.agent.provider ?? DEFAULT_SERVER_AGENT_PROVIDER;
-    const nextAdapter = initialSettings?.agent.adapter ?? "acp";
+    const nextAdapter = initialSettings?.agent.adapter ?? getDefaultServerSettings().agent.adapter;
     const nextExecutionHost = dedicatedWorkerSelected
       ? null
       : initialExecutionHost;
-    updateSelection({ adapter: nextAdapter, provider: nextProvider, executionHost: nextExecutionHost });
+    updateSelection({ adapter: nextAdapter, executionHost: nextExecutionHost });
   }, [dedicatedWorkerSelected, initialExecutionHost, initialSettings]);
 
   useEffect(() => {
@@ -184,13 +175,8 @@ export function ServerSettingsForm({
     adapter,
     executionHost,
     loading,
-    provider,
     selectableTargets,
   ]);
-
-  function updateProvider(nextProvider: AgentProvider): void {
-    updateSelection({ provider: nextProvider });
-  }
 
   function updateAdapter(nextAdapter: HarnessAdapter): void {
     updateSelection({ adapter: nextAdapter });
@@ -213,7 +199,7 @@ export function ServerSettingsForm({
       return;
     }
     setTestResult(null);
-    setTestResult(await onTest({ agent: createAgentSettings(adapter, provider) }, executionHost));
+    setTestResult(await onTest({ agent: createAgentSettings(adapter) }, executionHost));
   }
 
   return (
@@ -222,7 +208,6 @@ export function ServerSettingsForm({
         adapter={adapter}
         supportedAdapters={supportedAdapters}
         adapterAvailabilityError={getTarget(executionHost)?.harnessAdapterError}
-        provider={provider}
         executionHost={executionHost}
         loading={loading}
         selectableTargets={selectableTargets}
@@ -232,7 +217,6 @@ export function ServerSettingsForm({
         dedicatedWorkerSelected={dedicatedWorkerSelected}
         dedicatedWorkerActive={dedicatedWorkerActive}
         updateAdapter={updateAdapter}
-        updateProvider={updateProvider}
         updateExecutionHost={updateExecutionHost}
       />
 

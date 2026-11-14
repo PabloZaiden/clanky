@@ -3,7 +3,7 @@ import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor } from "@/shared";
 import {
   getExecutionHostSourceId,
-  supportsPortableAcpRuntime,
+  supportsExecutionHostCapability,
 } from "@/shared";
 import {
   DEFAULT_EXECUTION_AGENT_PROVIDER,
@@ -28,7 +28,7 @@ export function useExecutionHostModelDiscovery(
   directory: string,
   secondaryPreferredProvider?: string,
 ) {
-  const enabled = supportsPortableAcpRuntime(host.capabilities);
+  const enabled = supportsExecutionHostCapability(host.capabilities, "commandExecution");
   const preferredProvider = host.preferredModel?.providerID;
   const [provider, setProvider] = useState<AgentProvider>(
     preferredProvider && isAgentProvider(preferredProvider)

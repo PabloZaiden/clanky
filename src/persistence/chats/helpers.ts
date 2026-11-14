@@ -5,6 +5,7 @@
 import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
 import type { PersistedMessage } from "@/shared/conversation";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireResourcePersistenceUserId } from "../ownership";
 import { collaborationCreatorFromRow } from "../collaboration-authorship";
@@ -22,6 +23,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "user_id",
   "name",
   "source_kind",
+  "harness_adapter",
   "workspace_id",
   "scope",
   "directory",
@@ -120,6 +122,7 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
     }
     return {
       kind: "execution_host",
+      adapter: HARNESS_ADAPTER_IDS.find((adapter) => adapter === row["harness_adapter"]) ?? null,
       executionHost,
       directory: requireChatString(row, "directory", rowId),
     };
@@ -199,6 +202,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     user_id: userId,
     name: config.name,
     source_kind: source.kind,
+    harness_adapter: source.kind === "execution_host" ? source.adapter : null,
     workspace_id: source.kind === "workspace" ? source.workspaceId : null,
     scope: config.scope,
     directory: config.directory,

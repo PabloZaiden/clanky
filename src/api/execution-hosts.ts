@@ -323,7 +323,7 @@ export const executionHostRoutes = defineRoutes({
       try {
         await executionHostService.requireCapability(
           ref,
-          "acpRuntime",
+          "commandExecution",
           undefined,
           1,
         );
@@ -334,6 +334,7 @@ export const executionHostRoutes = defineRoutes({
         );
         const chat = await chatManager.createExecutionHostChat({
           name: validation.data.name,
+          adapter: validation.data.adapter,
           executionHost: binding,
           directory: validation.data.directory,
           modelProviderID: validation.data.model.providerID,
@@ -462,7 +463,7 @@ export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts/:kind/:id/chat-providers": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discover ACP providers available on an execution host.",
+    description: "Discover native harness providers available on an execution host.",
     requestSchema: DiscoverExecutionHostProvidersRequestSchema,
     operations: {
       POST: {
@@ -517,7 +518,7 @@ export const executionHostRoutes = defineRoutes({
   "/api/execution-hosts/:kind/:id/chat-models": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "Discover ACP models for a provider on an execution host.",
+    description: "Discover native harness models for a provider on an execution host.",
     requestSchema: DiscoverExecutionHostModelsRequestSchema,
     operations: {
       POST: {
@@ -547,7 +548,7 @@ export const executionHostRoutes = defineRoutes({
       try {
         await executionHostService.requireCapability(
           ref,
-          "acpRuntime",
+          "commandExecution",
           undefined,
           1,
         );
@@ -557,10 +558,7 @@ export const executionHostRoutes = defineRoutes({
           validation.data.directory,
           validation.data.providerID,
         );
-        return Response.json(
-          models.filter((model) =>
-            model.providerID === validation.data.providerID),
-        );
+        return Response.json(models);
       } catch (error) {
         log.error("Failed to discover execution-host models", {
           kind: ref.kind,

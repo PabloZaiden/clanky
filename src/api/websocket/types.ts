@@ -30,12 +30,6 @@ export interface WebSocketData {
   terminalBridge?: Pick<InteractiveTerminalConnection, "sendInput" | "resize" | "dispose">;
   /** Core-owned attachment for canonical workspace terminal sessions */
   terminalAttachment?: TerminalAttachmentHandle;
-  /** Whether this socket relays a mesh ACP session */
-  meshAcpMode?: boolean;
-  /** Mesh ACP session identifier */
-  meshAcpSessionId?: string;
-  /** Mesh ACP session bearer token */
-  meshAcpSessionToken?: string;
   /** Whether this socket relays a Mesh terminal session on the execution peer */
   meshTerminalMode?: boolean;
   /** Mesh terminal session identifier */

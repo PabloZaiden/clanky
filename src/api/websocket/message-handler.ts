@@ -7,7 +7,6 @@ import type {
   sendTerminalAuthError,
 } from "./terminal";
 import { previewSessionManager } from "../../core/preview-session-manager";
-import { meshAcpGateway } from "../../core/mesh-acp-gateway";
 import { meshTerminalGateway } from "../../core/mesh-terminal-gateway";
 import { meshTcpTunnelGateway } from "../../core/mesh-tcp-tunnel-gateway";
 import { MESH_TERMINAL_MAX_INPUT_BYTES } from "@/shared/mesh-terminal";
@@ -139,17 +138,6 @@ export function createMessageHandler(helpers: TerminalHelpers) {
       });
       return;
     }
-    if (ws.data.meshAcpMode && ws.data.meshAcpSessionId) {
-      void meshAcpGateway.message(ws.data.meshAcpSessionId, msg).catch((error: Error) => {
-        log.warn("Mesh ACP relay message failed", {
-          sessionId: ws.data.meshAcpSessionId,
-          error: String(error),
-        });
-        ws.close(1003, "Invalid mesh ACP message");
-      });
-      return;
-    }
-
     if (
       ws.data.meshTerminalMode
       && ws.data.meshTerminalSessionId

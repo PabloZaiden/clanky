@@ -154,9 +154,8 @@ Grant and provenance checks use metadata snapshots, not unrequested transcripts.
 Native control has no API-key-expiry reconnect; Mesh lease renewal and owned
 conversation recovery remain transport lifecycle responsibilities.
 
-Unsupported ACP model processes receive no automatic Clanky credential, even
-when the workspace enables general control. Do not pass deterministic control
-authority to ACP prompts. Retire old automatic nonterminal API keys and prevent
+Do not pass deterministic control authority to provider prompts.
+Retire old automatic nonterminal API keys and prevent
 their reissuance; do not change external integrations, unrelated personal keys
 or interactive terminal contracts.
 
@@ -259,8 +258,8 @@ mutable maps, transport logic, or transition rules in the facade.
 
 Backend adapters separate process/transport lifecycle, protocol sessions,
 event translation, interactions, and provider/capability adaptation.
-`AcpBackend` composes these collaborators and routes notifications; it does not
-own process handles, protocol/session/run maps, or duplicate their logic.
+Backend facades compose these collaborators; they do not own process handles,
+protocol/session/run maps or duplicate their logic.
 Dependencies are one-way: collaborators must not call back into the facade.
 
 Each mutable resource has one owner. Listeners, timers, subprocesses, requests,
@@ -269,11 +268,9 @@ success, failure, timeout, cancellation, process exit, disconnect, and reconnect
 All connection cleanup must be reachable from one teardown path. Bound
 accumulated buffers and live connections, and clear losing timeout timers.
 
-Optional ACP methods use the typed method-not-found helper; only
-`acp_method_not_found` means capability absence. Preserve error codes and
-details. Keep legacy event forms, ordered method fallbacks, and provider
-adaptation documented at their narrow compatibility boundary rather than
-scattering provider checks through transport/session code.
+Preserve provider error codes and details. Capability absence must be explicit,
+not inferred from a failed request. Keep provider adaptation at its owned
+boundary rather than scattering checks through transport/session code.
 
 ## Harness execution contracts
 
@@ -314,7 +311,7 @@ capacity; consumption-driven transport backpressure still waits for the reader.
 This intentionally permits memory growth when output exceeds consumption, so
 do not describe the absence of arbitrary caps as immunity to memory exhaustion.
 
-Chats depend on the generic backend contract, not an ACP class.
+Chats depend on the generic backend contract, not a provider class.
 Shutdown records interruption before transport cleanup; native conversation
 recovery remains distinct from provider exits outside shutdown.
 
@@ -375,7 +372,7 @@ Unreachable hosts, missing ownership or unconfirmed writers retain their
 inventory and an explicit logged error. Worktrees/branches protected by current
 usage likewise remain inventoried as pending rather than reporting completion;
 other eligible resources can still be cleaned. Successful partial stages are
-persisted for an idempotent later startup. Historical ACP bindings lack a durable
+persisted for an idempotent later startup. Retired transport bindings lack a durable
 transport-stop proof, and historical terminals likewise cannot prove writer
 settlement after controller restart. Their resources therefore remain pending
 instead of being deleted unsafely. This is not a hidden Task product or an

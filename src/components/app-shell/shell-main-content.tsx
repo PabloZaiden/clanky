@@ -24,6 +24,7 @@ import {
 } from "@/shared";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAutomationsResult } from "../../hooks/useAutomations";
+import type { UseChatsResult } from "../../hooks/useChats";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseWorkerUpdateJobsResult } from "../../hooks/useWorkerUpdateJobs";
 import { ChatDetails } from "../ChatDetails";
@@ -98,6 +99,7 @@ export interface ShellMainContentProps {
 
   // Compose state
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   startAutomationImport: (workspaceId: string) => void;
   pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
@@ -776,6 +778,7 @@ function renderMainContent(props: ShellMainContentProps) {
         composeExecutionHost={props.composeExecutionHost}
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
+        createExecutionHostChat={props.createExecutionHostChat}
         startAutomationImport={props.startAutomationImport}
         dashboardData={dashboardData}
         automations={automations}

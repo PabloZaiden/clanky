@@ -9,7 +9,7 @@ import { backendManager } from "./backend-manager";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
 import type { ModelInfo } from "@/contracts";
-import { createAgentSettings, type ServerSettings } from "@/shared/settings";
+import { createAgentSettings, getHarnessAdapterForProvider, type ServerSettings } from "@/shared/settings";
 import type { Workspace } from "@/shared/workspace";
 import { getAgentExecutionHostCapability, type ExecutionHostBinding } from "@/shared/execution-host";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -86,29 +86,6 @@ export interface ModelValidationResult {
   errorCode?: "model_not_enabled" | "model_not_found" | "provider_not_found" | "validation_failed";
 }
 
-function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
-  const seen = new Set<string>();
-  return models
-    .map((model) => ({
-      ...model,
-      providerID: "copilot",
-      providerName: "Copilot",
-    }))
-    .filter((model) => {
-      if (seen.has(model.modelID)) {
-        return false;
-      }
-      seen.add(model.modelID);
-      return true;
-    });
-}
-
-function normalizeDiscoveredModels(settings: ServerSettings, models: ModelInfo[]): ModelInfo[] {
-  return settings.agent.adapter === "acp" && settings.agent.provider === "copilot"
-    ? normalizeCopilotModelInfo(models)
-    : models;
-}
-
 export async function getModelsForWorkspace(
   workspaceId: string,
   workspaceOverride?: Workspace,
@@ -128,15 +105,16 @@ export async function getModelsForExecutionHost(
   directory: string,
   provider: ServerSettings["agent"]["provider"],
 ): Promise<ModelInfo[]> {
-  executionHostService.requireBindingCapability(binding, getAgentExecutionHostCapability("acp"), undefined, 1);
-  const cacheKey = createCacheKey(["models", "execution-host", binding, createAgentSettings("acp", provider), directory]);
+  const adapter = getHarnessAdapterForProvider(provider);
+  executionHostService.requireBindingCapability(binding, getAgentExecutionHostCapability(adapter), undefined, 1);
+  const cacheKey = createCacheKey(["models", "execution-host", binding, createAgentSettings(adapter), directory]);
   const cached = getCacheValue(modelListCache, cacheKey);
   if (cached) {
     return cached;
   }
   const models = await backendManager.withExecutionHostBackend(
     { binding, provider, directory },
-    async (backend, settings) => normalizeDiscoveredModels(settings, await backend.getModels(directory)),
+    async (backend) => await backend.getModels(directory),
   );
   if (models.length > 0) {
     setCacheValue(modelListCache, cacheKey, models);
@@ -163,11 +141,10 @@ export async function getModelsForDirectory(
     },
     async (backend) => await backend.getModels(directory),
   );
-  const normalizedModels = normalizeDiscoveredModels(workspace.serverSettings, models);
-  if (normalizedModels.length > 0) {
-    setCacheValue(modelListCache, cacheKey, normalizedModels);
+  if (models.length > 0) {
+    setCacheValue(modelListCache, cacheKey, models);
   }
-  return normalizedModels;
+  return models;
 }
 
 export async function getModelVariantsForWorkspace(

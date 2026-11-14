@@ -5,7 +5,7 @@
 import { FormGroup, Select, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import {
   executionHostRefsEqual, serializeExecutionHostRef,
-  type AgentProvider, type HarnessAdapter, type ExecutionHostRef, type ExecutionHostDescriptor,
+  type HarnessAdapter, type ExecutionHostRef, type ExecutionHostDescriptor,
 } from "@/shared";
 import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 
@@ -13,7 +13,6 @@ interface RuntimeFieldsProps {
   adapter: HarnessAdapter;
   supportedAdapters: readonly HarnessAdapter[];
   adapterAvailabilityError?: ExecutionHostDescriptor["harnessAdapterError"];
-  provider: AgentProvider;
   executionHost: ExecutionHostRef | null;
   loading: boolean;
   selectableTargets: ExecutionHostDescriptor[];
@@ -23,26 +22,25 @@ interface RuntimeFieldsProps {
   dedicatedWorkerSelected: boolean;
   dedicatedWorkerActive: boolean;
   updateAdapter: (adapter: HarnessAdapter) => void;
-  updateProvider: (provider: AgentProvider) => void;
   updateExecutionHost: (host: string) => void;
 }
 
 export function RuntimeFields({
-  adapter, supportedAdapters, adapterAvailabilityError, provider, executionHost,
+  adapter, supportedAdapters, adapterAvailabilityError, executionHost,
   loading, selectableTargets, unavailableInitialTarget, initialExecutionHost,
   initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive,
-  updateAdapter, updateProvider, updateExecutionHost,
+  updateAdapter, updateExecutionHost,
 }: RuntimeFieldsProps) {
   const unavailable = unavailableInitialTarget && executionHost
     && executionHostRefsEqual(unavailableInitialTarget.ref, executionHost);
   const adapterError = !loading && (adapterAvailabilityError
     ? "Harness availability could not be verified."
-    : adapter !== "acp" && !supportedAdapters.includes(adapter)
+    : !supportedAdapters.includes(adapter)
       ? "This adapter is unavailable on the selected execution host." : null);
   return (
     <FormGroup>
-      <HarnessRuntimeSelector layout="settings" adapter={adapter} provider={provider} supportedAdapters={supportedAdapters}
-        onAdapterChange={updateAdapter} onProviderChange={updateProvider} />
+      <HarnessRuntimeSelector layout="settings" adapter={adapter} supportedAdapters={supportedAdapters}
+        onAdapterChange={updateAdapter} />
       {adapterError ? <p className="text-sm text-amber-600 dark:text-amber-400" role="alert">{adapterError}</p> : null}
       <SettingsFieldRow title="Execution host" labelFor="execution-host"
         feedback={unavailable ? <span role="alert">Select a host that supports workspace operations.</span> : null}

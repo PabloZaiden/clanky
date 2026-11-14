@@ -39,6 +39,7 @@ import type { QueuedChatMessage } from "@/shared/chat";
 import type { ChatTrashService } from "./chat-trash-service";
 import type { LiveTranscriptState } from "./transcript-stream-projection";
 import type { ReplyToChatQuestionRequest } from "@/contracts/api";
+import type { HarnessAdapter } from "@/shared/harness-events";
 
 export interface CreateChatOptions {
   name?: string;
@@ -62,6 +63,7 @@ export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, 
 
 export interface CreateExecutionHostChatOptions {
   name?: string;
+  adapter: HarnessAdapter;
   executionHost: ExecutionHostBinding;
   directory: string;
   modelProviderID: string;

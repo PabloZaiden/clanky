@@ -2,10 +2,6 @@
  * Harness prompt execution and persisted conversation materialization.
  */
 
-import {
-  getAcpErrorMessage,
-  isAcpErrorCode,
-} from "../backends/acp";
 import type {
   Backend,
   PromptInput,
@@ -38,7 +34,6 @@ import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
 import {
   AgentStreamCheckpointPolicy,
-  AgentStreamController,
   type AgentStreamEventResult,
   type AgentStreamHandle,
 } from "./agent-stream-controller";
@@ -72,7 +67,6 @@ import { buildPromptParts } from "../backends/prompt-parts";
 import type { ChatAttachmentService } from "./chat-attachment-service";
 import { createChatLatencyTimer } from "./chat-latency-instrumentation";
 import { createIdempotentAsyncOperation, withTimeout } from "../utils/async-operation";
-import { DEFAULT_ACTIVITY_TIMEOUT_SECONDS } from "@/shared/conversation";
 import type { QueuedChatMessage } from "@/shared/chat";
 import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
@@ -80,7 +74,7 @@ import { createTransientHarnessSession, cleanupTransientHarnessSession } from ".
 import { HarnessError } from "../backends/harness-errors";
 import { harnessActivityService } from "./harness-activity-service";
 import { isDomainError } from "../domain/domain-error";
-import { closeOpenQuestions, isQuestionOpen, updateQuestionAnswerStatus } from "@/shared/harness-questions";
+import { closeOpenQuestions, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
@@ -91,7 +85,6 @@ import { ChatDirectoryService } from "./chat-directory-service";
 import { INITIAL_PLANNING_GUIDANCE } from "@/shared/prompt-templates";
 
 const log = createLogger("chat-conversation-service");
-const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
 const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
@@ -297,7 +290,6 @@ export class ChatConversationService implements ChatConversationPort {
     let historyPromptContext: ChatHistoryPromptContext | null = null;
     let historyPromptTransferred = false;
     let promptAttempted = false;
-    let preparingAttachments = false;
     let userMessage: MessageData = (transcriptMessage && chat.state.messages.find(
       (message) => message.id === transcriptMessage.id,
     )) ?? transcriptMessage ?? {
@@ -374,44 +366,19 @@ export class ChatConversationService implements ChatConversationPort {
         current = stagedWorking.chat;
       }
 
-      let backend!: Backend;
-      let startupAttempt = 0;
-      while (true) {
-        try {
-          backend = await timer.measure("backend_connection", () =>
-            this.session.ensureBackendConnected(
-              current,
-              {
-                signal: startupOperation.controller.signal,
-              },
-              workingDirectory,
-            )
-          );
-          current = await timer.measure("session_creation", () =>
-            this.session.ensureSession(current, backend, {
-              workingDirectory,
-              signal: startupOperation.controller.signal,
-            })
-          );
-          break;
-        } catch (error) {
-          if (
-            startupAttempt === 0
-            && !startupOperation.controller.signal.aborted
-            && isRecoverableChatStartupFailure(error)
-          ) {
-            startupAttempt++;
-            log.warn("Retrying chat startup after a transient ACP failure", {
-              chatId: chat.config.id,
-              error: getAcpErrorMessage(error),
-            });
-            await this.session.disconnectChat(chat.config.id);
-            current = await this.loadChatIfAvailable(chat.config.id) ?? current;
-            continue;
-          }
-          throw error;
-        }
-      }
+      const backend = await timer.measure("backend_connection", () =>
+        this.session.ensureBackendConnected(
+          current,
+          { signal: startupOperation.controller.signal },
+          workingDirectory,
+        )
+      );
+      current = await timer.measure("session_creation", () =>
+        this.session.ensureSession(current, backend, {
+          workingDirectory,
+          signal: startupOperation.controller.signal,
+        })
+      );
       throwIfChatStartupAborted(startupOperation.controller.signal);
       if (!current.state.session?.id) {
         throw new Error("Failed to establish chat session");
@@ -430,25 +397,10 @@ export class ChatConversationService implements ChatConversationPort {
             defaultModel: current.config.model,
           }
         : undefined;
-      preparingAttachments = true;
       const attachmentFiles = await this.attachments.prepare(current, userMessage, {
         signal: startupOperation.controller.signal,
       });
-      preparingAttachments = false;
       throwIfChatStartupAborted(startupOperation.controller.signal);
-      if (options.clearQueuedMessageIds?.length && backend.harness.capabilities.adapter === "acp") {
-        current = await this.state.mutateState(chat.config.id, (latest) => ({
-          ...latest.state,
-          messages: deferQueuedMessage
-            ? [...latest.state.messages.filter((message) => message.id !== userMessage.id), userMessage]
-            : latest.state.messages,
-          queuedMessages: latest.state.queuedMessages?.filter(
-            (entry) => !options.clearQueuedMessageIds?.includes(entry.id),
-          ),
-        }));
-        if (deferQueuedMessage) this.emitMessage(current, userMessage);
-        this.emitChatUpdated(current);
-      }
       if (current.config.startWithPlan && !current.config.planningKickoffMessageId && !answerInputId) {
         await new ChatDirectoryService(this.state).preparePlanningKickoff(current.config.id);
         throwIfChatStartupAborted(startupOperation.controller.signal);
@@ -553,11 +505,7 @@ export class ChatConversationService implements ChatConversationPort {
       if (error instanceof ChatBusyError) {
         throw error;
       }
-      const erroredChat = await this.emitChatError(latest ?? chat, error);
-      const adapter = erroredChat.state.session?.binding?.adapter;
-      if (!preparingAttachments && (erroredChat.state.queuedMessages ?? []).length > 0 && (!adapter || adapter === "acp")) {
-        this.scheduleQueuedMessageDrain(chat.config.id);
-      }
+      await this.emitChatError(latest ?? chat, error);
       throw error;
     } finally {
       if (this.startupOperations.get(chat.config.id) === startupOperation) {
@@ -1395,79 +1343,8 @@ export class ChatConversationService implements ChatConversationPort {
 
   private async startActivePrompt(options: ChatPromptStartOptions): Promise<Chat> {
     this.assertRunning();
-    const { chat, backend, sessionId, prompt, signal, answerInputId, historyPromptContext } = options;
-    throwIfChatStartupAborted(signal);
-    if (backend.harness.capabilities.adapter !== "acp") return this.startNativePrompt(options);
-    const streamController = new AgentStreamController(backend);
-    const handle = streamController.start({
-      sessionId,
-      prompt,
-      activityTimeoutMs: backend.harness.capabilities.adapter === "acp"
-        ? DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS
-        : null,
-    });
-    const generation = this.nextActiveStreamGeneration(chat.config.id);
-    const activeStream: ActiveChatStream = {
-      owner: requireExecutionOwnerUser(),
-      execution: chat.config.workspaceId ? captureWorkspaceExecutionContext(chat.config.workspaceId) : undefined,
-      handle,
-      generation,
-      completion: Promise.resolve(),
-    };
-    this.activeStreams.set(chat.config.id, activeStream);
-    try {
-      throwIfChatStartupAborted(signal);
-      const streamingChat = await this.updateState(chat, {
-        ...chat.state,
-        status: "streaming",
-        error: undefined,
-        interruptRequested: false,
-        completedAt: undefined,
-        lastActivityAt: createTimestamp(),
-      }, {
-        expectedStatus: chat.state.status,
-      });
-      throwIfChatStartupAborted(signal);
-      const started = await handle.startPrompt();
-      if (!started) {
-        this.clearActiveStream(chat.config.id, generation);
-        historyPromptContext?.close();
-        if (answerInputId) {
-          await this.state.mutateState(chat.config.id, (current) => ({
-            ...current.state, harness: updateQuestionAnswerStatus(current.state.harness, answerInputId, "pending"),
-          }));
-        }
-        return await this.state.getChat(chat.config.id) ?? chat;
-      }
-      const startedChat = answerInputId
-        ? await this.state.mutateState(chat.config.id, (current) => ({
-            ...current.state,
-            harness: updateQuestionAnswerStatus(current.state.harness, answerInputId, "answered"),
-            startupStage: undefined,
-            lastActivityAt: createTimestamp(),
-          }))
-        : await this.updateState(streamingChat, {
-            ...streamingChat.state,
-            startupStage: undefined,
-            lastActivityAt: createTimestamp(),
-          }, { expectedStatus: streamingChat.state.status });
-      if (answerInputId) this.state.emitChatUpdated(startedChat);
-      throwIfChatStartupAborted(signal);
-      activeStream.completion = this.runStreamExecution(activeStream, () => this.consumeEventStream(
-        chat.config.id,
-        backend,
-        handle,
-        generation,
-        startedChat,
-        historyPromptContext,
-      ));
-      return startedChat;
-    } catch (error) {
-      this.clearActiveStream(chat.config.id, generation);
-      handle.close();
-      historyPromptContext?.close();
-      throw error;
-    }
+    throwIfChatStartupAborted(options.signal);
+    return this.startNativePrompt(options);
   }
 
   private createChatStreamState(initialChat: Chat, maxEntries = Number.POSITIVE_INFINITY): ChatStreamConsumptionState {
@@ -1493,146 +1370,6 @@ export class ChatConversationService implements ChatConversationPort {
     });
   }
 
-  private async consumeEventStream(
-    chatId: string,
-    backend: Backend,
-    handle: AgentStreamHandle,
-    generation: number,
-    initialChat: Chat,
-    historyPromptContext?: ChatHistoryPromptContext,
-  ): Promise<void> {
-    const streamState = this.createChatStreamState(initialChat);
-    const activeStream = this.activeStreams.get(chatId);
-    let stopTranscriptSynchronization: (() => void) | undefined;
-    if (activeStream?.generation === generation) {
-      activeStream.streamState = streamState;
-      stopTranscriptSynchronization = this.synchronizePersistedMessages(chatId, streamState);
-      activeStream.stopTranscriptSynchronization = stopTranscriptSynchronization;
-    }
-    const sessionId = streamState.chat.state.session?.id;
-    let canDrain = backend.harness.capabilities.adapter === "acp";
-
-    try {
-      const streamResult = await handle.consume({
-        isWaitingForInput: async () => (await this.state.getChatSummary(chatId))?.state.harness?.questions?.some(
-          (request) => request.blocking && isQuestionOpen(request),
-        ) ?? false,
-        shouldStop: () => !this.isActiveStreamGeneration(chatId, generation),
-        onInactivity: async () => {
-          if (!sessionId) {
-            log.warn("Cannot abort inactive chat stream without a session ID", { chatId });
-            return;
-          }
-          try {
-            await backend.abortSession(sessionId);
-          } catch (error) {
-            log.warn("Failed to abort inactive chat session", {
-              chatId,
-              sessionId,
-              error: String(error),
-            });
-          }
-        },
-        onEvent: (event) =>
-          this.handleChatStreamEvent(chatId, backend, generation, streamState, event),
-      });
-      if (
-        historyPromptContext
-        && streamResult.lastEvent?.type === "prompt.complete"
-        && streamResult.lastEvent.outcome === "completed"
-        && !streamState.chat.state.interruptRequested
-        && streamState.chat.state.status !== "interrupting"
-      ) {
-        try {
-          await historyPromptContext.complete();
-        } catch (error) {
-          log.warn("Failed to clean up the completed chat history recovery export", {
-            chatId,
-            error: String(error),
-          });
-        }
-      }
-      canDrain ||= streamResult.lastEvent?.type === "prompt.complete";
-      if (
-        backend.harness.capabilities.adapter !== "acp"
-        && this.isActiveStreamGeneration(chatId, generation)
-        && streamResult.lastEvent?.type !== "prompt.complete"
-        && streamResult.lastEvent?.type !== "error"
-      ) throw new HarnessError("harness_transport_closed", "Native execution ended without a principal terminal signal.");
-      if (streamResult.endedByInactivity) {
-        const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
-        if (blocks.length > 0) {
-          streamState.interpreter.acknowledgeCheckpoint();
-        }
-        await this.completeChatAfterInactivity(chatId, generation, streamState);
-      } else if (
-        streamResult.lastEvent?.type !== "prompt.complete"
-        && streamResult.lastEvent?.type !== "error"
-      ) {
-        const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
-        if (blocks.length > 0) {
-          streamState.interpreter.acknowledgeCheckpoint();
-        }
-      }
-    } catch (error) {
-      try {
-        const blocks = streamState.interpreter.flushActiveBlocks();
-        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, blocks);
-        if (blocks.length > 0) {
-          streamState.interpreter.acknowledgeCheckpoint();
-        }
-      } catch (flushError) {
-        log.error("Failed to checkpoint chat transcript after stream failure", {
-          chatId,
-          error: String(flushError),
-        });
-      }
-      if (this.shouldSuppressStreamError(
-        chatId,
-        generation,
-        isAcpErrorCode(error, "acp_request_cancelled") ? "acp_request_cancelled" : undefined,
-      )) {
-        canDrain = true;
-        const latestChat = await this.loadChatIfAvailable(chatId);
-        const interruptedChat = latestChat
-          ? {
-            ...latestChat,
-            state: {
-              ...latestChat.state,
-              messages: streamState.chat.state.messages,
-              logs: streamState.chat.state.logs,
-              toolCalls: streamState.chat.state.toolCalls,
-            },
-          }
-          : streamState.chat;
-        if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
-          await this.completeInterruptedChat(
-            interruptedChat,
-            streamState.transcriptMemory,
-            streamState.interpreter,
-          );
-        }
-        return;
-      }
-      const errorChat = await this.loadChatIfAvailable(chatId);
-      if (errorChat && this.isActiveStreamGeneration(chatId, generation)) {
-        if (sessionId && backend.isConnected()) {
-          try { await backend.abortSession(sessionId); } catch (abortError) {
-            log.error("Failed to cancel chat after stream failure", { chatId, error: String(abortError) });
-          }
-        }
-        await this.emitChatError(errorChat, error);
-      }
-    } finally {
-      stopTranscriptSynchronization?.();
-      historyPromptContext?.close();
-      this.clearActiveStream(chatId, generation);
-      if (canDrain) this.scheduleQueuedMessageDrain(chatId);
-    }
-  }
-
   private synchronizePersistedMessages(
     chatId: string,
     streamState: ChatStreamConsumptionState,
@@ -1654,86 +1391,6 @@ export class ChatConversationService implements ChatConversationPort {
         },
       };
     });
-  }
-
-  private async completeChatAfterInactivity(
-    chatId: string,
-    generation: number,
-    streamState: ChatStreamConsumptionState,
-  ): Promise<void> {
-    if (!this.isActiveStreamGeneration(chatId, generation)) {
-      return;
-    }
-    if (!await this.reloadChatStreamState(chatId, streamState, true)) {
-      return;
-    }
-
-    const chat = streamState.chat;
-    if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
-      streamState.chat = await this.completeInterruptedChat(
-        chat,
-        streamState.transcriptMemory,
-        streamState.interpreter,
-      );
-      this.clearActiveStream(chatId, generation);
-      return;
-    }
-    if (!isChatBusyStatus(chat.state.status)) {
-      return;
-    }
-
-    const inactivityMessage = "AI response stream ended after inactivity.";
-    streamState.chat = await this.emitChatLog(
-      chat,
-      "info",
-      "AI response stream ended after inactivity; treating the turn as complete",
-      { logKind: "system", reason: "activity_timeout" },
-      undefined,
-      undefined,
-      { memory: streamState.transcriptMemory },
-    );
-
-    const now = createTimestamp();
-    const closedToolCalls: PersistedToolCall[] = [];
-    streamState.interpreter.cancelRunningTools(now, inactivityMessage);
-    const toolCalls = this.cancelInFlightToolCallsWithMemory(
-      streamState.transcriptMemory,
-      now,
-      closedToolCalls,
-      inactivityMessage,
-    );
-    const nextState = {
-      ...streamState.chat.state,
-      status: "idle" as const,
-      startupStage: undefined,
-      error: undefined,
-      interruptRequested: false,
-      activeMessageId: undefined,
-      harness: {
-        ...streamState.chat.state.harness,
-        activeTurnAttachmentBytes: 0,
-      },
-      pendingPermissionRequests: this.resolvePendingPermissionRequests(
-        streamState.chat.state.pendingPermissionRequests ?? [],
-        {
-          status: "cancelled",
-          resolvedAt: now,
-          error: inactivityMessage,
-        },
-      ),
-      toolCalls,
-      lastActivityAt: now,
-    };
-    streamState.chat = await this.updateState(streamState.chat, nextState, {
-      completedTurn: true,
-      transcriptChanges: createTranscriptChangeSet(nextState, closedToolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        kind: "tool",
-        timestamp: toolCall.timestamp,
-        payload: toolCall,
-      }))),
-    });
-    this.clearActiveStream(chatId, generation);
   }
 
   private async reloadChatStreamState(
@@ -2098,7 +1755,7 @@ export class ChatConversationService implements ChatConversationPort {
         break;
 
       case "error":
-        if (this.shouldSuppressStreamError(chatId, generation, event.code)) {
+        if (this.shouldSuppressStreamError(chatId, generation)) {
           await this.flushChatStreamBlocks(
             streamState,
             transcriptResult.flushedBlocks,
@@ -2654,10 +2311,9 @@ export class ChatConversationService implements ChatConversationPort {
     error: unknown,
     code?: string,
   ): Promise<Chat> {
-    const message = typeof error === "string" ? error : getAcpErrorMessage(error);
+    const message = error instanceof Error ? error.message : String(error);
     const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
-    if (errorCode === "harness_transport_closed" && chat.state.session?.binding
-      && chat.state.session.binding.adapter !== "acp") {
+    if (errorCode === "harness_transport_closed" && chat.state.session?.binding) {
       const entry = this.activeStreams.get(chat.config.id);
       if (entry?.native) {
         await this.handleNativeObservationFailure(chat.config.id, entry, new HarnessError("harness_transport_closed", message));
@@ -2792,12 +2448,8 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
-  private shouldSuppressStreamError(chatId: string, generation: number, code?: string): boolean {
-    if (!this.isActiveStreamGeneration(chatId, generation)) {
-      return true;
-    }
-
-    return code === "acp_request_cancelled";
+  private shouldSuppressStreamError(chatId: string, generation: number): boolean {
+    return !this.isActiveStreamGeneration(chatId, generation);
   }
 
   private async updateState(
@@ -2968,13 +2620,4 @@ function throwIfChatStartupAborted(signal: AbortSignal | undefined): void {
       ? signal.reason
       : new Error("Chat startup was aborted");
   }
-}
-
-function isRecoverableChatStartupFailure(error: unknown): boolean {
-  return (
-    isAcpErrorCode(error, "acp_connection_timed_out")
-    || isAcpErrorCode(error, "acp_transport_closed")
-    || isAcpErrorCode(error, "acp_transport_unavailable")
-    || isAcpErrorCode(error, "acp_request_timed_out")
-  );
 }

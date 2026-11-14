@@ -287,10 +287,8 @@ connection, not an arbitrary production URL or the browser's loaded frontend
 version. Account administration is catalogued, while private authentication
 protocols are not part of the operational inventory.
 
-ACP model processes do not receive automatic Clanky control or CLI credentials,
-even when general access is enabled. Ordinary ACP chats and prompts still work.
 Deterministic code keeps its controller-owned control regardless of prompt
-adapter, without granting that authority to ACP. Old automatic nonterminal
+adapter. Old automatic nonterminal
 credentials are retired on startup; external integrations, personal keys and
 interactive terminal behavior are unchanged. Upgrade the controller and worker
 for lease-owned native control as described in

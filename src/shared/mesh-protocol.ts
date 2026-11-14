@@ -28,7 +28,7 @@ export interface MeshProtocolMetadata {
   supportedProtocolVersions: MeshProtocolGeneration[];
   preferredProtocolVersion: MeshProtocolGeneration;
   negotiatedProtocolVersion: MeshProtocolVersion | null;
-  harnessAdapters?: readonly ("acp" | "copilot" | "codex" | "opencode2")[];
+  harnessAdapters?: readonly ("copilot" | "codex" | "opencode2")[];
 }
 
 export function isMeshProtocolGeneration(

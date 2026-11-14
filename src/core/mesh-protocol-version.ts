@@ -16,7 +16,7 @@ export function getLocalMeshProtocolMetadata(): MeshProtocolMetadata {
     supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
     preferredProtocolVersion: MESH_PROTOCOL_PREFERRED_VERSION,
     negotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
-    harnessAdapters: ["acp", "copilot", "codex", "opencode2"],
+    harnessAdapters: ["copilot", "codex", "opencode2"],
   };
 }
 

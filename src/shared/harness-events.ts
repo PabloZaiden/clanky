@@ -4,7 +4,7 @@
 import type { MessageAttachment } from "@/shared/message-attachments";
 import type { HarnessActivity } from "./harness-control";
 
-export const HARNESS_ADAPTER_IDS = ["acp", "copilot", "codex", "opencode2"] as const;
+export const HARNESS_ADAPTER_IDS = ["copilot", "codex", "opencode2"] as const;
 export type HarnessAdapter = typeof HARNESS_ADAPTER_IDS[number];
 
 export interface HarnessNativeReferences {
@@ -17,10 +17,10 @@ export interface HarnessNativeReferences {
   commandId?: string;
 }
 
-export type HarnessEventScope =
-  | { kind: "principal"; native?: HarnessNativeReferences }
-  | { kind: "child"; activityId: string; native?: HarnessNativeReferences }
-  | { kind: "unknown"; native?: HarnessNativeReferences };
+export type HarnessEventScope<Native = HarnessNativeReferences> =
+  | { kind: "principal"; native?: Native }
+  | { kind: "child"; activityId: string; native?: Native }
+  | { kind: "unknown"; native?: Native };
 
 export interface ProviderImageFileReference {
   path: string;

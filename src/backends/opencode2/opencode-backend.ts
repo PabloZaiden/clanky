@@ -1,5 +1,5 @@
 /**
- * Native runtime 2 facade; ACP remains a separate integration.
+ * Native runtime 2 facade.
  */
 
 import type {

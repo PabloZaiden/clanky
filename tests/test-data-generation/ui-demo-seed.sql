@@ -67,17 +67,17 @@ INSERT INTO execution_hosts (
   (
     'demo-host-local', 'demo-user', 'local', 'demo-local-node', 'demo-target-local', 1, NULL,
     '2026-04-16T18:00:00.000Z', '2026-04-17T13:50:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-build', 'demo-user', 'mesh', 'demo-build-node', 'demo-target-build', 3, NULL,
     '2026-04-16T18:01:00.000Z', '2026-04-17T13:45:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-mesh', 'demo-user', 'mesh', 'demo-worker-node', 'demo-target-mesh', 2, NULL,
     '2026-04-16T18:02:00.000Z', '2026-04-17T13:48:00.000Z', 'linux', 'aarch64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"acpRuntime":2,"interactiveTerminal":1,"tcpTunnel":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"tcpTunnel":1,"serverHealth":1}'
   )
 ON CONFLICT(id) DO UPDATE SET
   user_id = excluded.user_id,
@@ -225,20 +225,20 @@ INSERT INTO workspaces (
 ) VALUES
   (
     'demo-workspace-local', 'demo-user', 'Storefront Web', '/workspaces/demo-storefront',
-    'git', 2, 'demo-host-local', 1, '{"agent":{"provider":"opencode"}}',
+    'git', 2, 'demo-host-local', 1, '{"agent":{"adapter":"opencode2","provider":"opencode"}}',
     '2026-04-16T17:50:00.000Z', '2026-04-17T13:30:00.000Z',
     0, 0, 1, NULL, 'https://github.com/example/demo-storefront', NULL, NULL, NULL, NULL, 1
   ),
   (
     'demo-workspace-remote', 'demo-user', 'Billing API', '/srv/workspaces/billing-api',
-    'git', 4, 'demo-host-build', 3, '{"agent":{"provider":"copilot"}}',
+    'git', 4, 'demo-host-build', 3, '{"agent":{"adapter":"copilot","provider":"copilot"}}',
     '2026-04-16T17:55:00.000Z', '2026-04-17T13:35:00.000Z',
     0, 0, 1, '/srv/workspaces', 'https://github.com/example/billing-api',
     '/srv/workspaces', '.devcontainer/api', 'demo-host-build', 3, 1
   ),
   (
     'demo-workspace-mesh', 'demo-user', 'Analytics Lab', '/srv/mesh/analytics-lab',
-    'directory', 3, 'demo-host-mesh', 2, '{"agent":{"provider":"codex"}}',
+    'directory', 3, 'demo-host-mesh', 2, '{"agent":{"adapter":"codex","provider":"codex"}}',
     '2026-04-17T09:00:00.000Z', '2026-04-17T13:42:00.000Z',
     1, 0, 0, '/srv/mesh', NULL, '/srv/mesh', NULL, 'demo-host-mesh', 2, 0
   )

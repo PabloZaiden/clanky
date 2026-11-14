@@ -1,18 +1,17 @@
 import type { AgentProvider } from "@/shared/settings";
-import acpBlackPath from "./provider-icons/acp_mark-black.svg" with { type: "file" };
-import acpWhitePath from "./provider-icons/acp_mark-white.svg" with { type: "file" };
+import { ChatIcon } from "./Icons";
 import openaiMarkPath from "./provider-icons/openai-mark.svg" with { type: "file" };
 import copilotPath from "./provider-icons/copilot-24.svg" with { type: "file" };
 import opencodeDarkThemePath from "./provider-icons/opencode-logo-dark-square.svg" with { type: "file" };
 import opencodeLightThemePath from "./provider-icons/opencode-logo-light-square.svg" with { type: "file" };
 
-export type ProviderIconKind = "opencode" | "codex" | "copilot" | "acp";
+export type ProviderIconKind = "opencode" | "codex" | "copilot" | "generic";
 
 export function getProviderIconKind(provider: AgentProvider | string): ProviderIconKind {
   if (provider === "opencode" || provider === "codex" || provider === "copilot") {
     return provider;
   }
-  return "acp";
+  return "generic";
 }
 
 export function ProviderIcon({
@@ -46,23 +45,8 @@ export function ProviderIcon({
     );
   }
 
-  if (kind === "acp") {
-    return (
-      <>
-        <img
-          className={`${imageClassName} dark:hidden`}
-          src={acpBlackPath}
-          alt=""
-          aria-hidden="true"
-        />
-        <img
-          className={`${imageClassName} hidden dark:inline-block`}
-          src={acpWhitePath}
-          alt=""
-          aria-hidden="true"
-        />
-      </>
-    );
+  if (kind === "generic") {
+    return <ChatIcon size={size} className={`shrink-0 ${className}`} />;
   }
 
   return (

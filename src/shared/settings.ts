@@ -8,7 +8,7 @@ import { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
 export { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
 const NATIVE_HARNESS_PROVIDERS = { copilot: "copilot", codex: "codex", opencode2: "opencode" } as const;
 
-export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi", "grok"] as const;
+export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex"] as const;
 
 export type AgentProvider = typeof AGENT_PROVIDER_IDS[number];
 export type AgentTransport = "stdio";
@@ -29,8 +29,12 @@ export type RuntimeAgentSettings = AgentSettings & {
   transport: AgentTransport;
 };
 
-export function createAgentSettings(adapter: HarnessAdapter, acpProvider: AgentProvider = DEFAULT_SERVER_AGENT_PROVIDER): AgentSettings {
-  return { adapter, provider: adapter === "acp" ? acpProvider : NATIVE_HARNESS_PROVIDERS[adapter] };
+export function getHarnessAdapterForProvider(provider: AgentProvider): HarnessAdapter {
+  return provider === "opencode" ? "opencode2" : provider;
+}
+
+export function createAgentSettings(adapter: HarnessAdapter): AgentSettings {
+  return { adapter, provider: NATIVE_HARNESS_PROVIDERS[adapter] };
 }
 
 export function isAgentSettings(value: unknown): value is AgentSettings {
@@ -39,7 +43,7 @@ export function isAgentSettings(value: unknown): value is AgentSettings {
   const adapter = record["adapter"];
   return HARNESS_ADAPTER_IDS.includes(adapter as HarnessAdapter)
     && isAgentProvider(record["provider"])
-    && (adapter === "acp" || NATIVE_HARNESS_PROVIDERS[adapter as Exclude<HarnessAdapter, "acp">] === record["provider"]);
+    && NATIVE_HARNESS_PROVIDERS[adapter as HarnessAdapter] === record["provider"];
 }
 
 export interface ServerSettings {
@@ -53,7 +57,7 @@ export interface RuntimeServerSettings {
 export function getDefaultServerSettings(): ServerSettings {
   return {
     agent: {
-      adapter: "acp",
+      adapter: "opencode2",
       provider: DEFAULT_SERVER_AGENT_PROVIDER,
     },
   };
@@ -64,7 +68,7 @@ export function getDefaultRuntimeServerSettings(
 ): RuntimeServerSettings {
   return {
     agent: {
-      adapter: "acp",
+      adapter: getHarnessAdapterForProvider(provider),
       provider,
       transport: "stdio",
     },
@@ -74,7 +78,7 @@ export function getDefaultRuntimeServerSettings(
 export function getCreateWorkspaceDefaultServerSettings(): ServerSettings {
   return {
     agent: {
-      adapter: "acp",
+      adapter: "copilot",
       provider: DEFAULT_EXECUTION_AGENT_PROVIDER,
     },
   };

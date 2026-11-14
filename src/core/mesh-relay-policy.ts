@@ -58,7 +58,6 @@ export const MESH_RELAY_CONTROLLER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<
     ["/api/mesh/internal/execution/rpc", new Set(["POST"])],
     ["/api/mesh/internal/execution/async", new Set(["POST"])],
     ["/api/mesh/internal/execution/file", new Set(["GET", "POST"])],
-    ["/api/mesh/internal/execution/acp/renew", new Set(["POST"])],
     ["/api/mesh/internal/harness/rpc", new Set(["POST"])],
     ["/api/mesh/internal/harness/events", new Set(["POST"])],
     ["/api/mesh/internal/harness/renew", new Set(["POST"])],
@@ -68,7 +67,6 @@ export const MESH_RELAY_CONTROLLER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<
 
 /** Socket routes a controller may open towards a worker. */
 export const MESH_RELAY_CONTROLLER_SOCKET_ROUTES: ReadonlySet<string> = new Set([
-  "/api/mesh/internal/execution/acp",
   "/api/mesh/internal/terminal",
   "/api/mesh/internal/tcp-tunnel",
 ]);

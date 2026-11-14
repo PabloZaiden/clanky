@@ -57,7 +57,6 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
   "directoryTree",
   "git",
   "managedWorktrees",
-  "acpRuntime",
   "interactiveTerminal",
   "provisioning",
   "devboxLifecycle",
@@ -83,7 +82,6 @@ export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   directoryTree: 1,
   git: 2,
   managedWorktrees: MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
-  acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
   devboxLifecycle: 1,
@@ -96,9 +94,9 @@ export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
 ] as const satisfies readonly ExecutionHostCapabilityId[];
 
 export function getAgentExecutionHostCapability(
-  adapter: HarnessAdapter,
-): "acpRuntime" | "commandExecution" {
-  return adapter === "acp" ? "acpRuntime" : "commandExecution";
+  _adapter: HarnessAdapter,
+): "commandExecution" {
+  return "commandExecution";
 }
 
 /**
@@ -160,7 +158,6 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   fileOperations: 2,
   git: 2,
   managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
-  acpRuntime: 2,
   interactiveTerminal: 1,
   provisioning: 1,
   devboxLifecycle: 1,
@@ -465,12 +462,6 @@ export function supportsGitCommandScope(
   scope: GitCommandScope,
 ): boolean {
   return getUnavailableGitCommandCapability(capabilities, scope) === null;
-}
-
-export function supportsPortableAcpRuntime(
-  capabilities: ExecutionHostCapabilities,
-): boolean {
-  return supportsExecutionHostCapability(capabilities, "acpRuntime");
 }
 
 export function getManagedWorktreesCommandMinimumVersion(

@@ -3,7 +3,7 @@
  */
 
 import { posix as pathPosix } from "node:path";
-import { AGENT_PROVIDER_IDS, createAgentSettings, type HarnessAdapter } from "@/shared/settings";
+import { HARNESS_ADAPTER_IDS, createAgentSettings } from "@/shared/settings";
 import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { getWorkerChannelPath } from "../worker-channel";
 
@@ -123,8 +123,8 @@ fi
 }
 
 export function buildRuntimeInstaller(): string {
-  const providers = Object.fromEntries(Object.keys(NATIVE_RUNTIME_PACKAGES).map((adapter) => [
-    adapter, createAgentSettings(adapter as HarnessAdapter, "copilot").provider,
+  const providers = Object.fromEntries(HARNESS_ADAPTER_IDS.map((adapter) => [
+    adapter, createAgentSettings(adapter).provider,
   ]));
   return `#!/bin/sh
 set -eu
@@ -133,10 +133,9 @@ manifest=\${1:-"$root/runtime.json"}
 ${buildNodePathFallback()}
 command -v node >/dev/null || { echo "Native runtime installation requires Node.js." >&2; exit 1; }
 command -v npm >/dev/null || { echo "Native runtime installation requires npm." >&2; exit 1; }
-adapter=$(node -e 'const fs = require("node:fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const providers = ${JSON.stringify(providers)}; const presets = ${JSON.stringify(AGENT_PROVIDER_IDS)}; if (!c || !(c.adapter === "acp" ? presets.includes(c.provider) : Object.hasOwn(providers, c.adapter) && providers[c.adapter] === c.provider)) throw new Error("Invalid workspace runtime selection"); process.stdout.write(c.adapter);' "$manifest")
+adapter=$(node -e 'const fs = require("node:fs"); const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); const providers = ${JSON.stringify(providers)}; if (!c || !Object.hasOwn(providers, c.adapter) || providers[c.adapter] !== c.provider) throw new Error("Invalid workspace runtime selection"); process.stdout.write(c.adapter);' "$manifest")
 mkdir -p "$root/runtime/bin"
 case "$adapter" in
-  acp) exit 0 ;;
 ${Object.entries(NATIVE_RUNTIME_PACKAGES).map(([adapter, entry]) =>
     `  ${adapter}) package=${shellQuote(entry.package)}; executable=${shellQuote(entry.executable)} ;;`).join("\n")}
   *) echo "Unsupported native adapter." >&2; exit 1 ;;

@@ -3,8 +3,8 @@
  */
 import { z } from "zod";
 import { DomainError } from "../domain/domain-error";
-import { CreateChatRequestSchema } from "@/contracts/schemas/chat";
-import { CreateWorkspaceRequestSchema, AgentProviderSchema } from "@/contracts/schemas/workspace";
+import { CreateChatRequestSchema, CreateExecutionHostChatRequestSchema } from "@/contracts/schemas/chat";
+import { CreateWorkspaceRequestSchema } from "@/contracts/schemas/workspace";
 import { ModelConfigSchema, type ModelConfig } from "@/contracts/schemas/model";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
 import { getExecutionHostSourceId } from "@/shared/execution-host";
@@ -14,6 +14,7 @@ import { directRecord, ControlToolContext } from "./control-tool-context";
 import type { OperationResult } from "./clanky-operation-service";
 import type { ConfirmedWriteExecutor } from "./control-actions";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { createAgentSettings, getHarnessAdapterForProvider, isAgentProvider } from "@/shared/settings";
 
 const log = createLogger("core:voice-direct-creation");
 const ModelsSchema = z.array(z.object({
@@ -133,13 +134,22 @@ export async function directCreateChat(context: ControlToolContext, input: Direc
     const ref = ExecutionHostRefSchema.parse(host["ref"]);
     parameters = { kind: ref.kind, id: getExecutionHostSourceId(ref) };
     const preferred = host["preferredModel"] ? ModelConfigSchema.parse(host["preferredModel"]) : null;
-    const preference = input.model ?? preferred;
-    if (!preference) throw new DomainError("voice_model_required", "Choose a model or configure the host's preferred model.");
-    const providerID = AgentProviderSchema.parse(preference.providerID);
+    const adapter = input.adapter ?? (preferred && isAgentProvider(preferred.providerID)
+      ? getHarnessAdapterForProvider(preferred.providerID) : null);
+    if (!adapter) throw new DomainError("voice_adapter_required", "Choose a native adapter or configure the host's preferred harness.");
+    const { provider: providerID } = createAgentSettings(adapter);
     const models = ModelsSchema.parse(await context.readExact("POST /api/execution-hosts/:kind/:id/chat-models", parameters, {
       body: { providerID, directory: input.directory },
     }));
-    body = { directory: input.directory, model: chooseModel(models, preference), startWithPlan: input.startWithPlan, ...(input.name ? { name: input.name } : {}) };
+    const preferredModel = preferred && preferred.providerID === providerID
+      ? { ...preferred, providerID: models.find((model) => model.modelID === preferred.modelID)?.providerID ?? preferred.providerID }
+      : preferred;
+    const preference = input.model ?? preferredModel;
+    if (!preference) throw new DomainError("voice_model_required", "Choose a model or configure the host's preferred model.");
+    body = CreateExecutionHostChatRequestSchema.parse({
+      adapter, directory: input.directory, model: chooseModel(models, preference),
+      startWithPlan: input.startWithPlan, ...(input.name ? { name: input.name } : {}),
+    });
     operationId = "POST /api/execution-hosts/:kind/:id/chats";
   }
   const compound = Boolean(input.initialMessage || input.open);

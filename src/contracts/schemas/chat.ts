@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "@/shared";
+import { DEFAULT_CHAT_INTERRUPT_REASON, HARNESS_ADAPTER_IDS } from "@/shared";
 import { ModelConfigSchema } from "./model";
 import { EntityNameSchema, MessageAttachmentsSchema } from "./conversation";
 import { AgentProviderSchema } from "./workspace";
@@ -57,9 +57,8 @@ export const CreateChatRequestSchema = z.object({
 export const CreateExecutionHostChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
   directory: z.string().trim().min(1, "directory is required"),
-  model: ModelConfigSchema.extend({
-    providerID: AgentProviderSchema,
-  }),
+  adapter: z.enum(HARNESS_ADAPTER_IDS),
+  model: ModelConfigSchema,
   startWithPlan: z.boolean().optional(),
 }).strict();
 

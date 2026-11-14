@@ -18,7 +18,7 @@ import {
 } from "./process";
 import { operationSignal } from "./timeouts";
 import {
-  installExternalAcpProvider,
+  installExternalNativeCopilotProvider,
   installExternalGitHubProvider,
 } from "./provider";
 
@@ -65,7 +65,7 @@ export class E2EApplication {
       mkdir(application.logsDirectory, { recursive: true, mode: 0o700 }),
     ]);
     await Promise.all([
-      installExternalAcpProvider(application.providerBinDirectory),
+      installExternalNativeCopilotProvider(application.providerBinDirectory),
       installExternalGitHubProvider(application.providerBinDirectory),
     ]);
     return application;

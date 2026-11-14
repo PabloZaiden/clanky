@@ -6,7 +6,6 @@ import type { HarnessControl } from "@/shared/harness-control";
 import { HarnessError } from "../backends/harness-errors";
 
 export async function waitForHarnessQuiescence(control: HarnessControl, sessionId: string, shouldStop: () => boolean): Promise<void> {
-  if (control.capabilities.adapter === "acp") return;
   while (!shouldStop()) {
     const activity = await control.getActivity(sessionId);
     if (activity.observation !== "available" || activity.coverage !== "native") {

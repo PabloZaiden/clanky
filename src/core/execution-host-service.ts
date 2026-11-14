@@ -489,7 +489,7 @@ export class ExecutionHostService {
     context: ExecutionHostCommandContext,
   ): Promise<Array<{ providerID: AgentProvider; available: boolean }>> {
     const userId = context.localUserId ?? requireExecutionOwnerUserId();
-    await this.requireCapability(ref, "acpRuntime", userId, 1);
+    await this.requireCapability(ref, "commandExecution", userId, 1);
     const binding = this.getBinding(ref, userId);
     const executor = await this.getCommandExecutor(binding, {
       ...context,

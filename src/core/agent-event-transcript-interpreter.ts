@@ -1,5 +1,5 @@
 /**
- * Shared projection of normalized ACP agent events into transcript updates.
+ * Shared projection of normalized harness events into transcript updates.
  *
  * This module owns turn-local transcript mechanics only. Chat and Automation
  * consumers decide how the projections are persisted, published, and mapped

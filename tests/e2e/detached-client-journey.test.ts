@@ -97,7 +97,7 @@ test("a statically hosted client authorizes, works with private files and retire
       name: "Detached client workspace",
       directory: fixture.repositoryDirectory,
       executionHost: host.ref,
-      serverSettings: { agent: { adapter: "acp", provider: "copilot" } },
+      serverSettings: { agent: { adapter: "copilot", provider: "copilot" } },
     }, tokens.access_token);
     const resource = await remoteJson<{ url: string }>("/api/auth/client-ticket", {
       kind: "resource",

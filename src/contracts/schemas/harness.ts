@@ -58,10 +58,15 @@ export const HarnessActivitySchema = z.object({
 });
 
 const HarnessQuestionStatusSchema = z.enum(["pending", "queued", "submitting", "unconfirmed", "answered", "cancelled", "expired"]);
+const PersistedNativeReferencesSchema = HarnessNativeReferencesSchema.extend({ adapter: z.string().min(1) });
 
 export const HarnessQuestionMessageSchema = z.object({
   requestId: z.string(),
-  scope: HarnessEventScopeSchema,
+  scope: z.discriminatedUnion("kind", [
+    HarnessEventScopeSchema.options[0].extend({ native: PersistedNativeReferencesSchema.optional() }),
+    HarnessEventScopeSchema.options[1].extend({ native: PersistedNativeReferencesSchema.optional() }),
+    HarnessEventScopeSchema.options[2].extend({ native: PersistedNativeReferencesSchema.optional() }),
+  ]),
   status: HarnessQuestionStatusSchema,
   imageDelivery: z.literal("file").optional(),
 });

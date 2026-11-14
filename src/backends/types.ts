@@ -33,21 +33,13 @@ export interface ConnectionInfo {
 }
 
 /**
- * Configuration for connecting to an ACP backend.
+ * Configuration for connecting to a harness backend.
  */
 export interface BackendConnectionConfig {
-  /** Selected agent provider (used by ACP backends) */
+  /** Selected agent provider */
   provider?: AgentProvider;
-  /** Selected agent transport (used by ACP backends) */
-  transport?: "stdio";
-  /** Derived command for ACP transport */
-  command?: string;
-  /** Derived command args for ACP transport */
-  args?: string[];
-  /** Environment for the spawned ACP runtime */
+  /** Environment for the spawned runtime */
   env?: NodeJS.ProcessEnv;
-  /** Secret-free process bootstrap data written to the spawned runtime stdin */
-  startupStdin?: string;
   /** Managed Clanky runtime environment delivered separately to Mesh workers. */
   managedEnvironment?: Record<string, string>;
   /** Execution-owned application control, independent of the CLI environment. */
@@ -56,7 +48,7 @@ export interface BackendConnectionConfig {
   controlTools?: boolean;
   /** Working directory for the backend */
   directory: string;
-  /** Mesh ownership metadata for remote stdio ACP transport. */
+  /** Remote ownership metadata; local adapters reject remote execution. */
   mesh?: {
     workspaceId: string;
     executionNodeId: string;
@@ -72,12 +64,12 @@ export interface CreateSessionOptions {
   title?: string;
   /** Working directory */
   directory: string;
-  /** Default model for the session (modelID string sent to ACP) */
+  /** Default model for the session */
   model?: string;
 }
 
 /**
- * A value option within a config option (per ACP session-config-options spec).
+ * A value option within a session configuration option.
  */
 export interface ConfigOptionValue {
   /** Value identifier used when setting this option */
@@ -89,8 +81,7 @@ export interface ConfigOptionValue {
 }
 
 /**
- * A session-level configuration option (per ACP session-config-options spec).
- * Agents return these in the session/new response and in config_options_update notifications.
+ * A session-level configuration option reported by a harness.
  */
 export interface ConfigOption {
   /** Unique identifier for this option (e.g. "model", "mode") */
@@ -120,9 +111,9 @@ export interface AgentSession {
   title?: string;
   /** Creation timestamp (ISO) */
   createdAt: string;
-  /** Model reported by the ACP server for this session (if available) */
+  /** Model reported by the harness for this session (if available) */
   model?: string;
-  /** Config options returned by the agent (per ACP session-config-options spec) */
+  /** Configuration options returned by the harness */
   configOptions?: ConfigOption[];
 }
 
@@ -161,7 +152,6 @@ export interface AgentResponse {
 
 /**
  * Backend interface that all backend implementations must implement.
- * This includes both the real AcpBackend and MockAcpBackend for tests.
  * 
  * The interface is split into two parts:
  * - Core methods: Used by conversation runtimes for agent execution
@@ -220,10 +210,10 @@ export interface Backend {
   /** Private human input; never a normal question answer or a model tool argument. */
   replyToSecret?(requestId: string, value: string | null): Promise<void>;
 
-  /** Set a session config option (per ACP session-config-options spec) */
+  /** Set a session configuration option */
   setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]>;
 
-  /** Set the model via session/set_model (fallback for agents without config options) */
+  /** Set the session model */
   setSessionModel(sessionId: string, modelId: string): Promise<void>;
 
   // ============================================
@@ -235,9 +225,7 @@ export interface Backend {
 
   /**
    * Get the SDK/client instance.
-   * Returns `unknown` intentionally — this interface is implemented by both
-   * the real AcpBackend and MockAcpBackend. Typing it as a concrete client
-   * would couple shared contracts to one provider's SDK shape.
+   * Returns `unknown` to avoid coupling shared contracts to one provider's SDK.
    * Callers should cast as needed.
    */
   getSdkClient(): unknown;

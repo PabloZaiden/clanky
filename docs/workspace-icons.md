@@ -75,9 +75,9 @@ complex CSS expressions are not supported.
 
 ## Provider icons
 
-Provider icons follow the provider configured for the workspace, regardless
-of whether it uses a native adapter or ACP. OpenCode, Codex, and GitHub Copilot
-have distinct icons; other ACP providers use the generic ACP icon.
+Provider icons follow the provider configured for the workspace.
+OpenCode, Codex and GitHub Copilot have distinct icons; unrecognized historical
+provider names use a generic conversation icon.
 
 The workspace icon appears beside the workspace name. In Active Work, the
 provider mark follows the item type, such as **Chat**, in the sidebar and

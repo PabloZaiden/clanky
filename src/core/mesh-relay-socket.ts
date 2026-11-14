@@ -1,7 +1,7 @@
 /**
  * WebSocket-shaped virtual client for Mesh relay socket streams.
  *
- * Existing ACP, terminal and TCP tunnel consumers treat their Mesh transport
+ * Terminal and TCP tunnel consumers treat their Mesh transport
  * as a `WebSocket`, so this class reproduces the observable surface they use:
  * numeric `readyState`, `binaryType`, `on*` handlers, `addEventListener`, and
  * `send`/`close` semantics. Message boundaries are preserved: text frames stay

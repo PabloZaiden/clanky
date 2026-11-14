@@ -31,7 +31,7 @@ export function getAgentStreamTextByteLength(text: string): number {
 }
 
 /**
- * Shared durability policy for ACP text deltas.
+ * Shared durability policy for harness text deltas.
  *
  * Domain consumers keep their active transcript in memory and call
  * `recordText` for each delta. Semantic events and terminal paths force a

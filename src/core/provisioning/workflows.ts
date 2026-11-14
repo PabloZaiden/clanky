@@ -32,6 +32,7 @@ import { shellQuote, type WorkerPaths } from "./worker-assets";
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
 import { isMeshOutboundRoute } from "@/shared/mesh";
+import { getHarnessAdapterForProvider } from "@/shared/settings";
 
 function buildDevboxArgs(
   command: "up" | "rebuild",
@@ -93,7 +94,7 @@ export class ProvisioningWorkflows {
       }
       const serverSettings: ServerSettings = {
         agent: {
-          adapter: record.job.config.adapter ?? "acp",
+          adapter: record.job.config.adapter ?? getHarnessAdapterForProvider(record.job.config.provider),
           provider: record.job.config.provider,
         },
       };

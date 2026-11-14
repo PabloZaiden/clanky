@@ -13,7 +13,6 @@ import type { Database } from "bun:sqlite";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isIntrospectableTableName } from "../schema-inventory";
 import { repairConsolidatedSchema } from "./consolidated-schema-repair";
-import { isAgentProvider } from "@/shared/settings";
 import { getMessageAttachmentKind } from "@/shared/message-attachments";
 import { isPersistedMessage } from "../transcripts/codec";
 import { LEGACY_PROMPT_TEMPLATES } from "./legacy-prompt-templates";
@@ -493,8 +492,8 @@ export const migrations: Migration[] = [
         }
         const record = agent as Record<string, unknown>;
         if (record["adapter"] !== undefined) continue;
-        if (!isAgentProvider(record["provider"])) {
-          log.warn("Cannot migrate unknown workspace ACP preset", { workspaceId: row.id });
+        if (!["opencode", "copilot", "codex", "claude", "pi", "grok"].includes(String(record["provider"]))) {
+          log.warn("Cannot migrate unknown workspace harness provider", { workspaceId: row.id });
           continue;
         }
         update.run(JSON.stringify({ ...settings, agent: { ...record, adapter: "acp" } }), row.id);
@@ -991,6 +990,20 @@ export const migrations: Migration[] = [
     version: 96,
     name: "retire_task_preferences",
     up: retireTaskPreferences,
+  },
+  {
+    version: 97,
+    name: "add_execution_host_chat_adapter",
+    up: (db) => {
+      db.run("ALTER TABLE chats ADD COLUMN harness_adapter TEXT");
+      db.run(`
+        UPDATE chats SET harness_adapter = CASE model_provider_id
+          WHEN 'copilot' THEN 'copilot'
+          WHEN 'codex' THEN 'codex'
+          WHEN 'opencode' THEN 'opencode2'
+        END WHERE source_kind = 'execution_host'
+      `);
+    },
   },
 ];
 

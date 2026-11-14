@@ -9,11 +9,11 @@ import {
   type WorkspaceType,
 } from "@/shared";
 import {
-  DEFAULT_EXECUTION_AGENT_PROVIDER,
   createAgentSettings,
   getCreateWorkspaceDefaultServerSettings,
+  getHarnessAdapterForProvider,
 } from "@/shared/settings";
-import type { AgentProvider, HarnessAdapter, ServerSettings } from "@/shared/settings";
+import type { HarnessAdapter, ServerSettings } from "@/shared/settings";
 import type {
   CreateWorkspaceRequest,
 } from "@/contracts/schemas/workspace";
@@ -93,8 +93,6 @@ export interface UseWorkspaceCreateResult {
   setAutomaticAdvancedOpen: (open: boolean) => void;
   automaticAdapter: HarnessAdapter;
   setAutomaticAdapter: (adapter: HarnessAdapter) => void;
-  automaticProvider: AgentProvider;
-  setAutomaticProvider: (provider: AgentProvider) => void;
   automaticChannel: WorkerUpdateMode;
   setAutomaticChannel: (channel: WorkerUpdateMode) => void;
   handleCreateWorkspace: (event: FormEvent<HTMLFormElement>) => void;
@@ -210,10 +208,7 @@ export function useWorkspaceCreate({
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
   const [automaticGithubUser, setAutomaticGithubUser] = useState("");
   const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
-  const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>(
-    DEFAULT_EXECUTION_AGENT_PROVIDER,
-  );
-  const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("acp");
+  const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("copilot");
   const [automaticChannel, setAutomaticChannel] = useState<WorkerUpdateMode>("default");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOnComposeWorkspaceRef = useRef(false);
@@ -288,8 +283,7 @@ export function useWorkspaceCreate({
         setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
         setAutomaticGithubUser(config.githubUser ?? "");
         setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
-        setAutomaticProvider(config.provider);
-        setAutomaticAdapter(config.adapter ?? "acp");
+        setAutomaticAdapter(config.adapter ?? getHarnessAdapterForProvider(config.provider));
         setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
         prefilledRetryJobIdRef.current = retryJobId;
         provisioning.clearActiveJob();
@@ -360,7 +354,7 @@ export function useWorkspaceCreate({
     setAutomaticDevboxTemplate("");
     setAutomaticGithubUser("");
     setAutomaticAdvancedOpen(false);
-    setAutomaticProvider(DEFAULT_EXECUTION_AGENT_PROVIDER);
+    setAutomaticAdapter("copilot");
     setAutomaticChannel("default");
   }, [
     provisioning.clearActiveJob,
@@ -573,8 +567,7 @@ export function useWorkspaceCreate({
     setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
     setAutomaticGithubUser(config.githubUser ?? "");
     setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
-    setAutomaticProvider(config.provider);
-    setAutomaticAdapter(config.adapter ?? "acp");
+    setAutomaticAdapter(config.adapter ?? getHarnessAdapterForProvider(config.provider));
     setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
     provisioning.clearActiveJob();
   }
@@ -633,7 +626,7 @@ export function useWorkspaceCreate({
             : automaticDevcontainerSubpath.trim() || null,
           devboxTemplate: automaticDevboxTemplate.trim() || null,
           githubUser: automaticGithubUser.trim() || null,
-          ...createAgentSettings(automaticAdapter, automaticProvider),
+          ...createAgentSettings(automaticAdapter),
           createNewRepository: automaticCreateNewRepository,
           mode: "provision",
           ...(!workspaceWorkerEnrollmentSelected
@@ -750,8 +743,6 @@ export function useWorkspaceCreate({
     setAutomaticAdvancedOpen,
     automaticAdapter,
     setAutomaticAdapter,
-    automaticProvider,
-    setAutomaticProvider,
     automaticChannel,
     setAutomaticChannel,
     handleCreateWorkspace,

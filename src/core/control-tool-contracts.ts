@@ -8,6 +8,7 @@ import { ControlConfirmationDescriptionSchema } from "@/shared/control-interacti
 import { ExecuteOperationSchema, type ControlToolDefinition } from "@/contracts/schemas/control";
 import { AgentNotificationSchema } from "@/contracts/schemas/agent-notifications";
 import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 
 const optionalText = z.string().trim().min(1).max(500).nullable().default(null);
 const workspace = optionalText.describe("Workspace ID or exact name; null means no workspace filter.");
@@ -43,6 +44,7 @@ export const controlDirectSchemas = {
   }).strict(),
   clanky_create_chat: z.object({
     name: optionalText, workspace, host: optionalText,
+    adapter: z.enum(HARNESS_ADAPTER_IDS).nullable().default(null).describe("Direct-host harness selection; null uses the host's preferred harness. Workspace chats use their workspace adapter."),
     directory: z.string().trim().min(1).max(16_384).nullable().default(null),
     model, useWorktree: z.boolean().nullable().default(null), baseBranch: optionalText,
     startWithPlan: z.boolean().default(false),
@@ -86,7 +88,7 @@ export const controlDirectDescriptions: Record<DirectToolName, string> = {
   clanky_read_chat: "Read a named/ID/current chat's raw status, Voice status category, pending interactions and literal conversation together. latest selects the final messages directly; earliest starts history. Follow cursor for the selected range. Direct, no discovery.",
   clanky_send_chat_message: "Send one instruction to an existing named/ID/current chat. Resolves the target internally. Reports admission, not completed work. Never replay an uncertain mutation. Direct, no discovery.",
   clanky_steer_queued_chat_message: "Steer one existing queued chat message into a streaming native execution; this does not send new content. If messageId is null, proceeds only when exactly one message is queued. When several are queued, choose one of the returned candidates and pass its messageId. Reports native admission, not delivery or completion. Direct, no discovery.",
-  clanky_create_chat: "Create a workspace or direct-host chat with real models/defaults. Choose workspace OR host. Optional initialMessage/open run after successful creation and are included in its confirmation when required by the user's nonvoice setting; Voice always confirms. Direct, no discovery.",
+  clanky_create_chat: "Create a workspace or direct-host chat with real models/defaults. Choose workspace OR host. Direct-host adapter selects the harness independently of model.providerID; null uses the host's preferred harness. Optional initialMessage/open run after successful creation and are included in its confirmation when required by the user's nonvoice setting; Voice always confirms. Direct, no discovery.",
   clanky_interrupt_chat: "Interrupt an active named/ID/current chat. Stopping voice is different. Direct, no discovery.",
   clanky_update_chat_lifecycle: "Change a standalone chat's lifecycle only: mark_done uses the supported done action and does not interrupt busy work; move_to_trash stops work and keeps the chat recoverable for 30 days. Trash confirmation follows the user's nonvoice approval setting; Voice always requires a user-language confirmationDescription and visual approval. Never set runtime statuses or permanently purge. Automation chats are not supported. Direct, no discovery.",
   clanky_respond_chat_interaction: "Answer a pending chat question (answers) or decide permission (decision). requestId=null selects only an unambiguous pending interaction. Permission decisions follow the user's nonvoice approval setting; Voice always confirms. Direct, no discovery.",

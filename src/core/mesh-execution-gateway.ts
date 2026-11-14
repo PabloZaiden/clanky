@@ -20,7 +20,6 @@ import type {
   MeshExecutionSessionRequest,
 } from "@/contracts/schemas/mesh-execution";
 import {
-  MESH_ACP_CHANNEL,
   MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_CONTROL_VERSION,
   MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS,
@@ -33,7 +32,7 @@ import {
   MESH_EXECUTION_MAX_MESSAGE_BYTES,
   MESH_EXECUTION_SESSION_TTL_MS,
   MESH_EXECUTION_MAX_IN_FLIGHT_REQUESTS,
-  MESH_ACP_SESSION_TTL_MS,
+  MESH_HARNESS_SESSION_TTL_MS,
   MESH_EXECUTION_PROTOCOL_VERSION,
   type MeshExecutionProtocolVersion,
 } from "@/shared/mesh-execution";
@@ -187,8 +186,8 @@ interface MeshExecutionSession {
   directory: string;
   bindingDirectory: string;
   provider: AgentProvider;
-  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
-  adapter?: Exclude<HarnessAdapter, "acp">;
+  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  adapter?: HarnessAdapter;
   ownerId?: string;
   expiresAt: number;
   environment?: Record<string, string>;
@@ -208,15 +207,6 @@ export interface MeshExecutionSessionResponse {
   sessionToken: string;
   executionRoot: string;
   expiresAt: string;
-}
-
-export interface MeshAcpSessionConfig {
-  sessionId: string;
-  sessionToken: string;
-  provider: AgentProvider;
-  directory: string;
-  expiresAt: number;
-  environment?: Record<string, string>;
 }
 
 interface ValidatedExecutionSession {
@@ -251,7 +241,7 @@ interface MeshExecutionAsyncCommand {
   workspaceId: string;
   executionRoot: string;
   provider: AgentProvider;
-  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_ACP_CHANNEL | typeof MESH_HARNESS_CHANNEL;
+  channel: typeof MESH_EXECUTION_CHANNEL | typeof MESH_HARNESS_CHANNEL;
   executor: CommandExecutor;
   command: string;
   args: string[];
@@ -348,8 +338,8 @@ export function getMeshExecutionOperationCapability(
   }
   if (operation === "agentProviderAvailability") {
     return {
-      id: "acpRuntime",
-      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.acpRuntime,
+      id: "commandExecution",
+      minimumVersion: EXECUTION_HOST_CAPABILITY_VERSIONS.commandExecution,
     };
   }
   return {
@@ -589,15 +579,13 @@ export class MeshExecutionGateway {
     const session = this.requireSessionRecord(sessionId, sessionToken);
     if (session.channel === MESH_HARNESS_CHANNEL) {
       await requireLocalMeshExecutionCapability("commandExecution");
-    } else if (session.channel === MESH_ACP_CHANNEL) {
-      await requireLocalMeshExecutionCapability("acpRuntime");
     }
     if (options.requiredCapability) {
       await requireLocalMeshExecutionCapability(
         options.requiredCapability.id,
         options.requiredCapability.minimumVersion,
       );
-    } else if (session.channel !== MESH_ACP_CHANNEL) {
+    } else {
       await requireLocalMeshExecutionAnyCapability(
         MESH_EXECUTION_SESSION_CAPABILITIES,
       );
@@ -640,8 +628,6 @@ export class MeshExecutionGateway {
     }
     if (request.channel === MESH_HARNESS_CHANNEL) {
       await requireLocalMeshExecutionCapability("commandExecution");
-    } else if (request.channel === MESH_ACP_CHANNEL) {
-      await requireLocalMeshExecutionCapability("acpRuntime");
     } else {
       await requireLocalMeshExecutionAnyCapability(
         MESH_EXECUTION_SESSION_CAPABILITIES,
@@ -666,7 +652,7 @@ export class MeshExecutionGateway {
       throw new DomainError("mesh_execution_session_expired", "The execution session request has expired.");
     }
     const maxSessionTtl = request.channel !== MESH_EXECUTION_CHANNEL
-      ? MESH_ACP_SESSION_TTL_MS
+      ? MESH_HARNESS_SESSION_TTL_MS
       : MESH_EXECUTION_SESSION_TTL_MS;
     if (new Date(request.expiresAt).getTime() > Date.now() + maxSessionTtl) {
       throw new DomainError("mesh_execution_session_expiry_invalid", "The execution session expiry is too far in the future.");
@@ -737,9 +723,7 @@ export class MeshExecutionGateway {
   ): Promise<number> {
     const validationOptions: SessionValidationOptions = {
       ...options,
-      memberErrorCode: options.expectedChannel === MESH_ACP_CHANNEL
-        ? "mesh_execution_context_changed"
-        : "mesh_peer_not_trusted",
+      memberErrorCode: "mesh_peer_not_trusted",
     };
     const { session } = await this.requireValidatedSession(
       sessionId,
@@ -755,7 +739,7 @@ export class MeshExecutionGateway {
     }
 
     const maxSessionTtl = session.channel !== MESH_EXECUTION_CHANNEL
-      ? MESH_ACP_SESSION_TTL_MS
+      ? MESH_HARNESS_SESSION_TTL_MS
       : MESH_EXECUTION_SESSION_TTL_MS;
     session.expiresAt = Date.now() + maxSessionTtl;
     this.scheduleSessionExpiry(session);
@@ -786,7 +770,7 @@ export class MeshExecutionGateway {
   async getHarnessSessionConfig(sessionId: string, sessionToken: string): Promise<{
     callerNodeId: string; workspaceId: string; ownerId: string;
     executionNodeId: string;
-    adapter: Exclude<HarnessAdapter, "acp">; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION; legacyControlCredential?: string;
+    adapter: HarnessAdapter; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION; legacyControlCredential?: string;
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
@@ -843,24 +827,6 @@ export class MeshExecutionGateway {
     }
     this.abortAsyncCommandsForCaller(callerNodeId);
     await this.awaitCommandCleanup(callerNodeId);
-  }
-
-  async getAcpSessionConfig(
-    sessionId: string,
-    sessionToken: string,
-  ): Promise<MeshAcpSessionConfig> {
-    const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
-      expectedChannel: MESH_ACP_CHANNEL,
-      memberErrorCode: "mesh_execution_context_changed",
-    });
-    return {
-      sessionId: session.sessionId,
-      sessionToken: session.sessionToken,
-      provider: session.provider,
-      directory: session.directory,
-      expiresAt: session.expiresAt,
-      environment: session.environment,
-    };
   }
 
   async startAsyncCommand(
@@ -1836,7 +1802,6 @@ meshInboundResourceRegistry.register({
     "fileOperations",
     "git",
     "managedWorktrees",
-    "acpRuntime",
   ],
   close: () => meshExecutionGateway.closeAll(),
 });

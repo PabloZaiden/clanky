@@ -7,7 +7,7 @@ import type {
   DevboxStatusResult,
   ProvisioningStep,
 } from "@/shared";
-import { isValidWorkerHostAddress } from "@/shared";
+import { getHarnessAdapterForProvider, isValidWorkerHostAddress } from "@/shared";
 import {
   WORKER_READINESS_POLL_INTERVAL_MS,
   WORKER_READINESS_TIMEOUT_MS,
@@ -93,7 +93,7 @@ export class ProvisioningWorkerLifecycle {
     });
     await prepareWorkerRuntimeAssets(executor, {
       paths,
-      runtime: { adapter: record.job.config.adapter ?? "acp", provider: record.job.config.provider },
+      runtime: { adapter: record.job.config.adapter ?? getHarnessAdapterForProvider(record.job.config.provider), provider: record.job.config.provider },
       releaseChannel: record.job.config.releaseChannel
         ?? (record.job.config.useClankyPrerelease ? "prerelease" : undefined),
     });

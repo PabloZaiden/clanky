@@ -30,7 +30,6 @@ import {
   type ExecutionPathStyle,
 } from "../execution-path";
 import type { AgentProvider } from "@/shared/settings";
-import { isAgentProviderAvailable } from "../agent-runtime-command";
 import { terminateSubprocessTree } from "../subprocess-termination";
 import { assertGitCommand } from "../git-command-policy";
 
@@ -109,7 +108,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   }
 
   async isAgentProviderAvailable(provider: AgentProvider): Promise<boolean> {
-    return isAgentProviderAvailable(provider);
+    return Bun.which(provider === "opencode" ? "opencode2" : provider) !== null;
   }
 
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {

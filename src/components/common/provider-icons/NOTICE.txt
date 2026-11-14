@@ -14,8 +14,3 @@ GitHub Copilot icon:
   Source: https://github.com/primer/octicons/blob/main/icons/copilot-24.svg
   Copyright (c) GitHub Inc. Licensed under the MIT License.
   See licenses/MIT-Primer.txt.
-
-ACP logomark:
-  Source: https://agentclientprotocol.com/brand
-  Official brand-kit black and white SVG variants; use according to the brand
-  guidance published at the source.

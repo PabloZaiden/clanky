@@ -6,11 +6,9 @@ import {
   useHeaderActions,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type {
-  Chat,
-  ExecutionHostDescriptor,
-} from "@/shared";
+import type { ExecutionHostDescriptor } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
+import { getHarnessAdapterForProvider } from "@/shared/settings";
 import type {
   CreateExecutionHostChatRequest,
   ExecutionHostWorkingDirectory,
@@ -27,6 +25,7 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
+import type { UseChatsResult } from "../../hooks/useChats";
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
   const id = getExecutionHostSourceId(host.ref);
@@ -35,9 +34,11 @@ function executionHostApiPath(host: ExecutionHostDescriptor): string {
 
 export function ExecutionHostChatComposer({
   host,
+  onCreateChat,
   navigateWithinShell,
 }: {
   host: ExecutionHostDescriptor;
+  onCreateChat: UseChatsResult["createExecutionHostChat"];
   navigateWithinShell: (route: WebAppRoute) => void;
 }) {
   const apiPath = useMemo(() => executionHostApiPath(host), [host.ref]);
@@ -104,22 +105,22 @@ export function ExecutionHostChatComposer({
   useEffect(() => {
     const candidates = [host.preferredModel, storedModel];
     for (const candidate of candidates) {
+      const model = candidate && discovery.models.find((entry) =>
+        entry.connected && entry.modelID === candidate.modelID
+        && (entry.providerID === candidate.providerID
+          || (candidate === host.preferredModel && candidate.providerID === discovery.provider)));
       if (
         candidate
-        && candidate.providerID === discovery.provider
-        && discovery.models.some((model) =>
-          model.connected
-          && model.providerID === candidate.providerID
-          && model.modelID === candidate.modelID)
+        && model
         && modelVariantExists(
           discovery.models,
-          candidate.providerID,
+          model.providerID,
           candidate.modelID,
           candidate.variant,
         )
       ) {
         setSelectedModel(makeModelKey(
-          candidate.providerID,
+          model.providerID,
           candidate.modelID,
           candidate.variant,
         ));
@@ -141,7 +142,8 @@ export function ExecutionHostChatComposer({
     if (
       !directory.trim()
       || !model
-      || model.providerID !== discovery.provider
+      || !discovery.models.some((entry) => entry.connected
+        && entry.providerID === model.providerID && entry.modelID === model.modelID)
     ) {
       setError("Choose a directory and model before creating the chat.");
       return;
@@ -151,21 +153,12 @@ export function ExecutionHostChatComposer({
     try {
       const request: CreateExecutionHostChatRequest = {
         name: name.trim() || `${host.name} chat`,
+        adapter: getHarnessAdapterForProvider(discovery.provider),
         directory: directory.trim(),
         ...(startWithPlan ? { startWithPlan: true } : {}),
-        model: {
-          providerID: discovery.provider,
-          modelID: model.modelID,
-          variant: model.variant,
-        },
+        model,
       };
-      const chat = await apiRequest<Chat>(`${apiPath}/chats`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-        action: "Create execution-host chat",
-        fallbackMessage: "Failed to create chat",
-      });
+      const chat = await onCreateChat(host.ref, request);
       saveStoredChatModelPreference(model);
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (submitError) {
@@ -174,12 +167,14 @@ export function ExecutionHostChatComposer({
       setSubmitting(false);
     }
   }, [
-    apiPath,
     directory,
+    discovery.models,
     discovery.provider,
     host.name,
+    host.ref,
     name,
     navigateWithinShell,
+    onCreateChat,
     selectedModel,
     startWithPlan,
   ]);

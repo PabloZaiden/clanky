@@ -6,10 +6,6 @@
  * allowing parallel operation of conversations across different workspaces.
  */
 
-import {
-  WorkspaceAcpTransportLifecycle,
-  createAcpConnectionTimeoutError,
-} from "../../backends/acp";
 import type { Backend, BackendConnectionConfig } from "../../backends/types";
 import { createLocalHarnessBackend } from "../../backends/harness-factory";
 import { HarnessError } from "../../backends/harness-errors";
@@ -17,6 +13,7 @@ import { getWorkspace } from "../../persistence/workspaces";
 import {
   getDefaultRuntimeServerSettings,
   createAgentSettings,
+  getHarnessAdapterForProvider,
   areServerSettingsEqual,
   type AgentSettings,
   type RuntimeServerSettings,
@@ -183,27 +180,18 @@ class BackendManager {
     workspaceOptions?: WorkspaceBackendOptions,
   ): Backend {
     this.assertAcceptingConnections();
-    const transportLifecycleFactory = workspaceOptions && settings.agent.transport === "stdio"
-      ? () => new WorkspaceAcpTransportLifecycle({
-          workspaceId: workspaceOptions.workspaceId,
-          localNodeId: workspaceOptions.localNodeId ?? "",
-          executionNodeId: workspaceOptions.executionHostBinding.host.nodeId,
-        })
-      : undefined;
-    if (settings.agent.adapter !== "acp") {
-      if (workspaceOptions
-        && workspaceOptions.executionHostBinding.host.nodeId !== workspaceOptions.localNodeId) {
-        const host = workspaceOptions.executionHostBinding.host;
-        if (host.kind !== "mesh") throw new HarnessError("harness_unsupported_feature", "The selected execution host does not support native Mesh routing.");
-        return new MeshHarnessBackend({
-          adapter: settings.agent.adapter, workspaceId: workspaceOptions.workspaceId, executionNodeId: host.nodeId,
-        });
-      }
-      if (isRemoteOnlyMode()) {
-        throw new HarnessError("harness_unsupported_feature", "Local harness execution is disabled in remote-only mode.");
-      }
+    if (workspaceOptions
+      && workspaceOptions.executionHostBinding.host.nodeId !== workspaceOptions.localNodeId) {
+      const host = workspaceOptions.executionHostBinding.host;
+      if (host.kind !== "mesh") throw new HarnessError("harness_unsupported_feature", "The selected execution host does not support native Mesh routing.");
+      return new MeshHarnessBackend({
+        adapter: settings.agent.adapter, workspaceId: workspaceOptions.workspaceId, executionNodeId: host.nodeId,
+      });
     }
-    return createLocalHarnessBackend(settings.agent.adapter, transportLifecycleFactory);
+    if (isRemoteOnlyMode()) {
+      throw new HarnessError("harness_unsupported_feature", "Local harness execution is disabled in remote-only mode.");
+    }
+    return createLocalHarnessBackend(settings.agent.adapter);
   }
 
   /**
@@ -480,8 +468,8 @@ class BackendManager {
     config: BackendConnectionConfig,
     controller: AbortController,
   ): Promise<void> {
-    const timeoutError = createAcpConnectionTimeoutError(this.connectionTimeoutMs, {
-      transport: config.transport,
+    const timeoutError = new HarnessError("harness_connection_timed_out", "The harness connection timed out.", {
+      details: { timeoutMs: this.connectionTimeoutMs },
     });
 
     const timeoutId = setTimeout(() => controller.abort(timeoutError), this.connectionTimeoutMs);
@@ -833,7 +821,7 @@ class BackendManager {
     const status: import("@/shared/settings").ConnectionStatus = {
       connected: state?.backend.isConnected() ?? false,
       provider,
-      adapter: workspace?.serverSettings.agent.adapter ?? "acp",
+      adapter: workspace?.serverSettings.agent.adapter ?? getDefaultRuntimeServerSettings().agent.adapter,
       transport: workspace?.executionHostBinding.host.kind ?? "local",
       capabilities: state ? this.getAgentCapabilities(state.settings) : [],
       error: state?.connectionError ?? undefined,
@@ -915,7 +903,7 @@ class BackendManager {
 
   /**
    * Get a dedicated backend instance for a conversation.
-   * Each conversation gets its own AcpBackend so that concurrent conversations
+   * Each conversation gets its own backend so that concurrent conversations
    * in the same workspace don't interfere with each other.
    *
    * The actual directory binding happens later when conversation runtime calls
@@ -1156,7 +1144,7 @@ class BackendManager {
     try {
       const settings = await this.buildRuntimeSettings(
         context.binding,
-        createAgentSettings(context.adapter ?? "acp", context.provider),
+        createAgentSettings(context.adapter ?? getHarnessAdapterForProvider(context.provider)),
       );
       const localNodeId = await this.getLocalMeshNodeId();
       this.assertPendingExecutionHost(pending);
@@ -1195,7 +1183,7 @@ class BackendManager {
     }
     const settings = await this.buildRuntimeSettings(
       context.binding,
-      createAgentSettings("acp", context.provider),
+      createAgentSettings(getHarnessAdapterForProvider(context.provider)),
     );
     return this.conversationConnections.get(context.connectionId) === state
       && state.backend.isConnected()
@@ -1212,7 +1200,7 @@ class BackendManager {
     const userId = requireExecutionOwnerUserId();
     const pending = this.trackPendingExecutionHost(userId, binding);
     try {
-      const settings = await this.buildRuntimeSettings(binding, createAgentSettings("acp", provider));
+      const settings = await this.buildRuntimeSettings(binding, createAgentSettings(getHarnessAdapterForProvider(provider)));
       const localNodeId = await this.getLocalMeshNodeId();
       this.assertPendingExecutionHost(pending);
       const options: WorkspaceBackendOptions = {

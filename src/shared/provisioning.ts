@@ -2,7 +2,7 @@
  * Provisioning job types for automatic workspace creation.
  */
 
-import type { AgentProvider, HarnessAdapter, ServerSettings } from "./settings";
+import { isAgentSettings, type AgentProvider, type HarnessAdapter, type ServerSettings } from "./settings";
 import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { CommandExecutionState } from "./job-execution";
@@ -33,6 +33,7 @@ export function isProvisioningJobTerminal(status: ProvisioningJobStatus): boolea
 
 export function canRetryProvisioningJob(job: ProvisioningJob | PublicProvisioningJob): boolean {
   return job.config.mode === "provision"
+    && isAgentSettings({ adapter: job.config.adapter, provider: job.config.provider })
     && isProvisioningJobTerminal(job.state.status)
     && job.state.status !== "completed"
     && job.state.status !== "unconfirmed"

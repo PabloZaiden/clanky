@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   MESH_EXECUTION_CHANNEL,
-  MESH_ACP_CHANNEL,
   MESH_HARNESS_CHANNEL,
   MESH_EXECUTION_OPERATIONS,
   MESH_EXECUTION_MAX_RPC_TIMEOUT_MS,
@@ -32,7 +31,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   workspaceId: z.string().trim().min(1).max(200),
   directory: MeshExecutionPathSchema,
   provider: AgentProviderSchema,
-  channel: z.enum([MESH_EXECUTION_CHANNEL, MESH_ACP_CHANNEL, MESH_HARNESS_CHANNEL]),
+  channel: z.enum([MESH_EXECUTION_CHANNEL, MESH_HARNESS_CHANNEL]),
   adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
   ownerId: z.string().min(1).max(200).optional(),
   environment: z.record(z.string(), z.string()).optional(),

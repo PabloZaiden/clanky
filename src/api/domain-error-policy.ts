@@ -120,11 +120,7 @@ const API_DOMAIN_ERROR_CODES = {
   harness_question_closed: true,
   harness_question_unconfirmed: true,
   harness_input_capacity: true,
-  acp_connection_aborted: true,
-  acp_connection_timed_out: true,
-  acp_request_cancelled: true,
-  acp_session_not_found: true,
-  acp_unsupported_prompt_capability: true,
+  harness_connection_timed_out: true,
   [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: true,
   chat_attachment_budget_exceeded: true,
   chat_context_unavailable: true,
@@ -203,7 +199,6 @@ const API_DOMAIN_ERROR_CODES = {
   invalid_clanky_release_channel: true,
   invalid_runtime: true,
   job_not_terminal: true,
-  mesh_acp_unavailable: true,
   mesh_control_request_rejected: true,
   mesh_control_request_unreachable: true,
   mesh_endpoint_invalid: true,
@@ -656,30 +651,10 @@ const POLICY_PROFILES = {
         status: 409,
         message: "Resolve or dismiss the pending agent question before continuing from history.",
       },
-      acp_connection_aborted: {
-        status: 409,
-        error: "connection_aborted",
-        message: "The connection was aborted.",
-      },
-      acp_connection_timed_out: {
+      harness_connection_timed_out: {
         status: 504,
         error: "connection_timeout",
         message: "The agent connection timed out before it became ready.",
-      },
-      acp_request_cancelled: {
-        status: 409,
-        error: "cancelled",
-        message: "Chat operation was cancelled.",
-      },
-      acp_session_not_found: {
-        status: 409,
-        error: "session_not_found",
-        message: "The chat session is no longer available.",
-      },
-      acp_unsupported_prompt_capability: {
-        status: 422,
-        error: "unsupported_prompt_capability",
-        message: "The connected agent does not support embedded document attachments.",
       },
       [CHAT_WORKTREE_BRANCH_CONFLICT_CODE]: {
         status: 409,
@@ -690,9 +665,7 @@ const POLICY_PROFILES = {
         messageFromDetails: (error) => error.details["capability"] === "managedWorktrees"
           && error.details["requiredVersion"] === MANAGED_WORKTREES_SELECTED_BRANCH_VERSION
           ? "Using the selected branch directly requires managed worktrees v3 on the execution host. Update the worker and retry."
-          : error.details["capability"] === "acpRuntime"
-            ? "This execution host does not support ACP chats."
-            : "This execution host does not support the requested chat operation.",
+          : "This execution host does not support the requested chat operation.",
         extra: capabilityDetails,
       },
       execution_host_binding_stale: {
@@ -837,11 +810,6 @@ const POLICY_PROFILES = {
     boundary: "mesh",
     mappings: {
       ...COMMON_MAPPINGS,
-      mesh_acp_unavailable: {
-        status: 503,
-        error: "mesh_operation_failed",
-        message: "Mesh operation failed",
-      },
       mesh_control_request_rejected: {
         status: 502,
         error: "mesh_operation_failed",
@@ -1004,10 +972,6 @@ const POLICY_PROFILES = {
     boundary: "mesh-internal",
     mappings: {
       ...COMMON_MAPPINGS,
-      mesh_acp_unavailable: {
-        status: 503,
-        message: "Mesh ACP is unavailable.",
-      },
       mesh_enrollment_controller_mismatch: {
         status: 409,
         message: "The Mesh enrollment controller does not match.",
@@ -1348,7 +1312,7 @@ const POLICY_PROFILES = {
       },
       invalid_runtime: {
         status: 400,
-        message: "Native adapters require a dedicated worker and matching harness preset.",
+        message: "Native adapters require an automatic worker workspace and matching provider.",
       },
       invalid_clanky_release_channel: {
         status: 400,
