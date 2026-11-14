@@ -176,6 +176,9 @@ continue normally.
 Streaming chat activity timestamps in the sidebar are grouped into one update
 per minute while activity is pending. Status changes and user actions remain
 immediate, including blocking questions in chats that are not selected.
+Chat ages and recency ordering use the newer of the last user message and the
+last status change, falling back to chat creation. Streaming text and tool
+activity do not reset that age; status-change times survive reloads and restarts.
 Chat state is ordered by a persisted server revision, not activity timestamps,
 so provider clock skew cannot hide a transition and a delayed response cannot
 overwrite newer state. Connecting or reconnecting realtime refreshes the

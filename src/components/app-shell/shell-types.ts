@@ -323,7 +323,11 @@ export function getActiveWorkItemTimestamp(item: SidebarActiveWorkItem): string 
 }
 
 export function getWorkItemLastInteractionAt(item: Chat): string {
-  return item.state.lastUserMessageAt ?? item.config.createdAt;
+  const { lastUserMessageAt, lastStatusChangedAt } = item.state;
+  if (!lastUserMessageAt) return lastStatusChangedAt ?? item.config.createdAt;
+  return lastStatusChangedAt && lastStatusChangedAt > lastUserMessageAt
+    ? lastStatusChangedAt
+    : lastUserMessageAt;
 }
 
 export function getTerminalLastInteractionAt(session: TerminalSession): string {
