@@ -143,8 +143,12 @@ and terminals together, including completed chats.
 workspaces, with their workspace names and inherited privacy/access rules.
 In **Servers**, each server directly lists only its host chats and host terminals;
 workspaces remain in the **Workspaces** tab rather than appearing under servers.
-Mixed lists sort by most recent interaction (chat user message or terminal
-connection, falling back to creation). Chats and terminals reuse
+Mixed lists sort by most recent interaction (the newer of a chat user message
+or actual status transition, or a terminal connection, falling back to creation).
+Chat status-transition times are persisted server timestamps; assistant output,
+tool activity, and writes that keep the same status do not reset recency.
+Upgraded chats without a recorded transition retain their user-message/creation
+fallback until their next status change. Chats and terminals reuse
 Active's rich rows: workspace/host and textual status above the title, with
 relative interaction time and type/provider metadata below. Automations and
 workspace/server rows retain their own presentation.

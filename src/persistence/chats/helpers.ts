@@ -47,6 +47,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "started_at",
   "completed_at",
   "last_activity_at",
+  "last_status_changed_at",
   "session_id",
   "session_server_url",
   "session_binding_json",
@@ -132,7 +133,7 @@ function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSour
 
 export type PersistedChatStateField = Exclude<keyof ChatState,
   "id" | "revision" | "messages" | "logs" | "toolCalls"
-  | "hasMessages" | "hasTranscript" | "lastUserMessageAt" | "usage"
+  | "hasMessages" | "hasTranscript" | "lastUserMessageAt" | "lastStatusChangedAt" | "usage"
 >;
 
 const CHAT_STATE_ENCODERS = {
@@ -273,6 +274,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     startedAt: (row["started_at"] as string | null) ?? undefined,
     completedAt: (row["completed_at"] as string | null) ?? undefined,
     lastActivityAt: (row["last_activity_at"] as string | null) ?? undefined,
+    lastStatusChangedAt: (row["last_status_changed_at"] as string | null) ?? undefined,
     ...(row["last_user_message_at"] !== null && row["last_user_message_at"] !== undefined
       ? { lastUserMessageAt: row["last_user_message_at"] as string }
       : {}),
