@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.9
+version: 0.6.10
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -158,6 +158,8 @@ in app-owned adapters, not silently convert/reset them.
   Never click a hidden app submit button to work around shell composition.
 - Dialog footers align right, wrap right when needed; never reverse/left-stack
   on mobile. Use shared list/form/tool layouts instead of consumer CSS recipes.
+- Use `FloatingPanel` for anchored popup content; it repositions when content
+  or its anchor changes size. Do not add app-owned positioning or loading-height fixes.
 - Keep labels/status/errors concise. Do not show internal operational IDs or
   UUID fallback names unless needed for an actual user task.
 - Use framework `useToast` for transient feedback; persistent errors/loading

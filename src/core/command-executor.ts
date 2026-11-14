@@ -219,6 +219,7 @@ export interface CommandExecutor {
 
   /**
    * Execute Git through the host's Git capability boundary.
+   * Arguments start with a subcommand and share scope/environment rules on every host.
    */
   execGit(
     directory: string,
