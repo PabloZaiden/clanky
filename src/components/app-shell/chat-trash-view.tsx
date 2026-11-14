@@ -6,11 +6,9 @@ import type { ChatTrashActions } from "./use-chat-trash-actions";
 
 export function ChatTrashView({
   showPrivateItems,
-  selectedChatId,
   actions,
 }: {
   showPrivateItems: boolean;
-  selectedChatId?: string;
   actions: ChatTrashActions;
 }) {
   const [cursor, setCursor] = useState<string | undefined>();
@@ -27,7 +25,6 @@ export function ChatTrashView({
               title={chat.name}
               description={chat.origin}
               descriptionClassName="!mt-0"
-              className={selectedChatId === chat.id ? "ring-1 ring-gray-400" : ""}
               meta={`Deleted ${new Date(chat.deletedAt).toLocaleDateString()} · Expires ${new Date(chat.expiresAt).toLocaleDateString()}`}
               metaPlacement="footer"
               actions={actions.canModify(chat) ? (

@@ -1,6 +1,6 @@
 ---
 name: webapp
-version: 0.6.10
+version: 0.6.11
 description: 'Build and validate Bun/React apps with @pablozaiden/webapp: storage-free server/client framing, app policy and optional auth bonuses, explicit preferences, UI, realtime, assets, lifecycle and Bun.WebView.'
 ---
 
@@ -175,6 +175,8 @@ in app-owned adapters, not silently convert/reset them.
 - Let sidebar defaults align sibling disclosure controls. Only lists containing
   expandable items reserve a compact gutter; leaf-only lists stay compact.
   Keep item-child indentation fixed instead of accumulating depth-based margins.
+- Let sidebar defaults reset tree/search scroll on every tab activation, including
+  the selected tab, without changing main-content scroll or adding app workarounds.
 - Opt sidebar items into `swipeActions` for a small set of quick actions.
   Webapp owns gestures and click suppression; callbacks target the item without
   activating its route. Apps own privacy/access filtering, pending state, errors,
