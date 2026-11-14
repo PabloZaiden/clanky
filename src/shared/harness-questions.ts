@@ -3,7 +3,7 @@
  */
 
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
-import type { HarnessEventScope, QuestionInfo } from "./harness-events";
+import type { HarnessEventScope, HarnessNativeReferences, QuestionInfo } from "./harness-events";
 
 export interface HarnessQuestionRequest {
   requestId: string;
@@ -28,7 +28,7 @@ export interface HarnessQuestionRequest {
 
 export interface QuestionMessageData {
   requestId: string;
-  scope: HarnessEventScope;
+  scope: HarnessEventScope<Omit<HarnessNativeReferences, "adapter"> & { adapter: string }>;
   status: HarnessQuestionRequest["status"];
   imageDelivery?: "file";
 }

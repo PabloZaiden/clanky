@@ -171,7 +171,7 @@ export class DemoController {
       if (method === "POST" && host === "chats") {
         const input = parse(CreateExecutionHostChatRequestSchema, body);
         this.requireModel(input.model);
-        if (input.directory !== DEMO_DIRECTORY) unsupported();
+        if (input.directory !== DEMO_DIRECTORY || input.adapter !== "copilot") unsupported();
         return this.createChat(input.name, selectedHost, { ...input, useWorktree: false });
       }
     }

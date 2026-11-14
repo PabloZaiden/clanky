@@ -27,17 +27,17 @@ A native failure does not switch adapters. See [Mesh workers](mesh-worker.md)
 for setup details.
 
 New workspace creation defaults to native Copilot; generic server settings
-default to native OpenCode 2. Upgrades convert retired transport selections for
-Copilot, Codex and OpenCode to their native adapters. Install and authenticate
+default to native OpenCode 2. Install and authenticate
 the selected native runtime on the execution host before starting work.
-Workspaces selecting Claude, Pi or Grok prevent the upgrade: choose a supported
-native adapter with the previous application version first.
-Existing transcripts and saved conversation identities are preserved, but
-retired sessions cannot resume through a native adapter; start a new chat.
+Existing transcripts and saved conversation identities are preserved.
 Selecting a different adapter does not reinterpret a saved session ID. Start a
 new conversation when changing adapters; app transcript history is preserved.
 Clanky resumes its own sessions, but no longer imports external harness sessions
 or offers conversation forks.
+
+Direct execution-host chats store their selected native adapter separately
+from the model's upstream provider. OpenCode catalogs can therefore expose
+models from providers such as OpenAI or Anthropic without changing the harness.
 
 Chats have the same Mesh worker isolation: maintenance on another
 worker does not close their sessions. If their own worker is revoked or its

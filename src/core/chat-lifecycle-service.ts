@@ -310,6 +310,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         name: options.name?.trim() || `${options.executionHost.targetKey} chat`,
         source: {
           kind: "execution_host",
+          adapter: options.adapter,
           executionHost: options.executionHost,
           directory: options.directory,
         },

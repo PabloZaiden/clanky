@@ -153,6 +153,8 @@ JSON, technical identifiers or secrets. Use `null` for operations that do not
 require confirmation. API cross-field validation runs before the dialog;
 invalid arguments do not request approval. Direct creation resolves real
 defaults/models/branches and relevant fresh browser preferences internally.
+For direct-host chats, select `adapter` separately from the model's upstream
+`providerID`; a null adapter uses the host's preferred harness.
 Compound chat creation requires a separate `afterCreationDescription` for the
 frozen initial-message/open intent; all stages share the visual approval and
 mutation queue slot through the client acknowledgement, reporting partial

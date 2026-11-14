@@ -22,7 +22,6 @@ import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes"
 import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
 import { dropLegacyAutomationTables, renameAutomations } from "./rename-automations";
 import { dropLegacyTaskTables, retireTasks, retireTaskPreferences } from "./retire-tasks";
-import { retireHarnessTransport } from "./retire-harness-transport";
 
 const log = createLogger("persistence:migrations");
 
@@ -994,8 +993,17 @@ export const migrations: Migration[] = [
   },
   {
     version: 97,
-    name: "retire_harness_transport",
-    up: retireHarnessTransport,
+    name: "add_execution_host_chat_adapter",
+    up: (db) => {
+      db.run("ALTER TABLE chats ADD COLUMN harness_adapter TEXT");
+      db.run(`
+        UPDATE chats SET harness_adapter = CASE model_provider_id
+          WHEN 'copilot' THEN 'copilot'
+          WHEN 'codex' THEN 'codex'
+          WHEN 'opencode' THEN 'opencode2'
+        END WHERE source_kind = 'execution_host'
+      `);
+    },
   },
 ];
 

@@ -8,7 +8,6 @@ import type {
 } from "@/shared";
 import type { CreateExecutionHostChatRequest } from "@/contracts";
 import { isWorkspaceChat } from "@/shared/chat";
-import { isAgentProvider } from "@/shared/settings";
 import {
   type UseAutomationsResult,
   type UseChatsResult,
@@ -147,18 +146,14 @@ export function useShellActions({
       }
 
       const executionHost = source.executionHost.host;
-      const providerID = sourceChat.config.model.providerID;
-      if (!isAgentProvider(providerID)) {
-        throw new Error("The current model provider cannot be reused on this execution host.");
+      if (!source.adapter) {
+        throw new Error("The current chat's native adapter is unavailable.");
       }
 
       const request: CreateExecutionHostChatRequest = {
         directory,
-        model: {
-          providerID,
-          modelID: sourceChat.config.model.modelID,
-          variant: sourceChat.config.model.variant,
-        },
+        adapter: source.adapter,
+        model: sourceChat.config.model,
       };
       createdChat = await createExecutionHostChat(executionHost, request);
     }

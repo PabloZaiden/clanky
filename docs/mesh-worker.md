@@ -302,8 +302,7 @@ Execution-host transport and harness are independent:
 Install and authenticate the selected runtime under the **worker service
 account**, not just on the controller. Native support uses the current
 Copilot SDK and native CLI packages for Copilot, Codex app-server, and OpenCode
-runtime/client. Upgrades convert equivalent retired workspace selections to
-native adapters without reinterpreting saved session identities; see
+runtime/client. See
 [workspace configuration](harnesses.md#workspace-configuration).
 
 Native Mesh uses a provider-neutral versioned RPC/lifetime-event gateway.
@@ -855,9 +854,9 @@ Rebuild/restart preserves the current workspace runtime. The Devbox
 `devbox rebuild` and `devbox arise`, without a running Clanky controller.
 Raw Docker restarts and other devcontainer tools do not invoke that Devbox
 hook. Existing automatic workspaces acquire these assets on their next
-Clanky-managed rebuild/restart or adapter change. Controller upgrades convert
-equivalent retired workspace selections but do not install runtimes or rewrite
-remote startup assets; rebuild/restart or save the adapter to update those assets.
+Clanky-managed rebuild/restart or adapter change. Controller upgrades do not
+install runtimes or rewrite remote startup assets; rebuild/restart or save the
+adapter to update those assets.
 
 Maintenance jobs distinguish connection failure before dispatch, returned
 command failure, confirmed interruption, and an unconfirmed remote outcome.

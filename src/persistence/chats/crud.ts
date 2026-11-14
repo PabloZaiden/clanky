@@ -26,6 +26,7 @@ export const CHAT_METADATA_COLUMNS = [
   "id",
   "name",
   "source_kind",
+  "harness_adapter",
   "workspace_id",
   "scope",
   "directory",

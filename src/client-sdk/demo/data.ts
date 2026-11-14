@@ -89,7 +89,7 @@ export function demoChat(id: string, name: string, now: string, host?: Execution
   return {
     config: {
       id, name, ...(host ? {
-        source: { kind: "execution_host", executionHost: { host: host.ref, targetKey: host.targetKey, revision: 1 }, directory: DEMO_DIRECTORY },
+        source: { kind: "execution_host", adapter: "copilot", executionHost: { host: host.ref, targetKey: host.targetKey, revision: 1 }, directory: DEMO_DIRECTORY },
       } : { workspaceId: "demo-workspace", source: { kind: "workspace", workspaceId: "demo-workspace" } }),
       executionHostBinding: { host: host?.ref ?? DEMO_HOST.ref, targetKey: host?.targetKey ?? DEMO_HOST.targetKey, revision: 1 },
       scope: "workspace", directory: DEMO_DIRECTORY, model: DEMO_MODEL, useWorktree: false,

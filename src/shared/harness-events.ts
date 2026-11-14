@@ -17,10 +17,10 @@ export interface HarnessNativeReferences {
   commandId?: string;
 }
 
-export type HarnessEventScope =
-  | { kind: "principal"; native?: HarnessNativeReferences }
-  | { kind: "child"; activityId: string; native?: HarnessNativeReferences }
-  | { kind: "unknown"; native?: HarnessNativeReferences };
+export type HarnessEventScope<Native = HarnessNativeReferences> =
+  | { kind: "principal"; native?: Native }
+  | { kind: "child"; activityId: string; native?: Native }
+  | { kind: "unknown"; native?: Native };
 
 export interface ProviderImageFileReference {
   path: string;

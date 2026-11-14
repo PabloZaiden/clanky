@@ -1078,7 +1078,7 @@ not expose authentication or raw transport protocols; see
 | GET, POST | `/api/execution-hosts/:kind/:id/working-directory` | Resolve the configured or current execution-host directory. |
 | POST | `/api/execution-hosts/:kind/:id/addresses` | List accessible IPv4 addresses on an execution host. |
 | PATCH | `/api/execution-hosts/:kind/:id/configuration` | Update node-owned defaults for a local or Mesh execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chats` | Create a direct chat on an execution host. |
+| POST | `/api/execution-hosts/:kind/:id/chats` | Create a direct chat with explicit native `adapter`, `directory` and `model`; `model.providerID` is the upstream provider, not the harness selector. |
 | POST | `/api/execution-hosts/:kind/:id/prerequisites` | Check prerequisites on an execution host. |
 | POST | `/api/execution-hosts/:kind/:id/devbox-templates` | List Devbox templates on an execution host. |
 | POST | `/api/execution-hosts/:kind/:id/chat-providers` | Discover installed native harness providers on an execution host. |
@@ -1952,9 +1952,8 @@ Supported adapters are `copilot`, `codex` and `opencode2`, with matching
 providers `copilot`, `codex` and `opencode` respectively. Public settings
 requests must include the canonical adapter field. New workspace creation
 defaults to Copilot; generic server defaults use OpenCode 2. See
-[workspace configuration](harnesses.md#workspace-configuration) for the
-automatic migration of equivalent retired selections, unsupported-provider
-upgrade refusal and preserved transcript history.
+[workspace configuration](harnesses.md#workspace-configuration) for
+native runtime setup and preserved transcript history.
 
 #### GET /api/workspaces/:id/server-settings
 

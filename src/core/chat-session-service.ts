@@ -12,7 +12,7 @@ import {
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
-import { getHarnessAdapterForProvider, isAgentProvider } from "@/shared/settings";
+import { createAgentSettings } from "@/shared/settings";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { createExecutionControlConnection } from "./control-tool-transport";
@@ -75,9 +75,11 @@ export class ChatSessionService implements ChatSessionPort {
 
   async getChatAdapter(chat: Chat): Promise<HarnessCapabilities["adapter"]> {
     if (isExecutionHostChat(chat)) {
-      const provider = chat.config.model.providerID;
-      if (!isAgentProvider(provider)) throw new HarnessError("harness_model_not_available", "The selected execution-host provider is unsupported.");
-      return getHarnessAdapterForProvider(provider);
+      const source = chat.config.source;
+      if (source?.kind !== "execution_host" || !source.adapter) {
+        throw new HarnessError("harness_model_not_available", "The selected execution-host adapter is unavailable.");
+      }
+      return source.adapter;
     }
     const backend = await this.backendManager.getBackendAsync(getChatWorkspaceId(chat));
     return backend.harness.capabilities.adapter;
@@ -507,8 +509,8 @@ export class ChatSessionService implements ChatSessionPort {
       throw new Error(`Chat is not execution-host backed: ${chat.config.id}`);
     }
     const directory = source.directory || chat.config.directory;
-    const provider = chat.config.model.providerID;
-    if (!isAgentProvider(provider)) throw new HarnessError("harness_model_not_available", "The selected execution-host provider is unsupported.");
+    if (!source.adapter) throw new HarnessError("harness_model_not_available", "The selected execution-host adapter is unavailable.");
+    const { provider } = createAgentSettings(source.adapter);
     const existing = await this.backendManager.getConnectedExecutionHostBackend({
       connectionId: chat.config.id,
       binding: source.executionHost,

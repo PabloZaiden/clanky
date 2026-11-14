@@ -20,6 +20,7 @@ import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessConversationBinding, HarnessConversationState } from "./harness-control";
 import type { TokenUsageSummary } from "./harness-usage";
 import type { CollaborationCreator } from "./collaboration";
+import type { HarnessAdapter } from "./harness-events";
 
 export type { ModelConfig };
 
@@ -44,6 +45,7 @@ export type ChatSource =
     }
   | {
       kind: "execution_host";
+      adapter: HarnessAdapter | null;
       executionHost: ExecutionHostBinding;
       directory: string;
     };

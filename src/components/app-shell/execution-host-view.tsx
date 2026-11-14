@@ -24,6 +24,7 @@ import {
   supportsExecutionHostCapability,
 } from "@/shared";
 import type { ExecutionHostWorkingDirectory } from "@/contracts";
+import { getHarnessAdapterForProvider } from "@/shared/settings";
 import { apiRequest } from "../../lib/api-client";
 import { Button } from "../common";
 import {
@@ -180,15 +181,18 @@ export function ExecutionHostView({
 
   useEffect(() => {
     const preferred = host.preferredModel;
-    setPreferredModel(preferred
+    const model = discovery.models.find((entry) => entry.modelID === preferred?.modelID);
+    setPreferredModel(preferred && preferred.providerID === discovery.provider
       ? makeModelKey(
-        preferred.providerID,
+        model?.providerID ?? preferred.providerID,
         preferred.modelID,
         preferred.variant,
       )
       : "");
   }, [
     apiPath,
+    discovery.models,
+    discovery.provider,
     host.configurationRevision,
     host.preferredModel?.modelID,
     host.preferredModel?.providerID,
@@ -216,7 +220,7 @@ export function ExecutionHostView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           repositoriesBasePath,
-          preferredModel: parsedModel,
+          preferredModel: parsedModel ? { ...parsedModel, providerID: discovery.provider } : null,
           expectedRevision: host.configurationRevision,
         }),
         action: "Save execution-host defaults",
@@ -243,6 +247,7 @@ export function ExecutionHostView({
       devcontainerSubpath: null,
       devboxTemplate: null,
       provider: getExecutionHostAgentProvider(host),
+      adapter: getHarnessAdapterForProvider(getExecutionHostAgentProvider(host)),
       mode: "arise",
       targetDirectory: null,
       workspaceId: null,

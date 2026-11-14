@@ -334,6 +334,7 @@ export const executionHostRoutes = defineRoutes({
         );
         const chat = await chatManager.createExecutionHostChat({
           name: validation.data.name,
+          adapter: validation.data.adapter,
           executionHost: binding,
           directory: validation.data.directory,
           modelProviderID: validation.data.model.providerID,
@@ -557,10 +558,7 @@ export const executionHostRoutes = defineRoutes({
           validation.data.directory,
           validation.data.providerID,
         );
-        return Response.json(
-          models.filter((model) =>
-            model.providerID === validation.data.providerID),
-        );
+        return Response.json(models);
       } catch (error) {
         log.error("Failed to discover execution-host models", {
           kind: ref.kind,
