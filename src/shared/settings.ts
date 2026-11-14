@@ -6,9 +6,9 @@
 import type { ExecutionHostDescriptor, ExecutionHostRef } from "./execution-host";
 import { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
 export { HARNESS_ADAPTER_IDS, type HarnessAdapter } from "./harness-events";
-const NATIVE_HARNESS_PROVIDERS = { copilot: "copilot", codex: "codex", opencode2: "opencode" } as const;
+const NATIVE_HARNESS_PROVIDERS = { copilot: "copilot", codex: "codex", opencode2: "opencode", claude: "claude" } as const;
 
-export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex"] as const;
+export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude"] as const;
 
 export type AgentProvider = typeof AGENT_PROVIDER_IDS[number];
 export type AgentTransport = "stdio";

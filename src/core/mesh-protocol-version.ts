@@ -7,6 +7,7 @@ import {
   type MeshProtocolVersion,
 } from "@/shared/mesh-protocol";
 import type { MeshNodeIdentity } from "@/shared/mesh";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 
 export { negotiateMeshDescriptorGeneration } from "@/shared/mesh-protocol";
 
@@ -16,7 +17,7 @@ export function getLocalMeshProtocolMetadata(): MeshProtocolMetadata {
     supportedProtocolVersions: [...MESH_SUPPORTED_PROTOCOL_VERSIONS],
     preferredProtocolVersion: MESH_PROTOCOL_PREFERRED_VERSION,
     negotiatedProtocolVersion: MESH_PROTOCOL_VERSION,
-    harnessAdapters: ["copilot", "codex", "opencode2"],
+    harnessAdapters: [...HARNESS_ADAPTER_IDS],
   };
 }
 

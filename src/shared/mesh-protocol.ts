@@ -3,6 +3,7 @@
  *
  * Generations cover controllers, relays and workers together.
  */
+import type { HarnessAdapter } from "./harness-events";
 
 export const MESH_PROTOCOL_VERSION = 7 as const;
 export const MESH_SUPPORTED_PROTOCOL_VERSIONS = [MESH_PROTOCOL_VERSION] as const;
@@ -28,7 +29,7 @@ export interface MeshProtocolMetadata {
   supportedProtocolVersions: MeshProtocolGeneration[];
   preferredProtocolVersion: MeshProtocolGeneration;
   negotiatedProtocolVersion: MeshProtocolVersion | null;
-  harnessAdapters?: readonly ("copilot" | "codex" | "opencode2")[];
+  harnessAdapters?: readonly HarnessAdapter[];
 }
 
 export function isMeshProtocolGeneration(

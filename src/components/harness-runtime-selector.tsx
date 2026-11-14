@@ -18,6 +18,7 @@ export function HarnessRuntimeSelector({ adapter, supportedAdapters, onAdapterCh
     <option value="copilot" disabled={!supportedAdapters.includes("copilot")}>GitHub Copilot</option>
     <option value="codex" disabled={!supportedAdapters.includes("codex")}>Codex</option>
     <option value="opencode2" disabled={!supportedAdapters.includes("opencode2")}>OpenCode 2</option>
+    <option value="claude" disabled={!supportedAdapters.includes("claude")}>Claude Agent</option>
   </>;
   return (
     <>

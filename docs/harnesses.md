@@ -12,6 +12,7 @@ harness subagents.
 | GitHub Copilot | `copilot` | `copilot` | Installed and authenticated current Copilot CLI |
 | Codex | `codex` | `codex` | Installed and authenticated current Codex CLI, using app-server |
 | OpenCode 2 | `opencode2` | `opencode` | Installed current `opencode2` runtime for generation 2 |
+| Claude Agent | `claude` | `claude` | Installed Claude Code CLI, controlled through the Claude Agent SDK |
 
 Native adapters are experimental. Install and authenticate the harness on the
 selected execution host, not necessarily on the controller. The Clanky server
@@ -102,14 +103,33 @@ separate pending interaction.
 [Live voice](voice.md#live-voice) is a global sidebar assistant, independent of
 OpenCode, Quick Chat and any selected chat or native adapter.
 
+### Claude Agent
+
+Install and authenticate Claude Code on the selected execution host, with
+`claude` available in its `PATH`. Select **Claude Agent** in the workspace or
+direct execution-host chat settings. Models and reasoning options come from
+the native catalog and the host's Claude Code configuration.
+
+Claude supports streaming conversations, session resume, interruption,
+active-session steering, and native subagent activity and history. Clanky
+resumes only its own conversations. Input admission does not mean inference
+has completed, and uncertain delivery is never replayed automatically.
+Token usage reflects cumulative native counts rather than context occupancy.
+
+Filesystem and shell permissions follow the existing automatic-approval
+policy. Interactive questions use Clanky's chat forms and are denied for
+unattended execution. Clanky Control and private CLI-secret tools belong to
+the active owned root turn, not its subagents. Images opened by native tools
+appear as ordinary transcript attachments.
+
 ## Private secrets for CLI commands
 
-Interactive native Copilot, Codex and OpenCode 2 chats on POSIX execution hosts
-provide `clanky_request_secret`. It is a host-local native tool, not a Control
-operation, approval, MCP tool or tool-to-tool secret reference. It needs no
-general-access grant. Native subagent calls are unsupported. Autonomous
-scheduled runs and helper conversations do not receive the tool and
-cannot access its cache.
+Interactive native Copilot, Codex, OpenCode 2 and Claude Agent chats on POSIX
+execution hosts provide `clanky_request_secret`. It is a host-local native
+tool, not a Control operation, approval or tool-to-tool secret reference.
+It needs no general-access grant. Native subagent calls are unsupported.
+Autonomous scheduled runs and helper conversations do not receive the tool
+and cannot access its cache.
 
 The agent supplies a nonsecret `identifier`, `label` and `reason`. On a cache
 miss, the same native invocation waits for the user's private chat form, with

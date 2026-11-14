@@ -9,6 +9,7 @@ const ROOT_DIR = resolve(import.meta.dir, "../../..");
 const CODEX_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "codex.ts");
 const COPILOT_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "copilot-native.ts");
 const OPENCODE_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "opencode-native.ts");
+const CLAUDE_NATIVE_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "claude-native.ts");
 const GITHUB_PATH = resolve(ROOT_DIR, "tests", "e2e", "providers", "github.ts");
 
 export async function installExternalCodexProvider(binDirectory: string): Promise<void> {
@@ -29,6 +30,10 @@ export async function installExternalNativeCopilotProvider(binDirectory: string)
 
 export async function installExternalNativeOpenCodeProvider(binDirectory: string): Promise<void> {
   await installProviderExecutable(binDirectory, "opencode2", OPENCODE_NATIVE_PATH);
+}
+
+export async function installExternalNativeClaudeProvider(binDirectory: string): Promise<void> {
+  await installProviderExecutable(binDirectory, "claude", CLAUDE_NATIVE_PATH);
 }
 
 async function installProviderExecutable(binDirectory: string, name: string, providerPath: string): Promise<void> {

@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { Chat } from "./chat";
 import type { HarnessCapabilities } from "./harness-control";
 import { ControlClientContextSchema, ControlClientActionSchema } from "./control-interactions";
+import { HARNESS_ADAPTER_IDS } from "./harness-events";
 
 export const ClankyControlContextSchema = z.object({
   chatId: z.string().min(1).max(500),
@@ -27,7 +28,7 @@ export function isClankyControlChat(
 ): boolean {
   return chat.config.source?.kind !== "execution_host"
     && Boolean(chat.config.source?.workspaceId ?? chat.config.workspaceId)
-    && (adapter === "codex" || adapter === "copilot" || adapter === "opencode2");
+    && adapter !== undefined && HARNESS_ADAPTER_IDS.includes(adapter);
 }
 
 export const ControlNavigationActionSchema = z.discriminatedUnion("type", [

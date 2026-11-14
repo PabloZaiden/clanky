@@ -5,6 +5,7 @@ import {
   installExternalCodexProvider,
   installExternalNativeCopilotProvider,
   installExternalNativeOpenCodeProvider,
+  installExternalNativeClaudeProvider,
 } from "./support/provider";
 
 interface Chat {
@@ -23,6 +24,7 @@ const providers = [
   { adapter: "copilot", provider: "copilot", install: installExternalNativeCopilotProvider },
   { adapter: "codex", provider: "codex", install: installExternalCodexProvider },
   { adapter: "opencode2", provider: "opencode", install: installExternalNativeOpenCodeProvider },
+  { adapter: "claude", provider: "claude", install: installExternalNativeClaudeProvider },
 ] as const;
 
 for (const provider of providers) {
@@ -70,7 +72,7 @@ for (const provider of providers) {
       expect((await idle()).transcript.messages.some((message) =>
         message.role === "assistant" && message.content.includes(workspace.id))).toBe(true);
 
-      if (provider.adapter === "copilot") {
+      if (provider.adapter === "copilot" || provider.adapter === "claude") {
         const identifier = "project-cli-token";
         await application.json(`/api/chats/${chat.config.id}/messages`, {
           method: "POST", body: JSON.stringify({

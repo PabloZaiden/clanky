@@ -296,13 +296,13 @@ Execution-host transport and harness are independent:
 
 | Execution host | Available adapters |
 | --- | --- |
-| Local | Copilot native, Codex native, OpenCode 2 native |
-| Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native |
+| Local | Copilot native, Codex native, OpenCode 2 native, Claude Agent |
+| Mesh v7, including relays | Copilot native, Codex native, OpenCode 2 native, Claude Agent |
 
 Install and authenticate the selected runtime under the **worker service
 account**, not just on the controller. Native support uses the current
-Copilot SDK and native CLI packages for Copilot, Codex app-server, and OpenCode
-runtime/client. See
+Copilot SDK and native CLI packages for Copilot, Codex app-server, OpenCode
+runtime/client and Claude Agent SDK/Claude Code. See
 [workspace configuration](harnesses.md#workspace-configuration).
 
 Native Mesh uses a provider-neutral versioned RPC/lifetime-event gateway.
@@ -826,8 +826,8 @@ Workspace creation selects **Worker connection**, not a worker address;
 provisioning does not publish a container worker port. Existing listener-based
 workers preserve their route and published endpoint during restart/rebuild.
 
-Automatic workspace creation selects **GitHub Copilot**, **Codex**, or
-**OpenCode 2**. Native adapters require a
+Automatic workspace creation selects **GitHub Copilot**, **Codex**,
+**OpenCode 2**, or **Claude Agent**. Native adapters require a
 dedicated worker. The host running
 Devbox can use local or Mesh execution independently of the container's
 adapter.
@@ -838,7 +838,9 @@ worker. Node/npm must be available in the container.
 Installation uses a private prefix, validates only that the
 selected executable was installed, and adds a stable private bin directory to
 the worker's PATH. OpenCode 2 is exposed as `opencode2`, without replacing a
-system OpenCode generation-1 executable.
+system OpenCode generation-1 executable. Claude Agent installs
+`@anthropic-ai/claude-code` and exposes `claude`; authenticate the CLI on
+the worker. See [Claude Agent setup](harnesses.md#claude-agent).
 When npm requires install-script approval, it is recorded only for the selected
 package in this private prefix; global npm policy is not changed.
 
