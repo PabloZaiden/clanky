@@ -74,6 +74,7 @@ async function withNativeCredentialLock<T>(
   const key = clientStorageKey(`credentials-lock:${baseUrl}`);
   const request = bridge.postMessage({ type: "acquire", id, key });
   let acquired = false;
+  let completed = false;
   let cancellation: Promise<{ ok: true } | { ok: false; error: unknown }> | undefined;
   const cancel = () => {
     cancellation ??= bridge.postMessage({ type: "cancel", id, key })
@@ -95,15 +96,19 @@ async function withNativeCredentialLock<T>(
     if (value === null) await store.remove(baseUrl);
     else if (value !== undefined) await store.write(parseSavedCredentials(value, baseUrl));
     signal?.throwIfAborted();
-    return await operation();
+    const result = await operation();
+    completed = true;
+    return result;
   } finally {
     signal?.removeEventListener("abort", cancel);
     try {
       if (acquired) {
         let value: string | null | undefined;
         try {
-          const saved = await readClientCredentials(store, baseUrl);
-          value = saved ? JSON.stringify(saved) : null;
+          if (completed) {
+            const saved = await readClientCredentials(store, baseUrl);
+            value = saved ? JSON.stringify(saved) : null;
+          }
         } finally {
           nativeLockAcknowledgmentSchema.parse(await bridge.postMessage({
             type: "release", id, key, ...(value !== undefined ? { value } : {}),

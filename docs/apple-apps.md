@@ -1426,7 +1426,9 @@ native preferences. Queued operations can be canceled without releasing the
 active owner's operation. A departing uncached page or terminated web content
 process fails its affected waiting requests visibly. The same applies if an
 operation cannot confirm its saved snapshot; waiting windows must not receive an
-obsolete cached token. The coordinator does not claim to recover a lost
+obsolete cached token. A failed snapshot reconciliation or credential operation
+releases ownership without publishing a snapshot, even if localStorage still
+contains readable older credentials. The coordinator does not claim to recover a lost
 token-exchange response. Genuine server revocation and replay rejection
 remain unchanged.
 Both the native shell and frontend must include this coordination. A frontend
