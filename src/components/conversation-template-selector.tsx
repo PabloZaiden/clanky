@@ -25,7 +25,8 @@ export function ConversationTemplateSelector({
   const closeMenu = useComposerActionsMenuClose();
   const promptTemplates = usePromptTemplates();
   const templates = getOrderedPromptTemplates(promptTemplates)
-    .filter((item) => promptTemplates.planningTemplateEnabled || item.value !== PREPARE_PLAN_TEMPLATE.id);
+    .filter((item) => item.value !== PREPARE_PLAN_TEMPLATE.id
+      || (promptTemplates.loaded && promptTemplates.planningTemplateEnabled));
   const template = templates.find((item) => item.value === selectedTemplate)?.template;
 
   return (

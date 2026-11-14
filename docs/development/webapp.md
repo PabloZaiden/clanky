@@ -263,10 +263,13 @@ Template settings include a default-enabled **Prepare a plan** row with
 an enablement switch and the same up/down controls as custom templates, but no
 edit/delete controls. Persist its position separately from the custom list;
 settings and the selector use the same order, including after re-enabling it.
-It appears in the existing selector and prepends editable guidance without
-discarding a draft or attachments. Custom template behavior is unchanged. The creation checkbox's
-one-time guidance is part of the first persisted user message, not hidden prompt
-context or a synthetic system message.
+It appears in the existing selector after preferences first load successfully
+and prepends editable guidance without discarding a draft or attachments.
+Refresh failures retain the last successfully loaded choices. Custom template
+behavior is unchanged. The creation checkbox's one-time guidance is part of
+the first persisted user message, not hidden prompt context or a synthetic
+system message. A rejected queued dispatch retains that guidance for an
+eligible retry; later messages remain unchanged.
 
 Transcript images load when their entries enter the visible conversation;
 non-image files load only when downloaded. Keep attachment bytes out of

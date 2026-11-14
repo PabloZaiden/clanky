@@ -449,18 +449,21 @@ export class ChatConversationService implements ChatConversationPort {
         if (deferQueuedMessage) this.emitMessage(current, userMessage);
         this.emitChatUpdated(current);
       }
-      let planningKickoff = false;
       if (current.config.startWithPlan && !current.config.planningKickoffMessageId && !answerInputId) {
         await new ChatDirectoryService(this.state).preparePlanningKickoff(current.config.id);
         throwIfChatStartupAborted(startupOperation.controller.signal);
-        // Consume before dispatch: an uncertain send or reconnect must never inject it again.
-        planningKickoff = await this.state.claimPlanningKickoff(current.config.id, userMessage.id);
+        // Bind before dispatch so a reconnect cannot apply guidance to a different input.
+        const planningKickoff = await this.state.claimPlanningKickoff(current.config.id, userMessage.id);
         if (planningKickoff) {
           current = { ...current, config: { ...current.config, planningKickoffMessageId: userMessage.id } };
-          userMessage = { ...userMessage, content: `${INITIAL_PLANNING_GUIDANCE}\n\n${input.message}` };
-          if (current.state.messages.some((message) => message.id === userMessage.id)) {
-            current = await this.appendMessage(current, userMessage, {});
-          }
+        }
+      }
+      if (current.config.planningKickoffMessageId === userMessage.id) {
+        const planningPrefix = `${INITIAL_PLANNING_GUIDANCE}\n\n`;
+        userMessage = { ...userMessage, content: input.message.startsWith(planningPrefix)
+          ? input.message : `${planningPrefix}${input.message}` };
+        if (current.state.messages.some((message) => message.id === userMessage.id)) {
+          current = await this.appendMessage(current, userMessage, {});
         }
       }
       const prompt: PromptInput = {
