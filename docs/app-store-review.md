@@ -177,10 +177,13 @@ uploads cannot be converted into a public-review build. A separately authorized
 App Store Connect export needs a new build number and must omit
 `testFlightInternalTestingOnly=true`.
 The separate manual [App Store workflow](apple-apps.md#public-ios-app-store-prerequisites)
-uses the latest stable versioned release, verifies public eligibility, submits
-the prepared version to review and enables automatic publication after approval.
-It does not prepare missing metadata or screenshots, and must not be run just
-to validate tooling.
+uses the latest stable versioned release, reuses its prepared App Store draft or
+creates one inheriting the current listing, verifies public eligibility, submits
+the version to review and enables automatic publication after approval. The
+normal release task asks for the new version's What's New; existing draft notes
+are preserved. Inherited metadata and screenshots must pass preflight, and
+changed behavior still needs updated store/reviewer information. The workflow
+must not be run just to validate tooling.
 
 Before marking a version ready to submit:
 

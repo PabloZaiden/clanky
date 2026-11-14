@@ -3,6 +3,7 @@
  */
 
 import { formatVersion, github, latestVersion, type Version } from "./release-version";
+import { appStoreWhatsNewSchema, formatAppStoreReleaseNotes } from "./app-store-release-notes";
 
 type Bump = "major" | "minor" | "patch";
 
@@ -29,6 +30,16 @@ function chooseBump(): Bump | null {
       return bump;
     }
     console.error("Choose major, minor, or patch.");
+  }
+}
+
+function chooseWhatsNew(): string | null {
+  while (true) {
+    const answer = prompt("App Store What's New (English, 1-4000 characters; Enter to cancel):");
+    if (answer === null || answer.trim() === "") return null;
+    const result = appStoreWhatsNewSchema.safeParse(answer);
+    if (result.success) return result.data;
+    console.error(result.error.issues.map(issue => issue.message).join("\n"));
   }
 }
 
@@ -66,9 +77,15 @@ async function release(): Promise<void> {
   }
 
   const tag = formatVersion(bumpVersion(version, bump));
+  const whatsNew = chooseWhatsNew();
+  if (whatsNew === null) {
+    console.log("Release cancelled.");
+    return;
+  }
   console.log(`\nTag and title: ${tag}`);
   console.log(`Source: ${branch} (${commit})`);
-  console.log("Description: GitHub-generated release notes.");
+  console.log(`App Store What's New:\n${whatsNew}`);
+  console.log("Description: App Store What's New and GitHub-generated release notes.");
   console.log("Publishing triggers the binary and Docker release workflows.");
   const confirmation = prompt(`Publish ${tag}? Type yes to confirm:`);
   if (confirmation?.trim().toLowerCase() !== "yes") {
@@ -91,6 +108,7 @@ async function release(): Promise<void> {
     "--repo", repository,
     "--target", commit,
     "--title", tag,
+    "--notes", formatAppStoreReleaseNotes(whatsNew),
     "--generate-notes",
   ]);
   console.log(url);

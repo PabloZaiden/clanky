@@ -13,6 +13,7 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
       source: ${{ steps.release.outputs.source }}
+      notes: ${{ steps.release.outputs.notes }}
     steps:
       - name: Resolve exact published release source
         id: release
@@ -58,6 +59,7 @@ jobs:
           {
             printf 'tag=%s\n' "$tag"
             printf 'source=%s\n' "$source"
+            printf 'notes=%s\n' "$(jq -c '.body // ""' "$RUNNER_TEMP/ios-release.json")"
           } >> "$GITHUB_OUTPUT"
           printf '### App Store publication target\n\nRelease: `%s`\n\nSource: `%s`\n\nThis run submits to App Review and enables automatic public release after approval.\n' \
             "$tag" "$source" >> "$GITHUB_STEP_SUMMARY"
@@ -101,6 +103,7 @@ jobs:
         env:
           IOS_RELEASE_TAG: ${{ needs.release.outputs.tag }}
           IOS_SOURCE_REVISION: ${{ needs.release.outputs.source }}
+          IOS_RELEASE_NOTES_JSON: ${{ needs.release.outputs.notes }}
           IOS_SIGNING_CERTIFICATE_BASE64: ${{ secrets.CLANKY_IOS_DISTRIBUTION_CERT_BASE64 }}
           IOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CLANKY_IOS_DISTRIBUTION_CERT_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.CLANKY_IOS_TESTFLIGHT_PROFILE_BASE64 }}

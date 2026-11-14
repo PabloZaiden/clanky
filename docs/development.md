@@ -174,15 +174,22 @@ release as its baseline, ignoring drafts, prereleases, and other tag formats.
 An existing stable release is required; local tags and the development version
 in `package.json` are not used.
 
-Review the proposed tag/title and remote default branch commit before confirming
-publication. The script releases that exact remote commit, regardless of the
-local branch or unpushed changes. Do not publish merely to validate the script.
+Enter an intentional, customer-facing App Store **What's New** in English
+(1-4000 characters). The script previews it with the proposed tag/title and
+remote default branch commit before confirmation. It stores the text in a
+dedicated App Store section alongside GitHub-generated release notes, so the
+separate iOS publication workflow can use it without copying the developer
+changelog or stale notes from an earlier version. Preserve that section's
+markers if editing the GitHub release notes later.
 
-Only typing `yes` at the final prompt publishes. Enter at the bump prompt,
-EOF, or any other confirmation cancels without creating a tag or release.
-The tag and title are identical `vX.Y.Z` strings, notes are GitHub-generated,
-and existing remote tags are rejected. Publication triggers binary and Docker
-release workflows.
+The script releases that exact remote commit, regardless of the local branch
+or unpushed changes. Do not publish merely to validate the script.
+
+Only typing `yes` at the final prompt publishes. Enter at the bump or What's
+New prompt, EOF, or any other confirmation cancels without creating a tag or
+release. The tag and title are identical `vX.Y.Z` strings, and existing remote
+tags are rejected. Publication triggers binary and Docker release workflows;
+it does not run public iOS submission.
 
 Main merges do not publish distributions. A daily 03:00 `America/New_York`
 publication updates the rolling `latest` binaries, signed apps, Docker images
