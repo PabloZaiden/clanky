@@ -71,8 +71,9 @@ the exact frontend snapshot. Generated bundler details can change this digest
 when rebuilding the same source revision, so it is an integrity identifier,
 not an ordered release version. Publish metadata and assets together, not as
 separate deployments.
-The [iPhone/iPad app](apple-apps.md#frontend-updates-on-iphone-and-ipad)
-uses this metadata for frontend-only updates. Its native iOS Settings toggle
+Update-enabled [iPhone/iPad apps](apple-apps.md#frontend-updates-on-iphone-and-ipad)
+use this metadata for frontend-only updates; public App Store builds do not.
+The update-enabled app's native iOS Settings toggle
 selects stable by default or latest; an explicit change can install an older
 channel version without clearing web sessions.
 Sidebar and Settings / About show the
@@ -217,7 +218,8 @@ the user change servers or sign out. A failed or unreachable API does not preven
 returning to server selection.
 
 Sign-in follows the CLI's device-authorization flow: open the API's page,
-authenticate there with a passkey or API key, verify the code and approve this client.
+authenticate there with a passkey, password or API key, verify the code and
+approve this client.
 The frontend polls the token endpoint and receives its own revocable session.
 If the browser blocks the new window, use the displayed authorization link.
 Passkey management opens the API-origin `/account` page, including in API-only

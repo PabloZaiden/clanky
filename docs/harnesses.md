@@ -482,8 +482,11 @@ not provide unlimited physical capacity.
 
 Open an image attachment to preview it, then tap or click the image in the dialog
 to open the full image alone in a new browser tab. Clanky preserves the image
-bytes received from the provider and does not force a download; use the
-browser's save or share options.
+bytes received from the provider. The dialog also offers **Download**:
+browser clients start a download, the Mac app opens **Save As**, and the
+iPhone/iPad app opens the system share/export sheet. Opening the image alone
+does not force a download. Starting a download/export does not confirm the
+destination saved the file.
 
 ## Questions
 

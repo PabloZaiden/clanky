@@ -11,10 +11,12 @@ clicked; later response text is not appended.
 
 ## Provider settings
 
-In **Settings → Voice**, configure the provider URL and API key, a transcription
-model, and a text-generation model. These are needed for voice input and
-summary playback and transcript translation. Validate transcription, text
-generation, and Live Voice after changing their settings. One **Save** persists
+Voice is optional and separate from workspace agent models and authentication.
+In **Settings → Voice**, configure the provider URL and API key and the
+capabilities you want: transcription for **Talk**, shared text generation for
+summary playback/translation, or Live and its shared text-model name for
+**Live Voice**. Unused model fields can remain blank. Validate the capabilities
+you configure after changing their settings. One **Save** persists
 the whole form, including optional independent Live credentials; it does not
 automatically validate any capability. Use **Validate** beside each model on
 saved values. **Cancel** discards the draft; navigation asks before discarding
