@@ -10,6 +10,7 @@ import {
   QuickChatSettingsSchema,
   SetFileExplorerFullTreeRequestSchema,
   SetMarkdownRenderingRequestSchema,
+  SetPromptTemplatesRequestSchema,
 } from "../contracts/schemas/preferences";
 import { ModelConfigSchema } from "../contracts/schemas/model";
 import { CollaborationNameSchema } from "../contracts/schemas/collaboration";
@@ -79,6 +80,8 @@ export const browserPreferences = {
   markdown: createPreference("markdown-rendering", SetMarkdownRenderingRequestSchema.shape.enabled, true),
   fullTree: createPreference("file-explorer-full-tree", SetFileExplorerFullTreeRequestSchema.shape.enabled, true),
   promptTemplates: createPreference("prompt-templates", PromptTemplateListSchema, []),
+  planningTemplateEnabled: createPreference("planning-template-enabled", SetPromptTemplatesRequestSchema.shape.planningTemplateEnabled.unwrap(), true),
+  planningTemplateIndex: createPreference("planning-template-index", SetPromptTemplatesRequestSchema.shape.planningTemplateIndex.unwrap(), 0),
   lastModel: createPreference("last-model", ModelConfigSchema.nullable(), null),
   collaborationName: createPreference("collaboration-name", CollaborationNameSchema.nullable(), null),
 };

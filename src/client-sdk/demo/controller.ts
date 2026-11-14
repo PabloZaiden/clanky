@@ -55,7 +55,7 @@ export class DemoController {
     ["file-explorer-full-tree", { enabled: true }],
     ["quick-chat", { workspaceId: "demo-workspace", model: DEMO_MODEL, useWorktree: false }],
     ["last-model", DEMO_MODEL],
-    ["prompt-templates", { templates: [] }], ["sidebar-pins", { pins: [] }],
+    ["prompt-templates", { templates: [], planningTemplateEnabled: true, planningTemplateIndex: 0 }], ["sidebar-pins", { pins: [] }],
     ["scheduler-timezone", { timezone: "UTC" }], ["github-username", { githubUsername: "" }],
   ]);
   private disposed = false;

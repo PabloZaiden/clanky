@@ -3,6 +3,7 @@ import { createLogger, useRealtimeRefresh } from "@pablozaiden/webapp/web";
 import {
   PROMPT_TEMPLATES_REALTIME_RESOURCE,
   type PromptTemplate,
+  type PromptTemplatePreferences,
 } from "@/shared/prompt-templates";
 import { apiRequest } from "../lib/api-client";
 import { browserPreferences } from "../client-sdk/browser-preferences";
@@ -13,10 +14,12 @@ import {
 } from "./usePreferenceLifecycle";
 
 const log = createLogger("usePromptTemplates");
-const EMPTY_TEMPLATES: PromptTemplate[] = [];
+const INITIAL_PREFERENCES: PromptTemplatePreferences = { templates: [], planningTemplateEnabled: true, planningTemplateIndex: 0 };
 
 export interface UsePromptTemplatesResult {
   templates: PromptTemplate[];
+  planningTemplateEnabled: boolean;
+  planningTemplateIndex: number;
   loading: boolean;
   loaded: boolean;
   saving: boolean;
@@ -25,7 +28,8 @@ export interface UsePromptTemplatesResult {
   saveError: string | null;
   clearSaveError: () => void;
   refresh: () => Promise<void>;
-  updateTemplates: (templates: PromptTemplate[]) => Promise<PromptTemplate[] | null>;
+  updateTemplates: (templates: PromptTemplate[], planningTemplateIndex?: number) => Promise<PromptTemplate[] | null>;
+  updatePlanningTemplateEnabled: (enabled: boolean) => Promise<boolean>;
 }
 
 export function usePromptTemplates(): UsePromptTemplatesResult {
@@ -34,9 +38,16 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
   const refreshPendingRef = useRef(false);
   const activeRefreshesRef = useRef(0);
 
-  const loadPreference = useCallback(async (signal: AbortSignal): Promise<PromptTemplate[]> => {
-    if (isBrowserCollaborationClient()) return browserPreferences.promptTemplates.read(signal);
-    const data = await apiRequest<{ templates: PromptTemplate[] }>(
+  const loadPreference = useCallback(async (signal: AbortSignal): Promise<PromptTemplatePreferences> => {
+    if (isBrowserCollaborationClient()) {
+      const templates = browserPreferences.promptTemplates.read(signal);
+      return {
+        templates,
+        planningTemplateEnabled: browserPreferences.planningTemplateEnabled.read(signal),
+        planningTemplateIndex: Math.min(browserPreferences.planningTemplateIndex.read(signal), templates.length),
+      };
+    }
+    return await apiRequest<PromptTemplatePreferences>(
       "/api/preferences/prompt-templates",
       {
         signal,
@@ -44,29 +55,31 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
         fallbackMessage: "Failed to load message templates",
       },
     );
-    return data.templates;
   }, []);
 
   const savePreference = useCallback(async (
-    templates: PromptTemplate[],
+    value: PromptTemplatePreferences,
     signal: AbortSignal,
-  ): Promise<PromptTemplate[]> => {
-    if (isBrowserCollaborationClient()) return browserPreferences.promptTemplates.write(templates, signal);
-    const data = await apiRequest<{ templates: PromptTemplate[] }>(
+  ): Promise<PromptTemplatePreferences> => {
+    if (isBrowserCollaborationClient()) return {
+      templates: browserPreferences.promptTemplates.write(value.templates, signal),
+      planningTemplateEnabled: browserPreferences.planningTemplateEnabled.write(value.planningTemplateEnabled, signal),
+      planningTemplateIndex: browserPreferences.planningTemplateIndex.write(Math.min(value.planningTemplateIndex, value.templates.length), signal),
+    };
+    return await apiRequest<PromptTemplatePreferences>(
       "/api/preferences/prompt-templates",
       {
         signal,
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templates }),
+        body: JSON.stringify(value),
         action: "Save message templates",
         fallbackMessage: "Failed to save message templates",
       },
     );
-    return data.templates;
   }, []);
 
-  const handlePreferenceError = useCallback((context: PreferenceErrorContext<PromptTemplate[]>) => {
+  const handlePreferenceError = useCallback((context: PreferenceErrorContext<PromptTemplatePreferences>) => {
     const action = context.operation === "load" ? "load" : "save";
     log.error(`Failed to ${action} message templates`, {
       error: String(context.error),
@@ -77,7 +90,7 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
   }, []);
 
   const preference = usePreferenceLifecycle({
-    initialValue: EMPTY_TEMPLATES,
+    initialValue: INITIAL_PREFERENCES,
     load: loadPreference,
     save: savePreference,
     onError: handlePreferenceError,
@@ -104,17 +117,23 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
     refresh,
   });
 
-  useEffect(() => isBrowserCollaborationClient()
-    ? browserPreferences.promptTemplates.subscribe(() => { void refresh(); })
-    : undefined, [refresh]);
+  useEffect(() => {
+    if (!isBrowserCollaborationClient()) return;
+    const subscriptions = [
+      browserPreferences.promptTemplates.subscribe(() => { void refresh(); }),
+      browserPreferences.planningTemplateEnabled.subscribe(() => { void refresh(); }),
+      browserPreferences.planningTemplateIndex.subscribe(() => { void refresh(); }),
+    ];
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+  }, [refresh]);
 
   const clearSaveError = useCallback(() => {
     setSaveError(null);
   }, []);
 
-  const updateTemplates = useCallback(async (
-    templates: PromptTemplate[],
-  ): Promise<PromptTemplate[] | null> => {
+  const updatePreference = useCallback(async (
+    value: PromptTemplatePreferences,
+  ): Promise<PromptTemplatePreferences | null> => {
     if (
       !preference.loaded
       || preference.loading
@@ -130,8 +149,8 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
     savePendingRef.current = true;
     setSaveError(null);
     try {
-      await preference.saveValue(templates, { throwOnError: true });
-      return templates;
+      await preference.saveValue(value, { throwOnError: true });
+      return value;
     } catch {
       return null;
     } finally {
@@ -150,10 +169,24 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
     refresh,
   ]);
 
+  const updateTemplates = useCallback(async (
+    templates: PromptTemplate[],
+    planningTemplateIndex = preference.value.planningTemplateIndex,
+  ) => {
+    const saved = await updatePreference({ ...preference.value, templates, planningTemplateIndex });
+    return saved?.templates ?? null;
+  }, [preference.value, updatePreference]);
+
+  const updatePlanningTemplateEnabled = useCallback(async (enabled: boolean) => {
+    return await updatePreference({ ...preference.value, planningTemplateEnabled: enabled }) !== null;
+  }, [preference.value, updatePreference]);
+
   const loadError = preference.errorOperation === "load" ? preference.error : null;
 
   return {
-    templates: preference.value,
+    templates: preference.value.templates,
+    planningTemplateEnabled: preference.value.planningTemplateEnabled,
+    planningTemplateIndex: preference.value.planningTemplateIndex,
     loading: preference.loading,
     loaded: preference.loaded,
     saving: preference.saving,
@@ -163,5 +196,6 @@ export function usePromptTemplates(): UsePromptTemplatesResult {
     clearSaveError,
     refresh,
     updateTemplates,
+    updatePlanningTemplateEnabled,
   };
 }

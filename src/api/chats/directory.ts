@@ -107,7 +107,7 @@ export const chatsDirectoryRoutes = defineRoutes({
     delegation: workspaceOperation("chat"),
     auth: "user",
     sameOrigin: "mutations",
-    description: "Read the actual current branch and an existing open pull request through the chat's execution host. Unavailable PR lookups are distinct from no PR.",
+    description: "Read the current branch and an existing pull request with its state through the chat's execution host. Prefer an open PR, otherwise the most recently created PR. Unavailable lookups are distinct from no PR.",
     operations: {
       GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
     },

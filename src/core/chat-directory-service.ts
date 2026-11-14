@@ -83,21 +83,26 @@ export class ChatDirectoryService {
       };
       if (!branch) return { ...context, message: "Pull request lookup is unavailable for a detached HEAD." };
       try {
-        const result = await executor.exec("gh", [
-          "pr", "list", "--head", branch, "--state", "open", "--limit", "1", "--json", "number,url",
-        ], { cwd: directory, timeout: 5_000, logFailures: false });
-        if (!result.success) {
-          log.warn("Existing pull requests could not be checked", { chatId, exitCode: result.exitCode });
-          return { ...context, message: "Existing pull requests could not be checked on the execution host." };
-        }
-        const entries: unknown = JSON.parse(result.stdout);
-        if (!Array.isArray(entries)) throw new Error("Invalid pull request response");
+        const readPullRequests = async (state: "open" | "all"): Promise<unknown[]> => {
+          const result = await executor.exec("gh", [
+            "pr", "list", "--head", branch, "--state", state, "--limit", "1", "--json", "number,url,state",
+          ], { cwd: directory, timeout: 5_000, logFailures: false });
+          if (!result.success) throw new Error(`Pull request lookup exited with code ${result.exitCode}`);
+          const entries: unknown = JSON.parse(result.stdout);
+          if (!Array.isArray(entries)) throw new Error("Invalid pull request response");
+          return entries;
+        };
+        let entries = await readPullRequests("open");
+        if (entries.length === 0) entries = await readPullRequests("all");
         if (entries.length === 0) return { ...context, pullRequestLookup: "none" };
         const entry = entries[0] as Record<string, unknown> | null;
         if (!entry || !Number.isSafeInteger(entry["number"]) || Number(entry["number"]) <= 0
-          || typeof entry["url"] !== "string") {
+          || typeof entry["url"] !== "string"
+          || !["OPEN", "CLOSED", "MERGED"].includes(String(entry["state"]))) {
           throw new Error("Invalid pull request response");
         }
+        const state = entry["state"] === "OPEN" ? "open"
+          : entry["state"] === "CLOSED" ? "closed" : "merged";
         const url = new URL(entry["url"]);
         if (!["https:", "http:"].includes(url.protocol)
           || !url.pathname.endsWith(`/pull/${String(entry["number"])}`)) {
@@ -105,7 +110,7 @@ export class ChatDirectoryService {
         }
         return {
           ...context,
-          pullRequest: { number: Number(entry["number"]), url: url.toString() },
+          pullRequest: { number: Number(entry["number"]), url: url.toString(), state },
           pullRequestLookup: "found",
         };
       } catch (error) {

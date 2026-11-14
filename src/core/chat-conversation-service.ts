@@ -88,6 +88,7 @@ import { requireMatchingHarnessBindings } from "../backends/harness-binding";
 import type { CurrentUser } from "@/platform/contracts";
 import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../context/user-context";
 import { ChatDirectoryService } from "./chat-directory-service";
+import { INITIAL_PLANNING_GUIDANCE } from "@/shared/prompt-templates";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = DEFAULT_ACTIVITY_TIMEOUT_SECONDS * 1000;
@@ -95,12 +96,6 @@ const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
 const CHAT_STREAM_STATUS_RELOAD_INTERVAL_MS = 500;
 const CHAT_INTERRUPT_ABORT_TIMEOUT_MS = 5_000;
 const CHAT_INTERRUPT_STARTUP_SETTLE_TIMEOUT_MS = 5_000;
-const INITIAL_PLANNING_GUIDANCE = [
-  "Start with a plan for the user's request below.",
-  "Investigate the project and ask clarifying questions as needed. Create .clanky-planning/plan.md with verifiable goals and .clanky-planning/status.md with progress, remaining work, blockers, and next steps.",
-  "Discuss and revise the plan through this same ordinary conversation. Wait for an explicit user request before implementing; do not treat planning or discussion as permission to implement.",
-  "During subsequent implementation, keep status.md current and update it before reporting results.",
-].join("\n");
 
 interface ActiveChatStream {
   owner: CurrentUser;
@@ -303,7 +298,7 @@ export class ChatConversationService implements ChatConversationPort {
     let historyPromptTransferred = false;
     let promptAttempted = false;
     let preparingAttachments = false;
-    const userMessage: MessageData = (transcriptMessage && chat.state.messages.find(
+    let userMessage: MessageData = (transcriptMessage && chat.state.messages.find(
       (message) => message.id === transcriptMessage.id,
     )) ?? transcriptMessage ?? {
       id: options.clearQueuedMessageIds?.length
@@ -454,14 +449,21 @@ export class ChatConversationService implements ChatConversationPort {
         if (deferQueuedMessage) this.emitMessage(current, userMessage);
         this.emitChatUpdated(current);
       }
-      let planningKickoff = false;
       if (current.config.startWithPlan && !current.config.planningKickoffMessageId && !answerInputId) {
         await new ChatDirectoryService(this.state).preparePlanningKickoff(current.config.id);
         throwIfChatStartupAborted(startupOperation.controller.signal);
-        // Consume before dispatch: an uncertain send or reconnect must never inject it again.
-        planningKickoff = await this.state.claimPlanningKickoff(current.config.id, userMessage.id);
+        // Bind before dispatch so a reconnect cannot apply guidance to a different input.
+        const planningKickoff = await this.state.claimPlanningKickoff(current.config.id, userMessage.id);
         if (planningKickoff) {
           current = { ...current, config: { ...current.config, planningKickoffMessageId: userMessage.id } };
+        }
+      }
+      if (current.config.planningKickoffMessageId === userMessage.id) {
+        const planningPrefix = `${INITIAL_PLANNING_GUIDANCE}\n\n`;
+        userMessage = { ...userMessage, content: input.message.startsWith(planningPrefix)
+          ? input.message : `${planningPrefix}${input.message}` };
+        if (current.state.messages.some((message) => message.id === userMessage.id)) {
+          current = await this.appendMessage(current, userMessage, {});
         }
       }
       const prompt: PromptInput = {
@@ -469,8 +471,10 @@ export class ChatConversationService implements ChatConversationPort {
           ...(historyPromptContext
             ? [{ type: "text" as const, text: historyPromptContext.instruction }]
             : []),
-          ...(planningKickoff ? [{ type: "text" as const, text: INITIAL_PLANNING_GUIDANCE }] : []),
-          ...buildPromptParts(input.message, input.attachments, attachmentFiles),
+          ...buildPromptParts(
+            current.config.planningKickoffMessageId === userMessage.id ? userMessage.content : input.message,
+            input.attachments, attachmentFiles,
+          ),
         ],
         model: current.config.model,
         ...(controlContext ? { controlContext } : {}),
