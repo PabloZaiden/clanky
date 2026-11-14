@@ -10,6 +10,7 @@ const AGENT_PROVIDER_LABELS = {
   opencode: "OpenCode 2",
   copilot: "Copilot",
   codex: "Codex",
+  claude: "Claude Agent",
 } satisfies Record<AgentProvider, string>;
 
 export const AGENT_PROVIDER_OPTIONS: readonly AgentProviderOption[] = AGENT_PROVIDER_IDS.map((id) => ({

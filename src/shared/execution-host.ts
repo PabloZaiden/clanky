@@ -53,6 +53,7 @@ export type ExecutionHostRef =
 
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
+  "claudeHarness",
   "fileOperations",
   "directoryTree",
   "git",
@@ -78,6 +79,7 @@ export const MANAGED_WORKTREES_SELECTED_BRANCH_VERSION = 3;
 
 export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   commandExecution: 1,
+  claudeHarness: 1,
   fileOperations: 2,
   directoryTree: 1,
   git: 2,
@@ -94,9 +96,9 @@ export const WORKSPACE_EXECUTION_HOST_CAPABILITIES = [
 ] as const satisfies readonly ExecutionHostCapabilityId[];
 
 export function getAgentExecutionHostCapability(
-  _adapter: HarnessAdapter,
-): "commandExecution" {
-  return "commandExecution";
+  adapter: HarnessAdapter,
+): "commandExecution" | "claudeHarness" {
+  return adapter === "claude" ? "claudeHarness" : "commandExecution";
 }
 
 /**
@@ -155,6 +157,7 @@ export interface ExecutionNodeConfiguration {
 
 export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
+  claudeHarness: EXECUTION_HOST_CAPABILITY_VERSIONS.claudeHarness,
   fileOperations: 2,
   git: 2,
   managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,

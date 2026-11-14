@@ -93,6 +93,7 @@ const NATIVE_RUNTIME_PACKAGES = {
   copilot: { package: "@github/copilot", executable: "copilot" },
   codex: { package: "@openai/codex", executable: "codex" },
   opencode2: { package: "@opencode/cli", executable: "opencode" },
+  claude: { package: "@anthropic-ai/claude-code", executable: "claude" },
 } as const;
 
 const DEV_CONTAINERS_NODE_BIN = "/usr/local/share/nvm/current/bin";

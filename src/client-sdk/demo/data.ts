@@ -6,6 +6,7 @@ import { MESH_PROTOCOL_PREFERRED_VERSION, MESH_SUPPORTED_PROTOCOL_VERSIONS } fro
 import type { ControllerRelayPairingStatus } from "@/contracts/relay";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/shared/agent-notifications";
 import type { AgentNotificationSettings } from "@/contracts/schemas/agent-notifications";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 
 export const DEMO_MODEL = { providerID: "copilot", modelID: "demo-simulated", variant: "" } as const;
 export const DEMO_DIRECTORY = "/demo/observatory";
@@ -17,8 +18,8 @@ export const DEMO_HOST: ExecutionHostDescriptor = {
   endpoint: null, meshRouteKind: null, repositoriesBasePath: DEMO_DIRECTORY,
   preferredModel: DEMO_MODEL, configurationRevision: 1, accessRequirement: { kind: "none" },
   acceptRemoteExecution: true, platform: { os: "linux", architecture: "arm64" },
-  capabilities: { commandExecution: 1, fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3 },
-  harnessAdapters: ["copilot", "codex", "opencode2"], revision: 1,
+  capabilities: { commandExecution: 1, claudeHarness: 1, fileOperations: 2, directoryTree: 1, git: 2, managedWorktrees: 3 },
+  harnessAdapters: [...HARNESS_ADAPTER_IDS], revision: 1,
 };
 export const DEMO_WORKER: ExecutionHostDescriptor = {
   ...DEMO_HOST, ref: { kind: "mesh", nodeId: "demo-worker" }, targetKey: "demo-worker",

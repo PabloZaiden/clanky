@@ -10,6 +10,7 @@ import {
 import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { AgentProviderSchema } from "./workspace";
 import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
+import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 const MeshExecutionProtocolVersionSchema = MeshProtocolVersionSchema;
@@ -32,7 +33,7 @@ export const MeshExecutionSessionRequestSchema = z.object({
   directory: MeshExecutionPathSchema,
   provider: AgentProviderSchema,
   channel: z.enum([MESH_EXECUTION_CHANNEL, MESH_HARNESS_CHANNEL]),
-  adapter: z.enum(["copilot", "codex", "opencode2"]).optional(),
+  adapter: z.enum(HARNESS_ADAPTER_IDS).optional(),
   ownerId: z.string().min(1).max(200).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   controlTools: z.literal(MESH_EXECUTION_CONTROL_VERSION).optional(),

@@ -105,15 +105,21 @@ function collectImageCandidates(
     const type = typeof current["type"] === "string" ? current["type"].toLowerCase() : "";
     if (type === "image" || type === "image_url" || type === "inputimage") {
       const imageUrl = isRecord(current["image_url"]) ? current["image_url"] : undefined;
+      const source = isRecord(current["source"]) ? current["source"] : undefined;
+      const file = isRecord(current["file"]) ? current["file"] : undefined;
       const data = typeof current["data"] === "string"
         ? current["data"]
-        : typeof current["url"] === "string" && isInlineImageDataUri(current["url"])
-          ? current["url"]
-          : typeof imageUrl?.["url"] === "string" && isInlineImageDataUri(imageUrl["url"])
-            ? imageUrl["url"]
-            : typeof current["imageUrl"] === "string" && isInlineImageDataUri(current["imageUrl"])
-              ? current["imageUrl"]
-              : undefined;
+        : source?.["type"] === "base64" && typeof source["data"] === "string"
+          ? source["data"]
+          : isImageMimeType(file?.["type"]) && typeof file?.["base64"] === "string"
+            ? file["base64"]
+            : typeof current["url"] === "string" && isInlineImageDataUri(current["url"])
+              ? current["url"]
+              : typeof imageUrl?.["url"] === "string" && isInlineImageDataUri(imageUrl["url"])
+                ? imageUrl["url"]
+                : typeof current["imageUrl"] === "string" && isInlineImageDataUri(current["imageUrl"])
+                  ? current["imageUrl"]
+                  : undefined;
       if (data !== undefined) addImageCandidate({ data }, collection);
       else collection.rejectedImageCount += 1;
       continue;
