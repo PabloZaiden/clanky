@@ -275,16 +275,32 @@ TestFlight credentials. The workflow reuses the existing iOS Distribution
 certificate/password and App Store Connect provisioning profile secrets.
 No internal beta group or testers are required for this public export.
 
-Prepare the matching iOS version in App Store Connect first, with its approved
-metadata, review contact/access details, legal declarations and screenshots.
-The workflow does not create versions, invent release notes, upload media or
-overwrite descriptions, review access, privacy or account information.
-Its preflight checks an editable matching draft, copyright, primary-language
-description/keywords/support URL, release notes for updates, review details and
-completed iPhone/iPad screenshots. Apple additionally validates exact screenshot
-specifications, other locales, privacy, agreements and other submission requirements.
+The [normal release task](development.md#creating-a-github-release) asks for
+customer-facing App Store **What's New** and preserves it in a dedicated section
+of that release's notes. The public workflow passes the exact selected release's
+notes as data, not shell code.
 
-After processing, the workflow rechecks readiness, selects the verified build,
+Before building, the workflow reuses an editable App Store draft matching the
+release number. Prepared copy and media are preserved; missing primary-language
+What's New is filled from the release's dedicated section. If no draft exists,
+it creates the matching iOS version using Apple's current-version metadata
+inheritance, copies copyright and sets the new What's New from that release.
+Another pending version or active review blocks preparation rather than being
+renamed, overwritten or submitted accidentally. The first App Store version
+must still be prepared manually because there is no distributed listing to inherit.
+
+Inherited metadata must pass the same preflight as a prepared draft: copyright,
+primary-language description/keywords/support URL, release notes for updates,
+review details and completed iPhone/iPad screenshots. Missing inherited data or
+missing release-specific What's New fails explicitly before upload. The workflow
+does not invent text, upload replacement media, or change privacy/account/legal
+information. Review inherited content and update screenshots or reviewer access
+in App Store Connect when the shipping behavior changes. Apple additionally
+validates exact screenshot specifications, other locales, privacy, agreements
+and other submission requirements.
+
+After processing, the workflow rechecks readiness without creating versions or
+refilling fields, selects the verified build,
 changes that version to **automatic release after approval**, and submits only
 that app version using the review-submissions API. Existing active iOS review
 submissions block it before upload; it never includes unrelated review items.

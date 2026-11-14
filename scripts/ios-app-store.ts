@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AppStoreConnectClient } from "./apple-distribution";
+import { readAppStoreReleaseNotes } from "./app-store-release-notes";
 
 const resource = z.object({ id: z.string().min(1) });
 const storeVersion = resource.extend({
@@ -12,6 +13,27 @@ const submission = resource.extend({
   attributes: z.object({ state: z.string(), submittedDate: z.string().nullable().optional() }),
 });
 const editableStates = new Set(["PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED"]);
+const publishedStates = new Set(["READY_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"]);
+const localization = resource.extend({ attributes: z.object({
+  locale: z.string(), description: z.string().nullish(), keywords: z.string().nullish(),
+  supportUrl: z.string().nullish(), whatsNew: z.string().nullish(),
+}) });
+
+function requireEditableVersion(draft: z.infer<typeof storeVersion>, version: string) {
+  if (draft.attributes.versionString !== version || !editableStates.has(draft.attributes.appVersionState)) {
+    throw new Error(`iOS ${version} is not editable: ${draft.attributes.appVersionState}.`);
+  }
+}
+
+async function primaryLocalization(client: AppStoreConnectClient, appId: string, draftId: string) {
+  const app = z.object({ data: resource.extend({
+    attributes: z.object({ primaryLocale: z.string().min(1) }),
+  }) }).parse(await client.api(`/v1/apps/${appId}`)).data;
+  const localizations = await client.list(`/v1/appStoreVersions/${draftId}/appStoreVersionLocalizations`, localization);
+  const primary = localizations.filter(row => row.attributes.locale === app.attributes.primaryLocale);
+  if (primary.length !== 1 || !primary[0]) throw new Error("Missing primary App Store localization.");
+  return primary[0];
+}
 
 async function requireNoReview(client: AppStoreConnectClient, appId: string) {
   const reviews = await client.list("/v1/reviewSubmissions", submission, {
@@ -23,6 +45,56 @@ async function requireNoReview(client: AppStoreConnectClient, appId: string) {
   }
 }
 
+export async function ensureAppStoreVersion(
+  client: AppStoreConnectClient, appId: string, version: string, releaseNotes: string,
+) {
+  await requireNoReview(client, appId);
+  const versions = await client.list(`/v1/apps/${appId}/appStoreVersions`, storeVersion, {
+    "filter[platform]": "IOS",
+  });
+  const conflict = versions.find(row => row.attributes.versionString !== version
+    && !publishedStates.has(row.attributes.appVersionState));
+  if (conflict) {
+    throw new Error(`Resolve pending iOS ${conflict.attributes.versionString} (${conflict.id}) before publishing ${version}. No version was changed.`);
+  }
+  const matching = versions.filter(row => row.attributes.versionString === version);
+  if (matching.length > 1) throw new Error(`Apple returned multiple iOS ${version} versions.`);
+  let draft = matching[0];
+  let whatsNew: string | undefined;
+  if (!draft) {
+    const current = versions.filter(row => row.attributes.appVersionState === "READY_FOR_DISTRIBUTION");
+    if (current.length !== 1 || !current[0]?.attributes.copyright?.trim()) {
+      throw new Error("Prepare the first App Store version manually; automatic creation requires one current distributed iOS version with copyright.");
+    }
+    whatsNew = readAppStoreReleaseNotes(releaseNotes);
+    console.error(`Creating iOS ${version} from the current listing; inspect App Store Connect before rerunning if creation is interrupted.`);
+    draft = z.object({ data: storeVersion }).parse(await client.api("/v1/appStoreVersions", "POST", { data: {
+      type: "appStoreVersions",
+      attributes: { platform: "IOS", versionString: version,
+        copyright: current[0].attributes.copyright, releaseType: "MANUAL" },
+      relationships: { app: { data: { type: "apps", id: appId } } },
+    } })).data;
+    console.error(`Created iOS ${version} draft ${draft.id}; inherited metadata will be validated before upload.`);
+  }
+  requireEditableVersion(draft, version);
+  const primary = await primaryLocalization(client, appId, draft.id);
+  if (whatsNew !== undefined || (versions.some(row => publishedStates.has(row.attributes.appVersionState))
+    && !primary.attributes.whatsNew?.trim())) {
+    whatsNew ??= readAppStoreReleaseNotes(releaseNotes);
+    const updated = z.object({ data: localization }).parse(await client.api(
+      `/v1/appStoreVersionLocalizations/${primary.id}`, "PATCH", { data: {
+        type: "appStoreVersionLocalizations", id: primary.id, attributes: { whatsNew },
+      } },
+    )).data;
+    if (updated.id !== primary.id || updated.attributes.whatsNew !== whatsNew) {
+      throw new Error("Apple did not confirm the intended App Store What's New.");
+    }
+  }
+  const preparedId = await prepareAppStoreVersion(client, appId, version);
+  if (preparedId !== draft.id) throw new Error("The prepared App Store version changed during preparation.");
+  return preparedId;
+}
+
 export async function prepareAppStoreVersion(client: AppStoreConnectClient, appId: string, version: string) {
   const versions = await client.list(`/v1/apps/${appId}/appStoreVersions`, storeVersion, {
     "filter[platform]": "IOS", "filter[versionString]": version,
@@ -31,22 +103,11 @@ export async function prepareAppStoreVersion(client: AppStoreConnectClient, appI
     throw new Error(`Prepare exactly one iOS ${version} draft with its metadata and screenshots in App Store Connect first.`);
   }
   const draft = versions[0];
-  if (draft.attributes.versionString !== version || !editableStates.has(draft.attributes.appVersionState)) {
-    throw new Error(`iOS ${version} is not editable: ${draft.attributes.appVersionState}.`);
-  }
+  requireEditableVersion(draft, version);
   if (!draft.attributes.copyright?.trim()) throw new Error(`iOS ${version} is missing copyright.`);
   await requireNoReview(client, appId);
-  const app = z.object({ data: resource.extend({
-    attributes: z.object({ primaryLocale: z.string().min(1) }),
-  }) }).parse(await client.api(`/v1/apps/${appId}`)).data;
-  const localizations = await client.list(`/v1/appStoreVersions/${draft.id}/appStoreVersionLocalizations`,
-    resource.extend({ attributes: z.object({
-      locale: z.string(), description: z.string().nullish(), keywords: z.string().nullish(),
-      supportUrl: z.string().nullish(), whatsNew: z.string().nullish(),
-    }) }));
-  const primary = localizations.filter(row => row.attributes.locale === app.attributes.primaryLocale);
-  if (primary.length !== 1 || !primary[0]) throw new Error("Missing primary App Store localization.");
-  const copy = primary[0].attributes;
+  const primary = await primaryLocalization(client, appId, draft.id);
+  const copy = primary.attributes;
   if (!copy.description?.trim() || !copy.keywords?.trim()
     || !z.url({ protocol: /^https?$/ }).safeParse(copy.supportUrl).success) {
     throw new Error("Complete the primary App Store description, keywords and support URL first.");
@@ -65,7 +126,7 @@ export async function prepareAppStoreVersion(client: AppStoreConnectClient, appI
   if (review.demoAccountRequired && (!review.demoAccountName?.trim() || !review.demoAccountPassword?.trim())) {
     throw new Error("Complete the required reviewer demo credentials in App Store Connect first.");
   }
-  const sets = await client.list(`/v1/appStoreVersionLocalizations/${primary[0].id}/appScreenshotSets`,
+  const sets = await client.list(`/v1/appStoreVersionLocalizations/${primary.id}/appScreenshotSets`,
     resource.extend({ attributes: z.object({ screenshotDisplayType: z.string() }) }));
   let iphone = false;
   let ipad = false;

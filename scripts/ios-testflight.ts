@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { createAppleDistributionCommands, createAppStoreConnectClient } from "./apple-distribution";
-import { prepareAppStoreVersion, submitAppStoreVersion } from "./ios-app-store";
+import { ensureAppStoreVersion, submitAppStoreVersion } from "./ios-app-store";
 import { verifyAppleFrontend } from "./verify-apple-frontend";
 
 const [tag, mode, ...extra] = process.argv.slice(2);
@@ -110,7 +110,12 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
   }), { "filter[bundleId]": bundleId });
   if (apps.length !== 1 || !apps[0]) throw new Error(`Expected one existing App Store Connect app for ${bundleId}.`);
   const app = apps[0];
-  const draftId = appStore ? await prepareAppStoreVersion(client, app.id, version!) : undefined;
+  let draftId: string | undefined;
+  if (appStore) {
+    const notes = process.env["IOS_RELEASE_NOTES_JSON"];
+    if (notes === undefined) throw new Error("Missing IOS_RELEASE_NOTES_JSON from the selected GitHub release.");
+    draftId = await ensureAppStoreVersion(client, app.id, version!, z.string().parse(JSON.parse(notes)));
+  }
   let group: z.infer<typeof groupSchema> | undefined;
   if (!appStore) {
     const groups = (await list(`/v1/apps/${app.id}/betaGroups`, groupSchema))
