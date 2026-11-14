@@ -33,6 +33,7 @@ Install Clanky:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh \
   | sh -s -- pablozaiden/clanky
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Then start it:

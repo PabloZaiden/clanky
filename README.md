@@ -59,6 +59,7 @@ Install the latest Linux or macOS CLI binary:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh \
   | sh -s -- pablozaiden/clanky
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 The installer verifies the release checksum and places `clanky` in
