@@ -107,7 +107,7 @@ the [testing guide](../../../docs/development/testing.md).
 whole video as a routine review step. Once the changes are ready to review:
 
 1. Show a complete command in a copyable shell code block, using the actual project path and
-   package name; do not require the user to have defined the `$R` helper. For example:
+   package name; do not require the user to have defined the `R` helper. For example:
    `cd /absolute/path/to/fframes && cargo run --release -p my-video -- preview 0s`.
 2. Explicitly offer to run that preview for the user. If they have already authorized
    opening or refreshing the preview, show the command and continue within that authorization.
@@ -120,27 +120,27 @@ export; do not require another confirmation if that request is already explicit.
 
 After every change:
 
-1. `$R timeline` lists the scenes with their frame and second ranges, and every audio track.
+1. `R timeline` lists the scenes with their frame and second ranges, and every audio track.
    Check structure and pacing here before looking at pixels.
-2. `$R inspect` checks a frame every 0.25 s plus the first and last frame of every scene. It
+2. `R inspect` checks a frame every 0.25 s plus the first and last frame of every scene. It
    reports missing images, fonts or glyphs, text cut off by the edge of the canvas, invalid
    SVG (zero-sized rectangles, bad radii), broken transforms and panics, each with its time
    and scene. It exits with code 2 on errors. Fix everything it reports. A warning that only
    appears on a scene's first frames is usually an entrance; check it with a strip.
-3. `$R strip <scene or range> -n 12` writes a contact sheet (`strip.png`): evenly spaced frames
+3. `R strip <scene or range> -n 12` writes a contact sheet (`strip.png`): evenly spaced frames
    in one labelled image. Open it with your image tool. It is the fastest way to judge layout,
    rhythm and motion.
-4. `$R frame Intro@end,Outro@50%` writes full-size PNGs into `frames/` for detail checks
+4. `R frame Intro@end,Outro@50%` writes full-size PNGs into `frames/` for detail checks
    (typography, alignment, contrast) and prints problems found in those frames.
-5. `$R onion "Intro@0..Intro@1s" -n 6` blends frames into one image (`onion.png`) to show the
+5. `R onion "Intro@0..Intro@1s" -n 6` blends frames into one image (`onion.png`) to show the
    path and spacing of a movement: easing, overshoot, stagger.
-6. `$R preview Intro` opens a real-time window with sound for the user to watch (space
+6. `R preview Intro` opens a real-time window with sound for the user to watch (space
    play/pause, h/l seek a second, j/k step a frame, q quit). It blocks until closed, so start
    it in the background when running it for the user. Show the command and offer to launch
    it as described above; after edits, use a specific second near the change.
 
-When an encoded sample is needed, `$R render Intro --draft` encodes one scene at half
-resolution. `$R render` writes the full video for a requested final export.
+When an encoded sample is needed, `R render Intro --draft` encodes one scene at half
+resolution. `R render` writes the full video for a requested final export.
 
 Rules:
 - Look at the PNGs before saying anything looks good.
@@ -254,17 +254,17 @@ AudioMap::from([
 ```
 
 Time sound effects from the same constants that drive the animation. Check levels with
-`$R audio analyze --waveform w.png` (about -14 LUFS integrated for web video, true peak below
--1 dBTP, no unintended silence) and `$R audio at 3.1s` for what plays at an event. Then let
-the user listen in `$R preview`.
+`R audio analyze --waveform w.png` (about -14 LUFS integrated for web video, true peak below
+-1 dBTP, no unintended silence) and `R audio at 3.1s` for what plays at an event. Then let
+the user listen in `R preview`.
 
 ## 7. Finish
 
-1. `$R inspect --fail-on warning` passes, or the remaining warnings are understood entrances.
+1. `R inspect --fail-on warning` passes, or the remaining warnings are understood entrances.
 2. A strip of every scene looks right and key frames are checked at full size.
-3. `$R audio analyze` shows sensible levels.
+3. `R audio analyze` shows sensible levels.
 4. For GPU work awaiting review, show the preview command and offer to run it at the relevant
-   second. When the user requests the final export, run `$R render -o out.mp4`, then confirm
+   second. When the user requests the final export, run `R render -o out.mp4`, then confirm
    size, frame count and audio with
    `ffprobe -v error -show_entries stream=codec_type,width,height,nb_frames,duration out.mp4`.
 

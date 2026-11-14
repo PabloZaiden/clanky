@@ -252,62 +252,19 @@ voice does not interrupt their agent work.
 
 ## Provider limitations
 
-New native Codex threads and owned Copilot/OpenCode 2 conversations receive
-these tools for workspace chats and managed Automation runs. Automation runs
-retain their unattended question policy. Standalone execution-host chats
-and native subagents do not inherit them.
-Use the versions and execution hosts supported by the
-[harness guide](harnesses.md).
+Control tools belong to the active owned root execution of a workspace chat
+or managed Automation run. Automation runs retain their unattended question
+policy; standalone execution-host chats and native subagents do not inherit
+workspace control. Runtime versions, provider-specific tool registration and
+resume requirements belong in the [harness guide](harnesses.md).
 
 Clanky removes `CLANKY_BASE_URL` and `CLANKY_API_KEY` from provider environments,
 including values inherited from the server or worker. Provider authentication,
 personal API keys, interactive terminals and deterministic programs'
 controller-owned control remain unchanged.
 
-Codex registers the new control tools only when creating a new native thread.
-Existing threads retain the catalog registered with their history; resuming
-them does not retrofit or upgrade those definitions. Codex restores persisted
-definitions when `thread/resume` loads that history. The same native conversation
-can therefore continue after restarting Clanky or its host, provided Codex's home
-and session data persist. As with other Codex chats, do not expect an in-flight
-turn to continue if the worker is stopped while it is running. No separate
-Codex daemon is required. Clanky preserves existing native history and does
-not reject resume merely because its tool catalog changed. Every invoked action
-remains server-authorized and must satisfy the current common contracts and
-grants, even when its definition was registered earlier. Clanky does not rewrite
-provider histories, replace conversations, keep a separate legacy tool
-implementation, or add an MCP fallback to upgrade existing Codex threads.
-Copilot registers current tools on creation and cold resume.
-
-Control belongs to the admitted execution, not a CLI credential or callback.
-Mesh signs the control capability into its native lease; requests, replies and
-cancellation reuse that lease's authenticated infrastructure. Browser context carries real
-chat/tab/turn provenance, while unattended runs need no browser context:
-their controller-owned grant identifies the canonical execution server-side.
-The native adapter privately
-requires an active owned root turn before forwarding any tool call.
-
-OpenCode 2 loads a managed native Promise plugin on the selected execution
-host. It exposes the same shared tools directly, without an MCP server.
-The plugin forwards calls through a private authenticated loopback bridge.
-The application-control connection stays in Clanky; no application API key is
-put in the provider environment or plugin files.
-Existing process-scoped OpenCode configuration and plugins are preserved;
-Clanky does not write Control settings into the workspace repository.
-Tools are available only to the owned root session's active turn, not
-to its native subagents or unrelated sessions.
-
-OpenCode restores the plugin and granted tools when resuming a persisted
-conversation after restart. Its isolated native profile and Clanky data must persist. An
-in-flight turn does not continue after its runtime is stopped. Missing or failed
-plugin activation is reported explicitly rather than falling back to a
-tool-less Control chat. Pending Control requests are cancelled on interruption,
-session deletion, disconnect or runtime failure, and temporary plugin files
-are removed during connection cleanup.
-After abrupt Clanky process termination, abandoned plugin directories are
-removed on the next native connection; directories owned by a live Clanky
-process are preserved.
-
-This feature controls Clanky through managed native executions; it does not add
-a standalone command textbox, arbitrary DOM control, or direct repository
-execution against another workspace by the control agent.
+Every action still requires current server authorization, regardless of when
+its provider tool definition was registered. Browser actions require the
+originating chat/tab/turn provenance; unattended runs use execution-owned
+authority without claiming a browser tab. This is not arbitrary DOM control
+or direct repository execution in another workspace.

@@ -177,35 +177,6 @@ neither revokes the credential nor guarantees forensic erasure.
 Codex registers the tool only on new native threads; resuming an old thread
 does not replace its tool catalog or start another conversation.
 
-## Connection context and helper isolation
-
-Model catalogs, variants and conversation-title helpers
-reuse a workspace connection only when its user, workspace, execution-host
-binding and revision, adapter/provider, runtime settings and directory match.
-An incompatible operation opens its own connection instead of reconnecting the
-shared one. Concurrent first requests for the same context share initialization.
-
-Each helper conversation has its own identity and unattended question policy.
-An isolated connection stays open through its helper's session cleanup and is
-then disconnected on success or failure. Workspace reset, shutdown and scoped
-Mesh invalidation also include these temporary connections. Execution-host model
-discovery uses independent temporary connections for concurrent requests; its
-catalog cache is separate from their operation identities. Catalog caches are
-scoped by user, workspace or host binding/revision, adapter/provider and directory.
-Catalog acquisition rejects a changed host binding instead of caching another
-host's catalog. A failed first connection can be initialized again after its
-teardown succeeds. Failed helper teardown remains tracked for a later cleanup
-attempt; resetting a workspace attempts every helper even if one fails.
-Shutdown freezes new chat input before stopping background producers, drains
-chat admission, checkpoints conversations under their owning user context, and detaches native
-observers before disconnecting backends. Backend teardown finishes before
-Mesh relays and gateways close.
-
-Chat connections remain dedicated to their entity and user. Helpers
-never borrow those conversations or move their worktree context. This isolation
-does not authorize resuming a saved conversation under a different binding; the
-existing session-ownership checks still apply.
-
 ## Continue from history
 
 When a chat is failed because its provider-native session cannot be resumed,
@@ -250,8 +221,8 @@ another host or bypasses binding revisions.
 
 ## Token consumption
 
-The chat composer's **...** menu shows **Usage** above **Template**, with
-three rows: **Input tokens**, **Output tokens**,
+The chat composer's **Conversation options** panel shows **Usage** above
+**Template**, with three rows: **Input tokens**, **Output tokens**,
 and **Cached**. Cached is the percentage of total input read from the prompt
 cache; cache writes are not included in that percentage. It is unavailable
 when input is zero or either required counter is missing. Counts use decimal
@@ -259,9 +230,10 @@ when input is zero or either required counter is missing. Counts use decimal
 value's tooltip and accessible label. Changed displayed values pop in over
 800 ms unless reduced motion is enabled.
 
-Clanky stores cumulative consumption for native Copilot, Codex and OpenCode 2
-sessions, including their observed subagents. Input, output, reasoning,
-cache-read and cache-write counts are retained when available. Input includes
+Clanky stores cumulative consumption for native Copilot, Codex, OpenCode 2 and
+Claude Agent sessions, including observed subagents when exposed by the provider.
+Input, output, reasoning, cache-read and cache-write counts are retained when
+available. Input includes
 cached input; output includes reasoning, which is also recorded separately.
 These categories overlap: do not add reasoning to output or cache to input
 again. Token counts are not context-window utilization or a billing estimate.
@@ -326,8 +298,8 @@ provider or start work. Children inherit their parent's access and retention:
 Trash hides them, restore makes them readable again, and permanent parent
 deletion removes them. They are not standalone chats or sidebar entries.
 
-Copilot, Codex and OpenCode 2 expose child history through their public native
-APIs; compatible Mesh workers support the same capture. Instructions and
+Copilot, Codex, OpenCode 2 and Claude Agent expose child history through their
+public native APIs; compatible Mesh workers support the same capture. Instructions and
 reasoning are retained only when exposed, not reconstructed from delegation
 summaries or hidden context. Recovery is paginated and reconciles stable native
 identities with already saved content. Large messages do not invalidate recovery
@@ -341,11 +313,6 @@ question/permission notices remain visible in the conversation, but answers
 and decisions still belong to the parent.
 Older Mesh workers can still serve content already saved on the controller;
 update the worker to enable native child-history recovery.
-
-Reasoning identifiers are opaque provider-native strings, not event UUIDs.
-Clanky preserves them unchanged in live events and recovered child history.
-Mesh does not impose a separate 500-character limit on reasoning identifiers;
-the existing transport and history size limits still apply.
 
 Chat streaming follows the principal execution, not the lifetime of background
 processes. When the principal finishes, the chat becomes idle and accepts a new
@@ -370,8 +337,8 @@ and prevents an automatic resend. Successful admission records the user message
 and clears the corresponding queue and reservation together.
 
 On native chat reconnection, Clanky subscribes before reading the provider's
-persisted conversation history. Copilot, Codex and OpenCode 2 use their native
-history APIs to reconcile completed principal messages and tools by their
+persisted conversation history. Copilot, Codex, OpenCode 2 and Claude Agent use
+their native history APIs to reconcile completed principal messages and tools by their
 stable identities. Recovery does not rerun tools or resend prompts, and does
 not promise to restart work stopped with the provider runtime. Missing,
 unsupported or over-limit history produces an explicit observation failure
@@ -392,10 +359,10 @@ Reconnection reconciles completed provider messages by ID and preserves any
 remaining partial text without treating it as a completed provider message.
 An interrupted response does not need a final provider record to allow the
 original conversation to reconnect and accept new input. Clanky does not resend
-the interrupted request or guess which other message replaces it. Existing
-single-message checkpoints migrate automatically on startup.
-Missing or invalid durable history still fails explicitly, as does a live
-execution claiming successful completion with messages still pending. An
+the interrupted request or guess which other message replaces it.
+Missing or invalid durable history still fails explicitly. Confirmed normal
+prompt completion with unfinished messages preserves the received content and
+logs a warning, as described above; it does not fail the chat. An
 integrity/history observation failure cancels the unobserved principal with a
 bounded abort wait and disconnects its runtime if cancellation fails.
 
@@ -462,16 +429,10 @@ also apply to Automation runs.
 retains the input and blocks deletion, replacement or blind resend. Clanky
 reconciles unresolved admission automatically against the original owned native
 conversation while the chat is open; status updates appear without a
-manual check. Reconciliation is serialized per entity, starts at least 250 ms
-apart, and batches up to five results before refreshing the entity. Reconciliation
-updates and realtime invalidations share a 500 ms refresh-coalescing window, so
-each receipt does not trigger a separate snapshot request. Transient network,
-timeout, rate-limit and server failures retry with backoff. Permanent request
+manual check. Transient failures retry automatically. Permanent request
 failures stop automatic retries and expose a **Retry check** recovery action
 that only reconciles the existing receipt; it never resends the input. Leaving
-and reopening the entity resumes reconciliation. Codex can recover by the
-canonical input/client ID even if the admission reply, native message ID or turn
-ID was lost.
+and reopening the entity resumes reconciliation.
 Deterministic pre-admission validation errors retain their typed error and mark
 the input as rejected, so it can be corrected or removed. File preparation
 finishes before native admission is recorded; a failed copy is not an

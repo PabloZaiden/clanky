@@ -59,6 +59,8 @@ not app-owned raw WebSocket subscriptions.
 
 ## Layout and actions
 
+### Responsive layouts and Duo validation
+
 The framework uses the desktop shell above 800 CSS pixels and the mobile drawer
 at 800px and below. Compact wide displays can keep the sidebar and content usable
 together without changing sidebar width or safe-area clearance for system bars.
@@ -68,19 +70,20 @@ or shell CSS override.
 The code explorer places its file tree beside the editor from 768 CSS pixels,
 so an unfolded Duo in landscape can use both panels with the app sidebar
 collapsed. Narrower views keep the stacked layout.
-In the side-by-side layout, drag the existing gap between the expanded tree
-and content pane to resize the tree. The gap stays invisible and shows a
-horizontal-resize cursor on hover. Its keyboard-focusable separator supports
-Left/Right (Shift for larger steps) and Home/End for the available limits.
-The width stays within the available space and is retained across collapse
-and Files/Terminals switches while the explorer remains mounted; leaving or
-reloading the explorer resets it. Collapsed and stacked layouts are not
-resizable.
+In the side-by-side layout, drag the gap between the tree and content to resize
+the tree; collapsed and stacked layouts are not resizable.
 
-Settings category navigation follows the width available after the sidebar and
-safe areas: at 800 CSS pixels or less it uses the Category dropdown; wider layouts
-keep the category list. This applies to global and workspace settings without
-changing the shell breakpoint or losing the selected category or mounted draft.
+Settings must adapt to the width remaining after the sidebar and safe areas,
+without losing the selected category or draft.
+
+Validate the Duo folded and unfolded, in portrait and landscape, with the
+sidebar open/collapsed and the keyboard shown/hidden. Do not treat a wide
+viewport as a desktop without checking these states. Side system regions must
+not remove top-bar clearance, and the keyboard must not cover the composer.
+Keep native inset/toolbar behavior in the [Apple shell](../apple-apps.md);
+do not compensate with duplicate native and web safe-area padding.
+
+### Actions and settings
 
 Route views use `Page` as their top-level wrapper. Prefer framework panels,
 lists, form groups/actions, danger zones, loading/error states, and code values
@@ -155,17 +158,6 @@ workspace/server rows retain their own presentation.
 There are no type or History subsections and no subsection-level New buttons.
 Dashboard creation controls and entity context/header actions remain unchanged.
 
-Activating any sidebar tab, including the selected tab, returns the sidebar
-list to the top without changing main-content scroll. This is a Webapp default
-on desktop and in the mobile drawer, not Clanky-owned scroll handling.
-
-Sidebar disclosure spacing is framework-owned and decided separately for each
-sibling list. Servers and Workspaces align expandable and leaf rows when that
-list contains expandable items; leaf-only lists such as Automations and Pinned
-remain compact. The disclosure column stays narrow without shrinking its
-control's hit area. Nested children use a small, fixed indent beneath their
-parent content rather than accumulating additional depth-based margins.
-
 Ordinary actions, including primary actions, are unboxed icons/clickable labels.
 Use public subtle/link/primary variants intentionally; reserve solid danger
 for irreversible confirmation. Update/restart is not deletion.
@@ -225,17 +217,10 @@ the foreground. Job lists/progress use compact title/date/status composition;
 console output combines streams without extra stream-name prefixes.
 
 Returning to a conversation preserves its scroll intent: follow the bottom
-when pinned, otherwise restore the last visible reading position. Platform
-scroll restoration during app switching must not be interpreted as user input,
-including notifications delivered before foreground visibility is announced.
-Presentation visibility follows the last document visibility notification;
-an unrelated render observing a changed raw hidden flag must not resume it early.
-Viewport resizing, orientation changes, and transcript reflow also preserve
-bottom following. Layout-driven scroll adjustments must not release the bottom
-pin, while intentionally scrolling up still allows reading older messages
-without being pulled back to the end.
-Upward wheel, touch, and keyboard input releases following immediately, even
-while streamed text or images are resizing the transcript.
+when pinned, otherwise restore the last visible reading position. Preserve
+that intent through app switching, resizing, orientation and transcript reflow.
+Intentional scrolling up must let users read older messages without being
+pulled back to the end. Keep the composer draft when navigating away and back.
 
 Work-item lists and sidebar Active work share a composition: workspace/host
 name and status, then item name, then relative interaction time and type/provider.
@@ -450,7 +435,7 @@ rendering can still differ from Safari despite using the same font family.
 ### Bun.WebView browser selection
 
 Shared browser-selection and startup diagnostics belong to the
-[canonical Webapp skill](https://github.com/PabloZaiden/webapp/blob/main/skills/webapp/SKILL.md#headless-browser-validation-with-bunwebview),
+[canonical Webapp skill](https://github.com/PabloZaiden/webapp/blob/main/skills/webapp/SKILL.md#browser-selection-and-startup-diagnostics),
 with a [local copy](../../.agents/skills/webapp/SKILL.md#browser-selection-and-startup-diagnostics).
 Follow the [upstream-first, full-file synchronization workflow](#webapp-skill-source-of-truth).
 Do not maintain a separate generic procedure here.

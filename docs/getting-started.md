@@ -9,7 +9,7 @@ access, Quick Chat and optional Voice, use the
 
 - Git
 - An installed harness runtime with its required authentication: native Copilot,
-  Codex or OpenCode 2
+  Codex, OpenCode 2 or Claude Code
 - Bun when running Clanky from source
 
 Native adapters require the installed CLI on the selected execution host.
@@ -93,11 +93,9 @@ need a remote host, a worker, or a relay, start with the
 
 ## Plan and implement in one chat
 
-Chat composition offers your personal prompt templates. The
-upgrade copies the existing **Start a PR with automerge** and **Start a PR**
-templates once to users who already exist; new users start with no custom templates.
-Manage your templates in **Settings → Content → Templates**. Selecting a
-template fills the composer; review or edit the message before sending it.
+Manage your personal prompt templates in **Settings → Content → Templates**.
+Selecting a template fills the composer; review or edit the message before
+sending it.
 
 **Prepare a plan** is a built-in template, enabled by default. Its row in
 template settings can be enabled, disabled and moved up or down among your
@@ -143,21 +141,9 @@ tool or thinking groups, including when reopening or loading older conversation
 history. These image entries replace the tool's technical disclosure in the
 transcript; calls without a valid preview keep their ordinary tool details.
 
-Active thinking and tool-activity labels in chat transcripts use a
-dot and a gentle breathing effect across the whole label. Active text uses
-contrasting colors and stays at or above 50% opacity throughout the pulse.
-Completed activity keeps its static, muted styling. The effect is disabled
-when your system requests reduced motion.
-
-When the browser tab is hidden, chat and automation transcripts defer grouping
-and rendering new content, pause the activity animation, and stop automatic
-scrolling. Event reception and data updates continue. Returning to the tab
-reopens realtime subscriptions and recovers the current state without a page
-reload; drafts, expanded entries, and the scroll position remain preserved.
-
-Unchanged message rows are reused during streaming and transcript refreshes,
-and unchanged Markdown is not reparsed for playback or local UI updates.
-Content changes, display preferences, and message actions still update normally.
+Conversations update live while connected. Returning to a hidden tab or
+reconnecting refreshes the current state without a page reload, preserving
+drafts, expanded entries and reading position.
 
 Messages longer than 100,000 characters initially show a preview in chat and automation conversations. Select **Show full message** beside the character count
 to display that message in full; opening a very large message may briefly pause
@@ -168,63 +154,15 @@ saved. A code block cut by the preview can only be copied after expansion;
 completed blocks remain copyable. A clipped Mermaid block stays as code until
 expanded.
 
-Realtime subscriptions filter events before updating React state. Callback-only
-streams and resource refresh subscriptions do not retain an unused last-event
-state; matching events, authoritative data refreshes, and connection recovery
-continue normally.
-
-Streaming chat activity timestamps in the sidebar are grouped into one update
-per minute while activity is pending. Status changes and user actions remain
-immediate, including blocking questions in chats that are not selected.
 Chat ages and recency ordering use the newer of the last user message and the
 last status change, falling back to chat creation. Streaming text and tool
-activity do not reset that age; status-change times survive reloads and restarts.
-Chat state is ordered by a persisted server revision, not activity timestamps,
-so provider clock skew cannot hide a transition and a delayed response cannot
-overwrite newer state. Connecting or reconnecting realtime refreshes the
-authoritative state to recover changes made before the subscription was ready.
-Recovery runs on every physical connection opening, independently of React
-connection-status renders. Unresponsive connections reconnect automatically;
-chat-list and transcript snapshot reads have a 10-second deadline so a stalled
-request cannot indefinitely block queued recovery. Timeouts surface through
-the normal load-error state rather than triggering periodic HTTP polling.
-The header, sidebar, and open chat share that revisioned operational state:
-an accepted action response or a detailed snapshot updates all three, without
-depending on a second realtime notification reaching the sidebar.
-Detail views release their write access on close, and removing a chat revokes
-existing detail writers, so delayed action responses cannot restore removed
-metadata. New views and explicit chat creation can still load initial state.
-Open chats keep their transcript live without republishing operational state
-solely because an activity timestamp or revision advanced.
-
-Chat and automation transcripts publish streamed text, reasoning, and tool
-extras to React as their events arrive, without an app-owned batching timer.
-Complete messages, interactions, status changes, and explicit transcript loads
-also publish immediately. Snapshot refresh coalescing and gap recovery remain
-independent of streamed delta delivery.
-
-New assistant prose in chats uses a brief
-opacity and light-blur reveal as streamed fragments arrive. It does not queue
-or delay text delivery, animate user messages, or replay loaded history.
-Code blocks, tables, diagrams, and explicit links keep their normal rendering.
-The reveal also works with Markdown rendering disabled and is skipped when
-the system requests reduced motion.
-Each arriving fragment finishes its 400 ms reveal while subsequent fragments
-arrive; new text does not cancel or restart the preceding fragment's fade.
-
-Automation and chat status text and transcript activity summaries use a brief
-fade, light blur, and small vertical movement when their actual state changes.
-The latest status is shown immediately, without queuing previous labels or
-simulating progress. Initial rendering, hidden-tab updates, and reduced-motion
-preferences do not trigger the transition.
+activity do not reset that age.
 
 Dashboard **History** uses the same detailed rows as **Active Work**: workspace
 identity or server name, status, time since the last interaction, and item type.
 Workspace chats also show their harness provider icon. Private entries remain
-blurred when private items are hidden. On mouse-hover-capable devices, hover for
-one second to start a two-second reveal; the item becomes clickable once clear
-and re-blurs in 0.5 seconds when the pointer leaves. **Show private items**
-reveals them immediately.
+blurred when private items are hidden. Hover to reveal them on devices with a
+mouse, or use **Show private items** to reveal them immediately.
 
 In Dashboard **Resources**, each workspace's **sessions** count includes its
 standalone chats, including history. Automation conversations are not counted

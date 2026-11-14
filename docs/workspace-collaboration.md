@@ -117,10 +117,15 @@ with Work access may use that enabled execution context; only the owner may
 change the setting. Do not enable it for workspace code or participants you
 do not trust with that broader application access.
 
-Neither level grants account, API-key, session or collaborator administration,
-or permits an agent to approve its own destructive work. General access remains
-subject to current user authority and explicit human confirmation. Reducing
-the grant constrains subsequent operations and pending approvals. See
+Workspace-scoped control does not grant account, API-key, session or
+collaborator administration. General-access managed executions can use
+catalogued administration operations within the real user's permissions,
+including private file transport where required. They cannot approve requests
+or change approval policy. Confirm-class operations require human approval
+unless the user's nonvoice approval setting is disabled; Live Voice always
+requires visual approval. External integrations do not receive the managed
+execution policy. Reducing the grant constrains subsequent operations and
+pending approvals. See
 [agent control and MCP](deployment.md#agent-control-and-mcp) for external
 integration grants and human interactions.
 

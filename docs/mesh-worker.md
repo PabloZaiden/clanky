@@ -203,16 +203,6 @@ the worker traverses its native filesystem in one execution RPC rather
 than requiring a Mesh request for every directory. This additive extension uses
 the existing Mesh generation and does not require Bash or `commandExecution`.
 
-`walkDirectoryTree` accepts a root `path`, `includeHidden` (default `false`), and
-`deferredDirectoryNames` (an array of directory basenames, including an empty
-array when nothing should be deferred). Its result is an array of
-`{ path, kind, isSymbolicLink }`, with paths relative to the root using the
-worker's POSIX path semantics, and `kind` equal to `file` or `directory`.
-The root itself is omitted. Empty directories are included; deferred directories
-are included without their contents. Descendant symlinks are classified by their
-targets where possible but never traversed. An explicitly selected root may be a
-directory symlink, just as with ordinary directory navigation.
-
 Workers without this capability receive no new operation: the controller keeps
 the existing per-directory traversal. An explicit
 `mesh_execution_capability_unavailable` or `mesh_execution_operation_unsupported`
@@ -728,10 +718,6 @@ clanky worker service install
 
 The service installation keeps the existing worker data and Mesh identity.
 
-Installed service commands may still contain `serve --insecure false`.
-The `serve --insecure` option is deprecated and ignored regardless of its
-value; Mesh still requires HTTPS. New service installations omit the option.
-
 ### Update servers and automatic workspaces together
 
 From the controller, use **Settings > Maintenance > Clanky workers > Update
@@ -748,52 +734,21 @@ maintenance mode and the last explicit channel for new automatic workspaces.
 Choosing Default later does not clear that inherited channel; it is Stable
 until explicitly changed. Cancelling confirmation saves nothing.
 
-Jobs run concurrently across workers. Each checks that its service or workspace
-loop is running, then runs `clanky update` (with `--channel stable|latest`
-when forced), saves a forced default with `clanky worker channel`, and
-restarts the worker service with `clanky worker service restart` only after the
-update and channel verification succeed. Legacy automatic workers configured
-for prereleases retain `--pre-release` in Default mode.
-If updating or saving the channel fails, the restart is skipped. The installed
-binary must support `worker channel stable|latest` to save a forced default;
-unsupported versions fail visibly rather than silently using another channel.
-Maintenance commands are dispatched only once and remain worker-owned if their
-progress connection is lost. A transient progress-request failure retries the
-read using the still-valid execution session; it does not renegotiate the
-worker generation unless the session is invalid, expired, or its execution
-context has changed.
-If observation cannot be recovered, the job reports **Outcome unconfirmed**
-without cancelling or rerunning the update or channel change. The restart is
-skipped unless update and channel configuration have confirmed success.
-Connection diagnostics distinguish timeouts, HTTP rejections, and recognized
-transport failures without including private addresses or credentials.
-Updating a workspace worker uses
-Mesh directly: it does not contact the provisioning host,
-rerun provisioning, or restart the container. Restart response
-and recovery checks share a 70-second total deadline, including service shutdown
-and startup. This accommodates the Linux service's existing 30-second shutdown
-allowance without changing its stop policy. Service-status commands have a
-10-second timeout. During recovery, each health-and-status probe is capped at
-10 seconds or the remaining shared deadline, whichever is shorter.
-Restart runs as a host-owned
-asynchronous command: stopping response observation neither cancels nor resends
-it. A still-running command remains under observation until it finishes, loses
-its connection, or reaches the deadline. Recovery polls every second for a fresh signed Mesh
-health check and a new execution connection to confirm that the service or
-workspace loop is running. Workers reporting runtime metadata must return a
-different instance ID and run the version reported by the installed binary
-after updating. Losing the restart command's response does not by
-itself interrupt the job if the command was dispatched; failures before dispatch
-cannot count as a successful restart. The restart command is not resent. Explicit
-command failures remain failures; recovery that cannot be confirmed within the
-deadline is marked **Outcome unconfirmed** rather than successful or interrupted.
-Failure to connect before dispatch is **Could not connect**; a returned command
-failure is **Failed**. **Interrupted** requires observed execution and confirmed
-termination. A controller restart does not prove remote execution stopped:
-undispatched jobs become **Not started**, and possible execution with no known
-result becomes **Outcome unconfirmed**. No command is automatically replayed.
-If update already succeeded but restart was never dispatched, the pipeline is
-**Failed** with the completed update preserved, not **Not started**.
+Jobs run independently across workers. Restart requires confirmed update and
+channel-save success; either failure skips the restart. Unsupported channel
+configuration fails visibly rather than silently choosing another channel.
+Default preserves legacy prerelease selections too.
+Updating a workspace worker uses Mesh directly without reprovisioning or
+restarting its container. Successful recovery requires a freshly restarted
+worker running the installed version, not merely an old healthy process.
+
+**Could not connect** means dispatch could not begin; **Failed** means a
+confirmed failure; **Interrupted** requires confirmed termination.
+**Not started** means no execution was dispatched. **Outcome unconfirmed**
+means the result could not be verified. A lost response or controller restart
+does not prove remote work stopped. Inspect the current state before retrying:
+maintenance commands are never automatically replayed. Completed stages remain
+recorded even if a later stage fails.
 Jobs and their logs remain on the Dashboard until dismissed.
 
 Automatic workspaces created with the older one-shot launcher need a manual
@@ -968,8 +923,10 @@ processes can read inherited environment values.
 
 ## Troubleshooting checklist
 
-- Confirm that the controller can reach the worker or relay endpoint.
-- Use the exact HTTPS origin configured during bootstrap and pairing.
+- For outbound workers, confirm that the worker can reach the controller or
+  relay endpoint. For existing listener-based workers, confirm that the
+  controller can reach the worker endpoint.
+- Use the exact HTTPS origin in the invitation or configured listener/pairing.
 - Check that the reverse proxy forwards WebSocket upgrades.
 - Verify the worker service runs as the account that owns its data directory
   and can find Git and the provider runtime.

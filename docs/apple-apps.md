@@ -79,6 +79,8 @@ preview; ordinary `macos-26` images do not provide the required iOS 27.1 SDK.
 The SDK stays on the runner: no private SDK archive, Apple login, provisioning
 profile or signing certificate is needed for compilation. Mac distribution
 signing and notarization run afterward with protected CI credentials.
+The CLI publisher also compiles its four Linux/macOS Bun targets on the same
+hosted Mac runner image; main and versioned releases share this arrangement.
 
 The job runs `bun run build:apple:macos` and
 `bun run build:apple:ios:device`. The Mac bundle includes the standalone
@@ -691,13 +693,8 @@ macOS 14+ and Apple Silicon, not Intel or a universal app. Identity, versions,
 language mode and deployment target come from the authoritative Xcode settings.
 The installed app requires neither Bun nor a separate CLI installation.
 
-The Mac path uses `swiftc` with xtool's SDK, its explicit `ld64.lld` path and
-Apple's macOS Clang runtime. SwiftPM does not currently resolve the generated
-SDK's `macosx` platform, and selecting Swift's host linker instead of xtool's
-linker fails. Do not edit the installed SDK metadata or omit availability
-runtime checks to work around that. The xtool linker currently emits
-experimental-platform warnings for macOS; they remain visible. Successful
-compilation does not establish runtime compatibility.
+Successful cross-compilation does not establish runtime compatibility;
+validate the app on a compatible Mac.
 
 [`scripts/macos-app.py`](../scripts/macos-app.py), exposed as `bun run macos:app`,
 provides the artifact-only signing workflow. It requires Python 3.9+ standard
@@ -731,20 +728,11 @@ pending confirmation or uncertain outcome; do not replay a mutation.
 interruption without repeating signing. Frozen parameters and driver bytes
 cannot change within a run.
 
-`preflight` verifies the selected Apple Silicon Mac and signing identity.
-`prepare` runs the application build, E2E and full macOS build entirely on Linux,
-then records the clean source revision, bundle/platform metadata and transfer
-digest. Only the standalone driver, private parameters, metadata and app archive
-go to the Mac, never Swift sources, a Clanky checkout or Bun dependencies.
-`sign` verifies the transferred app and signs the embedded controller before
-the outer bundle, verifies both identities and packages the complete app.
-`download` retrieves the ZIP in bounded byte ranges pinned to the signed
-archive's ETag, avoiding an unbounded Mesh read. `verify` assembles
-`Clanky-macos-arm64.zip`, checks its full digest, bundle metadata, executable
-permissions and both arm64 macOS binaries, then writes its `.sha256` file.
-No final ZIP is published locally until its complete digest and bundle pass.
-Receipts and artifacts remain in the private run
-directories; the driver does not install, launch or delete applications.
+Only the standalone driver, private parameters and built artifacts go to the
+Mac, never Swift sources, a Clanky checkout or Bun dependencies. Use
+`bun run macos:app --help` for the current options. Receipts and verified
+artifacts remain in the private run directories; the driver does not install,
+launch or delete applications.
 
 Extract the complete ZIP and copy the app to the intended Mac location.
 Keep the same app identity and replace the whole bundle to preserve existing
@@ -1195,14 +1183,10 @@ using [`ios-ota.example.json`](../scripts/ios-ota.example.json) as the shape.
 The [personal guidance](development.md#local-only-information) supplies its
 location. It contains values only, not commands or copies of this implementation.
 
-The driver owns version selection, validation, archive hashing, exact
-Ad Hoc identity/profile/device checks, signing, IPA layout, HTTPS/bootstrap
-hosting, trust-profile and installer generation, atomic publication, rollback
-and full trusted-download verification. The existing app identity, profile,
-signing key and trusted root are reused. It supports integer native build
-numbers from 1 through 9999; the next number exceeds both the source project's
-number and the currently published number. No project edit or GitHub release
-is needed for a distribution-only build increment.
+This is private Ad Hoc distribution using the existing app identity, profile,
+signing key and trusted root. Account/profile creation, licensed SDK access,
+keychain permission and phone pairing remain explicit user/OS prerequisites.
+Ordinary updates must not replace signing material or the trust root.
 
 From a clean source revision, choose a fresh direct child of the configured
 Linux `artifactDirectory` as `RUN`. These are script entrypoints, not commands
@@ -1218,25 +1202,12 @@ bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage cleanup
 bun run ios:ota cleanup --config "$PARAMETERS" --work "$RUN" --confirm cleanup
 ```
 
-Each `requests` invocation produces an ordered `steps` array and a
-`describeBeforeExecution` operation list. An authorized native agent describes
-those operations and submits the generated inputs unchanged, stopping on
-failure, pending confirmation or uncertain outcome. Complete each stage's
-transfers/execution/receipt download before running the next entrypoint.
-The native tools provide authority, confirmations and transport; the scripts
-provide all build/deployment logic. No model-generated remote signing code,
-extra CLI credentials or new control transport is required.
+Execute generated requests unchanged, in their returned order, through the
+authorized [native file transport](control-chats.md#what-the-agent-can-do).
+Complete each stage and its receipt download before continuing. Stop on
+failure, pending confirmation or uncertain outcome; do not replay mutations
+or reconstruct signing/deployment logic in ad hoc commands.
 
-`preflight` verifies the selected Mac's signing material and live installer.
-`prepare` runs the required application build/E2E and physical-device xtool
-build entirely on Linux, stages the incremented bundle metadata and records
-the exact clean revision and transfer digest. `sign` verifies the current
-publication has not changed and signs that artifact on macOS. `publish`
-preserves immutable previous releases and selects one complete new release
-with a single atomic pointer replacement; manifest links pin the exact IPA,
-so clients cannot mix generations. `verify` pins the configured root digest
-before trusting it, downloads the whole signed IPA over verified HTTPS and
-compares its bytes, bundle metadata, manifest and installer link.
 `verified.json` contains the installation URL, not a claim that the phone
 installed it. Open that URL in Safari on the private network/VPN and install
 over the existing app without uninstalling or clearing its data.
@@ -1247,34 +1218,19 @@ signed artifact only when explicitly requested.
 
 ### Explicit installer administration
 
-These are separate, confirmed stages of the same script, not side effects of
-an ordinary build:
+Installer setup, certificate renewal, rollback and stopping the service require
+separate approval, not an ordinary build's authorization. Use
+`bun run ios:ota --help` for the current stages and options.
+If preflight reports `needsSetup`, complete the approved `setup` stage before
+publication. First CA initialization requires an empty TLS directory and no
+pinned root; pin the returned fingerprint and start a fresh run before building.
+New trust also requires installing the public certificate profile and enabling
+full trust on iOS; a Safari warning bypass is insufficient.
 
-| `requests --stage` | Effect |
-| --- | --- |
-| `setup` | Install/reuse the managed Mac-user HTTPS service, retaining the pinned CA and importing an existing legacy installer without changing its IPA. Required when preflight says `needsSetup`. |
-| `setup --initialize-ca` | First setup only: create a 10-year private root and one-year HTTPS leaf. Requires an empty TLS directory and null root fingerprint. Pin the returned fingerprint in private parameters and start a fresh run before building. |
-| `renew-tls` | Renew the one-year HTTPS leaf with the existing Mac-local CA key and restart only this installer service. Does not replace the trust root. |
-| `rollback` | Restore the previous immutable release from this run, refusing a stale rollback if another publication has since become current. |
-| `status` | Inspect current publication, service and run files after an interruption. Never automatically replay an uncertain mutation. |
-| `reconcile` | Recover a missing publication receipt or validate an existing remote receipt for download, only when the current immutable release exactly matches this run's signed artifact/revision. Does not publish or replay anything. |
-| `stop` | Stop the configured installer service, retaining certificates and published data. |
-
-Setup records its previous launch configuration and restores it if startup
-fails. It requires the existing provisioning identity/profile; obtaining Apple
-accounts, licensed SDKs or keychain permission remains an explicit OS/user
-gate, not something a script fabricates or bypasses. New trust requires
-installing the public certificate profile and enabling full trust on iOS;
-clicking through a Safari warning is insufficient for OTA installation.
-Private keys remain outside served files on the Mac. Ordinary updates never
-rotate certificates, change signing identity, install on the phone or deploy
-the Clanky API server. Inspect expiry/signing errors rather than creating
-replacement material without approval.
-
-Run directories retain parameter snapshots and JSON receipts for inspection.
-Cleanup removes only known temporary build/sign/download files, never the run
-root, published releases, rollback data, CA or signing material. No part of this
-workflow depends on another chat's session directory or one-off scripts.
+Keep private keys outside served files. After an interruption, inspect `status`
+and reconcile receipts rather than repeating publication. Cleanup may remove
+known temporary files, not the run root, published releases, rollback data,
+CA or signing material. Receipts remain available for inspection.
 
 ### Deploy an existing CI build
 
@@ -1286,20 +1242,11 @@ prepare the downloaded artifact instead of rebuilding:
 ```bash
 bun run ios:ota prepare --config "$PARAMETERS" --work "$RUN" \
   --ci-artifact "$CI_ARTIFACT_DIRECTORY" --source-revision "$EXPECTED_REVISION"
-bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage sign
-bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage publish
-bun run ios:ota verify --config "$PARAMETERS" --work "$RUN"
 ```
 
-Complete each generated request stage before continuing. Preparation verifies
-the CI source/target metadata, archive checksum and device bundle identity,
-retains the original provenance, and increments the native distribution build
-number using the existing publication baseline. It does not compile application
-sources. The signing stage still verifies the physical-device executable,
-provisioning profile, certificate and final signature on the Mac.
-If preflight reports `needsSetup`, obtain approval for the existing `setup`
-stage and complete it before publication. Updating the installer driver restarts
-only that service and retains its pinned trust root and previous release.
+Then complete the ordinary sign, publish and verify stages above. An unsigned
+CI artifact still requires the matching physical-device signing identity and
+profile; it is not directly installable.
 
 When an unpublished signed IPA is explicitly requested, replace publication
 and trusted installer verification with:
@@ -1309,12 +1256,9 @@ bun run ios:ota requests --config "$PARAMETERS" --work "$RUN" --stage download
 bun run ios:ota verify --config "$PARAMETERS" --work "$RUN" --signed-only
 ```
 
-`download` retrieves the signed IPA without publishing it. `--signed-only`
-checks its complete bytes and bundle metadata against the signing receipt and
-writes `verified-signed.json` with its private path. This leaves the existing
-installer and devices unchanged; ordinary publication remains a confirmed
-stage. Retain unpublished signing runs for subsequent deployment;
-the publication-only cleanup gates remain unchanged.
+`verified-signed.json` returns the verified IPA's private path. This leaves the
+installer and devices unchanged. Retain the unpublished run for later
+deployment; the ordinary cleanup flow requires a published run.
 
 ## Connections and web behavior
 

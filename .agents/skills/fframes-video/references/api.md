@@ -139,8 +139,8 @@ When exact source timing is required, retime the final export and verify every f
 retained. For the specific 30000/1001 case, FFmpeg video options
 `-vf 'settb=1/30000,setpts=N*1001' -r 30000/1001 -fps_mode cfr -video_track_timescale 30000`
 give a 1001-tick frame interval. Do not combine output `-r` with `-fps_mode passthrough`.
-This export step does not change the native preview's clock. See `audio.md` for preserving
-the original soundtrack during muxing.
+This export step does not change the native preview's clock or retime the audio;
+preserve the soundtrack's timing separately when muxing.
 
 ## Text
 
