@@ -237,6 +237,7 @@
 		A00000000000000000000036 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANKY_FRONTEND_UPDATES = enabled;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Configuration/iOS.plist;
@@ -253,6 +254,7 @@
 		A00000000000000000000037 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CLANKY_FRONTEND_UPDATES = enabled;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Configuration/iOS.plist;

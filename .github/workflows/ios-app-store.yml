@@ -82,12 +82,13 @@ jobs:
           ref: ${{ needs.release.outputs.source }}
           persist-credentials: false
 
-      - name: Require release containing App Store tooling
+      - name: Require release containing bundled-only App Store tooling
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f scripts/ios-app-store.ts ]]; then
-            echo "The latest release predates App Store automation. Create a normal release after merging this tooling first." >&2
+          if [[ ! -f scripts/ios-app-store.ts ]] \
+            || ! grep -q '<key>ClankyFrontendUpdates</key>' native/Configuration/iOS.plist; then
+            echo "The latest release predates bundled-only App Store builds. Create a normal release after merging this tooling first." >&2
             exit 1
           fi
 
@@ -117,7 +118,7 @@ jobs:
           bun scripts/ios-testflight.ts "$IOS_RELEASE_TAG" --app-store > "$result"
           jq -e --arg version "${IOS_RELEASE_TAG#v}" --arg source "$IOS_SOURCE_REVISION" '
             .version == $version and .frontendVersion == $version and .sourceRevision == $source
-            and .internalOnly == false and .processingState == "VALID"
+            and .internalOnly == false and .frontendUpdatesEnabled == false and .processingState == "VALID"
             and .buildAudienceType == "APP_STORE_ELIGIBLE" and .releaseType == "AFTER_APPROVAL"
             and .configuration == "Release" and .architecture == "arm64"
             and (.reviewSubmissionId | length > 0) and (.appStoreVersionId | length > 0)

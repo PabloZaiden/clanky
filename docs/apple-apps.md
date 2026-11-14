@@ -261,9 +261,20 @@ It never creates a GitHub release or bypasses Apple's review.
 See [App Review preparation](app-store-review.md) for the privacy-policy
 publication, local demonstration, review notes, and remaining readiness gates.
 
+Public App Store builds use only the frontend packaged in the signed app.
+They do not check or download Pages frontend updates, restore downloaded
+snapshots, or read saved frontend channel choices. The frontend Settings bundle
+is excluded. The public distribution path embeds this policy in native bundle
+metadata and verifies it, together with the absence of the Settings bundle,
+in both the archive and extracted IPA before upload. Ordinary internal
+TestFlight builds retain their existing frontend updates and Settings toggle.
+This distinction is independent of their shared Release configuration.
+
 Run it from the default branch only after the tooling has been merged and a
-normal versioned release containing it has been published. The workflow pins
-that latest release's exact tag and commit, excludes prereleases and the rolling
+normal versioned release containing the bundled-only App Store policy has been
+published. The workflow rejects older release sources before building or
+uploading. It pins that latest release's exact tag and commit, excludes
+prereleases and the rolling
 `latest` channel, and shares the existing iOS upload queue. It builds Release
 arm64 with an unused build number, verifies the archive and extracted IPA,
 and requires Apple's `VALID` / `APP_STORE_ELIGIBLE` processing result.
@@ -315,7 +326,9 @@ there first. No upload or publication is needed merely to validate the tooling.
 The native shell includes `PrivacyInfo.xcprivacy`, declaring its own-container
 UserDefaults use with reason `CA92.1`. Xcode includes the shared resource;
 Linux builds explicitly package it. The existing iOS resource verifier checks
-the exact manifest and Settings bundle in built, archived, and exported apps.
+the exact manifest and frontend update policy in built, archived, and exported
+apps. Update-enabled builds must contain the checked-out Settings bundle;
+public App Store builds must omit it.
 Reassess the declaration when native APIs or data handling change.
 
 The same valid Apple Distribution certificate **and private key**, matching
@@ -1450,9 +1463,18 @@ the next activation if the app is inactive. The WebView is never replaced.
 
 ### Frontend updates on iPhone and iPad
 
+Public App Store builds are bundle-only: the frontend changes only when the
+app itself is updated. They never check or download frontend updates from
+Pages and do not expose the frontend channel setting. Previously saved
+channels and downloaded snapshots are ignored, not deleted; connection
+settings, sessions and local UI recovery are unchanged.
+
+The update behavior below applies to ordinary internal TestFlight, local
+and unsigned iOS builds.
+
 In **iOS Settings > Apps > Clanky**, **Use latest frontend** chooses the
-frontend update channel. The toggle is off by default for every iOS build,
-including main, local, prerelease and TestFlight builds:
+frontend update channel. The toggle is off by default for every update-enabled
+iOS build, including main, local, prerelease and TestFlight builds:
 
 | Setting | Update metadata |
 | --- | --- |

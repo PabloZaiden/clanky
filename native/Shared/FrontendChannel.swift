@@ -8,6 +8,17 @@ enum FrontendChannel: String, Sendable {
     static let preferenceKey = "useLatestFrontend"
     private static let appliedKey = "appliedFrontendChannel"
 
+    static func updatesEnabled() throws -> Bool {
+        switch Bundle.main.object(forInfoDictionaryKey: "ClankyFrontendUpdates") as? String {
+        case "enabled": return true
+        case "disabled": return false
+        default:
+            throw NSError(domain: "Clanky", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "The bundled frontend update policy is invalid."
+            ])
+        }
+    }
+
     static func selected(in defaults: UserDefaults = .standard) throws -> FrontendChannel {
         guard let setting = defaults.object(forKey: preferenceKey) else { return .stable }
         guard let latest = setting as? Bool else {

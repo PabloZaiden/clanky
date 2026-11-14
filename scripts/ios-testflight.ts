@@ -166,7 +166,9 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
     `DEVELOPMENT_TEAM=${team}`, `CODE_SIGN_IDENTITY=${identity}`,
     `PROVISIONING_PROFILE_SPECIFIER=${profile.UUID}`, `OTHER_CODE_SIGN_FLAGS=--keychain ${keychain}`,
     `MARKETING_VERSION=${version}`, `CURRENT_PROJECT_VERSION=${buildNumber}`,
-    "GENERATE_INFOPLIST_FILE=YES", "INFOPLIST_KEY_ITSAppUsesNonExemptEncryption=NO", "archive"]);
+    "GENERATE_INFOPLIST_FILE=YES", "INFOPLIST_KEY_ITSAppUsesNonExemptEncryption=NO",
+    `CLANKY_FRONTEND_UPDATES=${appStore ? "disabled" : "enabled"}`,
+    ...(appStore ? ["EXCLUDED_SOURCE_FILE_NAMES=$(inherited) Settings.bundle"] : []), "archive"]);
 
   async function verify(appPath: string) {
     await run(["codesign", "--verify", "--deep", "--strict", appPath]);
@@ -175,7 +177,7 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
       CFBundleVersion: z.literal(buildNumber), CFBundleExecutable: z.string().regex(/^[A-Za-z0-9._-]+$/),
       CFBundleSupportedPlatforms: z.tuple([z.literal("iPhoneOS")]), ITSAppUsesNonExemptEncryption: z.literal(false),
     }).parse(JSON.parse(await run(["plutil", "-convert", "json", "-o", "-", join(appPath, "Info.plist")], true)));
-    await run([process.execPath, "scripts/verify-ios-settings.ts", appPath]);
+    await run([process.execPath, "scripts/verify-ios-settings.ts", appPath, ...(appStore ? ["--app-store"] : [])]);
     await verifyAppleFrontend(join(appPath, "Web"), sourceRevision, frontendVersion);
     if ((await run(["lipo", "-archs", join(appPath, info.CFBundleExecutable)], true)).trim() !== "arm64") {
       throw new Error("The distribution app must contain exactly the arm64 device architecture.");
@@ -260,7 +262,8 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
         const review = await submitAppStoreVersion(client, app.id, version!, draftId, build.id);
         return { appId: app.id, bundleId, releaseTag: tag, version, frontendVersion, buildNumber,
           buildId: build.id, sourceRevision, configuration: "Release", architecture: "arm64",
-          internalOnly: false, processingState: "VALID", buildAudienceType: audience, ...review };
+          internalOnly: false, frontendUpdatesEnabled: false,
+          processingState: "VALID", buildAudienceType: audience, ...review };
       }
       if (!group) throw new Error("Missing verified internal TestFlight group.");
       const detail = z.object({ data: resourceId.extend({
@@ -277,7 +280,8 @@ print(json.dumps({k: p[k] for k in keys if k in p}))
         return { appId: app.id, appName: app.attributes.name, bundleId, releaseTag: tag, version, frontendVersion,
           buildNumber, buildId: build.id, sourceRevision, configuration: "Release", architecture: "arm64",
           signingCertificateSHA1: identity, teamId: team, profileUUID: profile.UUID,
-          internalOnly: true, internalGroupId: group.id, internalGroupName: groupName,
+          internalOnly: true, frontendUpdatesEnabled: true,
+          internalGroupId: group.id, internalGroupName: groupName,
           internalTesterCount: currentTesters.length, processingState: "VALID",
           internalBuildState: detail.data.attributes.internalBuildState };
       }
