@@ -6,7 +6,7 @@
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
 Clanky is a coding-agent manager for running, reviewing, and iterating on
-software tasks with Copilot, Codex and OpenCode 2.
+software tasks with Copilot, Codex, OpenCode 2 and Claude Agent.
 It combines a web dashboard, an authenticated CLI, isolated workspaces, live
 conversation visibility, planning, and iteration in one application.
 
@@ -70,8 +70,8 @@ The installer verifies the release checksum and places `clanky` in
 ### Requirements
 
 - Git
-- An installed native Copilot, Codex or OpenCode 2 runtime with its required
-  authentication; see [harness adapters](docs/harnesses.md)
+- An installed native Copilot, Codex, OpenCode 2 or Claude Code runtime with
+  its required authentication; see [harness adapters](docs/harnesses.md)
 - [Bun](https://bun.sh) only when running Clanky from source
 
 ### Start the server

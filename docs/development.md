@@ -61,19 +61,40 @@ Read the guide relevant to the change, not every guide for every task.
 
 | Work | Canonical guide |
 | --- | --- |
-| Layers, authorization, execution hosts, backends, persistence, realtime, or concurrency | [Architecture and domain boundaries](development/architecture.md) |
+| Layers, authorization, execution hosts, filesystem/Git, backends, persistence, realtime, or concurrency | [Architecture and domain boundaries](development/architecture.md) |
 | Coverage decisions, E2E boundaries, fixtures, timeouts, cleanup, or visual validation | [Testing and validation](development/testing.md) |
 | UI, settings, routing, framework ownership, or upstream webapp changes | [UI and webapp development](development/webapp.md) |
 | Breaking Mesh wire changes | [Protocol evolution](mesh-worker.md#protocol-evolution) |
 | Docker, proxy, authentication, production access, or database reset | [Deployment and configuration](deployment.md) |
 | Apple app builds, signing, simulation, or device deployment | [Apple apps](apple-apps.md) |
 | Provider selection and runtime behavior | [Harness adapters](harnesses.md) |
+| Dependencies, PRs, or releases | [Dependency updates](#dependency-updates), [PR reviews](#pull-request-reviews), and [releases](#creating-a-github-release) |
+| fframes video creation or review | [Video skill](../.agents/skills/fframes-video/SKILL.md) |
 
-Keep documentation about behavior, constraints, and their rationale. Types,
-method signatures, helper catalogs, and implementation details already clear
-in code do not need a parallel prose reference. Document feature changes in
-the appropriate guide and update applicable skills. Keep the root README a
-short introduction, installation/quick-start guide, and navigation entry point.
+## Documentation policy
+
+Before adding documentation, ask whether it helps someone perform supported
+work or avoid a non-obvious pitfall. Keep current entrypoints, prerequisites,
+workflows, meaningful constraints and necessary rationale. An implementation
+change or visible UI adjustment alone does not justify more documentation.
+
+Use definitions, callers, script help and live API/schema discovery rather
+than parallel references for types, signatures, schemas, route/helper catalogs,
+constants or internal timing, caching and rendering mechanics.
+
+Do not record task histories, migration chronology, discarded experiments or
+obsolete features/workarounds. Preserve still-required upgrade, compatibility,
+security and platform-specific constraints. Keep an active workaround only
+while necessary, explaining its current scope and condition rather than the
+history of attempts.
+
+Update or remove affected text in its canonical guide instead of appending a
+new narrative or duplicating it elsewhere. `AGENTS.md` owns agent workflow,
+not shared technical policies. Apply the same usefulness and single-source
+rules to skills, respecting their ownership.
+
+Keep the root README a short introduction, installation/quick-start guide and
+navigation entry point.
 
 ## Build and test
 
@@ -91,31 +112,9 @@ The build produces the standalone `dist/clanky` and relocatable `dist/client/`.
 
 The optional [Apple app shell](apple-apps.md) packages the same frontend in
 Swift + WKWebView for macOS and iPhone/iPad. Use `bun run build:apple:macos`
-for a Mac `.app` including the existing standalone CLI/controller, or
-`bun run build:apple:ios` for the client-only iOS simulator app.
-`bun run build:apple:ios:device` builds the unsigned physical-device app on a Mac.
-The nightly/manual main and versioned-release workflow builds both Mac and iOS
-device apps on hosted Mac runners, saving app archives, checksums and source
-metadata as Actions artifacts
-and attaching versioned copies to the rolling `latest` and published versioned
-releases after the CLI publisher succeeds. Both channels sign and notarize the
-Mac app, bundled controller and standalone Darwin binaries with one Developer
-ID Application identity. The iOS device archive remains unsigned.
-Release artifact downloads fail on a digest mismatch instead of publishing
-unverified assets.
-Native Apple builds use Debug for main and Release for published versioned
-releases; manual native commands default to Debug and accept
-`--configuration Release`.
-The four Linux/macOS CLI binaries also compile on that Mac runner image using
-their existing Bun targets; main and versioned releases share this arrangement.
-`bun run build:apple:ios:linux` cross-compiles the physical-device app on Linux;
-`bun run build:apple:ios:simulator:linux` builds for Apple Silicon simulators.
-`bun run build:apple:macos:linux` cross-compiles the Apple Silicon Mac app,
-including its controller; `bun run macos:app` stages private signing and packaging.
-These optional Linux builds use Swift and xtool; simulation, signing and wireless
-installation can remain on a Mac without installing Clanky's source or
-dependencies there.
-See the Apple guide for the SDK and device setup.
+for a Mac `.app` with its controller, or `bun run build:apple:ios` for an iOS
+simulator app. The Apple guide owns prerequisites, device and Linux builds,
+signing, configuration selection and CI distribution.
 
 Use the [testing guide](development/testing.md) for prerequisites, narrower
 checks, coverage decisions, and required validation.

@@ -5,7 +5,7 @@ or your iPhone. Tailscale lets you take that same workspace with you, and Quick
 Chat makes starting a new conversation a single click.
 
 Start with a project folder and an agent you already use, installed and signed
-in on your computer. Choose GitHub Copilot, Codex or OpenCode 2;
+in on your computer. Choose GitHub Copilot, Codex, OpenCode 2 or Claude Agent;
 the [agent setup guide](harnesses.md#workspace-configuration) has instructions
 for each.
 
@@ -54,8 +54,8 @@ A workspace brings together your project and its conversations.
 2. Give it a name and enter your project folder in **Directory**. Enable **Git
    repository** for a Git project.
 3. Choose your computer as the **Execution host** and select **GitHub Copilot**,
-   **Codex** or **OpenCode 2** under **Adapter**. Test the connection and create
-   the workspace.
+   **Codex**, **OpenCode 2** or **Claude Agent** under **Adapter**. Test the
+   connection and create the workspace.
 
 Open **New Chat** from the workspace's menu and choose a model. Use worktrees
 to give independent coding tasks their own working copy.

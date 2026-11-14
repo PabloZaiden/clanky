@@ -73,10 +73,10 @@ execution still apply. Credential management, raw transports, uploads/downloads
 and browser media are not ordinary JSON assistant operations.
 
 The application-control contracts and execution are shared with native agents,
-external MCP clients and deterministic programs. Live keeps its existing
-28-tool surface: 24 application tools plus UI context, UI actions, selective
-watching and goodbye. Direct common requests add no mandatory discovery/model
-rounds and do not go through MCP. Visual approval and
+external MCP clients and deterministic programs. Live combines the shared
+application tools with UI context, UI actions, selective watching and goodbye.
+Direct common requests add no mandatory discovery/model rounds and do not go
+through MCP. Visual approval and
 voice-specific result/presentation budgets retain their existing behavior.
 See [agent control and MCP](deployment.md#agent-control-and-mcp) for external
 authorization and nonvoice human requests.
@@ -162,16 +162,16 @@ conflict instead of discarding an ongoing Talk recording or transcription.
 
 ### Talk from the composer
 
-The composer's three-dot menu ends with **Template** on the left, followed by
-spaced SVG icon actions: the microphone starts **Talk**, when available, and
+The composer's **Conversation options** panel ends with **Template** on the
+left, followed by spaced SVG icon actions: the microphone starts **Talk**, when available, and
 the rightmost paperclip attaches files.
 Both keep tooltips and accessible names.
 With an empty draft and Talk available, hold the **send arrow** until a
 microphone button appears above it. Drag the mouse or finger onto that button
 and release to start the same record/transcribe/send flow. Releasing elsewhere,
 Escape, or a cancelled pointer gesture dismisses it without sending a message.
-A short click still sends normally; holding the three-dot button has no new
-gesture. The send-arrow gesture is unavailable while the conversation is
+A short click still sends normally; holding the conversation-options button
+has no new gesture. The send-arrow gesture is unavailable while the conversation is
 active, another composer operation is busy, or Live owns audio.
 
 Stop the recording to transcribe and send it; cancel it to discard the recording.
@@ -244,8 +244,8 @@ Read/action targets accept an ID, exact name and optional workspace, or
 `current` for the originating client's acknowledged selection. Names are
 resolved locally through authorized reads; an ambiguous name returns safe
 candidates instead of choosing a match. The model should pass the user's name
-directly, not list resources just to obtain IDs. A combined intervention query
-uses one `waiting_work` with `kind=all`.
+directly, not list resources just to obtain IDs. A query for pending questions
+and permissions uses one `waiting_work` call.
 
 Voice work results preserve the API's raw `status` and add `voiceStatus` for
 simple spoken categories. Chats map `streaming` and `waiting` to `active`,
@@ -330,10 +330,10 @@ large client preferences use route/preferences sections.
 Direct conversation reads default to a bounded **latest** selection, not a
 walk through the whole history. `omittedEarlierMessages` distinguishes complete
 delivery of that selection from complete history. Recent-work previews select
-the last two messages. Combined work overviews expose `limitPerKind`, source
-coverage and a combined cursor: each source has its own activity-ordered page,
-not a global top-N or atomic cross-resource snapshot. Combined server/host
-cursors likewise continue unfinished sources without restarting completed ones.
+the last two messages. Work overviews select chats, expose coverage and
+`limitPerKind`, and continue that activity-ordered selection with `nextCursor`.
+Server listings use the execution-host collection and its cursor. These reads
+are not atomic cross-resource snapshots.
 If previews or persisted state are unavailable, the result says so explicitly.
 
 Each delegated response admits at most eight function calls. Clanky budgets
@@ -397,12 +397,7 @@ contain no prompts, transcripts, raw arguments/results or credentials.
 ### Native audio playback
 
 Live uses the browser's native WebRTC adaptive buffering and media-element
-playback. Clanky does not override the incoming receiver's jitter-buffer target,
-add a PCM queue, or upload periodic browser audio statistics. Previously saved
-voice settings still load; retired audio-buffer properties are ignored without
-discarding provider credentials. The removed buffer experiment did not improve
-the reported iPhone-speaker distortion; that physical-device issue remains a
-separate investigation, not a claimed fix.
+playback; keep audio buffering browser-owned.
 
 ### Privacy, limits and recovery
 

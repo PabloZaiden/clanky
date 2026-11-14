@@ -1012,173 +1012,23 @@ and session survived; direct shells do not have that persistence guarantee.
 
 ## Endpoints
 
-### Current Clanky route inventory
+### Discover endpoints
 
-The table below is the public Clanky-owned route catalog. Use
-`clanky schema <endpoint>` for request and response details, and `clanky api`
-for the endpoint list exposed by the running server. Framework-owned routes
-such as `/api/auth/*`, `/api/config`, `/api/health`, and `/api/ws` are not
-included in this table.
-The shared agent-control index additionally includes the framework's canonical
-operational routes, such as health/version and public configuration. It does
-not expose authentication or raw transport protocols; see
+Use the authenticated running server's catalog for current routes and exact
+request/response schemas:
+
+```bash
+clanky api
+clanky schema chats
+clanky api chats --method GET
+```
+
+For source changes, consult the route declarations in [`src/api/`](../src/api/)
+rather than maintaining a second route list. The examples below explain common
+workflows; the running contract remains authoritative.
+Agent control exposes only operations authorized for its grant, not
+authentication or raw transport protocols. See
 [access and discovery](deployment.md#agent-control-and-mcp).
-
-<details>
-<summary>Show all catalogued Clanky routes</summary>
-
-| Method(s) | Path | Description |
-|-----------|------|-------------|
-| GET, DELETE | `/api/automation-runs/:id` | Read or delete an automation run. |
-| GET | `/api/automation-runs/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned automation run. |
-| GET | `/api/automation-runs/:id/snapshot` | Read an automation-run transcript snapshot, paged by non-empty assistant responses (page size 100). |
-| GET | `/api/automation-runs/:id/tool-calls/:toolCallId` | Read one complete automation-run tool-call payload. |
-| GET, POST | `/api/automations` | List or create scheduled automations. |
-| GET, PATCH, DELETE | `/api/automations/:id` | Read, update, or delete a scheduled automation. |
-| GET | `/api/automations/:id/code/draft` | Read the current generated deterministic automation draft. |
-| GET | `/api/automations/:id/export` | Download a portable scheduled-automation configuration. |
-| POST | `/api/automations/:id/code/generate` | Generate an editable deterministic automation program without saving it. |
-| POST | `/api/automations/:id/code/generate/prepare` | Prepare the hidden deterministic-automation generation conversation before a long generation request. |
-| POST | `/api/automations/:id/interrupt` | Interrupt an active automation run. |
-| POST | `/api/automations/:id/pause` | Pause a scheduled automation. |
-| POST | `/api/automations/:id/resume` | Resume a paused scheduled automation. |
-| POST | `/api/automations/:id/run` | Start an automation run immediately. |
-| GET, DELETE | `/api/automations/:id/runs` | List or purge runs for an automation. |
-| POST | `/api/automations/code/generate` | Reject generation for unsaved automations. |
-| POST | `/api/automations/code/test` | Test deterministic automation code without saving an automation or run. |
-| POST | `/api/automations/code/test/stream` | Stream deterministic automation code test output without saving an automation or run. |
-| GET, POST | `/api/chats` | List chats or create a chat session. |
-| GET, PATCH, DELETE | `/api/chats/:id` | Read, update, or delete a chat session; remote cleanup may continue after deletion. |
-| POST | `/api/chats/:id/new-here` | Create an empty chat in the source chat's current workspace directory and execution target. |
-| GET | `/api/chats/:id/activity` | Observe owned native background work. |
-| POST | `/api/chats/:id/activity/:activityId/stop` | Stop one owned native child or process. |
-| GET | `/api/chats/:id/diff` | List accumulated committed, pending and untracked changes with comparison-base headers; no patches. |
-| GET | `/api/chats/:id/diff/file` | Read the selected file's patch and counts using the listing's comparison base and relative path. |
-| GET | `/api/chats/:id/plan` | Read the chat's current planning document. |
-| GET | `/api/chats/:id/status-file` | Read its agent-maintained progress document. |
-| GET | `/api/chats/:id/repository-context` | Read the current branch and an existing PR with its state, preferring an open PR, without Git mutations. |
-| POST | `/api/chats/:id/done` | Mark a standalone chat as done. |
-| POST | `/api/chats/:id/interrupt` | Interrupt an active chat run. |
-| POST | `/api/chats/:id/messages` | Send a message to a chat session. |
-| GET | `/api/chats/:id/messages/:messageId/attachments/:attachmentId` | Read one original attachment from an owned chat. |
-| POST | `/api/chats/:id/messages/:messageId/speech` | Generate a spoken summary for an existing assistant message in an owned chat; no request body. |
-| POST | `/api/chats/:id/permissions/:requestId` | Approve or deny a pending chat permission request. |
-| POST | `/api/chats/:id/questions/:requestId` | Answer a native question owned by the current chat conversation. |
-| DELETE | `/api/chats/:id/queued-messages/:messageId` | Delete a queued chat message. |
-| POST | `/api/chats/:id/queued-messages/:messageId/steer` | Steer an existing queued input without interrupting the execution. |
-| POST | `/api/chats/:id/queued-messages/:messageId/reconcile` | Recover native delivery without resending the input. |
-| POST | `/api/chats/:id/continue-from-history` | Explicitly create a fresh native chat session backed by a temporary persisted-history export. |
-| POST | `/api/chats/:id/reconnect` | Reconnect a chat session to its backend runtime. |
-| GET | `/api/chats/:id/snapshot` | Read a chat transcript snapshot, paged by non-empty assistant responses (page size 100). |
-| GET | `/api/chats/:id/tool-calls/:toolCallId` | Read the full details for one chat tool call. |
-| GET | `/api/chats/:id/transcript.html` | Open a chat transcript as a standalone HTML document. |
-| GET | `/api/chats/:id/transcript.md` | Download a chat transcript as Markdown. |
-| GET | `/api/execution-hosts` | List execution hosts available to the current user. |
-| POST | `/api/execution-hosts/:kind/:id/exec` | Execute one non-interactive command on a registered execution host. |
-| GET, POST | `/api/execution-hosts/:kind/:id/working-directory` | Resolve the configured or current execution-host directory. |
-| POST | `/api/execution-hosts/:kind/:id/addresses` | List accessible IPv4 addresses on an execution host. |
-| PATCH | `/api/execution-hosts/:kind/:id/configuration` | Update node-owned defaults for a local or Mesh execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chats` | Create a direct chat with explicit native `adapter`, `directory` and `model`; `model.providerID` is the upstream provider, not the harness selector. |
-| POST | `/api/execution-hosts/:kind/:id/prerequisites` | Check prerequisites on an execution host. |
-| POST | `/api/execution-hosts/:kind/:id/devbox-templates` | List Devbox templates on an execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chat-providers` | Discover installed native harness providers on an execution host. |
-| POST | `/api/execution-hosts/:kind/:id/chat-models` | Discover native harness models for a provider on an execution host. |
-| GET | `/api/execution-hosts/:kind/:id/files` | List execution-host files in the active explorer root. |
-| GET | `/api/execution-hosts/:kind/:id/files/content` | Read an execution-host file. |
-| POST | `/api/execution-hosts/:kind/:id/files/filesystem` | Exact-path commands, preconditions and DAV locks on the selected host. |
-| GET, HEAD, PUT | `/api/execution-hosts/:kind/:id/files/filesystem/content` | Stream, inspect or stage binary content on the selected host. |
-| POST | `/api/execution-hosts/:kind/:id/files/delete` | Delete an execution-host file or directory. |
-| GET, HEAD | `/api/execution-hosts/:kind/:id/files/download` | Download an execution-host file. |
-| GET | `/api/execution-hosts/:kind/:id/files/metadata` | Read execution-host file metadata. |
-| GET | `/api/execution-hosts/:kind/:id/files/preview` | Preview a browser-renderable execution-host image file. |
-| GET | `/api/execution-hosts/:kind/:id/files/video-preview` | Stream a browser-renderable execution-host video for inline playback. |
-| POST | `/api/execution-hosts/:kind/:id/files/rename` | Rename an execution-host file or directory. |
-| GET | `/api/execution-hosts/:kind/:id/files/tree` | Load the full execution-host file tree. |
-| POST | `/api/execution-hosts/:kind/:id/files/write` | Write an execution-host file. |
-| POST | `/api/execution-hosts/:kind/:id/files/upload` | Create an execution-host file upload session. |
-| POST | `/api/execution-hosts/:kind/:id/files/upload/cancel` | Cancel an execution-host file upload session. |
-| POST | `/api/execution-hosts/:kind/:id/files/upload/chunk` | Upload a chunk for an execution-host file upload session. |
-| POST | `/api/execution-hosts/:kind/:id/files/upload/complete` | Complete an execution-host file upload session. |
-| GET | `/api/git/branches` | List local git branches for a workspace. |
-| GET | `/api/git/default-branch` | Detect the default git branch for a workspace. |
-| GET | `/api/git/github-issues` | List open GitHub issues for a workspace repository. |
-| GET | `/api/git/github-repository-url` | Resolve the GitHub repository URL for a workspace. |
-| GET | `/api/git/remote-status` | Check whether a git remote exists for a workspace. |
-| POST | `/api/mesh/endpoint` | Set this controller or worker advertised Mesh endpoint. |
-| POST | `/api/mesh/enroll` | Enroll this worker with a controller. |
-| GET, POST | `/api/mesh/enrollment-tokens` | List or create single-use worker enrollment tokens. |
-| POST | `/api/mesh/health` | Probe enrolled workers without changing durable trust. |
-| POST | `/api/mesh/instance-name` | Set this controller or worker display name. |
-| GET, POST, DELETE | `/api/mesh/relay` | Inspect, pair, or unpair this controller's Mesh relay. |
-| GET | `/api/mesh/status` | Get this controller's workers or this worker's local status. |
-| DELETE | `/api/mesh/workers/:workerNodeId` | Delete a revoked worker registration. |
-| POST | `/api/mesh/workers/:workerNodeId/kill` | Ask an enrolled worker to terminate so its service supervisor can restart it. |
-| POST | `/api/mesh/workers/revoke` | Revoke one controller-to-worker grant. |
-| GET | `/api/models` | List available AI models for a workspace. |
-| GET | `/api/models/variants` | List available model variants for a workspace. |
-| GET, PUT | `/api/preferences/file-explorer-full-tree` | Persist file explorer tree loading preferences. |
-| GET, PUT | `/api/preferences/github-username` | Persist the user's optional GitHub username. |
-| GET, PUT | `/api/preferences/last-directory` | Persist the user's last selected directory. |
-| GET, PUT | `/api/preferences/last-model` | Persist the user's most recently used model. |
-| GET, PUT | `/api/preferences/markdown-rendering` | Persist markdown rendering preferences. |
-| GET, PUT | `/api/preferences/quick-chat` | Persist quick chat workspace and model preferences. |
-| GET, PUT | `/api/preferences/prompt-templates` | Read or replace the authenticated user's ordered custom templates and built-in planning-template enablement and position. |
-| GET, PUT | `/api/preferences/scheduler-timezone` | Persist the scheduler timezone preference. |
-| GET | `/api/previews` | List active previews and previews with pending cleanup. |
-| DELETE | `/api/previews/:previewId` | Close a preview or retry its pending cleanup on the original host. |
-| GET | `/api/previews/bridge` | Open the raw websocket bridge for a workspace or direct server preview. |
-| POST | `/api/provisioning-jobs` | Start a remote provisioning job. |
-| POST | `/api/provisioning-jobs/:id/dismiss` | Dismiss a terminal provisioning job. |
-| GET, DELETE | `/api/provisioning-jobs/:id` | Read or cancel a remote provisioning job. |
-| GET | `/api/provisioning-jobs/:id/logs` | Read logs for a remote provisioning job. |
-| POST | `/api/server-settings/test` | Test a server connection without creating a workspace. |
-| POST | `/api/settings/restart-automatic-workspaces` | Start restart jobs for the current user's automatically provisioned workspaces. |
-| POST | `/api/settings/reset-all` | Reset all persisted settings and recreate the database. |
-| GET, POST | `/api/terminal-sessions` | List or create a workspace or direct execution-host terminal session. |
-| GET, PATCH, DELETE | `/api/terminal-sessions/:id` | Read, update, or delete a terminal session. |
-| GET | `/api/terminal` | Open the raw websocket bridge for a terminal session. |
-| GET, PUT | `/api/voice/settings` | Read or update transcription, shared text-generation, and Live model settings, plus local Piper support status. |
-| POST | `/api/voice/validate` | Validate the configured transcription, text-generation, or Live Voice capability. |
-| POST | `/api/voice/transcribe` | Transcribe an uploaded audio recording with the configured provider. |
-| GET, POST | `/api/voice/live` | Discover or start the user's global voice assistant. |
-| GET | `/api/voice/live/:callId` | Read owned ephemeral call state. |
-| POST | `/api/voice/live/:callId/heartbeat` | Renew the originating-tab lease and UI context. |
-| POST | `/api/voice/live/:callId/close` | End voice without stopping delegated work. |
-| POST | `/api/voice/live/:callId/confirmations/:requestId` | Approve or reject a frozen, expiring operation from the originating client. |
-| GET, POST | `/api/worker-update-jobs` | List jobs or start Clanky updates for active server and automatic workspace Mesh workers. |
-| GET | `/api/worker-update-jobs/:id` | Read a worker update job and its logs. |
-| POST | `/api/worker-update-jobs/:id/dismiss` | Dismiss a terminal worker update job and its logs. |
-| GET, POST | `/api/workspace-worker-enrollments` | List or create workspace-exclusive Mesh worker enrollments. |
-| GET, DELETE | `/api/workspace-worker-enrollments/:id` | Read or cancel a workspace-exclusive Mesh worker enrollment. |
-| GET, POST | `/api/workspaces` | List workspaces or create a workspace. |
-| GET, PUT, DELETE | `/api/workspaces/:id` | Read, update, or delete a workspace. |
-| POST | `/api/workspaces/:id/automations/import` | Import a portable scheduled-automation configuration into a workspace. |
-| POST | `/api/workspaces/:id/exec` | Execute one non-interactive command on the workspace's execution host. |
-| GET | `/api/workspaces/:id/files` | List workspace files in the active explorer root. |
-| GET | `/api/workspaces/:id/files/content` | Read a workspace file. |
-| POST | `/api/workspaces/:id/files/filesystem` | Run an exact-path filesystem command. |
-| GET, HEAD, PUT | `/api/workspaces/:id/files/filesystem/content` | Stream, inspect or atomically replace binary content. |
-| POST | `/api/workspaces/:id/files/delete` | Delete a workspace file or directory in the active explorer root. |
-| GET, HEAD | `/api/workspaces/:id/files/download` | Stream a workspace file from the selected execution host. |
-| GET | `/api/workspaces/:id/files/metadata` | Read workspace file metadata. |
-| GET | `/api/workspaces/:id/files/preview` | Preview a browser-renderable workspace image file. |
-| GET | `/api/workspaces/:id/files/video-preview` | Stream a browser-renderable workspace video for inline playback. |
-| POST | `/api/workspaces/:id/files/rename` | Rename a workspace file or directory in the active explorer root. |
-| GET | `/api/workspaces/:id/files/tree` | Load the full workspace file tree. |
-| POST | `/api/workspaces/:id/files/upload` | Create a workspace file upload session. |
-| POST | `/api/workspaces/:id/files/upload/cancel` | Cancel a workspace file upload session. |
-| POST | `/api/workspaces/:id/files/upload/chunk` | Upload a raw chunk for a workspace file upload session. |
-| POST | `/api/workspaces/:id/files/upload/complete` | Complete a workspace file upload session. |
-| POST | `/api/workspaces/:id/files/write` | Write a workspace file with optional conflict checks. |
-| POST | `/api/workspaces/:id/pull-latest-changes` | Pull the default branch and refresh remote-tracking branches. |
-| GET, PUT | `/api/workspaces/:id/server-settings` | Read or update workspace server settings. |
-| GET | `/api/workspaces/:id/server-settings/status` | Read the current workspace connection status. |
-| POST | `/api/workspaces/:id/server-settings/test` | Test the configured workspace connection using workspace settings. |
-| GET | `/api/workspaces/execution-targets` | List execution hosts and available harness adapters for workspace configuration. |
-| GET | `/api/workspaces/:workspaceId/previews` | List previews associated with a workspace. |
-| GET | `/api/execution-hosts/:kind/:id/previews` | List direct previews for a local or Mesh execution host. |
-
-</details>
 
 ### Workspace execution targets
 
@@ -1187,7 +1037,7 @@ descriptors. Harness availability is part of each descriptor:
 
 | Field | Contract |
 | --- | --- |
-| `harnessAdapters` | Available adapters: `copilot`, `codex`, `opencode2`, constrained by the execution host and Mesh route. |
+| `harnessAdapters` | Available native adapters, constrained by the execution host and Mesh route. |
 | `harnessAdapterError` | Optional `mesh_execution_protocol_mismatch` when route negotiation cannot be verified; `harnessAdapters` is empty. |
 
 The optional `workspaceId` or connected `workspaceWorkerEnrollmentId` query

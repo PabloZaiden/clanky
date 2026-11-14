@@ -260,8 +260,8 @@ before attributing a slow voice answer to local data access.
 
 ## Shared workspace collaboration
 
-The normal API/CLI also exposes workspaces shared by another controller through
-a relay. This is a client pairing, not worker enrollment. See
+The normal API/CLI also exposes workspaces shared by another controller over
+Direct or Relay routes. This is a client pairing, not worker enrollment. See
 [`docs/workspace-collaboration.md`](../../docs/workspace-collaboration.md).
 Authenticate against the user's local instance and pass returned opaque
 workspace/entity references unchanged. Do not add a connection flag, switch CLI

@@ -56,21 +56,11 @@ Each channel contains both connection modes:
 | `api/` | Select an HTTPS API and authorize a device session |
 | `collaboration/` | Upload an invitation file for Direct or Relay collaboration |
 
-The [site root](https://pablozaiden.github.io/clanky/) is a lightweight,
-mobile-friendly channel chooser with dark and light system themes. Each channel
-has its own connection chooser and deployed commit link, without JavaScript or
-external resources. The old root `api/`, `collaboration/`, and update metadata
-URLs are not retained.
-
-Each channel's `build-info.json` records the full source revision (`revision`),
-client version (`version`) and UTC build timestamp (`builtAt`). Its `update`
-entry identifies `frontend-update.json` by path, byte size and SHA-256.
-That manifest lists every application asset with its relative path, byte size
-and SHA-256, excluding the two metadata files themselves. Its digest identifies
-the exact frontend snapshot. Generated bundler details can change this digest
-when rebuilding the same source revision, so it is an integrity identifier,
-not an ordered release version. Publish metadata and assets together, not as
-separate deployments.
+Use the [site root](https://pablozaiden.github.io/clanky/) to choose a channel.
+Each channel also links to its deployed commit. `build-info.json` identifies
+the client version and source; `frontend-update.json` verifies the exact
+frontend snapshot. Its digest is an integrity identifier, not an ordered
+release version. Publish metadata and assets together.
 Update-enabled [iPhone/iPad apps](apple-apps.md#frontend-updates-on-iphone-and-ipad)
 use this metadata for frontend-only updates; public App Store builds do not.
 The update-enabled app's native iOS Settings toggle
@@ -84,41 +74,18 @@ Compare the channel and deployed commit when investigating browser behavior
 or API compatibility. Browser clients still require a reload after deployment to pick
 up the new frontend; they do not install the native app's downloaded snapshots.
 
-The `Publish browser clients` workflow builds PRs without publishing them.
-Main merges do not deploy. The [nightly/manual main publication](binary-updates.md)
-calls this workflow after Docker and native assets succeed, selecting the same
-main source revision and deploying through the `github-pages` environment.
-Its verified delivery is required for the main publication to count as complete;
-failed or superseded publication does not advance the nightly skip baseline.
-Every stable release automatically dispatches one run on `main`
-instead of deploying directly under the release event. This avoids a
-[GitHub Pages release-event bug](https://github.com/actions/deploy-pages/issues/383)
-that can report success while continuing to serve the previous artifact.
-The dispatched run resolves the highest stable release and current main itself;
-it does not dispatch again. Only the release-dispatch job receives
-`actions: write`. Both channels are built from immutable
-source revisions and combined into one complete artifact, because a Pages
-deployment replaces the whole site. Each deployment attempt uploads and selects
-an attempt-specific Pages artifact, so reruns cannot select artifacts retained
-from an earlier attempt. Drafts, prereleases, and the rolling
-`latest` release do not select the stable channel. Publication shares one
-serialization group across triggers and skips artifacts whose main revision
-or stable release selection has been superseded.
-Release dispatches and ineligible events use isolated concurrency groups and
-cannot displace a pending publication. Each snapshot records its checked-out
-source SHA, not the triggering event's reserved `GITHUB_SHA`; assembly rejects
-source/version metadata that disagrees with the selected channels.
-After deployment, publication checks the actual public metadata, manifest
-digests, connection bootstrap versions/modes, and root channel links against the
-built artifact. It allows up to 15 minutes for Pages cache propagation and
-fails explicitly if the expected content is not served. Workflow success
-therefore includes observed delivery, not just deployment admission.
+The [Pages workflow](../.github/workflows/pages.yml) builds PRs without
+publishing. Main merges do not deploy: the
+[nightly/manual publication](binary-updates.md) updates both channels after
+Docker and native assets succeed. Stable releases also trigger publication;
+drafts, prereleases and the rolling `latest` release do not select stable.
+Both channels must be published together from their exact source revisions.
+Publication succeeds only after verifying the publicly served metadata,
+integrity manifests and connection bootstraps, not merely admitting deployment.
+
 Configure repository **Settings > Pages > Source** to
-**GitHub Actions** before the first deployment. Both clients are packaged from
-one frontend build per channel; only their `webapp-client.json` modes differ.
-The `github-pages` environment's deployment rules must allow the `main` branch.
-Stable releases dispatch publication on main, so tag deployment rules are no
-longer required; existing tag permissions can remain. No API URL, invitation or
+**GitHub Actions** before the first deployment and allow `main` in the
+`github-pages` environment's deployment rules. No API URL, invitation or
 credentials are preconfigured.
 
 To generate one complete frontend snapshot locally, including the resources

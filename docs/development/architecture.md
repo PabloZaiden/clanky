@@ -268,6 +268,10 @@ success, failure, timeout, cancellation, process exit, disconnect, and reconnect
 All connection cleanup must be reachable from one teardown path. Bound
 accumulated buffers and live connections, and clear losing timeout timers.
 
+Catalog and naming helpers must not borrow a user's chat conversation or
+change its working directory. Their conversations use unattended question
+policy and retain the same user/host isolation as ordinary execution.
+
 Preserve provider error codes and details. Capability absence must be explicit,
 not inferred from a failed request. Keep provider adaptation at its owned
 boundary rather than scattering checks through transport/session code.
@@ -347,50 +351,22 @@ markers preserve deployed version history. Verify significant upgrade and
 recovery contracts through the compiled application and public boundaries,
 including a second restart when idempotency matters.
 
-### Task retirement
+### Upgrade and cleanup safety
 
-Tasks are removed rather than migrated into standalone conversations.
-Migration 94 permanently removes Task records, transcripts, linked chats and
-owned auxiliary records. It first saves narrowly scoped external-resource
-ownership in `retired_task_resources`; migration 95 adds chat planning kickoff
-state. Migration 96 removes Task-only notification choices, saved Task pins and
-obsolete model/dashboard preferences, preserving remaining choices and the
-separately stored notification webhook. The immutable baseline remains
-historical, and startup removes the empty Task tables it recreates. Dormant
-baseline columns are not active ownership relationships or API fields.
+Upgrades remove retired Task data rather than converting it into chats.
+Historical baseline tables and columns do not imply supported product features.
+Cleanup must use the recorded owner and execution host, confirm writer
+settlement, and preserve repository roots, shared directories, original or
+default/checked-out branches, remote branches and external PRs. Unreachable
+hosts, uncertain ownership, unconfirmed writers and resources still in use
+remain pending with visible errors; never report them as safely deleted.
 
-Startup cleanup authorizes the original owner on the recorded execution host.
-Native roots are recovered using their saved identity with application-control
-tools disabled, their ownership is rechecked, and settlement is durably recorded
-before session deletion. Only after owned writers have confirmed settlement
-may validated attachment locations and exclusive managed worktrees/local
-working branches be removed. Repository roots, shared current directories,
-the Task's original branch, default/checked-out branches, remote branches and
-external PRs are not deleted.
+Unsupported SSH host bindings and populated retired configuration block
+upgrades. Resolve them with the previous application version first; never
+silently remap execution to local or discard referenced configuration.
+Cleanup and schema retirement must be transactional and restart-safe.
 
-Unreachable hosts, missing ownership or unconfirmed writers retain their
-inventory and an explicit logged error. Worktrees/branches protected by current
-usage likewise remain inventoried as pending rather than reporting completion;
-other eligible resources can still be cleaned. Successful partial stages are
-persisted for an idempotent later startup. Retired transport bindings lack a durable
-transport-stop proof, and historical terminals likewise cannot prove writer
-settlement after controller restart. Their resources therefore remain pending
-instead of being deleted unsafely. This is not a hidden Task product or an
-archive: ordinary Task records/routes are already gone.
-
-### Other schema evolution
-
-Before retiring the SSH execution transport, upgrades remove orphaned SSH host
-records, whether revoked or not. A host is retained if referenced by a
-workspace's execution or provisioning binding, a chat, a terminal, a preview,
-or provisioning history. Local and Mesh hosts are preserved.
-
-Retired execution configuration is never remapped to local execution or
-deleted implicitly. After orphan cleanup, upgrades still refuse unsupported
-host bindings or populated retired configuration tables; resolve them with the
-previous application version first. Cleanup and schema retirement share a
-transaction, so any failure rolls back both. Empty retired tables are removed
-on startup, including those recreated by the immutable baseline.
+### Persistence safety
 
 Use parameterized SQL and allowlists for dynamic identifiers, including
 PRAGMA table names. Do not use `INSERT OR REPLACE`: its delete/insert behavior
