@@ -3,7 +3,9 @@
 Clanky's Apple app is a thin SwiftUI + WKWebView shell around the existing
 web client. macOS, iPhone and iPad use the same bundled web UI, API client,
 invitation protocol and persistent web storage. There is no separate native
-authentication implementation or custom Keychain credential store.
+authentication protocol or custom Keychain credential store. The native process
+coordinates credential operations between windows; authorization requests and
+credential validity still belong to the shared web client and server.
 The web UI owns the screen and its navigation: the shell adds no browser toolbar,
 Home/Reload buttons or duplicate app heading.
 On iPhone/iPad the WebView fills the entire window, in both dimensions,
@@ -1315,7 +1317,7 @@ the publication-only cleanup gates remain unchanged.
 On first use, choose **Connect to an API** or **Connect through collaboration**.
 Reopening the app or creating a window goes directly to the last selected mode,
 including an unfinished connection/login flow. Existing web storage resumes the
-API session or invited connections; Swift remembers only the mode, not remote
+API session or invited connections; Swift persists the mode, not remote
 URLs, credentials, invitations or the last chat. Windows share this preference;
 the most recently opened mode is used for the next window, not forced on others.
 When updating from a build that did not remember modes, select one once; its
@@ -1413,6 +1415,22 @@ local marker written on first load; reporting it changes no behavior.
 Credentials remain in the existing web client's persistent storage; invitation
 private keys retain their existing nonextractable Web Crypto storage. As with
 the browser client, trusted application JavaScript can access its own sessions.
+API and app-local-controller credential operations share one native coordinator
+across windows, separately for each installation origin and client storage
+namespace. An unfinished operation remains owned when its page becomes inactive
+or enters the back-forward cache, even if WebKit releases that page's Web Lock.
+The next window receives the last confirmed saved credential snapshot before
+continuing, so a stale localStorage cache cannot reuse the previous refresh token.
+The coordinator keeps those snapshots only in process memory, not Keychain or
+native preferences. Queued operations can be canceled without releasing the
+active owner's operation. A departing uncached page or terminated web content
+process fails its affected waiting requests visibly. The same applies if an
+operation cannot confirm its saved snapshot; waiting windows must not receive an
+obsolete cached token. The coordinator does not claim to recover a lost
+token-exchange response. Genuine server revocation and replay rejection
+remain unchanged.
+Both the native shell and frontend must include this coordination. A frontend
+update alone cannot add the native coordinator to an older installed app.
 API, invitation and app-local-controller paths retain separate client storage
 namespaces; paths are not security boundaries. Replacing the bundle preserves
 website data for the same app identity. Clearing that data or changing the app
