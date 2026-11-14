@@ -185,11 +185,25 @@ markers if editing the GitHub release notes later.
 The script releases that exact remote commit, regardless of the local branch
 or unpushed changes. Do not publish merely to validate the script.
 
+After confirmation, the script first requires a successful complete main
+publication for the previewed commit. It reuses a successful scheduled/manual
+`binary-release.yml` run unless a later attempt failed or another run is active.
+It waits for an active run rather than starting a duplicate, or dispatches the
+complete main workflow once if needed. This includes binaries, Docker images,
+Apple apps, and verified Pages publication, not just PR checks or CLI compilation.
+Dispatch uses GitHub's `2026-03-10` API to identify the exact new run.
+If the build or dispatch fails, no tag or release is created; dispatches are
+not automatically retried. If remote main changes while waiting, run the
+release script again to preview and confirm the new commit. The script also
+rechecks that the proposed tag is still available before publishing.
+
 Only typing `yes` at the final prompt publishes. Enter at the bump or What's
 New prompt, EOF, or any other confirmation cancels without creating a tag or
-release. The tag and title are identical `vX.Y.Z` strings, and existing remote
-tags are rejected. Publication triggers binary and Docker release workflows;
-it does not run public iOS submission.
+release or dispatching a build. The tag and title are identical `vX.Y.Z` strings,
+and existing remote tags are rejected. Publication still triggers the versioned
+binary and Docker release workflows: rolling artifacts are not promoted into
+stable assets, which need the new version and native Release configuration.
+It does not run public iOS submission.
 
 Main merges do not publish distributions. A daily 03:00 `America/New_York`
 publication updates the rolling `latest` binaries, signed apps, Docker images

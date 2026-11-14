@@ -58,6 +58,13 @@ without new commits, or run:
 gh workflow run binary-release.yml --repo pablozaiden/clanky --ref main
 ```
 
+`bun run release` also checks this complete main publication after the user
+confirms a stable release. It reuses a successful run for the confirmed commit,
+waits for an active run, or starts the complete workflow if the build is missing
+or the latest attempt failed. A failed build or a changed main commit prevents
+release creation. Stable publication still builds versioned artifacts; it does
+not reuse rolling Debug app archives as Release assets.
+
 The workflow builds the supported Linux and macOS targets from its selected main
 revision, together with the existing Docker images and native apps. Final Pages
 publication waits for Docker and native assets and verifies actual delivery.
