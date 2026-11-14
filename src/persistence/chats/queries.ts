@@ -92,6 +92,7 @@ function resetStale(chatId?: string): number {
     const result = db.prepare(`
     UPDATE chats
     SET status = 'stopped',
+        last_status_changed_at = ?,
         state_revision = state_revision + 1,
         error_message = ?,
         error_timestamp = ?,
@@ -102,7 +103,7 @@ function resetStale(chatId?: string): number {
         connection_status = 'disconnected',
         startup_stage = NULL
     WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
-  `).run(STALE_CHAT_RESET_MESSAGE, now, now, userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
+  `).run(now, STALE_CHAT_RESET_MESSAGE, now, now, userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     return result.changes;
   })();
 }

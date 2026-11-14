@@ -103,6 +103,7 @@ export function beginChatMetadataWrite(
       hasMessages: chat.state.hasMessages,
       hasTranscript: chat.state.hasTranscript,
       lastUserMessageAt: chat.state.lastUserMessageAt,
+      lastStatusChangedAt: chat.state.lastStatusChangedAt,
     };
     for (const field of fields) copyStateField(state, chat.state, field);
     storeMetadata(db, userId, { metadata: { config: previous.config, state }, clone: false });

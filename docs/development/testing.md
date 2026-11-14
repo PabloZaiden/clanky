@@ -188,7 +188,7 @@ Use isolated `CLANKY_DATA_DIR` and disable passkeys only for local unattended
 flows that are not testing authentication. Keep browser harnesses, screenshots,
 manifests, and review notes in ignored/disposable storage, not committed assets.
 See [UI validation and demo data](webapp.md#visual-validation) and the
-[WebView workflow](../../.agents/skills/webapp/SKILL.md#headless-browser-validation-with-bunwebview).
+[WebView workflow](../../.agents/skills/webapp/SKILL.md#browser-selection-and-startup-diagnostics).
 
 For video-only work, use the
 [fframes media validation workflow](../../.agents/skills/fframes-video/SKILL.md#3-the-loop),

@@ -119,8 +119,17 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     const write = chatStateToRow(nextState, options);
     const columns = Object.keys(write.row);
     validateChatColumnNames(columns);
-    const setClause = [...columns.map((column) => `${column} = ?`), "state_revision = state_revision + 1"].join(", ");
+    const setClause = [
+      ...columns.map((column) => `${column} = ?`),
+      ...(write.fields.has("status")
+        ? ["last_status_changed_at = CASE WHEN status <> ? THEN ? ELSE last_status_changed_at END"]
+        : []),
+      "state_revision = state_revision + 1",
+    ].join(", ");
     const values = Object.values(write.row);
+    if (write.fields.has("status")) {
+      values.push(nextState.status, new Date().toISOString());
+    }
     values.push(chatId, userId);
     const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
     if (options.expectedStatus !== undefined) {
