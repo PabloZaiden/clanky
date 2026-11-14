@@ -77,6 +77,9 @@ and avoid recompressing encoded bodies. See the shared
 
 ## Tailscale Serve
 
+For a guided Mac/manual-controller setup and browser/iPhone connection, start
+with [the everyday-use guide](everyday-use.md#3-connect-through-tailscale).
+
 Tailscale Serve terminates HTTPS with a publicly trusted certificate and proxies
 to Clanky's loopback HTTP listener. Do not combine this with controller-managed
 HTTPS or export/install a Clanky certificate. Clients must belong to the tailnet
@@ -121,7 +124,9 @@ Clanky can instead generate a persistent self-signed certificate and use HTTPS
 on the same application listener. This is explicit opt-in, not another listener.
 
 On a fresh data directory, initialize the owner locally before exposing HTTPS.
-Supply the password through stdin, never an argument or environment variable:
+Supply the password through stdin, never an argument or environment variable.
+Run the following password prompt in Bash (start `bash` first if your Mac
+Terminal uses zsh):
 
 ```bash
 read -r -s -p "Owner password: " password

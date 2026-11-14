@@ -6,7 +6,7 @@
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
 Clanky is a coding-agent manager for running, reviewing, and iterating on
-software tasks with Codex, Copilot, OpenCode, Claude Code, Pi, and Grok Build.
+software tasks with Copilot, Codex and OpenCode 2.
 It combines a web dashboard, an authenticated CLI, isolated workspaces, live
 conversation visibility, planning, and iteration in one application.
 
@@ -49,14 +49,18 @@ https://github.com/user-attachments/assets/c5245a2d-0a66-4632-b437-a502e8629726
 
 ## Install
 
-Install the latest Linux or macOS binary:
+Start with the [Mac, Tailscale and iPhone guide](docs/everyday-use.md).
+Get the [iPhone and iPad app on the App Store](https://apps.apple.com/app/clanky-agents/id6832366067),
+or download the Mac app and CLI binaries from the
+[latest release](https://github.com/pablozaiden/clanky/releases/latest).
+
+Install the latest Linux or macOS CLI binary:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh \
   | sh -s -- pablozaiden/clanky
 ```
 
-Or download a binary from the [latest release](https://github.com/pablozaiden/clanky/releases/latest).
 The installer verifies the release checksum and places `clanky` in
 `$HOME/.local/bin`.
 
@@ -123,6 +127,7 @@ Docker persistence.
 The [documentation index](docs/README.md) organizes the guides by task:
 
 - [Getting started](docs/getting-started.md)
+- [Mac, Tailscale and iPhone everyday-use guide](docs/everyday-use.md)
 - [Deployment and configuration](docs/deployment.md)
 - [Mesh workers and relays](docs/mesh-worker.md)
 - [API reference](docs/API.md)

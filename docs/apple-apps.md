@@ -1,5 +1,9 @@
 # Apple apps
 
+For installation and everyday Mac-controller, Tailscale and iPhone use without
+building or signing apps, start with [Get the most out of Clanky](everyday-use.md).
+This guide also covers native development and distribution.
+
 Clanky's Apple app is a thin SwiftUI + WKWebView shell around the existing
 web client. macOS, iPhone and iPad use the same bundled web UI, API client,
 invitation protocol and persistent web storage. There is no separate native
@@ -1343,8 +1347,8 @@ Ordinary static-site/browser startup is unchanged.
 
 API login
 uses the existing device-authorization flow: the shell opens the system browser,
-you authenticate on the controller's origin with its normal passkeys, and the
-existing client completes authorization. Passkeys are not requested for the
+you authenticate on the controller's origin with a passkey, password or API key,
+and the existing client completes authorization. Passkeys are not requested for the
 bundled UI's local origin. Remote APIs require HTTPS; loopback development
 APIs may use HTTP.
 
@@ -1353,8 +1357,9 @@ web form. Validation, pairing, grants and Direct/Relay routing are unchanged.
 See [static clients](static-client.md#browser-only-collaboration) for their
 capabilities and limitations.
 
-All UI assets, including fonts, Monaco and its workers, are bundled. On iOS,
-a verified downloaded frontend can replace that bundled UI as described below.
+All UI assets, including fonts, Monaco and its workers, are bundled. In
+update-enabled iOS builds, a verified downloaded frontend can replace that
+bundled UI as described below. Public App Store builds remain bundle-only.
 A small Swift HTTP listener serves only the selected frontend on `127.0.0.1` using the
 installation's saved port. This is not
 a local Clanky controller, proxy or API. Both platforms need this loopback web

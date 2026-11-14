@@ -1,6 +1,9 @@
 # Getting started
 
 This guide takes you from an installed Clanky binary to a first conversation.
+For an end-to-end Mac or manual-controller setup, Tailscale browser/iPhone
+access, Quick Chat and optional Voice, use the
+[everyday-use guide](everyday-use.md).
 
 ## Requirements
 
@@ -41,8 +44,14 @@ clanky serve down
 
 ## Authenticate the CLI
 
-The browser supports passkey or API-key authentication with equivalent account
-capabilities. The CLI can use the device authorization flow:
+On a fresh controller, open its localhost URL and create the owner with a
+passkey, or initialize the owner with a password through the
+[local setup flow](deployment.md#optional-controller-managed-https).
+For remote access under a different hostname, add a password before switching:
+a localhost passkey cannot authenticate at the Tailscale hostname.
+
+The browser supports passkey, password or API-key authentication with equivalent
+account capabilities. The CLI can use the device authorization flow:
 
 ```bash
 clanky auth --base-url http://localhost:3000
@@ -271,6 +280,7 @@ the original Mermaid code. Raw HTML and diagram click callbacks are not enabled.
 
 ## Common next steps
 
+- [Set up Quick Chat and use Clanky from Mac to iPhone](everyday-use.md)
 - [Deploy Clanky with Docker or a reverse proxy](deployment.md)
 - [Configure a Mesh worker or relay](mesh-worker.md)
 - [Automate conversations and workspaces](API.md)
