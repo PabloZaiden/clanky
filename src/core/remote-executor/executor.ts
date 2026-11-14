@@ -32,6 +32,7 @@ import {
 import type { AgentProvider } from "@/shared/settings";
 import { isAgentProviderAvailable } from "../agent-runtime-command";
 import { terminateSubprocessTree } from "../subprocess-termination";
+import { assertGitCommand } from "../git-command-policy";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -103,6 +104,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult> {
+    assertGitCommand(args, options);
     return await this.exec("git", ["-C", directory, ...args], options);
   }
 

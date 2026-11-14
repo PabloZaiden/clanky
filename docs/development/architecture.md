@@ -223,6 +223,14 @@ local `Bun.file`, filesystem calls, or shell commands are not substitutes.
 Prefer the Git service for Git operations and specify the directory explicitly
 with `git -C`.
 
+Git command semantics must not depend on transport: local and Mesh execution
+share argument, scope and environment validation. Commands start with an
+explicit subcommand; managed worktree operations retain their dedicated scope
+and supported forms. File selection must preserve literal filenames without
+global Git options that could override the selected repository or command
+policy. Mesh separately owns authentication, grants, capability negotiation
+and bounded RPC delivery; it must not define a different Git dialect.
+
 Workspace IDs provide identity; directories are navigation starting points.
 Use names in ordinary UI and show paths only for filesystem work or requested
 diagnostics. A workspace directory or explorer root is **not a sandbox**.

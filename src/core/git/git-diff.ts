@@ -146,12 +146,15 @@ export async function getWorkingTreeFileDiff(
     if (!untracked.success) throw gitError("Failed to read untracked files", untracked, args);
     if (!untracked.stdout.split("\0").includes(path)) return null;
   }
+  const paths = tracked
+    ? [path, ...(tracked.oldPath ? [tracked.oldPath] : [])].map((name) => `:(literal)${name}`)
+    : ["/dev/null", path];
   const args = [
-    "--literal-pathspecs", "diff",
+    "diff",
     ...(!tracked ? ["--no-index"] : ["--find-renames"]),
     "--no-ext-diff", "--no-textconv", "--no-color", "--numstat", "--patch", "-z",
     ...(tracked ? [base] : []), "--",
-    ...(!tracked ? ["/dev/null"] : []), path, ...(tracked?.oldPath ? [tracked.oldPath] : []),
+    ...paths,
   ];
   const result = await runGitCommand(executor, repository, args, { allowFailure: !tracked });
   if (!result.success && !(!tracked && result.exitCode === 1)) {

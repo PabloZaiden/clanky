@@ -33,6 +33,7 @@ import {
 import type { ExecutionPathStyle } from "./execution-path";
 import { DomainError } from "../domain/domain-error";
 import { streamFileRange } from "./ranged-file-stream";
+import { assertGitCommand } from "./git-command-policy";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   getManagedWorktreesCommandMinimumVersion,
@@ -116,6 +117,7 @@ export class MeshCommandExecutor implements CommandExecutor {
     args: string[],
     options: GitCommandOptions,
   ): Promise<CommandResult> {
+    assertGitCommand(args, options);
     this.requireGitRpc(options.scope, args);
     return await this.client.execGit(directory, args, options);
   }

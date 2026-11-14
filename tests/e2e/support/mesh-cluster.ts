@@ -47,6 +47,7 @@ export interface ManagedMeshNode extends MeshHttpNode {
 
 export interface MeshJsonResponse<T> {
   status: number;
+  headers: Headers;
   body: T;
 }
 
@@ -430,6 +431,7 @@ export async function meshJsonRequest<T>(
   }
   return {
     status: response.status,
+    headers: response.headers,
     body: options.responseType === "text"
       ? await response.text() as T
       : await response.json() as T,

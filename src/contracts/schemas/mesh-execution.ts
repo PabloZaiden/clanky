@@ -121,17 +121,6 @@ export const MeshExecutionRpcRequestSchema = z.object({
     });
   }
   if (
-    value.operation === "git"
-    && value.env
-    && Object.keys(value.env).some((name) => name !== "GIT_SSH_COMMAND")
-  ) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["env"],
-      message: "Git operations only accept GIT_SSH_COMMAND.",
-    });
-  }
-  if (
     value.operation === "gitEnvironment"
     && !value.gitEnvironmentName
   ) {

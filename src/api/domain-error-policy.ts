@@ -154,6 +154,7 @@ const API_DOMAIN_ERROR_CODES = {
   control_action_cancelled: true,
   control_action_not_found: true,
   directory_in_use: true,
+  git_command_invalid: true,
   execution_host_addresses_unavailable: true,
   execution_host_binding_stale: true,
   execution_host_capability_unavailable: true,
@@ -501,6 +502,7 @@ const COMMON_MAPPINGS = {
   control_action_busy: { status: 429, message: "The pending UI action capacity has been reached." },
   control_action_cancelled: { status: 409, message: "The UI action request was cancelled." },
   control_action_not_found: { status: 404, message: "The pending UI action is unavailable." },
+  git_command_invalid: { status: 400, messageFromDetails: (error) => error.message },
   execution_host_capability_unavailable: {
     status: 409,
     message: "The execution host does not support the requested operation.",

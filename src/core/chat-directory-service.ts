@@ -121,7 +121,7 @@ export class ChatDirectoryService {
   async preparePlanningKickoff(chatId: string): Promise<void> {
     await this.withDirectory(chatId, async ({ executor, directory }) => {
       try {
-        const available = await executor.execGit(directory, ["--version"], {
+        const available = await executor.execGit(directory, ["version"], {
           scope: "repository", logFailures: false,
         });
         if (!available.success) return;

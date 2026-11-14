@@ -243,6 +243,8 @@ Chat composers place the conversation-options control between the
 message textbox and the send/queue/interrupt button. Its sliders icon
 distinguishes conversation controls and information from sidebar navigation;
 the options panel opens above it, aligned to the right.
+Repository details load inside that panel; long branches wrap without covering
+the composer. The shared `FloatingPanel` owns repositioning as content arrives.
 
 Transcript images load when their entries enter the visible conversation;
 non-image files load only when downloaded. Keep attachment bytes out of
