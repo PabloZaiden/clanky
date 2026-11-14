@@ -78,7 +78,7 @@ work or avoid a non-obvious pitfall. Keep current entrypoints, prerequisites,
 workflows, meaningful constraints and necessary rationale. An implementation
 change or visible UI adjustment alone does not justify more documentation.
 
-Use definitions, callers, script help and live API/schema discovery rather
+Use definitions, callers, script help and API/schema discovery rather
 than parallel references for types, signatures, schemas, route/helper catalogs,
 constants or internal timing, caching and rendering mechanics.
 

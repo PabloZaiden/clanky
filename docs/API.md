@@ -132,7 +132,7 @@ Browser sessions use passkeys. CLI and automation clients can use device
 credentials or API keys. Clanky owns its account, credential and authorization
 endpoints; the shared server core supplies neutral health metadata.
 
-`clanky auth` uses Clanky's device flow, `clanky api` sends authenticated
+`clanky auth` uses Clanky's device flow, `clanky api <endpoint>` sends authenticated
 REST calls with the selected CLI profile's credentials, `clanky ws` opens an
 authenticated JSON-lines websocket session against `/api/ws`, `clanky schema`
 exposes discoverability metadata for catalogued Clanky endpoints, and
@@ -153,10 +153,9 @@ worker updates (servers and automatic workspaces) and database reset are owner-o
 Preview and terminal WebSocket upgrades require an authenticated user and
 always enforce same-origin checks.
 
-Use `clanky api` to list the routes exposed by the running server and
-`clanky schema <endpoint>` to inspect a route's request, response, and CLI
-metadata. Public routes are exceptional and are identified explicitly in the
-route reference.
+Use the [CLI discovery helpers](#cli-discovery-helpers) to inspect route,
+request/response and CLI metadata. Public routes are exceptional and are
+identified explicitly in the route reference.
 
 API keys and device tokens with limited scopes may access only routes declaring
 those scopes. Private routes without scopes and account/key/settings
@@ -379,7 +378,11 @@ repeat the write** to retrieve its output.
 
 ## CLI discovery helpers
 
-The standalone `clanky` binary exposes the server and API discovery directly:
+The standalone `clanky` binary exposes these commands. `clanky api` without
+an endpoint and `clanky schema` read the local CLI's bundled catalog, without
+authentication or HTTP requests. Use a CLI build matching the target server's
+version/revision before relying on its contracts; discovery does not verify
+a different server's implementation.
 
 ```bash
 # Start the embedded local server
@@ -403,13 +406,13 @@ clanky update --pre-release
 # Authenticate against a server
 clanky auth --base-url http://localhost:3000
 
-# List discoverable endpoints
+# List endpoints from the local CLI catalog
 clanky api
 
 # Invoke an authenticated API request (prints one JSON object)
 clanky api chats/my-chat --method GET
 
-# Inspect the schema metadata for an endpoint
+# Inspect local schema metadata for an endpoint
 clanky schema chats
 
 # Stream websocket events over stdio
@@ -1014,18 +1017,10 @@ and session survived; direct shells do not have that persistence guarantee.
 
 ### Discover endpoints
 
-Use the authenticated running server's catalog for current routes and exact
-request/response schemas:
-
-```bash
-clanky api
-clanky schema chats
-clanky api chats --method GET
-```
-
-For source changes, consult the route declarations in [`src/api/`](../src/api/)
-rather than maintaining a second route list. The examples below explain common
-workflows; the running contract remains authoritative.
+Use the [CLI discovery helpers](#cli-discovery-helpers) to inspect the local
+catalog, with a CLI build matching the target server. For source changes,
+consult the route declarations in [`src/api/`](../src/api/) rather than
+maintaining a second route list. The examples below explain common workflows.
 Agent control exposes only operations authorized for its grant, not
 authentication or raw transport protocols. See
 [access and discovery](deployment.md#agent-control-and-mcp).
