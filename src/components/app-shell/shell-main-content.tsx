@@ -833,7 +833,6 @@ export function AppRouteContent(props: ShellMainContentProps) {
         <WorkspaceConnectionsNotice />
         <ChatTrashView
           showPrivateItems={props.showPrivateItems}
-          selectedChatId={getRouteString(props.route, "chatId")}
           actions={props.trashActions}
         />
       </Page>
