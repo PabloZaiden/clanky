@@ -554,6 +554,7 @@ export class ProvisioningWorkflows {
         );
       }
 
+      await backendManager.resetWorkspaceConnection(workspaceId);
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
         record,

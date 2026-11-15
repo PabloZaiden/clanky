@@ -1,6 +1,7 @@
 import { WorkspaceEnvironmentStatusSchema, type WorkspaceEnvironmentStatus } from "@/contracts/schemas/environments";
 import { requireCurrentUserId } from "../../context/user-context";
 import { DomainError } from "../../domain/domain-error";
+import { backendManager } from "../backend-manager";
 import { closeCommandExecutor } from "../command-executor";
 import { requireWorkspaceAccess } from "../collaboration-authority";
 import { executionHostService } from "../execution-host-service";
@@ -38,7 +39,9 @@ export async function workspaceEnvironmentOperation(
       if (!result.success) throw new DomainError("environment_operation_failed", "The environment operation failed on the provisioning host.", {
         details: { operation, diagnostic: result.stderr.trim().slice(-4000) },
       });
-      return operation === "status" ? WorkspaceEnvironmentStatusSchema.parse(JSON.parse(result.stdout)) : { success: true as const };
+      if (operation === "status") return WorkspaceEnvironmentStatusSchema.parse(JSON.parse(result.stdout));
+      await backendManager.resetWorkspaceConnection(workspaceId);
+      return { success: true as const };
     } finally { closeCommandExecutor(executor); }
   };
   return operation === "status" ? await run() : await withWorkspaceRuntimeLock(workspaceId, run);
