@@ -67,12 +67,12 @@ INSERT INTO execution_hosts (
   (
     'demo-host-local', 'demo-user', 'local', 'demo-local-node', 'demo-target-local', 1, NULL,
     '2026-04-16T18:00:00.000Z', '2026-04-17T13:50:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"environmentLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-build', 'demo-user', 'mesh', 'demo-build-node', 'demo-target-build', 3, NULL,
     '2026-04-16T18:01:00.000Z', '2026-04-17T13:45:00.000Z', 'linux', 'x86_64',
-    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"devboxLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
+    '{"commandExecution":1,"fileOperations":2,"git":2,"managedWorktrees":2,"interactiveTerminal":1,"provisioning":1,"environmentLifecycle":1,"tcpTunnel":1,"serverHealth":1}'
   ),
   (
     'demo-host-mesh', 'demo-user', 'mesh', 'demo-worker-node', 'demo-target-mesh', 2, NULL,
@@ -560,14 +560,14 @@ INSERT INTO provisioning_jobs (
   (
     'demo-provision-running', 'demo-user',
     '{"id":"demo-provision-running","name":"Provision Analytics Lab","executionHostBinding":{"host":{"kind":"mesh","nodeId":"demo-worker-node"},"targetKey":"demo-target-mesh","revision":2},"workspaceWorkerEnrollmentId":"demo-worker-enrollment","workerEnrollmentId":"demo-worker-enrollment","workerEnrollmentRoute":"relay","repoUrl":"https://github.com/example/analytics-lab","basePath":"/srv/mesh","devcontainerSubpath":".devcontainer","provider":"codex","mode":"provision","createdAt":"2026-04-17T10:00:00.000Z"}',
-    '{"status":"interrupted","currentStep":"devbox_up","targetDirectory":"/srv/mesh/analytics-lab","resolvedDirectory":"/srv/mesh/analytics-lab","error":{"code":"server_restarted","message":"Provisioning was interrupted because the Clanky server restarted.","step":"devbox_up"},"updatedAt":"2026-04-17T13:45:00.000Z","startedAt":"2026-04-17T10:05:00.000Z","completedAt":"2026-04-17T13:45:00.000Z"}',
+    '{"status":"interrupted","currentStep":"environment_up","targetDirectory":"/srv/mesh/analytics-lab","resolvedDirectory":"/srv/mesh/analytics-lab","error":{"code":"server_restarted","message":"Provisioning was interrupted because the Clanky server restarted.","step":"environment_up"},"updatedAt":"2026-04-17T13:45:00.000Z","startedAt":"2026-04-17T10:05:00.000Z","completedAt":"2026-04-17T13:45:00.000Z"}',
     'interrupted', 'demo-workspace-mesh', '2026-04-17T10:00:00.000Z', '2026-04-17T13:45:00.000Z',
     'demo-host-mesh', 2
   ),
   (
     'demo-provision-failed', 'demo-user',
     '{"id":"demo-provision-failed","name":"Rebuild Billing API","executionHostBinding":{"host":{"kind":"mesh","nodeId":"demo-build-node"},"targetKey":"demo-target-build","revision":3},"repoUrl":"https://github.com/example/billing-api","basePath":"/srv/workspaces","devcontainerSubpath":".devcontainer/api","provider":"copilot","mode":"rebuild","workspaceId":"demo-workspace-remote","targetDirectory":"/srv/workspaces/billing-api","createdAt":"2026-04-17T08:00:00.000Z"}',
-    '{"status":"failed","currentStep":"devbox_rebuild","targetDirectory":"/srv/workspaces/billing-api","resolvedDirectory":"/srv/workspaces/billing-api","error":{"code":"devbox_failed","message":"The remote devbox rebuild exited with status 1.","step":"devbox_rebuild"},"updatedAt":"2026-04-17T08:20:00.000Z","startedAt":"2026-04-17T08:05:00.000Z"}',
+    '{"status":"failed","currentStep":"environment_rebuild","targetDirectory":"/srv/workspaces/billing-api","resolvedDirectory":"/srv/workspaces/billing-api","error":{"code":"environment_rebuild_failed","message":"The remote environment rebuild exited with status 1.","step":"environment_rebuild"},"updatedAt":"2026-04-17T08:20:00.000Z","startedAt":"2026-04-17T08:05:00.000Z"}',
     'failed', 'demo-workspace-remote', '2026-04-17T08:00:00.000Z', '2026-04-17T08:20:00.000Z',
     'demo-host-build', 3
   ),
@@ -591,8 +591,8 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO provisioning_job_logs (id, job_id, source, text, timestamp, step) VALUES
   ('demo-provision-log-1', 'demo-provision-running', 'system', 'Worker accepted provisioning job.', '2026-04-17T10:05:00.000Z', 'prepare_directory'),
-  ('demo-provision-log-2', 'demo-provision-running', 'stdout', 'Starting devbox up for analytics-lab.', '2026-04-17T13:44:00.000Z', 'devbox_up'),
-  ('demo-provision-log-3', 'demo-provision-failed', 'stderr', 'devbox: command exited with status 1', '2026-04-17T08:20:00.000Z', 'devbox_rebuild'),
+  ('demo-provision-log-2', 'demo-provision-running', 'stdout', 'Starting environment for analytics-lab.', '2026-04-17T13:44:00.000Z', 'environment_up'),
+  ('demo-provision-log-3', 'demo-provision-failed', 'stderr', 'environment: command exited with status 1', '2026-04-17T08:20:00.000Z', 'environment_rebuild'),
   ('demo-provision-log-4', 'demo-provision-completed', 'system', 'Workspace is ready.', '2026-04-15T09:30:00.000Z', 'workspace_ready')
 ON CONFLICT(id) DO UPDATE SET
   job_id = excluded.job_id,
