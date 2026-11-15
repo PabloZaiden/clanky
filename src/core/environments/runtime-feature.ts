@@ -42,6 +42,23 @@ install -d -m 755 /usr/local/share/clanky-environment
 node -e 'require("node:fs").writeFileSync(process.argv[1],JSON.stringify({user:process.argv[2],home:process.argv[3],runtime:process.argv[4]}))' /usr/local/share/clanky-environment/runtime.json "$user" "$home" "$runtime"
 printf '%s\\n' "$user" > /usr/local/share/clanky-environment/user
 install -m 755 start.sh /usr/local/share/clanky-environment/start.sh
+install -m 644 launch.cjs /usr/local/share/clanky-environment/launch.cjs
+`;
+
+export const environmentRuntimeLaunch = `const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const root = "/var/lib/clanky";
+const environment = { ...process.env };
+for (const [name, value] of Object.entries(JSON.parse(fs.readFileSync(root + "/remote-env.json", "utf8")))) {
+  if (value === null) delete environment[name];
+  else if (typeof value === "string") environment[name] = value;
+  else throw new Error("Invalid saved project environment.");
+}
+const result = spawnSync("/bin/sh", ["-c", fs.readFileSync(root + "/startup-command", "utf8")], {
+  env: environment, stdio: "inherit",
+});
+if (result.error) throw result.error;
+process.exit(result.status ?? 1);
 `;
 
 export const environmentRuntimeStart = `#!/bin/sh
@@ -53,7 +70,7 @@ uid=$(id -u "$user")
 command='umask 077
 process=$(cat /proc/1/stat); process=\${process##*) }; set -- $process; shift 19; boot=$1
 printf "%s:starting\\n" "$boot" > /var/lib/clanky/startup-state
-if sh -c "$(cat /var/lib/clanky/startup-command)" >> /var/lib/clanky/startup.log 2>&1; then
+if node /usr/local/share/clanky-environment/launch.cjs >> /var/lib/clanky/startup.log 2>&1; then
   printf "%s:success\\n" "$boot" > /var/lib/clanky/startup-state
 else
   printf "%s:failed\\n" "$boot" > /var/lib/clanky/startup-state

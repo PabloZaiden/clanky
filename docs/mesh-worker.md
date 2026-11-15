@@ -924,10 +924,17 @@ clanky environment arise
 For environments created by an account through the API, use its account ID
 with `--owner`; `list --owner ACCOUNT_ID` reads that account's registry.
 `arise` starts only recorded, ownership-verified stopped containers.
+Restart and recovery run the project's `postStartCommand` through the Dev
+Containers CLI, without simulating an editor attachment. Worker recovery
+restores the project's resolved `remoteEnv` from private runtime state.
+Use Rebuild after changing the devcontainer definition.
 `remove` removes the owned container but preserves source and private state.
 Only the separate explicit `--reset-credentials` choice also removes its
 private volume. It never deletes the source checkout. Do not remove private
 volumes merely to rebuild an environment.
+
+Host-side restart/rebuild preserve the worker's live selected channel. Add
+`--release-channel stable` or `--release-channel latest` to change it explicitly.
 
 Default Copilot, Codex, Claude and GitHub CLI profile directories also live in
 the private volume, alongside Clanky's managed OpenCode profile. Project-defined

@@ -28,7 +28,7 @@ import {
 import {
   ProvisioningWorkerLifecycle,
 } from "./worker-lifecycle";
-import { shellQuote, type WorkerPaths } from "./worker-assets";
+import { shellQuote, type AutomaticWorkerChannel, type WorkerPaths } from "./worker-assets";
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
 import { isMeshOutboundRoute } from "@/shared/mesh";
@@ -50,6 +50,7 @@ function buildEnvironmentArgs(
     githubUser?: string;
     startupCommand?: string;
     clearStartupCommand?: boolean;
+    releaseChannel?: AutomaticWorkerChannel;
   },
 ): string[] {
   const args: string[] = [command];
@@ -61,6 +62,9 @@ function buildEnvironmentArgs(
   }
   if (options.githubUser) {
     args.push("--gh-user", options.githubUser);
+  }
+  if (options.releaseChannel) {
+    args.push("--release-channel", options.releaseChannel);
   }
   if (options.clearStartupCommand) {
     args.push("--no-startup-command");
@@ -146,6 +150,8 @@ export class ProvisioningWorkflows {
         devcontainerSubpath: record.job.config.devcontainerSubpath,
         environmentTemplate: record.job.config.environmentTemplate,
         githubUser: record.job.config.githubUser,
+        releaseChannel: record.job.config.releaseChannel
+          ?? (record.job.config.useClankyPrerelease ? "prerelease" as const : undefined),
       };
 
       setStep(record, this.maxLogEntries, "environment_up", "Starting environment");
@@ -501,6 +507,8 @@ export class ProvisioningWorkflows {
         args: buildEnvironmentArgs(mode, {
           devcontainerSubpath,
           githubUser: record.job.config.githubUser,
+          releaseChannel: record.job.config.releaseChannel
+            ?? (record.job.config.useClankyPrerelease ? "prerelease" : undefined),
           ...(workerLauncherPaths
             ? {
                 startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)} update ${shellQuote(record.job.config.id)}`,

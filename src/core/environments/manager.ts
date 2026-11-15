@@ -4,8 +4,10 @@ import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { environmentTemplateConfiguration } from "./templates";
-import { ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeStart } from "./runtime-feature";
-import { getWorkerPathsForSupervisor, shellQuote } from "../provisioning/worker-assets";
+import { ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeStart } from "./runtime-feature";
+import { getWorkerPathsForSupervisor, shellQuote, type AutomaticWorkerChannel } from "../provisioning/worker-assets";
+import { getExistingLauncherChannel, withWorkerLauncherChannel } from "../provisioning/worker-runtime-assets";
+import { parseWorkerChannel } from "../worker-channel";
 import { scopedSshAgentEnvironment, workspaceSshAgentSocketPath } from "../ssh-agent-environment";
 
 const environmentSchema = z.object({
@@ -36,6 +38,7 @@ export interface EnvironmentOptions {
   githubUser?: string;
   startupCommand?: string;
   clearStartupCommand?: boolean;
+  releaseChannel?: AutomaticWorkerChannel;
 }
 
 export class EnvironmentManager {
@@ -111,6 +114,7 @@ export class EnvironmentManager {
     record.remoteUser = result.remoteUser;
     record.workdir = result.remoteWorkspaceFolder;
     await this.save(record);
+    await this.saveRemoteEnvironment(record);
     if (!previous || rebuild) await this.waitForStartup(record);
     await this.syncAssets(record);
     await this.configureIdentity(record);
@@ -170,11 +174,14 @@ export class EnvironmentManager {
     if (!previous) { await this.up(); return; }
     if (!previous.State.Running) {
       await this.command("docker", ["start", previous.Id]);
+      await this.runStartCommands(record);
       await this.waitForStartup(record);
     }
     await this.syncAssets(record);
+    await this.saveRemoteEnvironment(record);
     await this.saveStartupCommand(record);
     await this.command("docker", ["restart", record.containerId!]);
+    await this.runStartCommands(record);
     await this.waitForStartup(record);
   }
 
@@ -208,6 +215,7 @@ export class EnvironmentManager {
       const container = (await this.inspectOwned(record))[0];
       if (container && !container.State.Running) {
         await this.command("docker", ["start", container.Id]);
+        await this.runStartCommands(record);
         await this.waitForStartup(record);
         started.push(record.id);
       }
@@ -271,6 +279,7 @@ export class EnvironmentManager {
       writeFile(join(featureFolder, "devcontainer-feature.json"), JSON.stringify(environmentRuntimeFeature), { mode: 0o600 }),
       writeFile(join(featureFolder, "install.sh"), environmentRuntimeInstall, { mode: 0o700 }),
       writeFile(join(featureFolder, "start.sh"), environmentRuntimeStart, { mode: 0o700 }),
+      writeFile(join(featureFolder, "launch.cjs"), environmentRuntimeLaunch, { mode: 0o600 }),
     ]);
     const sourceFolder = dirname(record.config);
     const absolute = (value: string) => isAbsolute(value) ? value : resolve(sourceFolder, value);
@@ -328,10 +337,64 @@ export class EnvironmentManager {
 
   private async syncAssets(record: EnvironmentRecord): Promise<void> {
     const assets = join(dirname(record.override), "assets");
+    const channelPath = join(assets, "update-channel");
+    const launcherPath = join(assets, "launcher.sh");
     for (const entry of await readdir(assets, { withFileTypes: true })) {
       if (!entry.isFile()) throw new Error("Environment runtime staging must contain regular files only.");
+    }
+    if (await this.exists(channelPath) || await this.exists(launcherPath)) {
+      const current = z.object({ channel: z.string().nullable(), launcher: z.string().nullable() }).parse(
+        JSON.parse(await this.execIn(record, ["node", "-e", `
+const fs = require("node:fs");
+const read = name => fs.existsSync("/var/lib/clanky/" + name) ? fs.readFileSync("/var/lib/clanky/" + name, "utf8") : null;
+process.stdout.write(JSON.stringify({channel:read("update-channel"),launcher:read("launcher.sh")}));
+`])),
+      );
+      const channel = this.options.releaseChannel
+        ?? (current.channel === null ? undefined : parseWorkerChannel(current.channel))
+        ?? getExistingLauncherChannel(current.launcher)
+        ?? (await this.exists(channelPath) ? parseWorkerChannel(await readFile(channelPath, "utf8")) : undefined)
+        ?? getExistingLauncherChannel(await this.exists(launcherPath) ? await readFile(launcherPath, "utf8") : undefined);
+      if (!channel) throw new Error("Cannot determine the selected workspace worker channel.");
+      if (channel === "prerelease") {
+        await this.execIn(record, ["rm", "-f", `${ENVIRONMENT_RUNTIME_ROOT}/update-channel`]);
+        await rm(channelPath, { force: true });
+      } else {
+        await writeFile(channelPath, `${channel}\n`, { mode: 0o600 });
+      }
+      if (await this.exists(launcherPath)) {
+        const launcher = withWorkerLauncherChannel(await readFile(launcherPath, "utf8"), channel);
+        await writeFile(launcherPath, launcher, { mode: 0o700 });
+      }
+    }
+    for (const entry of await readdir(assets, { withFileTypes: true })) {
       await this.copyToRuntime(record, join(assets, entry.name), entry.name);
     }
+  }
+
+  private async saveRemoteEnvironment(record: EnvironmentRecord): Promise<void> {
+    const parsed = z.object({
+      mergedConfiguration: z.object({ remoteEnv: z.record(z.string(), z.string().nullable()).optional() }),
+    }).parse(await this.jsonCommand("devcontainer", [
+      "read-configuration", ...this.execArgs(record), "--include-merged-configuration",
+    ]));
+    const names = Object.keys(parsed.mergedConfiguration.remoteEnv ?? {});
+    const environment = z.record(z.string(), z.string().nullable()).parse(JSON.parse(
+      await this.execIn(record, ["node", "-e", `
+process.stdout.write(JSON.stringify(Object.fromEntries(
+  ${JSON.stringify(names)}.map(name => [name, process.env[name] ?? null]),
+)));
+`]),
+    ));
+    const source = join(dirname(record.override), "remote-env.json");
+    try {
+      await writeFile(source, JSON.stringify(environment), { mode: 0o600 });
+      await this.copyToRuntime(record, source, "remote-env.json");
+    } finally { await rm(source, { force: true }); }
+  }
+
+  private async runStartCommands(record: EnvironmentRecord): Promise<void> {
+    await this.command("devcontainer", ["run-user-commands", ...this.execArgs(record), "--skip-post-attach"]);
   }
 
   private async saveStartupCommand(record: EnvironmentRecord): Promise<void> {

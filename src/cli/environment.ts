@@ -14,6 +14,7 @@ Options:
   --template NAME            Fallback only when the project has no devcontainer
   --devcontainer-subpath PATH Select a project definition
   --gh-user NAME             Explicit GitHub account to share with this workspace
+  --release-channel CHANNEL  Explicit worker selection: stable, latest, prerelease
   --startup-command COMMAND  Persist a command run as remoteUser at container start
   --no-startup-command       Remove the saved startup command
   --reset-credentials        With remove: also destroy private runtime state
@@ -40,6 +41,14 @@ export async function runEnvironmentCommand(args: readonly string[]): Promise<nu
     if (argument === "--") { trailing = args.slice(index + 1); break; }
     if (argument === "--no-startup-command") { options.clearStartupCommand = true; continue; }
     if (argument === "--reset-credentials") { resetCredentials = true; continue; }
+    if (argument === "--release-channel") {
+      const channel = args[++index];
+      if (channel !== "stable" && channel !== "latest" && channel !== "prerelease") {
+        throw new Error("--release-channel must be stable, latest or prerelease.");
+      }
+      options.releaseChannel = channel;
+      continue;
+    }
     const property = values[argument];
     const value = args[++index];
     if (!property || !value || value.startsWith("--")) throw new Error(`Invalid environment option: ${argument}`);

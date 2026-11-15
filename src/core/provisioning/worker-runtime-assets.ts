@@ -8,18 +8,25 @@ import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { DomainError } from "../../domain/domain-error";
 import type { CommandExecutor } from "../command-executor";
 import { parseWorkerChannel } from "../worker-channel";
-import { buildRuntimeInstaller, buildWorkerLauncher, type AutomaticWorkerChannel, type WorkerPaths } from "./worker-assets";
+import { buildRuntimeInstaller, buildWorkerLauncher, shellQuote, type AutomaticWorkerChannel, type WorkerPaths } from "./worker-assets";
 import { buildWorkerSupervisor } from "./worker-supervisor";
 
-function getExistingLauncherChannel(
+const launcherChannelAssignment = /^\s*(?:export\s+)?CLANKY_RELEASE_CHANNEL\s*=\s*(?:(['"])(stable|latest|prerelease)\1|(stable|latest|prerelease))\s*(?:#.*)?$/m;
+
+export function getExistingLauncherChannel(
   launcher: string | null | undefined,
 ): AutomaticWorkerChannel | undefined {
-  const assignment = launcher?.match(
-    /^\s*(?:export\s+)?CLANKY_RELEASE_CHANNEL\s*=\s*(?:(['"])(stable|latest|prerelease)\1|(stable|latest|prerelease))\s*(?:#.*)?$/m,
-  );
+  const assignment = launcher?.match(launcherChannelAssignment);
   const channel = assignment?.[2] ?? assignment?.[3];
   if (channel === "prerelease" || channel === "stable" || channel === "latest") return channel;
   return undefined;
+}
+
+export function withWorkerLauncherChannel(launcher: string, channel: AutomaticWorkerChannel): string {
+  if (!getExistingLauncherChannel(launcher)) {
+    throw new DomainError("workspace_runtime_assets_failed", "Cannot determine the staged worker launcher's channel.");
+  }
+  return launcher.replace(launcherChannelAssignment, `CLANKY_RELEASE_CHANNEL=${shellQuote(channel)}`);
 }
 
 export async function prepareWorkerRuntimeAssets(

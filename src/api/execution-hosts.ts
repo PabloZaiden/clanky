@@ -389,6 +389,7 @@ export const executionHostRoutes = defineRoutes({
         );
         const report = await executionHostDiscoveryService.checkPrerequisites(ref, {
           operationId: `prerequisites:${ctx.params["id"]!}`,
+          localUserId: ctx.requireUser().id,
           directory: "/",
           repositoriesBasePath: descriptor.repositoriesBasePath,
           responseId: ctx.params["id"]!,
@@ -441,6 +442,7 @@ export const executionHostRoutes = defineRoutes({
         executionHostService.getBinding(ref);
         const templates = await executionHostDiscoveryService.listEnvironmentTemplates(ref, {
           operationId: `environment-templates:${ctx.params["id"]!}`,
+          localUserId: ctx.requireUser().id,
           directory: "/",
         });
         return Response.json(templates);
