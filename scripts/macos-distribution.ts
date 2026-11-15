@@ -169,6 +169,9 @@ async function distribute() {
     }
   }
   async function sign(target: string, policy: "app" | "bun" | "sparkle" | "library") {
+    if (policy === "bun") {
+      await run(["python3", join(import.meta.dir, "macos-build-uuid.py"), target]);
+    }
     let entitlements = policy === "bun" ? bunEntitlements : policy === "app" ? appEntitlements : emptyEntitlements;
     let expected: Entitlements = policy === "bun" ? { "com.apple.security.cs.allow-jit": true }
       : policy === "app" ? appPermissions : {};
