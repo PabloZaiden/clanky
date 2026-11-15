@@ -13,8 +13,8 @@ from an individual deleted chat's sidebar entry.
 - **Restore** returns the same chat with its history, original attachments,
   configuration and retained worktree/files. A chat deleted during active work restores stopped; continue it
   manually. Restoration never automatically resumes an agent or queued input.
-- **Delete permanently** removes one trashed chat, its managed attachment
-  copies and its managed worktree.
+- **Delete permanently** removes one trashed chat and attempts to clean up its
+  managed attachment copies and managed worktree.
 - **Empty local Trash** permanently deletes the chats owned by this instance,
   including hidden private chats. New deletions during an empty operation are
   not added to that operation.
@@ -34,12 +34,15 @@ Trash retains chat data, attachments and managed worktrees, so they continue usi
 Trashed chats do not block workspace deletion. Deleting their workspace also
 permanently deletes them, even if their 30 days have not elapsed.
 
-Remote resource cleanup uses the original execution host. If external cleanup
-fails during ordinary permanent deletion, the chat stays in Trash for retry.
+Remote resource cleanup uses the original execution host. Explicit permanent
+deletion and Empty local Trash remove chat records even if external cleanup
+fails, including when a host is unavailable or a resource reference is broken.
+Incomplete cleanup is logged; external resources may remain, continue using
+storage and need manual removal. Automatic expiration keeps affected chats in
+Trash for retry, and restoration still requires safe disconnection.
 Pending Continue from history exports are retained while a chat is in Trash;
 their existing temporary-export expiration still applies.
-Workspace deletion is not blocked by unavailable trashed-chat hosts; incomplete
-external cleanup is logged and remote resources may need manual removal.
+Workspace deletion uses the same best-effort external cleanup policy.
 
 Trash is private to the current user and follows the normal private-item
 visibility preference. Deleting a workspace or chat does not roll back unrelated
@@ -74,14 +77,15 @@ cross-controller bulk mutation. Unavailable origins produce explicit partial
 collection metadata, not an offline inventory.
 
 Permanent deletion and emptying accept an optional empty JSON object.
-Unavailable execution hosts leave affected entries in Trash rather than
-deleting their records without resource cleanup.
+Cleanup failures do not block these explicit operations; actual chat-record
+deletion failures are still reported.
 
 Restore does not return or start a provider session. Use the normal chat endpoints
 after restoration. Trashed chats are unavailable through ordinary chat reads,
 transcript exports and mutations.
 
 Emptying returns `{ success, deletedCount, failedCount, failures }`; inspect `failedCount` before
-treating the operation as complete. Cleanup failures do not prevent other
-selected chats from being processed. Details are bounded to the first 100
-failures; the count includes every failure.
+treating the operation as complete. A chat removed despite incomplete external
+cleanup counts as deleted, not failed. Chat-record deletion failures do not
+prevent other selected chats from being processed. Details are bounded to the
+first 100 failures; the count includes every failure.

@@ -65,7 +65,7 @@ export const trashRoutes = defineRoutes({
       const parsed = await parseAndValidate(PurgeChatTrashRequestSchema, req, { allowEmptyBody: true });
       if (!parsed.success) return parsed.response;
       try {
-        const result = await chatManager.emptyTrash(parsed.data);
+        const result = await chatManager.emptyTrash({ ...parsed.data, bestEffort: true });
         return Response.json({ success: result.failedCount === 0, ...result });
       } catch (error) {
         return trashError(error);
@@ -108,7 +108,7 @@ export const trashRoutes = defineRoutes({
       const parsed = await parseAndValidate(PurgeChatTrashRequestSchema, req, { allowEmptyBody: true });
       if (!parsed.success) return parsed.response;
       try {
-        const deleted = await chatManager.purgeTrashedChat(ctx.params["id"]!, parsed.data);
+        const deleted = await chatManager.purgeTrashedChat(ctx.params["id"]!, { ...parsed.data, bestEffort: true });
         return deleted ? successResponse() : errorResponse("trashed_chat_not_found", "Chat not found in Trash", 404);
       } catch (error) {
         return trashError(error);

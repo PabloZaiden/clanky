@@ -102,9 +102,11 @@ existing copies are not overwritten, preserving agent edits. Recovery-history
 exports point to durable files instead of deleting them with a temporary export.
 
 Moving a chat to Trash retains originals and working copies. Permanent deletion
-cleans only that conversation's managed directories on their recorded hosts.
-An unavailable host leaves ordinary chat deletion in Trash for retry. Workspace
-deletion retains its existing best-effort remote cleanup policy.
+attempts to clean only that conversation's managed directories on their recorded
+hosts. Explicit permanent deletion, Empty local Trash and workspace deletion
+remove chat records even if cleanup fails; leftover working copies may need
+manual removal. Automatic expiration retains chats with incomplete cleanup for
+retry.
 
 Write or connection failures stop file preparation before provider admission.
 No inline-document fallback is attempted, and queued originals remain available

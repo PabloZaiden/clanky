@@ -95,7 +95,7 @@ export class ChatTrashService {
       if (!complete && !options.bestEffort) {
         throw new DomainError("trash_cleanup_failed", "The chat remains in Trash because external cleanup failed. Try again when its host is available.");
       }
-      if (!complete) log.warn("Removing workspace Trash with incomplete external cleanup", { chatId });
+      if (!complete) log.warn("Permanently deleting trashed chat with incomplete external cleanup", { chatId });
       const deleted = deleteTrashedChat(chatId, chat.config.deletedAt);
       if (deleted) this.changed(chatId, chat.config.workspaceId);
       return deleted;
@@ -118,7 +118,7 @@ export class ChatTrashService {
           result.failedCount++;
           log.warn("Failed to permanently delete trashed chat", { chatId: candidate.id, error: String(error) });
           if (result.failures.length < 100) result.failures.push({
-            chatId: candidate.id, message: "External cleanup failed; the chat remains in Trash.",
+            chatId: candidate.id, message: "The chat could not be permanently deleted; it remains in Trash.",
           });
         }
       }
