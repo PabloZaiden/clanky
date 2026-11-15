@@ -4,6 +4,8 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { createAppleDistributionCommands, validAppleApiIdentifiers } from "./apple-distribution";
 
+const CLI_SIGNING_IDENTIFIER = "com.clanky.cli";
+
 const args = process.argv.slice(2);
 const notarize = args.includes("--notarize");
 if (args.some((arg) => arg.startsWith("--") && arg !== "--notarize")) {
@@ -130,14 +132,17 @@ async function distribute() {
   let verificationIndex = 0;
   const hashes = new Map<string, string>();
   type Entitlements = Record<string, unknown>;
-  const signed: { path: string; expected: Entitlements }[] = [];
-  async function verify(target: string, expected: Entitlements) {
+  const signed: { path: string; expected: Entitlements; identifier?: string }[] = [];
+  async function verify(target: string, expected: Entitlements, identifier?: string) {
     await run(["codesign", "--verify", "--strict", "--verbose=2", target]);
     const details = await run(["codesign", "-d", "--verbose=4", target]);
     const team = details.match(/^TeamIdentifier=([A-Z0-9]{10})$/m)?.[1];
     if (!team || (teamId && team !== teamId) || !details.includes("Authority=Developer ID Application:")
       || !/^Timestamp=/m.test(details) || !/^CodeDirectory .*flags=.*runtime/m.test(details)) {
       throw new Error(`Invalid Developer ID, timestamp or Hardened Runtime signature: ${target}.`);
+    }
+    if (identifier && details.match(/^Identifier=(.+)$/m)?.[1] !== identifier) {
+      throw new Error(`Unexpected CLI code-signing identifier: ${target}.`);
     }
     teamId = team;
     const cdhash = details.match(/^CDHash=([a-f0-9]{40})$/im)?.[1]?.toLowerCase();
@@ -182,11 +187,13 @@ async function distribute() {
         }
       }
     }
+    const identifier = policy === "bun" ? CLI_SIGNING_IDENTIFIER : undefined;
     await run(["codesign", "--force", "--sign", identity, "--keychain", signingKeychain,
+      ...(identifier ? ["--identifier", identifier] : []),
       "--timestamp", "--options", "runtime", "--entitlements",
       entitlements, target]);
-    await verify(target, expected);
-    signed.push({ path: target, expected });
+    await verify(target, expected, identifier);
+    signed.push({ path: target, expected, identifier });
   }
   for (const target of targets) {
     if (target.endsWith(".app")) {
@@ -254,7 +261,7 @@ async function distribute() {
       await run(["xcrun", "stapler", "validate", apps[0]]);
       await run(["spctl", "--assess", "--type", "execute", "--verbose=2", apps[0]]);
     }
-    for (const target of signed) await verify(target.path, target.expected);
+    for (const target of signed) await verify(target.path, target.expected, target.identifier);
     for (const app of apps) await run(["codesign", "--verify", "--deep", "--strict", app]);
   }
   return {
