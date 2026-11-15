@@ -22,6 +22,7 @@ import { migrateCollaborationDirectRoutes } from "./collaboration-direct-routes"
 import { dropRetiredExecutionTables, retireExecutionTransport } from "./retire-execution-transport";
 import { dropLegacyAutomationTables, renameAutomations } from "./rename-automations";
 import { dropLegacyTaskTables, retireTasks, retireTaskPreferences } from "./retire-tasks";
+import { migrateSshKeyAccess } from "./ssh-key-access";
 
 const log = createLogger("persistence:migrations");
 
@@ -1013,6 +1014,11 @@ export const migrations: Migration[] = [
         db.run("ALTER TABLE chats ADD COLUMN last_status_changed_at TEXT");
       }
     },
+  },
+  {
+    version: 99,
+    name: "add_scoped_ssh_agent_key_access",
+    up: migrateSshKeyAccess,
   },
 ];
 

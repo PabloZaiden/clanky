@@ -255,8 +255,9 @@ before attributing a slow voice answer to local data access.
   inspect the jobs and logs until each reaches a terminal outcome. Admission is
   not completion. Each job updates Clanky and then restarts its native service
   or workspace shell loop. Do not use bulk provisioning restart as an updater
-  or resend a restart whose response was lost. Existing one-shot launchers need
-  manual preparation; do not migrate current Devboxes unless explicitly asked.
+  or resend a restart whose response was lost. Host-side recovery uses
+  `clanky environment`; container removal preserves source and credentials
+  unless resetting private runtime state is explicitly requested.
 
 ## Shared workspace collaboration
 

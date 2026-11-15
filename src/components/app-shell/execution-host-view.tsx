@@ -117,12 +117,12 @@ export function ExecutionHostView({
       label: "Run Arise",
       disabled: !hostUsable
         || !host.capabilities.provisioning
-        || !host.capabilities.devboxLifecycle
+        || !host.capabilities.environmentLifecycle
         || provisioning.starting,
       onAction: () => void runArise(),
     },
   ], [
-    host.capabilities.devboxLifecycle,
+    host.capabilities.environmentLifecycle,
     host.capabilities.provisioning,
     hostUsable,
     prerequisites,
@@ -246,7 +246,7 @@ export function ExecutionHostView({
       repoUrl: "",
       basePath: getExecutionHostDefaultDirectory(host),
       devcontainerSubpath: null,
-      devboxTemplate: null,
+      environmentTemplate: null,
       provider: getExecutionHostAgentProvider(host),
       adapter: getHarnessAdapterForProvider(getExecutionHostAgentProvider(host)),
       mode: "arise",

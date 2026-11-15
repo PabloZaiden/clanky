@@ -12,6 +12,9 @@ try {
     if (result.output !== undefined) process.stdout.write(`${result.output}\n`);
     if (result.error !== undefined) process.stderr.write(`${result.error}\n`);
     process.exitCode = result.exitCode;
+  } else if (args[0] === "environment") {
+    const { runEnvironmentCommand } = await import("./cli/environment");
+    process.exitCode = await runEnvironmentCommand(args.slice(1));
   } else {
     const { createClankyCli } = await import("./cli");
     process.exitCode = await createClankyCli().run(args);

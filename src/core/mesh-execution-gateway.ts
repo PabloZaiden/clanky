@@ -51,7 +51,7 @@ import {
   verifyMeshPayloadSignature,
 } from "../persistence/mesh-node-identity";
 import { getMeshWorkerDirectory } from "./mesh-runtime";
-import { getWorkerPaths } from "./provisioning/worker-assets";
+import { getWorkerPathsForSupervisor } from "./provisioning/worker-assets";
 import { posix as pathPosix } from "node:path";
 import { CommandExecutorImpl } from "./remote-command-executor";
 import { walkDirectoryTree } from "./directory-tree-walker";
@@ -777,8 +777,7 @@ export class MeshExecutionGateway {
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (!session.adapter || !session.ownerId) throw new DomainError("mesh_execution_session_invalid", "The native session has no ownership.");
-    const workerRoot = getMeshWorkerDirectory();
-    const paths = getWorkerPaths(workerRoot, workerRoot);
+    const paths = getWorkerPathsForSupervisor("/var/lib/clanky/supervisor.sh");
     // Existing managed workers gain the private PATH without a process restart.
     const environment = await session.executor.fileExists(pathPosix.join(paths.hostRoot, "runtime.json"))
       ? { ...session.environment, PATH: `${pathPosix.join(paths.containerRoot, "runtime", "bin")}:${process.env["PATH"] ?? ""}` }

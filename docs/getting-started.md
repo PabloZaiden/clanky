@@ -87,7 +87,7 @@ logs.
 3. Wait for the workspace to become ready.
 4. Open a chat for interactive work, optionally selecting **Start with a plan**.
 
-Automatic Devbox workspaces use a dedicated Mesh worker by default. If you
+Automatic managed environments use a dedicated Mesh worker by default. If you
 need a remote host, a worker, or a relay, start with the
 [Mesh worker guide](mesh-worker.md).
 

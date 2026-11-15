@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DevboxTemplateSummary, ExecutionHostRef } from "@/shared";
-import { listExecutionHostDevboxTemplatesApi } from "./executionHostActions";
+import type { EnvironmentTemplateSummary, ExecutionHostRef } from "@/shared";
+import { listExecutionHostEnvironmentTemplatesApi } from "./executionHostActions";
 import { isAbortError } from "../lib/request-lifecycle";
 
-export interface UseDevboxTemplatesOptions {
+export interface UseEnvironmentTemplatesOptions {
   executionHost: ExecutionHostRef | null;
 }
 
-export interface UseDevboxTemplatesResult {
-  templates: DevboxTemplateSummary[];
+export interface UseEnvironmentTemplatesResult {
+  templates: EnvironmentTemplateSummary[];
   templatesLoading: boolean;
   templatesError: string | null;
-  refreshTemplates: () => Promise<DevboxTemplateSummary[]>;
+  refreshTemplates: () => Promise<EnvironmentTemplateSummary[]>;
 }
 
-export function useDevboxTemplates({
+export function useEnvironmentTemplates({
   executionHost,
-}: UseDevboxTemplatesOptions): UseDevboxTemplatesResult {
-  const [templates, setTemplates] = useState<DevboxTemplateSummary[]>([]);
+}: UseEnvironmentTemplatesOptions): UseEnvironmentTemplatesResult {
+  const [templates, setTemplates] = useState<EnvironmentTemplateSummary[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const activeControllerRef = useRef<AbortController | null>(null);
@@ -31,7 +31,7 @@ export function useDevboxTemplates({
     };
   }, []);
 
-  const refreshTemplates = useCallback(async (): Promise<DevboxTemplateSummary[]> => {
+  const refreshTemplates = useCallback(async (): Promise<EnvironmentTemplateSummary[]> => {
     activeControllerRef.current?.abort();
 
     if (!executionHost) {
@@ -56,7 +56,7 @@ export function useDevboxTemplates({
     }
 
     try {
-      const nextTemplates = await listExecutionHostDevboxTemplatesApi({
+      const nextTemplates = await listExecutionHostEnvironmentTemplatesApi({
         executionHost,
         signal: controller.signal,
       });

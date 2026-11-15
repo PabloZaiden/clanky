@@ -64,6 +64,8 @@ export class ProvisioningReconciler {
             executor,
             targetDirectory,
             job.state.resolvedDirectory,
+            userId,
+            job.config.executionHostBinding.host,
           );
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

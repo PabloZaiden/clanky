@@ -15,6 +15,7 @@ import { parseCodeCommandArgs } from "./code";
 import type { WebAppCliCommandContext } from "@/platform/cli";
 import type { PreviewCommandOptions } from "./preview";
 import { readConfiguredWorkerChannel } from "./worker-channel";
+import { createEnvironmentCommand } from "./environment";
 
 const CLANKY_UPDATER_CONFIG = {
   repository: "pablozaiden/clanky",
@@ -113,6 +114,7 @@ export function createClankyCli() {
       worker: createWorkerCommand(),
       controller: createControllerCommand(),
       relay: createRelayCommand(),
+      environment: createEnvironmentCommand(),
     },
   });
 }

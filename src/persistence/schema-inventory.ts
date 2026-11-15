@@ -105,6 +105,9 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   currentTable("mesh_node_identity", "clanky"),
 
   currentTable("workspace_worker_enrollments", "clanky"),
+  currentTable("ssh_workspace_key_grants", "clanky"),
+  currentTable("ssh_public_keys", "clanky"),
+  currentTable("ssh_key_sources", "clanky"),
   resetOnlyTable("workspace_execution_targets", "clanky"),
   currentTable("clanky_context_api_keys", "clanky"),
   currentTable("preview_sessions", "clanky"),

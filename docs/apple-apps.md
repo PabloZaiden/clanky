@@ -689,7 +689,7 @@ Bundling Clanky removes the need to install its runtime, not the workspace's
 own tools. Local Git/provider execution still requires the tools,
 authentication and execution-host configuration described in
 [harness adapters](harnesses.md). Remote hosts retain their existing
-requirements. The app does not install agents, Git or Devbox.
+requirements. The app does not install agents, Git, Docker or the Dev Containers CLI.
 
 ### Build on Linux; sign and package on a Mac
 

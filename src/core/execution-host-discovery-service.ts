@@ -1,21 +1,22 @@
 /**
- * Transport-neutral prerequisite and Devbox discovery for execution hosts.
+ * Transport-neutral prerequisite and Environment discovery for execution hosts.
  */
 
 import type {
-  DevboxTemplateSummary,
+  EnvironmentTemplateSummary,
   ExecutionHostRef,
   ExecutionHostPrerequisiteReport,
 } from "@/shared";
 import { isIPv4 } from "node:net";
 import { serializeExecutionHostRef } from "@/shared/execution-host";
-import { parseDevboxTemplatesOutput } from "./devbox-templates";
+import { parseEnvironmentTemplatesOutput } from "./environment-templates";
 import {
   executionHostService,
   type ExecutionHostCommandContext,
 } from "./execution-host-service";
 import { checkExecutionHostPrerequisites } from "./execution-host-prerequisites";
 import { DomainError } from "../domain/domain-error";
+import { environmentCommand } from "./environments/command";
 
 export interface ExecutionHostDiscoveryContext extends ExecutionHostCommandContext {
   repositoriesBasePath: string | null;
@@ -106,19 +107,21 @@ export class ExecutionHostDiscoveryService {
       targetId: context.responseId ?? serializeExecutionHostRef(ref),
       connectionLabel: transportLabel(ref),
       repositoriesBasePath: context.repositoriesBasePath,
+      environmentCli: environmentCommand(ref, context.localUserId ?? "", ["--help"]),
     }, executor);
   }
 
-  async listDevboxTemplates(
+  async listEnvironmentTemplates(
     ref: ExecutionHostRef,
     context: ExecutionHostCommandContext,
-  ): Promise<DevboxTemplateSummary[]> {
+  ): Promise<EnvironmentTemplateSummary[]> {
     const executor = await executionHostService.getCommandExecutorForRef(ref, context);
-    const availabilityResult = await executor.exec("devbox", ["--help"], { cwd: "/" });
+    const availability = environmentCommand(ref, context.localUserId ?? "", ["--help"]);
+    const availabilityResult = await executor.exec(availability.command, availability.args, { cwd: "/" });
     if (!availabilityResult.success) {
       throw new DomainError(
         "execution_host_templates_failed",
-        "Failed to list Devbox templates on the execution host.",
+        "Failed to list Environment templates on the execution host.",
         {
           details: {
             executionHost: serializeExecutionHostRef(ref),
@@ -128,11 +131,12 @@ export class ExecutionHostDiscoveryService {
       );
     }
 
-    const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
+    const invocation = environmentCommand(ref, context.localUserId ?? "", ["templates"]);
+    const result = await executor.exec(invocation.command, invocation.args, { cwd: "/" });
     if (!result.success) {
       throw new DomainError(
         "execution_host_templates_failed",
-        "Failed to list Devbox templates on the execution host.",
+        "Failed to list Environment templates on the execution host.",
         {
           details: {
             executionHost: serializeExecutionHostRef(ref),
@@ -141,7 +145,7 @@ export class ExecutionHostDiscoveryService {
         },
       );
     }
-    return parseDevboxTemplatesOutput(result.stdout);
+    return parseEnvironmentTemplatesOutput(result.stdout);
   }
 
   async listAccessibleIpv4Addresses(

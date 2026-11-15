@@ -38,7 +38,7 @@ function createCheck(
 const automaticProvisioningChecks: Array<{
   id: Extract<
     ExecutionHostPrerequisiteCheck["id"],
-    "devbox" | "docker" | "devcontainer" | "git" | "gh"
+    "environment" | "docker" | "devcontainer" | "git" | "gh"
   >;
   label: string;
   command: string;
@@ -46,11 +46,11 @@ const automaticProvisioningChecks: Array<{
   installHint: string;
 }> = [
   {
-    id: "devbox",
-    label: "devbox",
-    command: "devbox",
-    requiredFor: ["Automatic provisioning", "devbox arise"],
-    installHint: "Install devbox and ensure it is available on PATH before using automatic provisioning or devbox arise.",
+    id: "environment",
+    label: "Clanky environment CLI",
+    command: "clanky",
+    requiredFor: ["Automatic provisioning", "Host recovery"],
+    installHint: "Update Clanky on the provisioning host to a version with the environment command.",
   },
   {
     id: "docker",
@@ -89,9 +89,10 @@ async function runCommandProbe(
   command: string,
   requiredFor: string[],
   installHint: string,
+  invocation?: { command: string; args: string[] },
 ): Promise<ExecutionHostPrerequisiteCheck> {
-  if (id === "devbox") {
-    const result = await executor.exec(command, ["--help"], { cwd: "/" });
+  if (id === "environment") {
+    const result = await executor.exec(invocation?.command ?? command, invocation?.args ?? ["environment", "--help"], { cwd: "/" });
     if (!result.success) {
       return createCheck(
         id,
@@ -154,6 +155,7 @@ function createAutomaticProvisioningUnknownChecks(): ExecutionHostPrerequisiteCh
 async function runAutomaticProvisioningChecks(
   executor: CommandExecutor,
   repositoriesBasePath?: string,
+  environmentCli?: { command: string; args: string[] },
 ): Promise<ExecutionHostPrerequisiteCheck[]> {
   if (!repositoriesBasePath?.trim()) {
     return createAutomaticProvisioningNotApplicableChecks();
@@ -168,6 +170,7 @@ async function runAutomaticProvisioningChecks(
         check.command,
         check.requiredFor,
         check.installHint,
+        check.id === "environment" ? environmentCli : undefined,
       )
     ),
   );
@@ -200,6 +203,7 @@ export interface ExecutionHostPrerequisiteTarget {
   targetId: string;
   connectionLabel: string;
   repositoriesBasePath: string | null;
+  environmentCli: { command: string; args: string[] };
 }
 
 export async function checkExecutionHostPrerequisites(
@@ -227,7 +231,7 @@ export async function checkExecutionHostPrerequisites(
         "bash",
         "unknown",
         unavailableAfterConnectionFailureDetail("bash"),
-        ["Terminals", "Automatic provisioning", "devbox arise"],
+        ["Terminals", "Automatic provisioning", "environment arise"],
       ),
       createCheck(
         "dtach",
@@ -258,7 +262,7 @@ export async function checkExecutionHostPrerequisites(
     "bash",
     "bash",
     "bash",
-    ["Terminals", "Automatic provisioning", "devbox arise"],
+    ["Terminals", "Automatic provisioning", "environment arise"],
     "Install bash and ensure it is available on PATH before using shell-based workflows.",
   );
   const dtachResult = await executor.exec(
@@ -279,6 +283,7 @@ export async function checkExecutionHostPrerequisites(
   const provisioningChecks = await runAutomaticProvisioningChecks(
     executor,
     target.repositoriesBasePath ?? undefined,
+    target.environmentCli,
   );
 
   const checks: ExecutionHostPrerequisiteCheck[] = [

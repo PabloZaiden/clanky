@@ -1,13 +1,14 @@
 import type { ProvisioningCommandExecution, ProvisioningStep } from "@/shared";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {
-  verify_devbox: "Verify devbox",
+  verify_environment: "Verify environment",
   prepare_directory: "Prepare directory",
   clone_repo: "Prepare repository",
-  devbox_up: "Start devbox",
-  devbox_rebuild: "Rebuild devbox",
-  devbox_arise: "Update server",
-  devbox_status: "Check devbox status",
+  environment_up: "Start environment",
+  environment_rebuild: "Rebuild environment",
+  environment_restart: "Restart environment",
+  environment_arise: "Update server",
+  environment_status: "Check environment status",
   create_workspace: "Create workspace",
   test_connection: "Test connection",
   workspace_ready: "Workspace ready",

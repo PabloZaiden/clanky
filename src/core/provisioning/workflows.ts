@@ -7,10 +7,10 @@ import { getWorkspace } from "../../persistence/workspaces";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
 import type {
   ProvisioningJob,
-  DevboxStatusResult,
+  EnvironmentStatusResult,
   ServerSettings,
 } from "@/shared";
-import { DEVBOX_UP_TIMEOUT_MS } from "./constants";
+import { ENVIRONMENT_UP_TIMEOUT_MS } from "./constants";
 import {
   ProvisioningFailedError,
 } from "./errors";
@@ -28,37 +28,47 @@ import {
 import {
   ProvisioningWorkerLifecycle,
 } from "./worker-lifecycle";
-import { shellQuote, type WorkerPaths } from "./worker-assets";
+import { shellQuote, type AutomaticWorkerChannel, type WorkerPaths } from "./worker-assets";
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
 import { isMeshOutboundRoute } from "@/shared/mesh";
-import { getHarnessAdapterForProvider } from "@/shared/settings";
+import { getHarnessAdapterForProvider, type HarnessAdapter } from "@/shared/settings";
+import { isProvisioningJobTerminal } from "@/shared/provisioning";
+import { loadProvisioningJob } from "../../persistence/provisioning-jobs";
+import {
+  createProvisioningSshKeyLease,
+  attachProvisioningSshKeyGrants,
+  discardProvisioningSshKeyGrants,
+} from "../ssh-key-access-service";
+import { scopedSshAgentEnvironment } from "../ssh-agent-environment";
 
-function buildDevboxArgs(
-  command: "up" | "rebuild",
+function buildEnvironmentArgs(
+  command: "up" | "rebuild" | "restart",
   options: {
     devcontainerSubpath?: string;
-    devboxTemplate?: string;
+    environmentTemplate?: string;
     githubUser?: string;
     startupCommand?: string;
     clearStartupCommand?: boolean;
-    publishWorkerPort?: boolean;
+    releaseChannel?: AutomaticWorkerChannel;
+    runtimeAdapter?: HarnessAdapter;
   },
 ): string[] {
-  // Disable Devbox's bundled SSH server; execution uses local or Mesh hosts only.
-  const args: string[] = [
-    command,
-    "--no-ssh",
-    "--allow-missing-ssh",
-    ...(options.publishWorkerPort ? ["--ports", "1"] : []),
-  ];
-  if (command === "up" && options.devboxTemplate) {
-    args.push("--template", options.devboxTemplate);
-  } else if (options.devcontainerSubpath) {
+  const args: string[] = [command];
+  if (options.environmentTemplate) {
+    args.push("--template", options.environmentTemplate);
+  }
+  if (options.devcontainerSubpath) {
     args.push("--devcontainer-subpath", options.devcontainerSubpath);
   }
   if (options.githubUser) {
     args.push("--gh-user", options.githubUser);
+  }
+  if (options.releaseChannel) {
+    args.push("--release-channel", options.releaseChannel);
+  }
+  if (options.runtimeAdapter) {
+    args.push("--runtime-adapter", options.runtimeAdapter);
   }
   if (options.clearStartupCommand) {
     args.push("--no-startup-command");
@@ -82,13 +92,14 @@ export class ProvisioningWorkflows {
     let workspaceCleanup: ProvisioningResourceHandle | undefined;
     let workerEnrollmentCleanup: ProvisioningResourceHandle | undefined;
     let workerProcessCleanup: ProvisioningResourceHandle | undefined;
+    let sshGrantCleanup: ProvisioningResourceHandle | undefined;
 
     try {
       const binding = record.job.config.executionHostBinding;
       if (!binding) {
         throw new ProvisioningFailedError(
           "missing_execution_host",
-          "verify_devbox",
+          "verify_environment",
           "Provisioning requires an execution host",
         );
       }
@@ -100,65 +111,91 @@ export class ProvisioningWorkflows {
       };
       const executor = await this.remoteExecutor.acquire(record, "/");
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.remoteExecutor.verifyDevbox(record, executor);
+      setStep(record, this.maxLogEntries, "verify_environment", "Checking for environment");
+      await this.remoteExecutor.verifyEnvironment(record, executor);
 
       setStep(record, this.maxLogEntries, "prepare_directory", "Preparing remote base directory");
       await this.remoteExecutor.prepareBaseDirectory(record, executor);
       setStep(record, this.maxLogEntries, "clone_repo", "Preparing repository checkout");
-      const targetDirectory = await this.remoteExecutor.prepareRepository(
-        record,
-        executor,
-      );
+      if (record.job.config.sshKeyIds?.length) {
+        sshGrantCleanup = attempt.registerCleanup("Initial SSH key grants", async () => {
+          await discardProvisioningSshKeyGrants(record.owner.id, record.job.config.id);
+        });
+      }
+      // Credential grants belong to this job; the host resolves its durable environment by checkout.
+      const sshLease = await createProvisioningSshKeyLease({
+        userId: record.owner.id,
+        environmentId: record.job.config.id,
+        provisioningOperationId: record.job.config.id,
+        host: binding.host,
+        keyIds: record.job.config.sshKeyIds ?? [],
+        assertActive: () => {
+          const saved = loadProvisioningJob(record.owner.id, record.job.config.id);
+          if (record.abortController.signal.aborted || record.attempt !== attempt
+            || !saved || isProvisioningJobTerminal(saved.job.state.status)) {
+            throw new Error("The provisioning operation no longer authorizes SSH access.");
+          }
+        },
+      });
+      let targetDirectory: string;
+      try {
+        targetDirectory = await this.remoteExecutor.prepareRepository(
+          record, executor, scopedSshAgentEnvironment(sshLease.socketPath),
+        );
+      } finally {
+        await sshLease.close();
+      }
       this.updateState(record, { targetDirectory });
 
       const automaticWorker = !record.job.config.workspaceWorkerEnrollmentId;
       const relayOnlyWorker = automaticWorker;
       let workerLauncherPaths: WorkerPaths | undefined;
-      const devboxOptions = {
+      const environmentOptions = {
         devcontainerSubpath: record.job.config.devcontainerSubpath,
-        devboxTemplate: record.job.config.devboxTemplate,
+        environmentTemplate: record.job.config.environmentTemplate,
         githubUser: record.job.config.githubUser,
-        publishWorkerPort: automaticWorker && !relayOnlyWorker,
+        releaseChannel: record.job.config.releaseChannel
+          ?? (record.job.config.useClankyPrerelease ? "prerelease" as const : undefined),
+        runtimeAdapter: automaticWorker ? serverSettings.agent.adapter : undefined,
       };
 
-      setStep(record, this.maxLogEntries, "devbox_up", "Starting devbox");
+      setStep(record, this.maxLogEntries, "environment_up", "Starting environment");
       await this.runCmd(record, executor, {
-        step: "devbox_up",
-        label: "Running devbox up",
-        command: "devbox",
-        args: buildDevboxArgs("up", {
-          ...devboxOptions,
+        step: "environment_up",
+        label: "Running environment up",
+        command: "environment",
+        args: buildEnvironmentArgs("up", {
+          ...environmentOptions,
           ...(automaticWorker ? { clearStartupCommand: true } : {}),
         }),
         cwd: targetDirectory,
-        timeout: DEVBOX_UP_TIMEOUT_MS,
+        timeout: ENVIRONMENT_UP_TIMEOUT_MS,
         streamOutput: true,
         longRunning: true,
-        errorCode: "devbox_up_failed",
-        errorMessage: "Failed to start devbox",
+        errorCode: "environment_up_failed",
+        errorMessage: "Failed to start environment",
       });
 
-      setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
-      let status = await this.remoteExecutor.readDevboxStatus(
+      setStep(record, this.maxLogEntries, "environment_status", "Reading environment status");
+      let status = await this.remoteExecutor.readEnvironmentStatus(
         record,
         executor,
         targetDirectory,
       );
       if (!status.running) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
-          "devbox status reported that the environment is not running",
+          "invalid_environment_status",
+          "environment_status",
+          "environment status reported that the environment is not running",
         );
       }
 
       const resolvedDirectory = status.workdir.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
-          "devbox status did not include a workdir value",
+          "invalid_environment_status",
+          "environment_status",
+          "environment status did not include a workdir value",
         );
       }
       this.updateState(record, { resolvedDirectory, serverSettings });
@@ -166,9 +203,9 @@ export class ProvisioningWorkflows {
       if (automaticWorker) {
         if (!status.workdir.trim()) {
           throw new ProvisioningFailedError(
-            "invalid_devbox_status",
-            "devbox_status",
-            "devbox status did not include a container workdir for the workspace worker",
+            "invalid_environment_status",
+            "environment_status",
+            "environment status did not include a container workdir for the workspace worker",
           );
         }
         workerLauncherPaths = await this.workerLifecycle.prepareLauncher(
@@ -178,39 +215,39 @@ export class ProvisioningWorkflows {
           resolvedDirectory,
         );
         await this.runCmd(record, executor, {
-          step: "devbox_up",
+          step: "environment_up",
           label: "Persisting the workspace worker startup hook",
-          command: "devbox",
-          args: buildDevboxArgs("up", {
-            ...devboxOptions,
-            startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)}`,
+          command: "environment",
+          args: buildEnvironmentArgs("up", {
+            ...environmentOptions,
+            startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)} startup`,
           }),
           cwd: targetDirectory,
-          timeout: DEVBOX_UP_TIMEOUT_MS,
+          timeout: ENVIRONMENT_UP_TIMEOUT_MS,
           streamOutput: true,
           longRunning: true,
-          errorCode: "devbox_up_failed",
+          errorCode: "environment_up_failed",
           errorMessage: "Failed to persist the workspace worker startup hook",
         });
-        status = await this.remoteExecutor.readDevboxStatus(
+        status = await this.remoteExecutor.readEnvironmentStatus(
           record,
           executor,
           targetDirectory,
-          { label: "Reading devbox status after configuring the worker" },
+          { label: "Reading environment status after configuring the worker" },
         );
         if (!status.running) {
           throw new ProvisioningFailedError(
-            "invalid_devbox_status",
-            "devbox_status",
-            "devbox status reported that the environment is not running after configuring the worker",
+            "invalid_environment_status",
+            "environment_status",
+            "environment status reported that the environment is not running after configuring the worker",
           );
         }
         const finalWorkdir = status.workdir.trim();
         if (finalWorkdir && finalWorkdir !== resolvedDirectory) {
           throw new ProvisioningFailedError(
-            "invalid_devbox_status",
-            "devbox_status",
-            "devbox workdir changed while configuring the workspace worker",
+            "invalid_environment_status",
+            "environment_status",
+            "environment workdir changed while configuring the workspace worker",
           );
         }
       }
@@ -236,7 +273,7 @@ export class ProvisioningWorkflows {
         record,
         this.maxLogEntries,
         `Configured execution on ${binding.targetKey}`,
-        "devbox_status",
+        "environment_status",
       );
 
       setStep(record, this.maxLogEntries, "create_workspace", "Creating workspace record");
@@ -292,6 +329,9 @@ export class ProvisioningWorkflows {
         workspaceId: workspace.id,
         workspaceAction: "created",
       });
+      if (sshGrantCleanup) {
+        await attachProvisioningSshKeyGrants(record.owner.id, record.job.config.id, workspace.id);
+      }
       appendSystemLog(record, this.maxLogEntries, `Created workspace ${workspace.name}`, "create_workspace");
 
       setStep(record, this.maxLogEntries, "test_connection", "Testing workspace connection");
@@ -312,6 +352,7 @@ export class ProvisioningWorkflows {
       workspaceCleanup.commit();
       workerEnrollmentCleanup?.commit();
       workerProcessCleanup?.commit();
+      sshGrantCleanup?.commit();
       record.workspaceWorkerEnrollmentCleanup?.commit();
       await attempt.complete(
         record.job.state.workspaceAction === "reused"
@@ -323,7 +364,7 @@ export class ProvisioningWorkflows {
       await attempt.fail(
         error,
         "provisioning_failed",
-        record.job.state.currentStep ?? "verify_devbox",
+        record.job.state.currentStep ?? "verify_environment",
       );
     }
   }
@@ -344,21 +385,21 @@ export class ProvisioningWorkflows {
   ): Promise<void> {
     const action = mode === "restart"
       ? {
-          progressLabel: "Restarting devbox",
-          step: "devbox_up" as const,
-          commandLabel: "Running devbox up",
-          errorCode: "devbox_restart_failed",
-          errorMessage: "Failed to restart devbox",
-          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was restarted successfully.`,
+          progressLabel: "Restarting environment",
+          step: "environment_restart" as const,
+          commandLabel: "Running environment restart",
+          errorCode: "environment_restart_failed",
+          errorMessage: "Failed to restart environment",
+          completionMessage: `Workspace connection test succeeded. Environment for ${record.job.config.name} was restarted successfully.`,
           genericFailureCode: "restart_failed",
         }
       : {
-          progressLabel: "Rebuilding devbox",
-          step: "devbox_rebuild" as const,
-          commandLabel: "Running devbox rebuild",
-          errorCode: "devbox_rebuild_failed",
-          errorMessage: "Failed to rebuild devbox",
-          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was rebuilt successfully.`,
+          progressLabel: "Rebuilding environment",
+          step: "environment_rebuild" as const,
+          commandLabel: "Running environment rebuild",
+          errorCode: "environment_rebuild_failed",
+          errorMessage: "Failed to rebuild environment",
+          completionMessage: `Workspace connection test succeeded. Environment for ${record.job.config.name} was rebuilt successfully.`,
           genericFailureCode: "rebuild_failed",
         };
     const attempt = this.ensureAttempt(record);
@@ -368,7 +409,7 @@ export class ProvisioningWorkflows {
       if (!targetDirectory) {
         throw new ProvisioningFailedError(
           "missing_target_directory",
-          "verify_devbox",
+          "verify_environment",
           `${mode === "restart" ? "Restart" : "Rebuild"} mode requires a target directory`,
         );
       }
@@ -377,7 +418,7 @@ export class ProvisioningWorkflows {
       if (!workspaceId) {
         throw new ProvisioningFailedError(
           "missing_workspace_id",
-          "verify_devbox",
+          "verify_environment",
           `${mode === "restart" ? "Restart" : "Rebuild"} mode requires a workspace ID`,
         );
       }
@@ -386,7 +427,7 @@ export class ProvisioningWorkflows {
       if (!workspace) {
         throw new ProvisioningFailedError(
           "workspace_not_found",
-          "verify_devbox",
+          "verify_environment",
           `Workspace ${workspaceId} not found`,
         );
       }
@@ -422,7 +463,7 @@ export class ProvisioningWorkflows {
         if (!workerEndpoint) {
           throw new ProvisioningFailedError(
             "workspace_worker_not_connected",
-            "verify_devbox",
+            "verify_environment",
             "The workspace worker is not connected.",
           );
         }
@@ -435,7 +476,7 @@ export class ProvisioningWorkflows {
           }
           throw new ProvisioningFailedError(
             "invalid_worker_endpoint",
-            "verify_devbox",
+            "verify_environment",
             "The workspace worker endpoint is invalid.",
           );
         }
@@ -446,8 +487,8 @@ export class ProvisioningWorkflows {
         workspaceAction: "reused",
       });
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.remoteExecutor.verifyDevbox(record, executor);
+      setStep(record, this.maxLogEntries, "verify_environment", "Checking for environment");
+      await this.remoteExecutor.verifyEnvironment(record, executor);
 
       setStep(record, this.maxLogEntries, "prepare_directory", "Verifying target directory");
       const targetExists = await executor.directoryExists(targetDirectory);
@@ -467,11 +508,13 @@ export class ProvisioningWorkflows {
       const recoveredStatus = await this.runLifecycleCommand(record, executor, {
         step: action.step,
         label: action.commandLabel,
-        command: "devbox",
-        args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
-          publishWorkerPort: automaticWorker && !relayOnlyWorker,
+        command: "environment",
+        args: buildEnvironmentArgs(mode, {
           devcontainerSubpath,
           githubUser: record.job.config.githubUser,
+          releaseChannel: record.job.config.releaseChannel
+            ?? (record.job.config.useClankyPrerelease ? "prerelease" : undefined),
+          runtimeAdapter: workerLauncherPaths ? workspace.serverSettings.agent.adapter : undefined,
           ...(workerLauncherPaths
             ? {
                 startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)} update ${shellQuote(record.job.config.id)}`,
@@ -479,33 +522,33 @@ export class ProvisioningWorkflows {
             : {}),
         }),
         cwd: targetDirectory,
-        timeout: DEVBOX_UP_TIMEOUT_MS,
+        timeout: ENVIRONMENT_UP_TIMEOUT_MS,
         streamOutput: true,
         longRunning: true,
         errorCode: action.errorCode,
         errorMessage: action.errorMessage,
       });
 
-      setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
-      const status = recoveredStatus ?? await this.remoteExecutor.readDevboxStatus(
+      setStep(record, this.maxLogEntries, "environment_status", "Reading environment status");
+      const status = recoveredStatus ?? await this.remoteExecutor.readEnvironmentStatus(
         record,
         executor,
         targetDirectory,
       );
       if (!status.running) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
-          "devbox status reported that the environment is not running",
+          "invalid_environment_status",
+          "environment_status",
+          "environment status reported that the environment is not running",
         );
       }
 
       const resolvedDirectory = status.workdir.trim() || targetDirectory;
       if (!resolvedDirectory) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
-          "devbox status did not include a workdir value",
+          "invalid_environment_status",
+          "environment_status",
+          "environment status did not include a workdir value",
         );
       }
 
@@ -525,12 +568,13 @@ export class ProvisioningWorkflows {
         );
       }
 
+      await backendManager.resetWorkspaceConnection(workspaceId);
       this.updateState(record, { resolvedDirectory, serverSettings });
       appendSystemLog(
         record,
         this.maxLogEntries,
         `Resolved execution on ${binding.targetKey}`,
-        "devbox_status",
+        "environment_status",
       );
 
       const updatedWorkspace = await workspaceManager.updateWorkspace(workspaceId, {
@@ -545,11 +589,11 @@ export class ProvisioningWorkflows {
       if (!updatedWorkspace) {
         throw new ProvisioningFailedError(
           "workspace_not_found",
-          "devbox_status",
+          "environment_status",
           `Workspace ${workspaceId} not found or could not be updated`,
         );
       }
-      appendSystemLog(record, this.maxLogEntries, "Updated workspace server settings", "devbox_status");
+      appendSystemLog(record, this.maxLogEntries, "Updated workspace server settings", "environment_status");
 
       setStep(record, this.maxLogEntries, "test_connection", "Testing workspace connection");
       const connectionResult = await backendManager.testConnection(
@@ -571,7 +615,7 @@ export class ProvisioningWorkflows {
       await attempt.fail(
         error,
         action.genericFailureCode,
-        record.job.state.currentStep ?? "verify_devbox",
+        record.job.state.currentStep ?? "verify_environment",
       );
     }
   }
@@ -585,7 +629,7 @@ export class ProvisioningWorkflows {
       if (!binding) {
         throw new ProvisioningFailedError(
           "missing_execution_host",
-          "verify_devbox",
+          "verify_environment",
           "Server arise mode requires an execution host",
         );
       }
@@ -594,31 +638,31 @@ export class ProvisioningWorkflows {
         record.job.config.targetDirectory ?? "/",
       );
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
-      await this.remoteExecutor.verifyDevbox(record, executor);
+      setStep(record, this.maxLogEntries, "verify_environment", "Checking for environment");
+      await this.remoteExecutor.verifyEnvironment(record, executor);
 
-      setStep(record, this.maxLogEntries, "devbox_arise", "Running devbox arise");
+      setStep(record, this.maxLogEntries, "environment_arise", "Running environment arise");
       await this.runCmd(record, executor, {
-        step: "devbox_arise",
-        label: "Running devbox arise",
-        command: "devbox",
+        step: "environment_arise",
+        label: "Running environment arise",
+        command: "environment",
         args: ["arise"],
-        timeout: DEVBOX_UP_TIMEOUT_MS,
+        timeout: ENVIRONMENT_UP_TIMEOUT_MS,
         streamOutput: true,
         longRunning: true,
-        errorCode: "devbox_arise_failed",
-        errorMessage: "Failed to run devbox arise",
+        errorCode: "environment_arise_failed",
+        errorMessage: "Failed to run environment arise",
       });
 
       await attempt.complete(
-        `Devbox arise completed successfully for ${record.job.config.name}.`,
+        `Environment arise completed successfully for ${record.job.config.name}.`,
         "arise_complete",
       );
     } catch (error) {
       await attempt.fail(
         error,
         "arise_failed",
-        record.job.state.currentStep ?? "verify_devbox",
+        record.job.state.currentStep ?? "verify_environment",
       );
     }
   }
@@ -636,7 +680,7 @@ export class ProvisioningWorkflows {
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     options: Parameters<ProvisioningRemoteExecutor["run"]>[2],
-  ): Promise<DevboxStatusResult | undefined> {
+  ): Promise<EnvironmentStatusResult | undefined> {
     try {
       await this.runCmd(record, executor, options);
     } catch (error) {

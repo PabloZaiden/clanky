@@ -26,8 +26,9 @@ export interface StartProvisioningJobRequest {
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
-  devboxTemplate: string | null;
+  environmentTemplate: string | null;
   githubUser?: string | null;
+  sshKeyIds?: string[];
   provider: AgentProvider;
   adapter?: HarnessAdapter;
   createNewRepository?: boolean;
@@ -209,8 +210,9 @@ export function useProvisioningJob({ enabled = true }: { enabled?: boolean } = {
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
           devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,
-          devboxTemplate: request.devboxTemplate?.trim() ? request.devboxTemplate.trim() : null,
+          environmentTemplate: request.environmentTemplate?.trim() ? request.environmentTemplate.trim() : null,
           githubUser: request.githubUser?.trim() ? request.githubUser.trim() : null,
+          sshKeyIds: request.sshKeyIds,
           provider: request.provider,
           adapter: request.adapter,
           mode: request.mode,

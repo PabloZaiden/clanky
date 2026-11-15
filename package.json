@@ -29,6 +29,9 @@
     "release:metadata:generate": "bun scripts/release-metadata.ts generate-installer",
     "test": "bun scripts/run-tests.ts all",
     "test:mesh": "bun scripts/run-tests.ts mesh",
+    "test:environments": "bun scripts/run-tests.ts environments",
+    "test:ssh-keys": "bun scripts/run-tests.ts ssh-keys",
+    "test:self-hosting": "bun tests/e2e/self-hosting.ts",
     "typecheck": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
