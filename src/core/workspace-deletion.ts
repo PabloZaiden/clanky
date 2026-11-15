@@ -145,6 +145,8 @@ async function deleteWorkspaceWithOptionsUnlocked(
 
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);
+    const { removeWorkspaceSshKeyAccess } = await import("./ssh-key-access-service");
+    await removeWorkspaceSshKeyAccess(requireExecutionOwnerUserId(), id);
     const dedicatedWorker = workspaceWorkerEnrollmentService.getByWorkspace(
       requireExecutionOwnerUserId(),
       id,

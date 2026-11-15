@@ -2,6 +2,7 @@ import type { WebAppCliCommandDefinition } from "@/platform/cli";
 import type { ClankyCliContext } from "./mesh";
 import { EnvironmentManager, type EnvironmentOptions } from "../core/environments/manager";
 import { listEnvironmentTemplates } from "../core/environments/templates";
+import { HARNESS_ADAPTER_IDS, createAgentSettings } from "@/shared/settings";
 
 const help = `Usage: clanky environment COMMAND [options]
 
@@ -15,6 +16,7 @@ Options:
   --devcontainer-subpath PATH Select a project definition
   --gh-user NAME             Explicit GitHub account to share with this workspace
   --release-channel CHANNEL  Explicit worker selection: stable, latest, prerelease
+  --runtime-adapter ADAPTER   Explicit managed native runtime selection
   --startup-command COMMAND  Persist a command run as remoteUser at container start
   --no-startup-command       Remove the saved startup command
   --reset-credentials        With remove: also destroy private runtime state
@@ -41,6 +43,13 @@ export async function runEnvironmentCommand(args: readonly string[]): Promise<nu
     if (argument === "--") { trailing = args.slice(index + 1); break; }
     if (argument === "--no-startup-command") { options.clearStartupCommand = true; continue; }
     if (argument === "--reset-credentials") { resetCredentials = true; continue; }
+    if (argument === "--runtime-adapter") {
+      const value = args[++index];
+      const adapter = HARNESS_ADAPTER_IDS.find((candidate) => candidate === value);
+      if (!adapter) throw new Error(`--runtime-adapter must be ${HARNESS_ADAPTER_IDS.join(", ")}.`);
+      options.runtime = createAgentSettings(adapter);
+      continue;
+    }
     if (argument === "--release-channel") {
       const channel = args[++index];
       if (channel !== "stable" && channel !== "latest" && channel !== "prerelease") {

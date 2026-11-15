@@ -4,11 +4,12 @@ import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { environmentTemplateConfiguration } from "./templates";
-import { ENVIRONMENT_CONTAINER_STATE_ROOT, ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeStart } from "./runtime-feature";
+import { ENVIRONMENT_CONTAINER_STATE_ROOT, ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeProfileDefaults, environmentRuntimeStart } from "./runtime-feature";
 import { getWorkerPathsForSupervisor, shellQuote, type AutomaticWorkerChannel } from "../provisioning/worker-assets";
 import { getExistingLauncherChannel, withWorkerLauncherChannel } from "../provisioning/worker-runtime-assets";
 import { parseWorkerChannel } from "../worker-channel";
 import { scopedSshAgentEnvironment, workspaceSshAgentSocketPath } from "../ssh-agent-environment";
+import { isAgentSettings, type AgentSettings } from "@/shared/settings";
 
 const environmentSchema = z.object({
   id: z.string().uuid(), owner: z.string().min(1), directory: z.string().min(1),
@@ -39,6 +40,7 @@ export interface EnvironmentOptions {
   startupCommand?: string;
   clearStartupCommand?: boolean;
   releaseChannel?: AutomaticWorkerChannel;
+  runtime?: AgentSettings;
 }
 
 export class EnvironmentManager {
@@ -99,11 +101,14 @@ export class EnvironmentManager {
         record.runtimeDirectory = runtime.runtime;
         record.remoteUser = runtime.user;
         await this.save(record);
+        await this.writeConfiguration(record);
+        await this.addProfileDefaults(record, containerId);
       } finally {
         await this.command("docker", ["rm", containerId]);
         await rm(marker, { force: true });
       }
-      await this.writeConfiguration(record);
+    } else {
+      await this.addProfileDefaults(record, previous.Id);
     }
     await this.ensureVolume(record);
     const result = upSchema.parse(await this.jsonCommand("devcontainer", [
@@ -329,36 +334,63 @@ export class EnvironmentManager {
     }
   }
 
+  private async addProfileDefaults(record: EnvironmentRecord, containerId: string): Promise<void> {
+    const parsed = z.object({
+      mergedConfiguration: z.object({ remoteEnv: z.record(z.string(), z.string().nullable()).optional() }),
+    }).parse(await this.jsonCommand("devcontainer", [
+      "read-configuration", ...this.configArgs(record), "--container-id", containerId, "--include-merged-configuration",
+    ]));
+    const configuration = z.record(z.string(), z.unknown()).parse(JSON.parse(await readFile(record.override, "utf8")));
+    const remoteEnv = z.record(z.string(), z.string().nullable()).parse(configuration["remoteEnv"] ?? {});
+    for (const [name, fallback] of Object.entries(environmentRuntimeProfileDefaults)) {
+      if (!Object.hasOwn(parsed.mergedConfiguration.remoteEnv ?? {}, name)) {
+        remoteEnv[name] = `\${containerEnv:${name}:${fallback}}`;
+      }
+    }
+    await writeFile(record.override, JSON.stringify({ ...configuration, remoteEnv }), { mode: 0o600 });
+  }
+
   private async syncAssets(record: EnvironmentRecord): Promise<void> {
     const assets = join(dirname(record.override), "assets");
     const channelPath = join(assets, "update-channel");
     const launcherPath = join(assets, "launcher.sh");
+    const runtimePath = join(assets, "runtime.json");
     for (const entry of await readdir(assets, { withFileTypes: true })) {
       if (!entry.isFile()) throw new Error("Environment runtime staging must contain regular files only.");
     }
-    if (await this.exists(channelPath) || await this.exists(launcherPath)) {
-      const current = z.object({ channel: z.string().nullable(), launcher: z.string().nullable() }).parse(
+    const stagedRuntime = await this.exists(runtimePath);
+    const stagedChannel = await this.exists(channelPath);
+    const stagedLauncher = await this.exists(launcherPath);
+    if (this.options.runtime || stagedRuntime || stagedChannel || stagedLauncher) {
+      const current = z.object({ channel: z.string().nullable(), launcher: z.string().nullable(), runtime: z.string().nullable() }).parse(
         JSON.parse(await this.execIn(record, ["node", "-e", `
 const fs = require("node:fs");
 const read = name => fs.existsSync("/var/lib/clanky/" + name) ? fs.readFileSync("/var/lib/clanky/" + name, "utf8") : null;
-process.stdout.write(JSON.stringify({channel:read("update-channel"),launcher:read("launcher.sh")}));
+process.stdout.write(JSON.stringify({channel:read("update-channel"),launcher:read("launcher.sh"),runtime:read("runtime.json")}));
 `])),
       );
-      const channel = this.options.releaseChannel
-        ?? (current.channel === null ? undefined : parseWorkerChannel(current.channel))
-        ?? getExistingLauncherChannel(current.launcher)
-        ?? (await this.exists(channelPath) ? parseWorkerChannel(await readFile(channelPath, "utf8")) : undefined)
-        ?? getExistingLauncherChannel(await this.exists(launcherPath) ? await readFile(launcherPath, "utf8") : undefined);
-      if (!channel) throw new Error("Cannot determine the selected workspace worker channel.");
-      if (channel === "prerelease") {
-        await this.execIn(record, ["rm", "-f", `${ENVIRONMENT_RUNTIME_ROOT}/update-channel`]);
-        await rm(channelPath, { force: true });
-      } else {
-        await writeFile(channelPath, `${channel}\n`, { mode: 0o600 });
+      if (this.options.runtime || current.runtime !== null || stagedRuntime) {
+        const runtime: unknown = this.options.runtime ?? JSON.parse(current.runtime ?? await readFile(runtimePath, "utf8"));
+        if (!isAgentSettings(runtime)) throw new Error("The selected workspace runtime configuration is invalid.");
+        await writeFile(runtimePath, JSON.stringify(runtime), { mode: 0o600 });
       }
-      if (await this.exists(launcherPath)) {
-        const launcher = withWorkerLauncherChannel(await readFile(launcherPath, "utf8"), channel);
-        await writeFile(launcherPath, launcher, { mode: 0o700 });
+      if (stagedChannel || stagedLauncher) {
+        const channel = this.options.releaseChannel
+          ?? (current.channel === null ? undefined : parseWorkerChannel(current.channel))
+          ?? getExistingLauncherChannel(current.launcher)
+          ?? (stagedChannel ? parseWorkerChannel(await readFile(channelPath, "utf8")) : undefined)
+          ?? getExistingLauncherChannel(stagedLauncher ? await readFile(launcherPath, "utf8") : undefined);
+        if (!channel) throw new Error("Cannot determine the selected workspace worker channel.");
+        if (channel === "prerelease") {
+          await this.execIn(record, ["rm", "-f", `${ENVIRONMENT_RUNTIME_ROOT}/update-channel`]);
+          await rm(channelPath, { force: true });
+        } else {
+          await writeFile(channelPath, `${channel}\n`, { mode: 0o600 });
+        }
+        if (stagedLauncher) {
+          const launcher = withWorkerLauncherChannel(await readFile(launcherPath, "utf8"), channel);
+          await writeFile(launcherPath, launcher, { mode: 0o700 });
+        }
       }
     }
     for (const entry of await readdir(assets, { withFileTypes: true })) {

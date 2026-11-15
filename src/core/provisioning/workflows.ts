@@ -32,7 +32,7 @@ import { shellQuote, type AutomaticWorkerChannel, type WorkerPaths } from "./wor
 import type { ProvisioningResourceHandle } from "./attempt";
 import type { ProvisioningJobRecord } from "./types";
 import { isMeshOutboundRoute } from "@/shared/mesh";
-import { getHarnessAdapterForProvider } from "@/shared/settings";
+import { getHarnessAdapterForProvider, type HarnessAdapter } from "@/shared/settings";
 import { isProvisioningJobTerminal } from "@/shared/provisioning";
 import { loadProvisioningJob } from "../../persistence/provisioning-jobs";
 import {
@@ -51,6 +51,7 @@ function buildEnvironmentArgs(
     startupCommand?: string;
     clearStartupCommand?: boolean;
     releaseChannel?: AutomaticWorkerChannel;
+    runtimeAdapter?: HarnessAdapter;
   },
 ): string[] {
   const args: string[] = [command];
@@ -65,6 +66,9 @@ function buildEnvironmentArgs(
   }
   if (options.releaseChannel) {
     args.push("--release-channel", options.releaseChannel);
+  }
+  if (options.runtimeAdapter) {
+    args.push("--runtime-adapter", options.runtimeAdapter);
   }
   if (options.clearStartupCommand) {
     args.push("--no-startup-command");
@@ -152,6 +156,7 @@ export class ProvisioningWorkflows {
         githubUser: record.job.config.githubUser,
         releaseChannel: record.job.config.releaseChannel
           ?? (record.job.config.useClankyPrerelease ? "prerelease" as const : undefined),
+        runtimeAdapter: automaticWorker ? serverSettings.agent.adapter : undefined,
       };
 
       setStep(record, this.maxLogEntries, "environment_up", "Starting environment");
@@ -509,6 +514,7 @@ export class ProvisioningWorkflows {
           githubUser: record.job.config.githubUser,
           releaseChannel: record.job.config.releaseChannel
             ?? (record.job.config.useClankyPrerelease ? "prerelease" : undefined),
+          runtimeAdapter: workerLauncherPaths ? workspace.serverSettings.agent.adapter : undefined,
           ...(workerLauncherPaths
             ? {
                 startupCommand: `sh ${shellQuote(workerLauncherPaths.containerLauncher)} update ${shellQuote(record.job.config.id)}`,

@@ -1,18 +1,19 @@
 export const ENVIRONMENT_RUNTIME_ROOT = "/var/lib/clanky";
 export const ENVIRONMENT_CONTAINER_STATE_ROOT = "/usr/local/share/clanky-environment/state";
 
+export const environmentRuntimeProfileDefaults = {
+  COPILOT_HOME: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/copilot`,
+  CODEX_HOME: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/codex`,
+  CLAUDE_CONFIG_DIR: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/claude`,
+  GH_CONFIG_DIR: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/gh`,
+};
+
 export const environmentRuntimeFeature = {
   id: "clanky-runtime",
   version: "1.0.0",
   name: "Clanky workspace runtime",
   description: "Private, non-root Clanky tooling and container-start recovery.",
   dependsOn: { "ghcr.io/devcontainers/features/node:2": {} },
-  containerEnv: {
-    COPILOT_HOME: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/copilot`,
-    CODEX_HOME: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/codex`,
-    CLAUDE_CONFIG_DIR: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/claude`,
-    GH_CONFIG_DIR: `${ENVIRONMENT_RUNTIME_ROOT}/profiles/gh`,
-  },
   entrypoint: "/usr/local/share/clanky-environment/start.sh",
 };
 
@@ -22,11 +23,11 @@ user="$_REMOTE_USER"
 home="$_REMOTE_USER_HOME"
 [ -n "$home" ] && [ -d "$home" ] || { echo "Clanky requires a tooling user with a home directory." >&2; exit 1; }
 packages=""
-for pair in git:git gh:gh curl:curl dtach:dtach tmux:tmux flock:util-linux runuser:util-linux ssh:openssh-client; do
+for pair in git:git gh:gh curl:curl dtach:dtach tmux:tmux flock:util-linux runuser:util-linux ssh:openssh-client timeout:coreutils; do
   command -v "\${pair%%:*}" >/dev/null 2>&1 || packages="$packages \${pair#*:}"
 done
 if [ -n "$packages" ]; then
-  command -v apt-get >/dev/null 2>&1 || { echo "Clanky needs Git, gh, curl, dtach, tmux, util-linux and OpenSSH. Install them in the project image or use a Debian/Ubuntu template." >&2; exit 1; }
+  command -v apt-get >/dev/null 2>&1 || { echo "Clanky needs Git, gh, curl, dtach, tmux, util-linux, OpenSSH and coreutils. Install them in the project image or use a Debian/Ubuntu template." >&2; exit 1; }
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages ca-certificates
   rm -rf /var/lib/apt/lists/*

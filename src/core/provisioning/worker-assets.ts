@@ -7,6 +7,7 @@ import { HARNESS_ADAPTER_IDS, createAgentSettings } from "@/shared/settings";
 import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { getWorkerChannelPath } from "../worker-channel";
 import { ENVIRONMENT_RUNTIME_ROOT } from "../environments/runtime-feature";
+import { WORKER_UPDATE_TIMEOUT_MS } from "./constants";
 
 export interface WorkerPaths {
   hostRoot: string;
@@ -221,7 +222,8 @@ mkdir -p "$bin_dir" "$data_dir"
 update_outcome=unchanged
 if [ -n "$update_job" ] || [ -n "$update_startup" ] || [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
 update_installation() {
-root="$root" binary="$binary" installer="$installer" install_dir="$install_dir" install_home="$install_home" installed_binary="$installed_binary" CLANKY_RELEASE_CHANNEL="$CLANKY_RELEASE_CHANNEL" sh -eu <<'CLANKY_INSTALL'
+install_status=0
+root="$root" binary="$binary" installer="$installer" install_dir="$install_dir" install_home="$install_home" installed_binary="$installed_binary" CLANKY_RELEASE_CHANNEL="$CLANKY_RELEASE_CHANNEL" timeout --verbose --kill-after=5s ${WORKER_UPDATE_TIMEOUT_MS / 1000}s sh -eu <<'CLANKY_INSTALL' || install_status=$?
 mkdir -p "$install_dir" "$install_home"
 cleanup_installation() {
   rm -rf -- "$install_dir" "$install_home"
@@ -303,6 +305,9 @@ cleanup_installation
 trap - EXIT
 printf '%s\\n' "$CLANKY_RELEASE_CHANNEL" >"$root/release-channel"
 CLANKY_INSTALL
+rm -rf -- "$install_dir" "$install_home" || return 1
+rm -f -- "$installer" || return 1
+return "$install_status"
 }
 if update_installation; then
   update_outcome=updated

@@ -95,6 +95,7 @@ export function sshIdentityResponse(identities: SshAgentIdentity[]): Buffer {
 }
 export async function requestSourceAgent(socketPath: string | undefined, payload: Buffer): Promise<Buffer> {
   if (!socketPath) throw sshAgentError("source_unavailable", "The selected host has no explicitly available SSH agent.");
+  const frame = sshFrame(payload);
   return await new Promise<Buffer>((resolve, reject) => {
     let response: Buffer = Buffer.alloc(0);
     let settled = false;
@@ -106,7 +107,7 @@ export async function requestSourceAgent(socketPath: string | undefined, payload
       if (error) reject(error); else resolve(result!);
     };
     socket.setTimeout(5000, () => finish(sshAgentError("source_unavailable", "The selected SSH agent timed out.")));
-    socket.once("connect", () => socket.write(sshFrame(payload)));
+    socket.once("connect", () => socket.write(frame));
     socket.on("data", (chunk: Buffer) => {
       if (response.length + chunk.length > SSH_AGENT_MAX_FRAME_BYTES + 4) {
         finish(sshAgentError("protocol_invalid", "The source SSH-agent response is too large."));

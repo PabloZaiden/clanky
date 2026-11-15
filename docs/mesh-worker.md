@@ -933,13 +933,14 @@ Only the separate explicit `--reset-credentials` choice also removes its
 private volume. It never deletes the source checkout. Do not remove private
 volumes merely to rebuild an environment.
 
-Host-side restart/rebuild preserve the worker's live selected channel. Add
-`--release-channel stable` or `--release-channel latest` to change it explicitly.
+Host-side restart/rebuild preserve the worker's live selected channel and
+native adapter. Add `--release-channel stable` or `--release-channel latest` to
+change the channel, or `--runtime-adapter codex` to select another native runtime.
 
 Default Copilot, Codex, Claude and GitHub CLI profile directories also live in
-the private volume, alongside Clanky's managed OpenCode profile. Project-defined
-profile environment variables remain authoritative; projects choosing custom
-paths must provide their own durable mounts.
+the private volume, alongside Clanky's managed OpenCode profile. Image, Feature
+and project profile environment settings remain authoritative, including empty
+values. Projects choosing custom paths must provide their own durable mounts.
 
 ### Worker process loop
 
