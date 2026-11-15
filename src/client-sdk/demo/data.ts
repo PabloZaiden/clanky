@@ -27,7 +27,7 @@ export const DEMO_WORKER: ExecutionHostDescriptor = {
 };
 
 export const DEMO_NOTIFICATIONS: AgentNotificationSettings = {
-  ...DEFAULT_NOTIFICATION_PREFERENCES, configured: false, lastDeliveryError: null,
+  ...DEFAULT_NOTIFICATION_PREFERENCES, configured: false, payload: { mode: "listen" }, lastDeliveryError: null,
 };
 export const DEMO_RELAYS: ControllerRelayPairingStatus = {
   controllerFingerprint: "Demo fictional fingerprint", bootstrapEnvironment: "Demo simulation",

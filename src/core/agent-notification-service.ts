@@ -5,14 +5,15 @@ import {
   SetAgentNotificationSettingsSchema,
   type AgentNotificationSettings,
   type AgentNotification,
+  type NotificationPayload,
 } from "@/contracts/schemas/agent-notifications";
 import {
   getNotificationWebhookUrl, getNotificationWebhookGeneration, getNotificationPreferences, getNotificationDeliveryError,
-  setNotificationDeliveryError, updateNotificationSettings,
+  setNotificationDeliveryError, updateNotificationSettings, getNotificationPayload,
 } from "../persistence/preferences";
 import { DomainError } from "../domain/domain-error";
 import { requireCurrentUserId, requireExecutionOwnerUserId } from "../context/user-context";
-import type { NotificationEventKind } from "@/shared/agent-notifications";
+import { renderNotificationTemplate, type NotificationEventKind } from "@/shared/agent-notifications";
 import { automationEventEmitter } from "./event-emitter";
 import { loadChatMetadata } from "../persistence/chats";
 import { loadAutomation, loadAutomationRunSummary } from "../persistence/automations";
@@ -44,6 +45,7 @@ class AgentNotificationService {
   async settings(): Promise<AgentNotificationSettings> {
     return {
       configured: await this.webhookUrl() !== null,
+      payload: getNotificationPayload(),
       ...getNotificationPreferences(),
       lastDeliveryError: getNotificationDeliveryError(),
     };
@@ -142,10 +144,10 @@ class AgentNotificationService {
         title: `${boundedText(label, 100 - description.length - 2)}: ${description}`,
         shortDescription: boundedText(`${name ? `${label}: ` : ""}${description}${context ? ` ${context}` : ""}`, 500),
         markdownContent: `${markdownText(label)}: ${description}${context ? `\n\n${markdownText(context)}` : ""}\n\nOpen Clanky to view the details.`,
-      }, signal);
+      }, signal, getNotificationPayload(ownerUserId));
       if (!result.ok) failure = result.message;
     } catch {
-      failure = "Automatic notification delivery could not be confirmed. Inspect Listen before sending again; no automatic retry will occur.";
+      failure = "Automatic notification delivery could not be confirmed. Inspect the receiving service before sending again; no automatic retry will occur.";
     }
     if (failure) {
       if (generation !== getNotificationWebhookGeneration(ownerUserId)) {
@@ -179,20 +181,30 @@ class AgentNotificationService {
       log.warn("Notification webhook is not configured");
       return {
         ok: false, code: "notification_not_configured", completion: "not_executed",
-        message: "Configure a Listen webhook in Settings > Agents & integrations before sending notifications.",
+        message: "Configure a notification webhook in Settings > Agents & integrations before sending notifications.",
       };
     }
-    return this.deliver(url, payload, signal);
+    return this.deliver(url, payload, signal, getNotificationPayload());
   }
 
-  private async deliver(url: string, payload: AgentNotification, signal: AbortSignal) {
+  private async deliver(url: string, payload: AgentNotification, signal: AbortSignal, configuration: NotificationPayload) {
     signal.throwIfAborted();
+    const rendered = configuration.mode === "listen"
+      ? { success: true as const, body: JSON.stringify(payload) }
+      : renderNotificationTemplate(configuration.template, payload);
+    if (!rendered.success) {
+      log.warn("Notification payload exceeds the delivery limit");
+      return {
+        ok: false, code: "notification_payload_invalid", completion: "not_executed",
+        message: rendered.error,
+      };
+    }
     let response: Response;
     try {
       response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: rendered.body,
         redirect: "manual",
         signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
       });
@@ -212,13 +224,13 @@ class AgentNotificationService {
         ok: false, code: "notification_webhook_rejected",
         completion: response.status >= 400 && response.status < 500 ? "not_executed" : "outcome_unknown",
         status: response.status,
-        message: "The webhook did not accept the notification. Inspect Listen before deciding whether to send again.",
+        message: "The webhook did not accept the notification. Inspect the receiving service before deciding whether to send again.",
       };
     }
     log.info("Notification accepted by webhook", { status: response.status });
     return {
       ok: true, completion: "completed", status: "accepted",
-      message: "The webhook accepted the notification. This does not confirm browser push delivery or that the user read it.",
+      message: "The webhook accepted the notification. This does not confirm downstream delivery or that the user read it.",
     };
   }
 }

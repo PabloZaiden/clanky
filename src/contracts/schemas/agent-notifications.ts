@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { NotificationEventPreferences } from "@/shared/agent-notifications";
+import {
+  notificationTemplateError, NOTIFICATION_TEMPLATE_MAX_BYTES,
+  type NotificationEventPreferences,
+} from "@/shared/agent-notifications";
 
 export const NotificationEventPreferencesSchema = z.object({
   error: z.boolean(),
@@ -29,8 +32,20 @@ export const NotificationWebhookUrlSchema = z.string().trim().min(1).max(4096).r
   }
 }, "Use an absolute HTTP(S) webhook URL without user credentials or a fragment.");
 
+export const NotificationPayloadSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("listen") }).strict(),
+  z.object({
+    mode: z.literal("custom"),
+    template: z.string().min(1).max(NOTIFICATION_TEMPLATE_MAX_BYTES).superRefine((value, context) => {
+      const message = notificationTemplateError(value);
+      if (message) context.addIssue({ code: "custom", message });
+    }),
+  }).strict(),
+]);
+
 export const SetAgentNotificationSettingsSchema = z.object({
   webhookUrl: NotificationWebhookUrlSchema.nullable().optional(),
+  payload: NotificationPayloadSchema.optional(),
   enabled: z.boolean().optional(),
   events: NotificationEventPreferencesSchema.partial().refine(
     (value) => Object.keys(value).length > 0, "Choose at least one event preference.",
@@ -39,11 +54,12 @@ export const SetAgentNotificationSettingsSchema = z.object({
 
 export const AgentNotificationSettingsSchema = z.object({
   configured: z.boolean(),
+  payload: NotificationPayloadSchema,
   ...NotificationPreferencesSchema.shape,
   lastDeliveryError: NotificationDeliveryErrorSchema.nullable(),
 }).strict();
 
-// Listen's text webhook contract; the control transport also bounds the full request.
+// Notification content keeps Listen's limits; custom templates map these same fields.
 export const AgentNotificationSchema = z.object({
   title: z.string().trim().min(1).max(100),
   shortDescription: z.string().trim().min(1).max(500),
@@ -58,3 +74,4 @@ export type SetAgentNotificationSettings = z.infer<typeof SetAgentNotificationSe
 export type NotificationPreferences = z.infer<typeof NotificationPreferencesSchema>;
 export type NotificationDeliveryError = z.infer<typeof NotificationDeliveryErrorSchema>;
 export type AgentNotification = z.infer<typeof AgentNotificationSchema>;
+export type NotificationPayload = z.infer<typeof NotificationPayloadSchema>;
