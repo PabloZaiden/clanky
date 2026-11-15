@@ -376,6 +376,39 @@ Preserve the worker data directory during upgrades and service restarts. Do
 not copy a conversation binding to another user, workspace, controller, or
 worker. The workspace directory remains a navigation root, not a sandbox.
 
+## Selected SSH-agent keys
+
+Load keys into the SSH agent on the intended local or enrolled Mesh custodian
+using that host's normal agent tooling. In SSH-key source settings, explicitly
+authorize that host, discover its loaded public identities and register the
+desired aliases. Grant individual keys to each workspace; access starts empty.
+Clanky stores public metadata and grants, never private keys or passphrases.
+The custodian must remain connected and its selected keys must remain loaded.
+
+Dedicated managed workers expose a private filtered `SSH_AUTH_SOCK` to their
+Git, terminal and agent processes. Enabling or disabling a grant takes effect
+without rebuilding. Identity listing and every signature recheck the account,
+dedicated-worker binding and current grants. Revocation prevents new signatures;
+it cannot terminate an already authenticated SSH session. Missing keys,
+revoked access or disconnected custodians fail closed, not through an
+unfiltered agent or private-key-file fallback.
+
+Initial private cloning uses an expiring lease bound to the allocated
+environment, provisioning operation and verified provisioning host. Its socket
+must be closed when that operation finishes or is cancelled. Git consumers use
+the scoped socket with key-file fallback disabled and strict SSH server
+host-key verification. Provisioning hosts need the correct server entry in
+their normal known-hosts store; Clanky does not accept unknown host keys.
+
+This is an explicitly negotiated, signed `sshAgent: 1` extension within Mesh
+v7. Update controller, custodian, workspace worker and any relay before using
+it. Relays admit only the bounded SSH-agent route, not arbitrary API forwarding.
+Signing uses node trust and active grants, not an API token or control-tool
+conversation. Manual dedicated-worker integrations enable the socket with
+`CLANKY_WORKSPACE_SSH_AGENT=1`. If the application data directory is too long
+for a Unix socket pathname, set `CLANKY_SSH_AGENT_SOCKET_DIR` to an absolute,
+private directory owned by the worker user.
+
 ## Independent worker lifecycle
 
 Creating, enrolling, restarting, rebuilding, revoking, or deleting a worker
@@ -751,9 +784,7 @@ maintenance commands are never automatically replayed. Completed stages remain
 recorded even if a later stage fails.
 Jobs and their logs remain on the Dashboard until dismissed.
 
-Automatic workspaces created with the older one-shot launcher need a manual
-launcher upgrade before this update flow can restart them safely. There is no
-startup migration of existing Devboxes. Unmanaged or unreachable workers report
+Unmanaged or unreachable workers report
 an individual job failure rather than preventing other workers from updating.
 Automatic workspaces without an enrolled Mesh worker are not update targets.
 Use the workspace's individual **Restart** or **Rebuild** action for container
@@ -762,7 +793,7 @@ channel. **Update all** updates workers without container maintenance. The bulk
 restart API remains available for explicit provisioning lifecycle operations.
 
 Binary updates do not replace an automatic workspace's generated launcher or
-supervisor scripts. To refresh those scripts in an existing Devbox after
+supervisor scripts. To refresh those scripts in a managed environment after
 upgrading the controller, use the workspace's **Restart** action in Clanky.
 It publishes the current startup assets before starting the environment; a full
 rebuild is not required just to refresh them. A raw Docker restart does not
@@ -778,16 +809,36 @@ still be dismissed from their detail view.
 
 New automatic workers use outbound connections for both invitation routes.
 Workspace creation selects **Worker connection**, not a worker address;
-provisioning does not publish a container worker port. Existing listener-based
-workers preserve their route and published endpoint during restart/rebuild.
+provisioning does not publish a container worker port.
 
 Automatic workspace creation selects **GitHub Copilot**, **Codex**,
 **OpenCode 2**, or **Claude Agent**. Native adapters require a
-dedicated worker. The host running
-Devbox can use local or Mesh execution independently of the container's
+dedicated worker. The provisioning host can use local or Mesh execution independently of the container's
 adapter.
 
-The persistent `.devbox/clanky-worker` startup assets store the selected
+Clanky uses Docker and the Dev Containers CLI directly. Install both on the
+selected provisioning host; no external provisioning executable is needed.
+Existing image/Dockerfile devcontainer definitions remain unchanged. Clanky
+adds its runtime Feature through a private generated definition, preserving the
+original build paths, Features, commands, mounts and environment. Docker Compose
+definitions are rejected explicitly rather than rewritten. With no definition,
+choose a language using `clanky environment templates`.
+
+The tooling user comes from the merged project/image configuration. Clanky
+does not override `remoteUser` or `containerUser`, force root for rootless
+Docker, or repair checkout ownership. Standard Docker with a non-root tooling
+user is the supported baseline. The checkout must already be writable by that
+user. A different non-root `containerUser` cannot switch to `remoteUser` at
+startup; Clanky reports the limitation without elevating privileges. Explicit
+project root settings are not silently changed.
+
+Git author identity and the provisioning host's standard public `known_hosts`
+entries are added without replacing the container user's existing entries.
+Private SSH keys and SSH configuration are never copied. Custom SSH aliases or
+nonstandard trust paths must be configured by the project.
+
+The private `/var/lib/clanky` runtime points into the tooling user's home and
+uses an environment-owned Docker volume outside the checkout. Its startup assets store the selected
 adapter/provider and install only its current native CLI before starting the
 worker. Node/npm must be available in the container.
 Installation uses a private prefix, validates only that the
@@ -806,18 +857,16 @@ Clanky-managed rebuild/restart jobs are serialized per workspace. Previously
 installed private runtimes remain cached; global packages and authentication
 profiles are untouched. Authentication still needs to be configured separately.
 
-Rebuild/restart preserves the current workspace runtime. The Devbox
-`startup-command` persists in its state and runs on external `devbox up`,
-`devbox rebuild` and `devbox arise`, without a running Clanky controller.
-Raw Docker restarts and other devcontainer tools do not invoke that Devbox
-hook. Existing automatic workspaces acquire these assets on their next
-Clanky-managed rebuild/restart or adapter change. Controller upgrades do not
+Rebuild/restart preserves the current workspace runtime, identity and
+authentication. The additive Feature starts the worker as the tooling user on
+every actual container start, including a raw Docker restart without a
+controller connection. Original project startup still runs. Controller upgrades do not
 install runtimes or rewrite remote startup assets; rebuild/restart or save the
 adapter to update those assets.
 
 Maintenance jobs distinguish connection failure before dispatch, returned
 command failure, confirmed interruption, and an unconfirmed remote outcome.
-If a restart/rebuild response is lost, Clanky verifies read-only Devbox status
+If a restart/rebuild response is lost, Clanky verifies read-only environment status
 and worker/backend connectivity instead of resending the command. Automatic
 workers also require installation evidence for that operation and fresh signed
 health reporting the full installed build version; an old healthy worker alone
@@ -839,26 +888,68 @@ Within a worker's execution environment, `clanky worker channel` reports its
 effective default; `clanky worker channel stable` or `latest` changes it without
 updating the binary immediately. `clanky update` then follows that saved
 default. Automatic worker configuration lives in
-`.devbox/clanky-worker/update-channel`; ordinary server workers keep it in
+`/var/lib/clanky/update-channel`; ordinary server workers keep it in
 their Clanky data directory. Do not edit generated launcher scripts to override
-this file. Older stable/prerelease launcher selections remain readable until
-explicitly replaced.
+this file.
 
 Stable/latest bootstrap uses the shared GitHub installer and required SHA-256
 checksums, with no cross-channel fallback. Every Clanky-managed **Restart** or
 **Rebuild** resolves and installs the current release of the effective channel,
 even when the cached binary already has that channel. Installation happens once
-in the Devbox startup hook, before the worker loop is started; configuration
+at container startup, before the worker loop is started; configuration
 refresh then restarts that installed binary without downloading it again.
 Successful maintenance requires fresh signed worker health matching the full
 resolved binary version, not just its semantic-version prefix. Resolution,
-download or checksum failures fail maintenance without falling back to the old
-binary. Worker data, enrollment, runtime and the selected channel are preserved.
+download or checksum failures start the previously installed valid worker with
+an explicit warning in the environment and maintenance UI. This is not a
+successful update. Without a valid installed worker, startup fails visibly.
+The replacement binary must report its version before publication.
+Worker data, enrollment, runtime and the selected channel are preserved.
+
+### Host-side recovery
+
+Run these commands on the provisioning host; they do not depend on a healthy
+dedicated worker or controller:
+
+```bash
+clanky environment list
+clanky environment status --directory /path/to/checkout
+clanky environment shell --directory /path/to/checkout
+clanky environment stop --directory /path/to/checkout
+clanky environment restart --directory /path/to/checkout
+clanky environment rebuild --directory /path/to/checkout
+clanky environment arise
+```
+
+For environments created by an account through the API, use its account ID
+with `--owner`; `list --owner ACCOUNT_ID` reads that account's registry.
+`arise` starts only recorded, ownership-verified stopped containers.
+Restart and recovery run the project's `postStartCommand` through the Dev
+Containers CLI, without simulating an editor attachment. Worker recovery
+restores the project's resolved `remoteEnv` from private runtime state.
+Use Rebuild after changing the devcontainer definition.
+`remove` removes the owned container but preserves source and private state.
+Only the separate explicit `--reset-credentials` choice also removes its
+private volume. It never deletes the source checkout. Do not remove private
+volumes merely to rebuild an environment.
+
+Host-side restart/rebuild preserve the worker's live selected channel and
+native adapter. Add `--release-channel stable` or `--release-channel latest` to
+change the channel, or `--runtime-adapter codex` to select another native runtime.
+
+Default Copilot, Codex, Claude and GitHub CLI profile directories also live in
+the private volume, alongside Clanky's managed OpenCode profile. Image, Feature
+and project profile environment settings remain authoritative, including empty
+values. Projects choosing custom paths must provide their own durable mounts.
+The tooling user's Git configuration trusts only the managed checkout before
+project lifecycle commands run. This permits Git on Docker Desktop bind mounts
+whose reported owner differs, without changing checkout permissions or trusting
+other repositories.
 
 ### Worker process loop
 
 New automatic worker workspaces use a persistent shell loop in
-`.devbox/clanky-worker/supervisor.sh`. Ordinary launcher calls install Clanky
+`/var/lib/clanky/supervisor.sh`. Ordinary launcher calls install Clanky
 when missing or when its selected release channel changes; the maintenance
 startup hook explicitly updates it first. The launcher then starts the loop in
 the background. The loop runs the binary, waits for it to exit, and executes the
@@ -867,7 +958,7 @@ restarting the worker after an update does not download or reinstall anything.
 
 The loop requires `flock` from util-linux in the container. A kernel-held lock
 prevents duplicate loops and is released when the process exits. Worker output
-and restart diagnostics go to `.devbox/clanky-worker/worker.log`. The loop keeps
+and restart diagnostics go to `/var/lib/clanky/worker.log`. The loop keeps
 retrying until explicitly stopped. It waits one second between normal launches;
 repeated launches lasting less than five seconds increase that delay
 exponentially up to 30 seconds rather than spinning. A run lasting at least five
@@ -888,10 +979,10 @@ Inside the worker's execution environment, `clanky worker service status`,
 container administration, use:
 
 ```bash
-sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh status
-sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh restart
-sh <workspace-directory>/.devbox/clanky-worker/supervisor.sh stop
-sh <workspace-directory>/.devbox/clanky-worker/launcher.sh
+sh /var/lib/clanky/supervisor.sh status
+sh /var/lib/clanky/supervisor.sh restart
+sh /var/lib/clanky/supervisor.sh stop
+sh /var/lib/clanky/launcher.sh
 ```
 
 `restart` terminates only the worker; the already-running loop starts its
@@ -912,12 +1003,14 @@ the launcher again.
 
 ## GitHub CLI credentials in automatic workspaces
 
-When Devbox provisions an automatic workspace, Clanky can pass the selected
+When Clanky provisions an automatic workspace, it can pass the selected
 GitHub CLI account's `GH_TOKEN` to interactive terminals on that execution
 host. This lets `gh` and Copilot CLI reuse the workspace authentication
 without a second login.
 
-The token is not stored in Clanky or sent through the Mesh protocol. Run only
+The selected token is stored in the workspace's private runtime volume, not in
+Git or public API responses, and restored into worker/shell environments on
+container restart. Run only
 trusted code in workspaces where this behavior is enabled, because terminal
 processes can read inherited environment values.
 

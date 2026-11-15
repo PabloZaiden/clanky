@@ -85,10 +85,12 @@ export interface UseWorkspaceCreateResult {
   setAutomaticBasePath: (path: string) => void;
   automaticDevcontainerSubpath: string;
   setAutomaticDevcontainerSubpath: (subpath: string) => void;
-  automaticDevboxTemplate: string;
-  setAutomaticDevboxTemplate: (template: string) => void;
+  automaticEnvironmentTemplate: string;
+  setAutomaticEnvironmentTemplate: (template: string) => void;
   automaticGithubUser: string;
   setAutomaticGithubUser: (githubUser: string) => void;
+  automaticSshKeyIds: string[];
+  setAutomaticSshKeyIds: (ids: string[]) => void;
   automaticAdvancedOpen: boolean;
   setAutomaticAdvancedOpen: (open: boolean) => void;
   automaticAdapter: HarnessAdapter;
@@ -205,8 +207,9 @@ export function useWorkspaceCreate({
   const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
-  const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
+  const [automaticEnvironmentTemplate, setAutomaticEnvironmentTemplate] = useState("");
   const [automaticGithubUser, setAutomaticGithubUser] = useState("");
+  const [automaticSshKeyIds, setAutomaticSshKeyIds] = useState<string[]>([]);
   const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
   const [automaticAdapter, setAutomaticAdapter] = useState<HarnessAdapter>("copilot");
   const [automaticChannel, setAutomaticChannel] = useState<WorkerUpdateMode>("default");
@@ -280,9 +283,10 @@ export function useWorkspaceCreate({
         setAutomaticCreateNewRepository(config.createNewRepository ?? false);
         setAutomaticBasePath(config.basePath);
         setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
-        setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
+        setAutomaticEnvironmentTemplate(config.environmentTemplate ?? "");
         setAutomaticGithubUser(config.githubUser ?? "");
-        setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
+        setAutomaticSshKeyIds(config.sshKeyIds ?? []);
+        setAutomaticAdvancedOpen(Boolean(config.environmentTemplate ?? config.devcontainerSubpath ?? config.githubUser));
         setAutomaticAdapter(config.adapter ?? getHarnessAdapterForProvider(config.provider));
         setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
         prefilledRetryJobIdRef.current = retryJobId;
@@ -351,8 +355,9 @@ export function useWorkspaceCreate({
       getRouteString(route, "basePath") ?? "/workspaces",
     );
     setAutomaticDevcontainerSubpath("");
-    setAutomaticDevboxTemplate("");
+    setAutomaticEnvironmentTemplate("");
     setAutomaticGithubUser("");
+    setAutomaticSshKeyIds([]);
     setAutomaticAdvancedOpen(false);
     setAutomaticAdapter("copilot");
     setAutomaticChannel("default");
@@ -564,9 +569,10 @@ export function useWorkspaceCreate({
     setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
     setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
-    setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
+    setAutomaticEnvironmentTemplate(config.environmentTemplate ?? "");
     setAutomaticGithubUser(config.githubUser ?? "");
-    setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath ?? config.githubUser));
+    setAutomaticSshKeyIds(config.sshKeyIds ?? []);
+    setAutomaticAdvancedOpen(Boolean(config.environmentTemplate ?? config.devcontainerSubpath ?? config.githubUser));
     setAutomaticAdapter(config.adapter ?? getHarnessAdapterForProvider(config.provider));
     setAutomaticChannel(config.releaseChannel ?? config.channel ?? "default");
     provisioning.clearActiveJob();
@@ -594,8 +600,8 @@ export function useWorkspaceCreate({
           toast.error("Repository URL is required.");
           return;
         }
-        if (automaticCreateNewRepository && !automaticDevboxTemplate.trim()) {
-          toast.error("Devbox template is required when the repository doesn't exist yet.");
+        if (automaticCreateNewRepository && !automaticEnvironmentTemplate.trim()) {
+          toast.error("Environment template is required when the repository doesn't exist yet.");
           return;
         }
         if (
@@ -621,11 +627,12 @@ export function useWorkspaceCreate({
             : {}),
           repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
-          devcontainerSubpath: automaticDevboxTemplate.trim()
+          devcontainerSubpath: automaticEnvironmentTemplate.trim()
             ? null
             : automaticDevcontainerSubpath.trim() || null,
-          devboxTemplate: automaticDevboxTemplate.trim() || null,
+          environmentTemplate: automaticEnvironmentTemplate.trim() || null,
           githubUser: automaticGithubUser.trim() || null,
+          sshKeyIds: automaticSshKeyIds,
           ...createAgentSettings(automaticAdapter),
           createNewRepository: automaticCreateNewRepository,
           mode: "provision",
@@ -735,10 +742,12 @@ export function useWorkspaceCreate({
     setAutomaticBasePath,
     automaticDevcontainerSubpath,
     setAutomaticDevcontainerSubpath,
-    automaticDevboxTemplate,
-    setAutomaticDevboxTemplate,
+    automaticEnvironmentTemplate,
+    setAutomaticEnvironmentTemplate,
     automaticGithubUser,
     setAutomaticGithubUser,
+    automaticSshKeyIds,
+    setAutomaticSshKeyIds,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
     automaticAdapter,

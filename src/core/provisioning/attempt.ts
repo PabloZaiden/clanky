@@ -7,7 +7,7 @@ import type {
 import { createLogger } from "@pablozaiden/webapp/server";
 import { emitJobCancelled, emitJobCompleted, emitJobFailed } from "./job-events";
 import { appendSystemLog, persistProvisioningState, persistStep } from "./job-logger";
-import { buildError } from "./devbox-utils";
+import { buildError } from "./environment-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { isProvisioningJobTerminal } from "@/shared";
 import type { ProvisioningJobRecord } from "./types";

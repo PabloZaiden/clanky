@@ -3,8 +3,88 @@ name: Pull Request
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
+  managed-environments:
+    name: Managed environment check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Select affected integration changes
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            environment=true
+            ssh=true
+          else
+            git diff --name-only HEAD^1 HEAD -- \
+              src/core/environments src/core/provisioning src/cli/environment.ts \
+              src/api/index.ts src/api/environments.ts src/api/provisioning.ts \
+              src/index.ts src/cli/app.ts src/contracts/schemas/environments.ts \
+              src/shared/provisioning.ts src/shared/execution-host.ts \
+              src/contracts/schemas/provisioning.ts \
+              src/core/provisioning-manager.ts src/core/workspace-manager.ts \
+              src/core/execution-host-prerequisites.ts src/core/execution-host-discovery-service.ts \
+              tests/e2e/environment-journey.test.ts scripts/run-tests.ts \
+              .github/workflows/pr.yml > "$RUNNER_TEMP/clanky-environment-changes"
+            if [ -s "$RUNNER_TEMP/clanky-environment-changes" ]; then
+              environment=true
+            else
+              environment=false
+            fi
+            git diff --name-only HEAD^1 HEAD -- \
+              'src/core/ssh-*.ts' src/api/index.ts src/api/ssh-key-access.ts src/api/mesh-internal \
+              src/server.ts src/cli/worker-supervisor.ts \
+              src/core/mesh-execution-gateway.ts src/core/mesh-relay-policy.ts \
+              src/contracts/schemas/ssh-key-access.ts src/shared/ssh-key-access.ts \
+              src/persistence/ssh-key-access.ts src/persistence/migrations/ssh-key-access.ts \
+              src/persistence/migrations/index.ts src/persistence/schema-inventory.ts \
+              src/core/provisioning src/contracts/schemas/provisioning.ts \
+              src/shared/provisioning.ts tests/e2e/ssh-key-access-journey.test.ts \
+              scripts/run-tests.ts .github/workflows/pr.yml > "$RUNNER_TEMP/clanky-ssh-changes"
+            if [ -s "$RUNNER_TEMP/clanky-ssh-changes" ]; then ssh=true; else ssh=false; fi
+          fi
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "ssh=$ssh" >> "$GITHUB_OUTPUT"
+          if [ "$environment" = true ] || [ "$ssh" = true ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Setup Node.js 24
+        if: steps.changes.outputs.needed == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.x
+      - name: Setup Bun
+        if: steps.changes.outputs.needed == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        if: steps.changes.outputs.needed == 'true'
+        run: bun install --frozen-lockfile
+      - name: Install Dev Containers CLI
+        if: steps.changes.outputs.environment == 'true'
+        run: npm install --global @devcontainers/cli@0.90.0
+      - name: Build
+        if: steps.changes.outputs.needed == 'true'
+        run: bun run build
+      - name: Exercise the real environment lifecycle
+        if: steps.changes.outputs.environment == 'true'
+        run: bun run test:environments
+      - name: Exercise selected SSH key access
+        if: steps.changes.outputs.ssh == 'true'
+        run: bun run test:ssh-keys
+
   release-metadata:
     runs-on: ubuntu-latest
 

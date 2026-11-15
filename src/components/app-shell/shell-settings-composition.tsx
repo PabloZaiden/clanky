@@ -41,6 +41,7 @@ import { ControlApprovalPolicyContent } from "../app-settings/control-approval-p
 import { PendingControlRequests } from "../control/control-requests";
 import { NotificationSettingsContent } from "../app-settings/notification-settings-content";
 import type { NotificationSettings } from "../../hooks/useNotificationSettings";
+import { SshKeySourcesContent } from "../app-settings/ssh-key-sources-content";
 
 export interface ShellSettingsCompositionOptions {
   onNavigate: (route: WebAppRoute) => void;
@@ -185,6 +186,14 @@ export function buildShellSettingsSections({
       scope: "user" as const,
       // Creation spans a grant form, a private one-time token and per-credential revocation.
       render: () => <ControlCredentialsContent />,
+    },
+    {
+      id: "ssh-key-sources",
+      title: "SSH key sources",
+      category: { id: "integrations", title: "Agents & integrations" },
+      scope: "user" as const,
+      // Registering sources combines host discovery with individual key selection.
+      render: () => <SshKeySourcesContent />,
     },
     {
       id: "collaboration",

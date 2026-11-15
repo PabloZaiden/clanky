@@ -2120,12 +2120,12 @@ Create a provisioning job.
 | `repoUrl` | string | Yes | Repository URL for `provision` mode unless `createNewRepository` is true |
 | `basePath` | string | Yes | Parent path used by `provision` mode |
 | `devcontainerSubpath` | string \| null | Yes | Optional devcontainer subpath; use `null` when absent |
-| `devboxTemplate` | string \| null | No | Devbox template when creating a new repository |
-| `githubUser` | string \| null | No | Optional GitHub user passed to devbox |
+| `environmentTemplate` | string \| null | No | Language template when no project devcontainer exists |
+| `githubUser` | string \| null | No | Optional GitHub account shared with this environment |
 | `adapter` | string | No | `copilot` (default), `codex` or `opencode2`; all adapters run on the dedicated worker |
 | `provider` | string | Yes | The native adapter's matching provider (`opencode` for `opencode2`) |
 | `mode` | string | Yes | `provision`, `rebuild`, `restart`, or `arise` |
-| `createNewRepository` | boolean | No | Create a new repository with a devbox template; defaults to `false` |
+| `createNewRepository` | boolean | No | Create a new repository with a language template; defaults to `false` |
 | `targetDirectory` | string \| null | Yes | Existing repository path for `rebuild` or `restart`; use `null` otherwise |
 | `workspaceId` | string \| null | Yes | Existing workspace ID for `rebuild` or `restart`; use `null` otherwise |
 
@@ -2163,14 +2163,14 @@ workers retain their transport during restart/rebuild. The controller must have
 `targetDirectory` and `workspaceId`; `arise` only needs the server context and
 mode-specific fields may be `null`.
 
-New worker workspaces persist the requested adapter. The Devbox provisioning
+New worker workspaces persist the requested adapter. The environment provisioning
 host uses local or Mesh execution to create the dedicated worker.
 Rebuild/restart uses the workspace's current saved adapter/provider, not a stale
 selection in the submitted request. Upgrades convert equivalent historical
 job selections to native adapters; unsupported historical selections cannot
 be retried. See
 [automatic runtime installation](mesh-worker.md#automatic-workspace-runtimes)
-for durable CLI installation and external Devbox rebuilds.
+for durable CLI installation and host-side recovery.
 
 **Response**
 
@@ -2237,7 +2237,7 @@ these execution semantics:
   execution, not job admission or connection attempts. Earlier commands may
   have completed before the current command fails to connect.
 - An uncertain automatic-workspace restart/rebuild enters `verifying`.
-  Clanky checks read-only Devbox status, then the normal worker/backend
+  Clanky checks read-only environment status, then the normal worker/backend
   connection. `recovery.status` becomes `confirmed` only after those checks
   pass; an unverified outcome remains `unconfirmed`. The disruptive command is
   never automatically replayed. Server `arise` has no equivalent completion

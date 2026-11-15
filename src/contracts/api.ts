@@ -27,7 +27,7 @@ import {
   SendChatMessageRequestSchema,
   UpdateChatRequestSchema,
   CheckExecutionHostPrerequisitesRequestSchema,
-  GetDevboxTemplatesRequestSchema,
+  GetEnvironmentTemplatesRequestSchema,
   CreateWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
   DeleteWorkspaceRequestSchema,
@@ -59,6 +59,7 @@ import {
 } from "./schemas";
 import type { z } from "zod";
 import type { ReplyToChatQuestionRequestSchema } from "./schemas/harness";
+export type { WorkspaceEnvironmentStatus, RemoveWorkspaceEnvironmentRequest } from "./schemas/environments";
 
 export type RestartAutomaticWorkspacesRequest =
   z.infer<typeof RestartAutomaticWorkspacesRequestSchema>;
@@ -385,9 +386,9 @@ export type UpdateTerminalSessionRequest = z.infer<typeof UpdateTerminalSessionR
 export type CheckExecutionHostPrerequisitesRequest = z.infer<typeof CheckExecutionHostPrerequisitesRequestSchema>;
 
 /**
- * Request body for POST /api/execution-hosts/:kind/:id/devbox-templates.
+ * Request body for POST /api/execution-hosts/:kind/:id/environment-templates.
  */
-export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;
+export type GetEnvironmentTemplatesRequest = z.infer<typeof GetEnvironmentTemplatesRequestSchema>;
 
 /**
  * Generic error response format used by all API endpoints.

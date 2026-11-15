@@ -57,6 +57,10 @@ of account configuration or maintain a second preference state.
 Application state uses [framework realtime](architecture.md#application-realtime),
 not app-owned raw WebSocket subscriptions.
 
+Use readable names and aliases in the UI, not opaque IDs, hashes or SSH-key
+fingerprints. Keep technical identifiers in machine-readable metadata rather
+than using them as user-facing labels or fallbacks.
+
 ## Layout and actions
 
 ### Responsive layouts and Duo validation
@@ -426,10 +430,10 @@ CLANKY_DISABLE_PASSKEY=true \
 
 The devcontainer installs SF Pro regular/italic for Apple-platform previews,
 not production distribution. Liberation and Noto Color Emoji remain fallbacks.
-Rerun `.devcontainer/install-prerequisites.sh` for existing containers; matching
-font installations are reused and failures stop setup. Font files and Apple's
-license stay outside the checkout and production images. Review the pinned
-download checksum/extraction paths when updating the Apple package. Linux
+Rerun `.devcontainer/install-prerequisites.sh` for existing containers. Installed
+fonts are reused; download, extraction and installation errors
+stop setup. Font files and Apple's license stay outside the checkout and
+production images. The installer uses Apple's current official download. Linux
 rendering can still differ from Safari despite using the same font family.
 
 ### Bun.WebView browser selection

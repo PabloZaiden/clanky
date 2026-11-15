@@ -34,8 +34,9 @@ export const CreateProvisioningJobRequestSchema = z.object({
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),
-  devboxTemplate: z.string().trim().nullish(),
+  environmentTemplate: z.string().trim().nullish(),
   githubUser: z.string().trim().nullish(),
+  sshKeyIds: z.array(z.string().uuid()).optional(),
   provider: AgentProviderSchema,
   adapter: z.enum(HARNESS_ADAPTER_IDS).default("copilot"),
   mode: ProvisioningJobModeSchema,
@@ -45,7 +46,10 @@ export const CreateProvisioningJobRequestSchema = z.object({
   /** For rebuild/restart: existing workspace ID */
   workspaceId: z.string().trim().nullable(),
   channel: WorkerUpdateModeSchema.optional(),
-}).strict().refine((data) => AgentSettingsSchema.safeParse({ adapter: data.adapter, provider: data.provider }).success, {
+}).strict().refine((data) => !data.sshKeyIds?.length || (data.mode === "provision" && !data.workspaceWorkerEnrollmentId), {
+  message: "Initial SSH keys can only be selected when provisioning a managed workspace",
+  path: ["sshKeyIds"],
+}).refine((data) => AgentSettingsSchema.safeParse({ adapter: data.adapter, provider: data.provider }).success, {
   message: "The provider does not match the native adapter",
   path: ["provider"],
 }).refine((data) => data.mode !== "provision" || !data.workspaceWorkerEnrollmentId, {
@@ -77,7 +81,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   }
   if (data.mode === "provision") {
     if (data.createNewRepository) {
-      return data.basePath.length > 0 && (data.devboxTemplate ?? "").length > 0;
+      return data.basePath.length > 0 && (data.environmentTemplate ?? "").length > 0;
     }
     return data.repoUrl.length > 0
       && !isIncompleteGitHubRepositoryUrl(data.repoUrl)

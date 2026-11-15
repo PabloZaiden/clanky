@@ -1,6 +1,6 @@
 export * from "./command-runner";
 export * from "./constants";
-export * from "./devbox-utils";
+export * from "./environment-utils";
 export * from "./errors";
 export * from "./attempt";
 export * from "./job-events";

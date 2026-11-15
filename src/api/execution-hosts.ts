@@ -17,7 +17,7 @@ import {
   ExecutionHostDescriptorSchema,
   ExecutionHostExecRequestSchema,
   ExecutionHostExecResponseSchema,
-  GetDevboxTemplatesRequestSchema,
+  GetEnvironmentTemplatesRequestSchema,
   ResolveExecutionHostWorkingDirectoryRequestSchema,
   UpdateExecutionHostConfigurationSchema,
 } from "@/contracts/schemas";
@@ -389,6 +389,7 @@ export const executionHostRoutes = defineRoutes({
         );
         const report = await executionHostDiscoveryService.checkPrerequisites(ref, {
           operationId: `prerequisites:${ctx.params["id"]!}`,
+          localUserId: ctx.requireUser().id,
           directory: "/",
           repositoriesBasePath: descriptor.repositoriesBasePath,
           responseId: ctx.params["id"]!,
@@ -410,14 +411,14 @@ export const executionHostRoutes = defineRoutes({
       }
     },
   },
-  "/api/execution-hosts/:kind/:id/devbox-templates": {
+  "/api/execution-hosts/:kind/:id/environment-templates": {
     auth: "user",
     sameOrigin: "mutations",
-    description: "List Devbox templates on an execution host.",
-    requestSchema: GetDevboxTemplatesRequestSchema,
+    description: "List Environment templates on an execution host.",
+    requestSchema: GetEnvironmentTemplatesRequestSchema,
     operations: {
       POST: {
-        requestSchema: GetDevboxTemplatesRequestSchema,
+        requestSchema: GetEnvironmentTemplatesRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "read",
@@ -425,7 +426,7 @@ export const executionHostRoutes = defineRoutes({
       },
     },
     async POST(req, ctx): Promise<Response> {
-      const validation = await parseAndValidate(GetDevboxTemplatesRequestSchema, req);
+      const validation = await parseAndValidate(GetEnvironmentTemplatesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
@@ -436,16 +437,17 @@ export const executionHostRoutes = defineRoutes({
       try {
         await executionHostService.requireCapability(
           ref,
-          "devboxLifecycle",
+          "environmentLifecycle",
         );
         executionHostService.getBinding(ref);
-        const templates = await executionHostDiscoveryService.listDevboxTemplates(ref, {
-          operationId: `devbox-templates:${ctx.params["id"]!}`,
+        const templates = await executionHostDiscoveryService.listEnvironmentTemplates(ref, {
+          operationId: `environment-templates:${ctx.params["id"]!}`,
+          localUserId: ctx.requireUser().id,
           directory: "/",
         });
         return Response.json(templates);
       } catch (error) {
-        log.error("Failed to list execution-host Devbox templates", {
+        log.error("Failed to list execution-host Environment templates", {
           kind: ref.kind,
           error: String(error),
         });
@@ -453,7 +455,7 @@ export const executionHostRoutes = defineRoutes({
           policy: "execution-hosts",
           fallback: {
             error: "execution_host_templates_failed",
-            message: "Failed to list execution-host Devbox templates.",
+            message: "Failed to list execution-host Environment templates.",
             status: 500,
           },
         });

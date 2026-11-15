@@ -54,6 +54,7 @@ export const MESH_RELAY_CONTROLLER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<
     ["/api/mesh/internal/kill", new Set(["POST"])],
     ["/api/mesh/internal/health", new Set(["POST"])],
     ["/api/mesh/internal/protocol", new Set(["GET"])],
+    ["/api/mesh/internal/ssh-agent", new Set(["POST"])],
     ["/api/mesh/internal/execution/session", new Set(["POST", "DELETE"])],
     ["/api/mesh/internal/execution/rpc", new Set(["POST"])],
     ["/api/mesh/internal/execution/async", new Set(["POST"])],
@@ -76,6 +77,7 @@ export const MESH_RELAY_WORKER_HTTP_ROUTES: ReadonlyMap<string, ReadonlySet<stri
   new Map<string, ReadonlySet<string>>([
     ["/api/mesh/internal/enrollment", new Set(["POST"])],
     ["/api/mesh/internal/control-tools", new Set(["POST"])],
+    ["/api/mesh/internal/ssh-agent", new Set(["POST"])],
   ]);
 
 /** The only Mesh route that accepts a relay query string. */

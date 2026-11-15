@@ -31,7 +31,70 @@ CLANKY_LOG_LEVEL=info bun run test:mesh
 
 The suite requires Bun and Git, with no live provider credentials or
 fixture-only system-package installation. Mesh uses the native compiled binary
-on both Linux and macOS; it does not require Devbox or Homebrew packages.
+on both Linux and macOS; it does not require Docker or Homebrew packages.
+
+Managed-environment changes also require `bun run test:environments`, a small
+real Docker/Dev Containers CLI journey kept out of default discovery. It checks
+non-root tooling, original hooks, private state and host-side shell/recovery.
+Install Docker and `@devcontainers/cli@0.90.0` to run it. The PR workflow selects
+it for affected environment integration paths; manual workflow dispatch runs it
+explicitly. Do not replace it with an exhaustive language/adapter/platform
+matrix or add project-devcontainer builds to the default sanity gate.
+
+SSH-key integration changes also select `bun run test:ssh-keys`. It uses
+disposable loaded agent keys and compiled controller/worker processes, without
+Docker, personal credentials or a live provider. Both optional journeys stay
+out of `bun run test`; manual PR-workflow dispatch runs both.
+
+For self-hosting acceptance, use a disposable checkout of the implementation
+under test and Clanky's actual `.devcontainer/devcontainer.json`, without
+skipping its prerequisite hook. Validate the worker from that same revision,
+declared DinD with a real build/run, non-root checkout/state ownership, shell
+recovery, restart/update fallback and rebuild persistence. Run the normal build
+and sanity suite inside it. Record cold provisioning separately from test time;
+cached iterations do not establish cold correctness. Linux and macOS execution
+must be reported separately.
+
+Run this expensive acceptance explicitly, as a non-root user with Docker access:
+
+```bash
+bun run build
+bun run test:self-hosting
+```
+
+`test:self-hosting` is manual-only, not a `.test.ts` journey or a PR-workflow
+selection. It owns a private controller/home, loaded SSH key, authenticated SSH
+repository and new environment. The source must be a clean committed checkout;
+use `--source PATH` for a separate implementation checkout. It exercises public
+private-clone provisioning, native conversation, selected-key revocation,
+restart/update fallback, replacement rebuild, emergency shell, stop/arise and
+the normal in-container install/build/sanity suite. It preserves pre-existing
+Docker volumes and cleans only its owned containers, image, new attached volumes,
+agent and temporary application directory. Private reports remain in the
+printed temporary evidence directory.
+
+On macOS, build the native controller first, then the matching Linux worker:
+
+```bash
+bun src/build.ts --target=bun-linux-arm64
+bun run test:self-hosting --worker-binary dist/clanky-linux-arm64 --controller-host <container-reachable-host-ipv4>
+```
+
+Use `bun-linux-x64`/`dist/clanky-linux-x64` for an x64 Docker engine. The address
+must belong to the controller host and be reachable from its containers.
+The manual runner exposes only its password-protected HTTPS controller and
+key-only disposable repository on ephemeral host ports. Unlike the hermetic
+sanity gate, it downloads actual devcontainer/toolchain prerequisites and the
+genuine pinned Clanky installer. An external executable supplies the explicitly
+selected local Linux artifact and its actual checksum instead of an older
+published release; installer verification remains enabled. AI/auth traffic
+uses the existing external Copilot provider, while its `--version` still invokes
+the installed vendor CLI. No personal provider credentials or paid AI calls are
+used. An external release-service outage checks the required cached-worker
+warning without breaking controller/Mesh connectivity. Provisioning has its own
+manual operation budget; ordinary suite discovery, timeouts and speed budgets
+are unchanged. This runner does not replace the separate manual visual and
+terminal-reconnection review.
 
 ### Speed budget
 

@@ -3,14 +3,14 @@ import { closeCommandExecutor, type CommandExecutor, type CommandResult } from "
 import { GitService } from "../git";
 import { executionHostService } from "../execution-host-service";
 import type {
-  DevboxStatusResult,
+  EnvironmentStatusResult,
   ProvisioningJob,
 } from "@/shared";
 import { GIT_CLONE_TIMEOUT_MS } from "./constants";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import {
-  parseDevboxStatusOutput,
-} from "./devbox-utils";
+  parseEnvironmentStatusOutput,
+} from "./environment-utils";
 import {
   appendSystemLog,
 } from "./job-logger";
@@ -45,7 +45,7 @@ export class ProvisioningRemoteExecutor {
     if (!binding) {
       throw new ProvisioningFailedError(
         "missing_execution_host",
-        "verify_devbox",
+        "verify_environment",
         "Provisioning requires an execution host",
       );
     }
@@ -65,7 +65,7 @@ export class ProvisioningRemoteExecutor {
       );
       if (!probe.success) {
         throw new ProvisioningFailedError(
-          "provisioning_connection_failed", "verify_devbox",
+          "provisioning_connection_failed", "verify_environment",
           probe.stderr || "The execution host did not accept the connection probe.",
         );
       }
@@ -78,9 +78,9 @@ export class ProvisioningRemoteExecutor {
         throw new ProvisioningCancelledError("Provisioning job was cancelled", { cause: error });
       }
       const detail = error instanceof Error ? error.message : String(error);
-      appendSystemLog(record, this.maxLogEntries, detail, "verify_devbox");
+      appendSystemLog(record, this.maxLogEntries, detail, "verify_environment");
       throw new ProvisioningFailedError(
-        "provisioning_connection_failed", "verify_devbox",
+        "provisioning_connection_failed", "verify_environment",
         "Could not connect to the execution host.",
         { cause: error, details: { executionRequestDispatched: false } },
       );
@@ -106,6 +106,7 @@ export class ProvisioningRemoteExecutor {
   async prepareRepository(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
+    env: Record<string, string>,
   ): Promise<string> {
     const config = record.job.config;
     if (config.createNewRepository) {
@@ -116,11 +117,11 @@ export class ProvisioningRemoteExecutor {
       : pathPosix.join(config.basePath, extractRepoName(config.repoUrl ?? ""));
     const targetExists = await executor.directoryExists(targetDirectory);
     if (config.createNewRepository) {
-      if (!config.devboxTemplate) {
+      if (!config.environmentTemplate) {
         throw new ProvisioningFailedError(
-          "missing_devbox_template",
+          "missing_environment_template",
           "clone_repo",
-          "A devbox template is required when creating a workspace without an existing repository",
+          "An environment template is required when creating a workspace without an existing repository",
         );
       }
       if (targetExists) {
@@ -154,6 +155,7 @@ export class ProvisioningRemoteExecutor {
         label: `Cloning repository into ${targetDirectory}`,
         command: "git",
         args: ["clone", config.repoUrl ?? "", targetDirectory],
+        env,
         timeout: GIT_CLONE_TIMEOUT_MS,
         streamOutput: true,
         longRunning: true,
@@ -222,32 +224,32 @@ export class ProvisioningRemoteExecutor {
     });
   }
 
-  async readDevboxStatus(
+  async readEnvironmentStatus(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     cwd: string,
     options: { label?: string; timeout?: number; signal?: AbortSignal } = {},
-  ): Promise<DevboxStatusResult> {
+  ): Promise<EnvironmentStatusResult> {
     const result = await this.run(record, executor, {
-      step: "devbox_status",
-      label: options.label ?? "Reading devbox status",
-      command: "devbox",
+      step: "environment_status",
+      label: options.label ?? "Reading environment status",
+      command: "environment",
       args: ["status"],
       cwd,
-      errorCode: "invalid_devbox_status",
-      errorMessage: "Failed to read devbox status",
+      errorCode: "invalid_environment_status",
+      errorMessage: "Failed to read environment status",
       captureStdout: false,
       timeout: options.timeout,
       signal: options.signal,
     });
-    return parseDevboxStatusOutput(result.stdout);
+    return parseEnvironmentStatusOutput(result.stdout);
   }
 
   async confirmLifecycleRecovery(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     directory: string,
-  ): Promise<DevboxStatusResult> {
+  ): Promise<EnvironmentStatusResult> {
     const deadline = performance.now() + 20_000;
     let lastError: unknown;
     while (performance.now() < deadline) {
@@ -256,7 +258,7 @@ export class ProvisioningRemoteExecutor {
       const budget = Math.min(5000, deadline - performance.now());
       const timer = setTimeout(() => controller.abort(), Math.max(1, budget));
       try {
-        const status = await this.readDevboxStatus(record, executor, directory, {
+        const status = await this.readEnvironmentStatus(record, executor, directory, {
           label: "Checking workspace recovery", timeout: budget, signal: controller.signal,
         });
         if (status.running) return status;
@@ -272,23 +274,23 @@ export class ProvisioningRemoteExecutor {
       if (remaining > 0) await Bun.sleep(Math.min(1000, remaining));
     }
     throw new ProvisioningFailedError(
-      "provisioning_execution_unconfirmed", "devbox_status",
+      "provisioning_execution_unconfirmed", "environment_status",
       "Workspace recovery could not be confirmed.",
       { cause: lastError },
     );
   }
 
-  async verifyDevbox(
+  async verifyEnvironment(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
   ): Promise<void> {
     await this.run(record, executor, {
-      step: "verify_devbox",
-      label: "Checking Devbox availability",
-      command: "devbox",
+      step: "verify_environment",
+      label: "Checking Clanky environment CLI availability",
+      command: "environment",
       args: ["--help"],
-      errorCode: "devbox_not_found",
-      errorMessage: "Devbox is not installed or not available on PATH",
+      errorCode: "environment_not_found",
+      errorMessage: "The provisioning host needs a Clanky build with managed-environment support",
       captureStdout: false,
     });
   }

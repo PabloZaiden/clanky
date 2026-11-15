@@ -1,11 +1,13 @@
 /**
- * Canonical owned paths and durable Devbox startup assets.
+ * Canonical owned paths and durable Environment startup assets.
  */
 
 import { posix as pathPosix } from "node:path";
 import { HARNESS_ADAPTER_IDS, createAgentSettings } from "@/shared/settings";
 import type { WorkerReleaseChannel } from "@/shared/worker-update";
 import { getWorkerChannelPath } from "../worker-channel";
+import { ENVIRONMENT_RUNTIME_ROOT } from "../environments/runtime-feature";
+import { WORKER_UPDATE_TIMEOUT_MS } from "./constants";
 
 export interface WorkerPaths {
   hostRoot: string;
@@ -61,10 +63,8 @@ export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function getWorkerPaths(targetDirectory: string, containerWorkdir: string): WorkerPaths {
-  const hostRoot = pathPosix.join(targetDirectory, ".devbox", "clanky-worker");
-  const containerRoot = pathPosix.join(containerWorkdir, ".devbox", "clanky-worker");
-  return workerPaths(hostRoot, containerRoot);
+export function getWorkerPaths(hostRuntimeDirectory: string): WorkerPaths {
+  return workerPaths(hostRuntimeDirectory, ENVIRONMENT_RUNTIME_ROOT);
 }
 
 export function getWorkerPathsForSupervisor(supervisor: string): WorkerPaths {
@@ -180,13 +180,18 @@ trap - EXIT
 export function buildWorkerLauncher(paths: WorkerPaths, channel: AutomaticWorkerChannel = "stable"): string {
   return `#!/bin/sh
 set -eu
+umask 077
 update_job=""
+update_startup=""
 if [ "$#" -gt 0 ]; then
-  if [ "$#" -ne 2 ] || [ "$1" != update ] || [ -z "$2" ]; then
-    echo "Usage: launcher.sh [update JOB_ID]" >&2
+  if [ "$#" -eq 1 ] && [ "$1" = startup ]; then
+    update_startup=1
+  elif [ "$#" -eq 2 ] && [ "$1" = update ] && [ -n "$2" ]; then
+    update_job=$2
+  else
+    echo "Usage: launcher.sh [startup | update JOB_ID]" >&2
     exit 1
   fi
-  update_job=$2
 fi
 CLANKY_RELEASE_CHANNEL=${shellQuote(channel)}
 root=${shellQuote(paths.containerRoot)}
@@ -209,8 +214,16 @@ ${buildNodePathFallback()}
 sh "$root/install-runtime.sh"
 PATH="$root/runtime/bin:$PATH"
 export PATH
+if [ -f "$root/github-token" ]; then
+  GH_TOKEN=$(cat "$root/github-token")
+  export GH_TOKEN
+fi
 mkdir -p "$bin_dir" "$data_dir"
-if [ -n "$update_job" ] || [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
+update_outcome=unchanged
+if [ -n "$update_job" ] || [ -n "$update_startup" ] || [ ! -x "$binary" ] || [ "$(cat "$root/release-channel" 2>/dev/null || true)" != "$CLANKY_RELEASE_CHANNEL" ]; then
+update_installation() {
+install_status=0
+root="$root" binary="$binary" installer="$installer" install_dir="$install_dir" install_home="$install_home" installed_binary="$installed_binary" CLANKY_RELEASE_CHANNEL="$CLANKY_RELEASE_CHANNEL" timeout --verbose --kill-after=5s ${WORKER_UPDATE_TIMEOUT_MS / 1000}s sh -eu <<'CLANKY_INSTALL' || install_status=$?
 mkdir -p "$install_dir" "$install_home"
 cleanup_installation() {
   rm -rf -- "$install_dir" "$install_home"
@@ -284,11 +297,30 @@ case "$CLANKY_RELEASE_CHANNEL" in
     ;;
 esac
 
+chmod +x "$source_binary"
+candidate_version=$("$source_binary" version)
+[ -n "$candidate_version" ] || { echo "The replacement Clanky binary is not valid." >&2; exit 1; }
 mv -f "$source_binary" "$binary"
-chmod +x "$binary"
 cleanup_installation
 trap - EXIT
 printf '%s\\n' "$CLANKY_RELEASE_CHANNEL" >"$root/release-channel"
+CLANKY_INSTALL
+rm -rf -- "$install_dir" "$install_home" || return 1
+rm -f -- "$installer" || return 1
+return "$install_status"
+}
+if update_installation; then
+  update_outcome=updated
+  rm -f "$root/update-warning"
+else
+  if [ ! -x "$binary" ] || ! "$binary" version >/dev/null; then
+    echo "Clanky update failed and no valid installed worker is available." >&2
+    exit 1
+  fi
+  update_outcome=cached
+  printf 'Could not update Clanky to %s; starting the valid installed worker. See startup.log for the update error.\\n' "$CLANKY_RELEASE_CHANNEL" > "$root/update-warning"
+  cat "$root/update-warning" >&2
+fi
 fi
 
 if [ -n "$update_job" ]; then
@@ -297,13 +329,14 @@ if [ -n "$update_job" ]; then
   result=${shellQuote(paths.containerMaintenanceResult)}
   staged_result="$result.$$"
   trap 'rm -f -- "$staged_result"' EXIT
-  node -e 'const fs = require("node:fs"); fs.writeFileSync(process.argv[1], JSON.stringify({jobId:process.argv[2],binaryVersion:process.argv[3],releaseChannel:process.argv[4]}));' "$staged_result" "$update_job" "$version" "$CLANKY_RELEASE_CHANNEL"
+  node -e 'const fs = require("node:fs"); fs.writeFileSync(process.argv[1], JSON.stringify({jobId:process.argv[2],binaryVersion:process.argv[3],releaseChannel:process.argv[4],updateOutcome:process.argv[5],warning:process.argv[5]==="cached"?fs.readFileSync(process.argv[6],"utf8").trim():undefined}));' "$staged_result" "$update_job" "$version" "$CLANKY_RELEASE_CHANNEL" "$update_outcome" "$root/update-warning"
   mv -f -- "$staged_result" "$result"
   trap - EXIT
 fi
 
 if [ ! -f "$data_dir/config.json" ]; then exit 0; fi
 export CLANKY_WORKER_RELEASE_CHANNEL="$CLANKY_RELEASE_CHANNEL"
+export CLANKY_WORKSPACE_SSH_AGENT=1
 exec sh ${shellQuote(paths.containerSupervisor)} start
 `;
 }

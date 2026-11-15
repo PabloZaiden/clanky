@@ -23,6 +23,8 @@ import { MarkdownRenderer } from "../MarkdownRenderer";
 import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { isWorkspaceReadOnly } from "@/shared/workspace";
 import { getWorkItemLastInteractionAt } from "./shell-types";
+import { WorkspaceEnvironmentPanel } from "../WorkspaceEnvironmentPanel";
+import { WorkspaceSshKeyAccess } from "../WorkspaceSshKeyAccess";
 
 async function openWorkspaceGitHubUrl(
   workspace: Workspace,
@@ -164,6 +166,11 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
+      {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin") ? (
+        <WorkspaceEnvironmentPanel workspaceId={workspace.id} name={workspace.name} />
+      ) : null}
+      {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin")
+        ? <WorkspaceSshKeyAccess workspaceId={workspace.id} /> : null}
       {workspace.workspaceType === "git" && !scratchpadPrivateHidden ? (
         <div className="flex flex-wrap justify-end gap-2">
           {!isWorkspaceReadOnly(workspace) ? (

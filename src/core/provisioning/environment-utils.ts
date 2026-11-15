@@ -1,37 +1,39 @@
 import { z } from "zod";
-import type { DevboxPublishedPort, DevboxStatusResult, ProvisioningJobError, ProvisioningStep } from "@/shared";
+import type { EnvironmentPublishedPort, EnvironmentStatusResult, ProvisioningJobError, ProvisioningStep } from "@/shared";
 
-const DevboxPublishedPortSchema = z.object({
+const EnvironmentPublishedPortSchema = z.object({
   hostIp: z.string().nullable(),
   hostPort: z.number().int().min(1).max(65535).nullable(),
 });
 
-const DevboxStatusSchema = z.object({
+const EnvironmentStatusSchema = z.object({
   running: z.boolean(),
   ports: z.array(z.number().int().min(1).max(65535)),
   workdir: z.string(),
-  publishedPorts: z.record(z.string(), z.array(DevboxPublishedPortSchema)),
+  publishedPorts: z.record(z.string(), z.array(EnvironmentPublishedPortSchema)),
+  hostRuntimeDirectory: z.string().min(1),
+  runtimeDirectory: z.string().min(1),
 });
 
-export function parseDevboxStatusOutput(output: string): DevboxStatusResult {
+export function parseEnvironmentStatusOutput(output: string): EnvironmentStatusResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(output);
   } catch (error) {
-    throw new Error("Failed to parse devbox status output as JSON", { cause: error });
+    throw new Error("Failed to parse environment status output as JSON", { cause: error });
   }
 
-  const result = DevboxStatusSchema.safeParse(parsed);
+  const result = EnvironmentStatusSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Failed to validate devbox status output: ${result.error.issues[0]?.message ?? "invalid format"}`);
+    throw new Error(`Failed to validate environment status output: ${result.error.issues[0]?.message ?? "invalid format"}`);
   }
 
   return result.data;
 }
 
-export function getPublishedPortFallback(status: DevboxStatusResult): number | undefined {
+export function getPublishedPortFallback(status: EnvironmentStatusResult): number | undefined {
   for (const entries of Object.values(status.publishedPorts)) {
-    const firstEntry = entries.find((entry): entry is DevboxPublishedPort & { hostPort: number } =>
+    const firstEntry = entries.find((entry): entry is EnvironmentPublishedPort & { hostPort: number } =>
       typeof entry.hostPort === "number");
     if (firstEntry?.hostPort !== undefined) {
       return firstEntry.hostPort;
@@ -41,14 +43,14 @@ export function getPublishedPortFallback(status: DevboxStatusResult): number | u
   return undefined;
 }
 
-export interface DevboxPublishedPortMapping {
+export interface EnvironmentPublishedPortMapping {
   containerPort: number;
   hostPort: number;
 }
 
 export function getSinglePublishedPort(
-  status: DevboxStatusResult,
-): DevboxPublishedPortMapping {
+  status: EnvironmentStatusResult,
+): EnvironmentPublishedPortMapping {
   const mappings = new Map<number, Set<number>>();
   for (const [containerPortKey, entries] of Object.entries(status.publishedPorts)) {
     const match = containerPortKey.match(/^(\d+)\/tcp$/i);
@@ -72,12 +74,12 @@ export function getSinglePublishedPort(
   }
 
   if (mappings.size !== 1) {
-    throw new Error("Devbox must publish exactly one port for worker provisioning.");
+    throw new Error("Environment must publish exactly one port for worker provisioning.");
   }
 
   const [containerPort, hostPorts] = [...mappings.entries()][0]!;
   if (hostPorts.size !== 1) {
-    throw new Error("Devbox must publish exactly one host port for worker provisioning.");
+    throw new Error("Environment must publish exactly one host port for worker provisioning.");
   }
 
   return {

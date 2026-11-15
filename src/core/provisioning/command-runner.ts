@@ -5,6 +5,7 @@ import { DEFAULT_COMMAND_TIMEOUT_MS } from "./constants";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { appendLog, appendSystemLog, persistProvisioningState } from "./job-logger";
 import type { ProvisioningJobRecord } from "./types";
+import { environmentCommand } from "../environments/command";
 
 export interface RunCommandOptions {
   step: ProvisioningStep;
@@ -20,6 +21,7 @@ export interface RunCommandOptions {
   captureStderr?: boolean;
   longRunning?: boolean;
   signal?: AbortSignal;
+  env?: Record<string, string>;
 }
 
 function persistExecution(
@@ -131,8 +133,12 @@ export async function runProvisioningCommand(
   };
   let result: CommandResult;
   try {
-    result = await executor.exec(options.command, options.args, {
+    const invocation = options.command === "environment"
+      ? environmentCommand(record.job.config.executionHostBinding.host, record.owner.id, options.args)
+      : { command: options.command, args: options.args };
+    result = await executor.exec(invocation.command, invocation.args, {
       cwd: options.cwd,
+      env: options.env,
       timeout: options.timeout ?? DEFAULT_COMMAND_TIMEOUT_MS,
       signal: options.signal
         ? AbortSignal.any([record.abortController.signal, options.signal])

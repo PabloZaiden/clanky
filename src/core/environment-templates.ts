@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { DevboxTemplateSummary } from "@/shared";
+import type { EnvironmentTemplateSummary } from "@/shared";
 
-const DevboxTemplateSummarySchema = z.object({
+const EnvironmentTemplateSummarySchema = z.object({
   name: z.string().trim().min(1, "template name is required"),
   description: z.string(),
   source: z.literal("built-in"),
@@ -13,19 +13,19 @@ const DevboxTemplateSummarySchema = z.object({
   runnerCompatible: z.boolean(),
 });
 
-const DevboxTemplateSummariesSchema = z.array(DevboxTemplateSummarySchema);
+const EnvironmentTemplateSummariesSchema = z.array(EnvironmentTemplateSummarySchema);
 
-export function parseDevboxTemplatesOutput(stdout: string): DevboxTemplateSummary[] {
+export function parseEnvironmentTemplatesOutput(stdout: string): EnvironmentTemplateSummary[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch (error) {
-    throw new Error("Failed to parse devbox templates output as JSON", { cause: error });
+    throw new Error("Failed to parse environment templates output as JSON", { cause: error });
   }
 
-  const result = DevboxTemplateSummariesSchema.safeParse(parsed);
+  const result = EnvironmentTemplateSummariesSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Failed to validate devbox templates output: ${result.error.issues[0]?.message ?? "invalid format"}`);
+    throw new Error(`Failed to validate environment templates output: ${result.error.issues[0]?.message ?? "invalid format"}`);
   }
 
   return result.data.map((template) => ({

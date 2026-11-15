@@ -46,13 +46,14 @@ export type ProvisioningWorkerEnrollmentRoute =
   typeof PROVISIONING_WORKER_ENROLLMENT_ROUTES[number];
 
 export type ProvisioningStep =
-  | "verify_devbox"
+  | "verify_environment"
   | "prepare_directory"
   | "clone_repo"
-  | "devbox_up"
-  | "devbox_rebuild"
-  | "devbox_arise"
-  | "devbox_status"
+  | "environment_up"
+  | "environment_rebuild"
+  | "environment_restart"
+  | "environment_arise"
+  | "environment_status"
   | "create_workspace"
   | "test_connection"
   | "workspace_ready"
@@ -99,8 +100,9 @@ export interface ProvisioningJobConfig {
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
-  devboxTemplate?: string;
+  environmentTemplate?: string;
   githubUser?: string;
+  sshKeyIds?: string[];
   provider: AgentProvider;
   adapter?: HarnessAdapter;
   mode?: ProvisioningJobMode;
@@ -133,6 +135,7 @@ export interface ProvisioningJobState {
   serverSettings?: ServerSettings;
   error?: ProvisioningJobError;
   cleanupErrors?: ProvisioningCleanupError[];
+  warnings?: string[];
   startedAt?: string;
   completedAt?: string;
   updatedAt: string;
@@ -163,16 +166,18 @@ export interface PublicProvisioningJobSnapshot extends Omit<ProvisioningJobSnaps
   workspace?: PublicWorkspace;
 }
 
-export interface DevboxPublishedPort {
+export interface EnvironmentPublishedPort {
   hostIp: string | null;
   hostPort: number | null;
 }
 
-export interface DevboxStatusResult {
+export interface EnvironmentStatusResult {
   running: boolean;
   ports: number[];
   workdir: string;
-  publishedPorts: Record<string, DevboxPublishedPort[]>;
+  publishedPorts: Record<string, EnvironmentPublishedPort[]>;
+  hostRuntimeDirectory: string;
+  runtimeDirectory: string;
 }
 
 export interface ProvisioningStartedEvent {

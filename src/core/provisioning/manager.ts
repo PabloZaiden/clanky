@@ -14,7 +14,7 @@ import {
   type ProvisioningLogEntry,
 } from "@/shared";
 import { DEFAULT_MAX_LOG_ENTRIES } from "./constants";
-import { buildError } from "./devbox-utils";
+import { buildError } from "./environment-utils";
 import { ProvisioningCancelledError, ProvisioningFailedError } from "./errors";
 import { ProvisioningAttempt } from "./attempt";
 import { emitJobCancelled, emitJobDismissed, emitJobStarted } from "./job-events";
@@ -88,7 +88,7 @@ export class ProvisioningManager {
     ) {
       throw new ProvisioningFailedError(
         "invalid_clanky_release_channel",
-        "verify_devbox",
+        "verify_environment",
         "Release channels are only supported for automatic worker workspaces.",
       );
     }
@@ -96,7 +96,7 @@ export class ProvisioningManager {
       ? (await workspaceManager.requireWorkspace(options.workspaceId)).serverSettings.agent
       : { adapter: options.adapter ?? getHarnessAdapterForProvider(options.provider), provider: options.provider };
     if (!isAgentSettings(runtime) || (mode !== "arise" && !automaticWorker)) {
-      throw new ProvisioningFailedError("invalid_runtime", "verify_devbox", "The selected runtime requires an automatic worker workspace and matching provider.");
+      throw new ProvisioningFailedError("invalid_runtime", "verify_environment", "The selected runtime requires an automatic worker workspace and matching provider.");
     }
     const channel = options.channel ?? "default";
     const releaseChannel = !automaticWorker
@@ -129,8 +129,9 @@ export class ProvisioningManager {
           repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
-          devboxTemplate: normalizeOptionalValue(options.devboxTemplate),
+          environmentTemplate: normalizeOptionalValue(options.environmentTemplate),
           githubUser: normalizeOptionalValue(options.githubUser),
+          sshKeyIds: options.sshKeyIds,
           provider: runtime.provider,
           adapter: runtime.adapter,
           mode,
@@ -143,7 +144,7 @@ export class ProvisioningManager {
         state: {
           status: "pending",
           hasDispatchedCommands: false,
-          execution: { step: "verify_devbox", state: "not_started" },
+          execution: { step: "verify_environment", state: "not_started" },
           updatedAt: now,
         },
       },
@@ -163,7 +164,7 @@ export class ProvisioningManager {
     if (targetKey && this.hasActiveTarget(owner.id, targetKey)) {
       throw new ProvisioningFailedError(
         "provisioning_target_busy",
-        "verify_devbox",
+        "verify_environment",
         "Another provisioning job is already running for this target",
       );
     }
@@ -223,7 +224,7 @@ export class ProvisioningManager {
                 : mode === "rebuild"
                   ? "rebuild_failed"
                   : "provisioning_failed",
-            record.job.state.currentStep ?? "verify_devbox",
+            record.job.state.currentStep ?? "verify_environment",
           );
         } catch (finalizationError) {
           log.error("Failed to finalize crashed provisioning job", {
@@ -286,13 +287,13 @@ export class ProvisioningManager {
           await record.attempt.fail(
             new ProvisioningCancelledError("Provisioning job was cancelled"),
             "cancelled",
-            record.job.state.currentStep ?? "verify_devbox",
+            record.job.state.currentStep ?? "verify_environment",
           );
         } else {
           const completedAt = new Date().toISOString();
           const failure = buildError(
             "cancelled",
-            record.job.state.currentStep ?? "verify_devbox",
+            record.job.state.currentStep ?? "verify_environment",
             "Provisioning job was cancelled",
           );
           this.updateState(record, {
@@ -318,7 +319,7 @@ export class ProvisioningManager {
     if (record.runnerActive || !isProvisioningJobTerminal(status)) {
       throw new ProvisioningFailedError(
         "job_not_terminal",
-        record.job.state.currentStep ?? "verify_devbox",
+        record.job.state.currentStep ?? "verify_environment",
         "Provisioning is still finalizing and cannot be dismissed yet",
       );
     }

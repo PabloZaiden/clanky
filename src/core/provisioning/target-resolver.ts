@@ -66,7 +66,7 @@ export function validateWorkerHostAddress(value: string | undefined): string {
   if (!isValidWorkerHostAddress(address)) {
     throw new ProvisioningFailedError(
       "invalid_worker_host_address",
-      "devbox_status",
+      "environment_status",
       "A valid worker host address without spaces is required for worker provisioning.",
     );
   }
@@ -126,7 +126,7 @@ export async function resolveProvisioningTarget(
   if (mode === "arise") {
     executionHostService.requireBindingCapability(
       executionHostBinding,
-      "devboxLifecycle",
+      "environmentLifecycle",
       userId,
     );
   }
@@ -186,7 +186,7 @@ async function resolveProvisioningExecutionHostBinding(
     if ((options.mode ?? "provision") !== "provision") {
       throw new ProvisioningFailedError(
         "invalid_execution_target",
-        "verify_devbox",
+        "verify_environment",
         "Dedicated worker enrollments can only create a new workspace",
       );
     }
@@ -225,7 +225,7 @@ async function resolveProvisioningExecutionHostBinding(
   if (!options.executionHost) {
     throw new ProvisioningFailedError(
       "missing_execution_host",
-      "verify_devbox",
+      "verify_environment",
       "Provisioning requires an execution host",
     );
   }

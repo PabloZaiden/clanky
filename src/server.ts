@@ -34,6 +34,7 @@ import { managedCredentialService } from "./core/managed-credential-service";
 import { provisioningManager } from "./core/provisioning-manager";
 import { workerUpdateManager } from "./core/worker-update-manager";
 import { meshManager } from "./core/mesh-manager";
+import { initializeWorkspaceSshAgentSocket, closeSshAgentSockets } from "./core/ssh-key-access-service";
 import {
   automationEventEmitter,
   chatEventEmitter,
@@ -318,6 +319,7 @@ function startMacWorkerPermissionPreflight(): void {
 }
 
 async function initializeMeshWorkerRuntime(): Promise<void> {
+  await initializeWorkspaceSshAgentSocket();
   if (process.platform === "darwin") {
     startMacWorkerPermissionPreflight();
   }
@@ -734,6 +736,7 @@ export async function getWebAppServer(
           }
         };
         await cleanup(() => workspaceConnections.stop());
+        await cleanup(closeSshAgentSockets);
         await cleanup(() => workspaceRealtimeSources.stop());
         await cleanup(() => workspaceClientSockets.stop());
         await cleanup(stopWorkspaceDirect);
