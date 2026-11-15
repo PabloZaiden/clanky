@@ -8,6 +8,18 @@
  * @module types/preferences
  */
 
+import type { VoiceTranslationLanguage } from "./voice";
+
+export interface TranslationSettings {
+  enabled: boolean;
+  languages: VoiceTranslationLanguage[];
+}
+
+export const DEFAULT_TRANSLATION_SETTINGS: TranslationSettings = {
+  enabled: false,
+  languages: [],
+};
+
 /**
  * Default theme preference when none is stored.
  */

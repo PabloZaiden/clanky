@@ -6,6 +6,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import {
   DEFAULT_VOICE_LANGUAGE_HINTS,
   VOICE_MAX_TEXT_CHARS,
+  VOICE_TRANSLATION_LANGUAGE_NAMES,
 } from "@/shared";
 import type {
   VoiceCapability,
@@ -502,7 +503,7 @@ export class VoiceManager {
       baseUrl: textCapability.settings.baseUrl,
       apiKey: textCapability.apiKey,
     });
-    const language = targetLanguage === "en" ? "English" : "Spanish";
+    const language = VOICE_TRANSLATION_LANGUAGE_NAMES[targetLanguage];
     let translatedText = "";
     for (const chunk of splitVoiceTranslationText(normalizedText)) {
       const translatedChunk = await provider.completeText(

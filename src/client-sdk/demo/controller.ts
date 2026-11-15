@@ -11,6 +11,7 @@ import {
 import {
   SetFileExplorerFullTreeRequestSchema,
   SetMarkdownRenderingRequestSchema, SetQuickChatSettingsRequestSchema,
+  TranslationSettingsSchema,
 } from "@/contracts/schemas/preferences";
 import {
   GetFileExplorerFileRequestSchema, GetFileExplorerTreeRequestSchema, ListFileExplorerRequestSchema,
@@ -53,6 +54,7 @@ export class DemoController {
   private readonly preferences = new Map<string, unknown>([
     ["theme", { theme: "dark" }], ["markdown-rendering", { enabled: true }],
     ["file-explorer-full-tree", { enabled: true }],
+    ["translation", { enabled: false, languages: [] }],
     ["quick-chat", { workspaceId: "demo-workspace", model: DEMO_MODEL, useWorktree: false }],
     ["last-model", DEMO_MODEL],
     ["prompt-templates", { templates: [], planningTemplateEnabled: true, planningTemplateIndex: 0 }], ["sidebar-pins", { pins: [] }],
@@ -126,6 +128,7 @@ export class DemoController {
           case "theme": value = parse(z.object({ theme: z.enum(["dark", "light", "system"]) }).strict(), body); break;
           case "markdown-rendering": value = parse(SetMarkdownRenderingRequestSchema, body); break;
           case "file-explorer-full-tree": value = parse(SetFileExplorerFullTreeRequestSchema, body); break;
+          case "translation": value = parse(TranslationSettingsSchema, body); break;
           case "quick-chat": {
             const settings = parse(SetQuickChatSettingsRequestSchema, body);
             this.requireWorkspace(settings.workspaceId);
@@ -136,6 +139,7 @@ export class DemoController {
           default: unsupported();
         }
         this.preferences.set(preference, value);
+        if (preference === "translation") this.changed("translation-settings");
         return preference === "quick-chat" ? { success: true, settings: value } : value;
       }
     }

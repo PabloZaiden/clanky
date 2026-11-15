@@ -16,6 +16,7 @@ import {
   getLastDirectory as getLastDirectoryRecord,
   getLastModel as getLastModelRecord,
   getMarkdownRenderingEnabled as getMarkdownRenderingEnabledRecord,
+  getTranslationSettings as getTranslationSettingsRecord,
   getPromptTemplates as getPromptTemplatesRecord,
   getPlanningTemplateEnabled,
   getPlanningTemplateIndex,
@@ -27,6 +28,7 @@ import {
   setLastDirectory as setLastDirectoryRecord,
   setLastModel as setLastModelRecord,
   setMarkdownRenderingEnabled as setMarkdownRenderingEnabledRecord,
+  setTranslationSettings as setTranslationSettingsRecord,
   setPromptTemplates as setPromptTemplatesRecord,
   setQuickChatSettings as setQuickChatSettingsRecord,
   setSchedulerTimezone as setSchedulerTimezoneRecord,
@@ -34,7 +36,7 @@ import {
 } from "../persistence/preferences";
 import type { SidebarPin } from "@pablozaiden/webapp/contracts";
 import type { PromptTemplate, PromptTemplatePreferences } from "@/shared/prompt-templates";
-import type { QuickChatSettings } from "@/shared/preferences";
+import type { QuickChatSettings, TranslationSettings } from "@/shared/preferences";
 import { DomainError } from "../domain/domain-error";
 import { workspaceManager } from "./workspace-manager";
 import { workspaceConnections } from "./workspace-connections";
@@ -58,6 +60,14 @@ export interface QuickChatModelRequest {
 }
 
 export class PreferencesManager {
+  async getTranslationSettings(): Promise<TranslationSettings> {
+    return await getTranslationSettingsRecord();
+  }
+
+  async setTranslationSettings(settings: TranslationSettings): Promise<void> {
+    await setTranslationSettingsRecord(settings);
+  }
+
   getSidebarPins(): SidebarPin[] {
     return getSidebarPins();
   }

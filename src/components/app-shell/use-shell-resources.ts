@@ -9,6 +9,7 @@ import {
   useExecutionHosts,
   useGithubUsername,
   useMarkdownPreference,
+  useTranslationSettings,
   useMesh,
   usePrivateItemsPreference,
   useProvisioningJob,
@@ -66,6 +67,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
   const schedulerTimezone = useSchedulerTimezone({ enabled: capabilities.controllerAdministration });
   const githubUsername = useGithubUsername({ enabled: capabilities.controllerAdministration });
   const markdownPreference = useMarkdownPreference();
+  const translationSettings = useTranslationSettings();
   const mesh = useMesh({ enabled: capabilities.controllerAdministration });
   const fullTreePreference = useFileExplorerFullTreePreference();
   const privateItemsPreference = usePrivateItemsPreference();
@@ -190,6 +192,7 @@ export function useShellResources(route: WebAppRoute, isOwner: boolean, config: 
     schedulerTimezone,
     githubUsername,
     markdownPreference,
+    translationSettings,
     mesh,
     fullTreePreference,
     privateItemsPreference,

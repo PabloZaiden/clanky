@@ -7,8 +7,31 @@ export type VoiceCapability = (typeof VOICE_CAPABILITIES)[number];
 
 export const VOICE_MAX_TEXT_CHARS = 30_000;
 export const LIVE_VOICE_MAX_PERSONAL_INSTRUCTIONS_CHARS = 4_000;
-export const VOICE_TRANSLATION_LANGUAGES = ["en", "es"] as const;
+export const VOICE_TRANSLATION_LANGUAGES = [
+  "en", "es", "pt", "fr", "de", "it", "nl", "pl", "uk", "ru",
+  "ar", "hi", "zh", "ja", "ko", "tr", "sv",
+] as const;
 export type VoiceTranslationLanguage = (typeof VOICE_TRANSLATION_LANGUAGES)[number];
+
+export const VOICE_TRANSLATION_LANGUAGE_NAMES: Record<VoiceTranslationLanguage, string> = {
+  en: "English",
+  es: "Spanish",
+  pt: "Portuguese",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  nl: "Dutch",
+  pl: "Polish",
+  uk: "Ukrainian",
+  ru: "Russian",
+  ar: "Arabic",
+  hi: "Hindi",
+  zh: "Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+  tr: "Turkish",
+  sv: "Swedish",
+};
 
 export const VOICE_LANGUAGE_HINTS = ["es", "en"] as const;
 export type VoiceLanguageHint = (typeof VOICE_LANGUAGE_HINTS)[number];
