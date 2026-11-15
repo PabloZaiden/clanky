@@ -189,6 +189,13 @@ architectures. Do not derive it from artifact names: macOS privacy permissions
 depend on a stable identity. Updating from an older signing identifier may
 require approving macOS permissions once for the new identity.
 
+The signing entrypoints also assign each CLI Mach-O image a content-derived
+build UUID before signing, rather than inheriting Bun's runtime UUID. This
+per-image UUID must change with executable content; it is separate from the
+stable signing identity. Re-sign immediately after rewriting a build UUID:
+the UUID is covered by the code signature. Both signing scripts require
+Python 3.9+ (standard library only).
+
 Bun executables use only the `allow-jit` runtime entitlement; the native shell
 has no runtime exceptions or development entitlements. Its camera/audio-input resource
 entitlements preserve the app's existing declared media-capture capabilities;
@@ -731,10 +738,10 @@ operations to describe before executing through the authenticated
 stage, including its receipt download, before proceeding. Stop on failure,
 pending confirmation or uncertain outcome; do not replay a mutation.
 `requests --stage status` generates a fresh inspection receipt after an
-interruption without repeating signing. Frozen parameters and driver bytes
-cannot change within a run.
+interruption without repeating signing. Frozen parameters, driver and UUID-helper
+bytes cannot change within a run.
 
-Only the standalone driver, private parameters and built artifacts go to the
+Only the driver, UUID helper, private parameters and built artifacts go to the
 Mac, never Swift sources, a Clanky checkout or Bun dependencies. Use
 `bun run macos:app --help` for the current options. Receipts and verified
 artifacts remain in the private run directories; the driver does not install,
