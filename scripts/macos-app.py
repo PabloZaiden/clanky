@@ -19,6 +19,7 @@ import zipfile
 
 SCRIPT = Path(__file__).resolve()
 ZIP = "Clanky-macos-arm64.zip"
+CLI_SIGNING_IDENTIFIER = "com.clanky.cli"
 DOWNLOAD_PART_BYTES = 16 * 1024 * 1024
 PARAMETERS = {
     "executionHostKind", "executionHostId", "artifactDirectory", "remoteDirectory",
@@ -276,6 +277,7 @@ def signing_targets(app):
 def sign_bundle(config, work, app):
     sparkle = app / "Contents/Frameworks/Sparkle.framework"
     for index, target in enumerate(signing_targets(app)):
+        cli = target == app / "Contents/Helpers/clanky"
         helper = target != sparkle and target.is_relative_to(sparkle) and (
             target.suffix in (".app", ".xpc") or target.name == "Autoupdate"
         )
@@ -293,8 +295,19 @@ def sign_bundle(config, work, app):
             options = ["--options", "runtime", "--entitlements", entitlements]
         elif target.is_relative_to(sparkle):
             options = ["--options", "runtime"]
+        if cli:
+            options += ["--identifier", CLI_SIGNING_IDENTIFIER]
         run("codesign", "--force", "--sign", config["signingIdentity"], "--timestamp=none", *options, target)
         run("codesign", "--verify", "--strict", "--verbose=2", target)
+        if cli:
+            details = subprocess.run(
+                ["codesign", "-d", "--verbose=4", str(target)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            )
+            require(details.returncode == 0,
+                    "Could not read CLI signing details: " + details.stdout.decode(errors="replace"))
+            require(("Identifier=" + CLI_SIGNING_IDENTIFIER).encode() in details.stdout.splitlines(),
+                    "CLI code-signing identifier mismatch")
         prefix = work / ("signer-" + str(index) + "-")
         run("codesign", "-d", "--extract-certificates=" + str(prefix), target)
         require(digest(str(prefix) + "0", "sha1").upper() == config["signingIdentity"].upper(),

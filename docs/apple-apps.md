@@ -182,9 +182,15 @@ Apple's import with a MAC verification error. Verify an import into a temporary
 Mac keychain before storing the package in CI; preserve the usual keychains.
 
 `scripts/macos-distribution.ts --notarize <app-or-binary-paths>` owns both
-native-app and standalone-CLI distribution verification. Bun executables use
-only the `allow-jit` runtime entitlement; the native shell has no runtime
-exceptions or development entitlements. Its camera/audio-input resource
+native-app and standalone-CLI distribution verification. All signed Clanky CLI
+executables, including the bundled controller, use the fixed code-signing
+identifier `com.clanky.cli` across versions, release channels, filenames and
+architectures. Do not derive it from artifact names: macOS privacy permissions
+depend on a stable identity. Updating from an older signing identifier may
+require approving macOS permissions once for the new identity.
+
+Bun executables use only the `allow-jit` runtime entitlement; the native shell
+has no runtime exceptions or development entitlements. Its camera/audio-input resource
 entitlements preserve the app's existing declared media-capture capabilities;
 system permission prompts and the shell's restricted media-capture policy still
 apply. Native libraries have no entitlements and inherit the host executable's
