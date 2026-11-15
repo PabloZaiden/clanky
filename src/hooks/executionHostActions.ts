@@ -1,11 +1,11 @@
 import type {
-  DevboxTemplateSummary,
+  EnvironmentTemplateSummary,
   ExecutionHostRef,
   ExecutionHostPrerequisiteReport,
 } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
 import type {
-  GetDevboxTemplatesRequest,
+  GetEnvironmentTemplatesRequest,
 } from "@/contracts";
 import { apiRequest } from "../lib/api-client";
 
@@ -28,20 +28,20 @@ export async function checkExecutionHostPrerequisitesApi(options: {
   );
 }
 
-export async function listExecutionHostDevboxTemplatesApi(options: {
+export async function listExecutionHostEnvironmentTemplatesApi(options: {
   executionHost: ExecutionHostRef;
   signal?: AbortSignal;
-}): Promise<DevboxTemplateSummary[]> {
-  const request: GetDevboxTemplatesRequest = {};
-  return await apiRequest<DevboxTemplateSummary[]>(
-    `${executionHostApiPath(options.executionHost)}/devbox-templates`,
+}): Promise<EnvironmentTemplateSummary[]> {
+  const request: GetEnvironmentTemplatesRequest = {};
+  return await apiRequest<EnvironmentTemplateSummary[]>(
+    `${executionHostApiPath(options.executionHost)}/environment-templates`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
       signal: options.signal,
-      action: "List Devbox templates",
-      fallbackMessage: "Failed to list Devbox templates",
+      action: "List Environment templates",
+      fallbackMessage: "Failed to list Environment templates",
     },
   );
 }

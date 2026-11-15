@@ -7,6 +7,7 @@
  */
 
 export * from "./file-system";
+export * from "./environments";
 export { CollaborationOperationCatalogSchema } from "./collaboration-operation";
 export { CodePreviewOptionsSchema, CodePreviewHelloSchema, PreviewUpstreamOptionsSchema } from "./preview";
 export {
@@ -183,9 +184,9 @@ export {
 // Execution-host discovery schemas
 export {
   CheckExecutionHostPrerequisitesRequestSchema,
-  GetDevboxTemplatesRequestSchema,
+  GetEnvironmentTemplatesRequestSchema,
   type CheckExecutionHostPrerequisitesRequest,
-  type GetDevboxTemplatesRequest,
+  type GetEnvironmentTemplatesRequest,
 } from "./execution-host-discovery";
 
 // Provisioning schemas

@@ -27,8 +27,9 @@ export interface StartProvisioningJobOptions {
   repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
-  devboxTemplate?: string;
+  environmentTemplate?: string;
   githubUser?: string;
+  sshKeyIds?: string[];
   provider: AgentProvider;
   adapter?: HarnessAdapter;
   mode?: ProvisioningJobMode;

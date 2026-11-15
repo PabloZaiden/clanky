@@ -57,6 +57,10 @@ of account configuration or maintain a second preference state.
 Application state uses [framework realtime](architecture.md#application-realtime),
 not app-owned raw WebSocket subscriptions.
 
+Use readable names and aliases in the UI, not opaque IDs, hashes or SSH-key
+fingerprints. Keep technical identifiers in machine-readable metadata rather
+than using them as user-facing labels or fallbacks.
+
 ## Layout and actions
 
 ### Responsive layouts and Duo validation

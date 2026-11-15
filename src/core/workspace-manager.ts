@@ -33,7 +33,7 @@ import { backendManager } from "./backend-manager";
 import { assertHarnessHostPolicy } from "./backend/harness-host-policy";
 import { DomainError } from "../domain/domain-error";
 import { resourcePrivacyEventEmitter } from "./event-emitter";
-import { getWorkerPaths } from "./provisioning/worker-assets";
+import { getWorkerPathsForSupervisor } from "./provisioning/worker-assets";
 import { prepareWorkerRuntimeAssets } from "./provisioning/worker-runtime-assets";
 import {
   deleteWorkspaceWithOptions,
@@ -637,7 +637,7 @@ export class WorkspaceManager {
         const executor = await backendManager.getCommandExecutorAsync(id, current.directory);
         const workerDirectory = workspaceWorkerEnrollmentService.getByWorkspace(userId, id)?.worker?.workerDirectory;
         if (!workerDirectory) throw new DomainError("workspace_runtime_assets_failed", "The managed worker directory is unavailable.");
-        const paths = getWorkerPaths(workerDirectory, workerDirectory);
+        const paths = getWorkerPathsForSupervisor("/var/lib/clanky/supervisor.sh");
         const directory = await executor.exec("mkdir", ["-p", paths.hostRoot]);
         if (!directory.success) throw new DomainError("workspace_runtime_assets_failed", "Cannot prepare the workspace runtime directory.");
         runtimeAssets = await prepareWorkerRuntimeAssets(executor, { paths, runtime: updates.serverSettings!.agent, install: true });

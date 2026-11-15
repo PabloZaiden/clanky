@@ -4,7 +4,7 @@ import type { CommandExecutor, CommandResult } from "../command-executor";
 import { meshManager } from "../mesh-manager";
 import { workspaceWorkerEnrollmentService } from "../workspace-worker-enrollment-service";
 import type {
-  DevboxStatusResult,
+  EnvironmentStatusResult,
   ProvisioningStep,
 } from "@/shared";
 import { getHarnessAdapterForProvider, isValidWorkerHostAddress } from "@/shared";
@@ -18,22 +18,24 @@ import {
 } from "./errors";
 import type { ProvisioningResourceHandle } from "./attempt";
 import {
-  getSinglePublishedPort,
-} from "./devbox-utils";
+  getSinglePublishedPort, parseEnvironmentStatusOutput,
+} from "./environment-utils";
 import {
   runProvisioningCommand,
   type RunCommandOptions,
 } from "./command-runner";
 import type { ProvisioningJobRecord } from "./types";
 import { updateProvisioningJob } from "../../persistence/provisioning-jobs";
-import { getWorkerPaths, shellQuote, type WorkerPaths } from "./worker-assets";
+import { getWorkerPaths, getWorkerPathsForSupervisor, shellQuote, type WorkerPaths } from "./worker-assets";
+import { ENVIRONMENT_RUNTIME_ROOT } from "../environments/runtime-feature";
+import { environmentCommand } from "../environments/command";
 import { prepareWorkerRuntimeAssets } from "./worker-runtime-assets";
 import { appendSystemLog, setStep } from "./job-logger";
 
 export interface WorkerProvisioningOptions {
   targetDirectory: string;
   resolvedDirectory: string;
-  status: DevboxStatusResult;
+  status: EnvironmentStatusResult;
   workerLauncherPaths?: WorkerPaths;
   workerHostAddress?: string;
   relayOnlyWorker: boolean;
@@ -42,7 +44,7 @@ export interface WorkerProvisioningOptions {
 export interface WorkerRefreshOptions {
   targetDirectory: string;
   resolvedDirectory: string;
-  status: DevboxStatusResult;
+  status: EnvironmentStatusResult;
   workerHostAddress?: string;
   relayOnlyWorker: boolean;
   step: ProvisioningStep;
@@ -64,6 +66,8 @@ const maintenanceResultSchema = z.object({
   jobId: z.string().min(1),
   binaryVersion: z.string().trim().min(1),
   releaseChannel: z.enum(["stable", "latest", "prerelease"]),
+  updateOutcome: z.enum(["updated", "cached", "unchanged"]),
+  warning: z.string().min(1).optional(),
 });
 
 export class ProvisioningWorkerLifecycle {
@@ -76,9 +80,12 @@ export class ProvisioningWorkerLifecycle {
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     targetDirectory: string,
-    containerWorkdir: string,
+    _containerWorkdir: string,
   ): Promise<WorkerPaths> {
-    const paths = getWorkerPaths(targetDirectory, containerWorkdir);
+    const invocation = environmentCommand(record.job.config.executionHostBinding.host, record.owner.id, ["status"]);
+    const statusResult = await executor.exec(invocation.command, invocation.args, { cwd: targetDirectory, signal: record.abortController.signal });
+    if (!statusResult.success) throw new ProvisioningFailedError("invalid_environment_status", "environment_status", "Cannot locate private environment runtime staging.");
+    const paths = getWorkerPaths(parseEnvironmentStatusOutput(statusResult.stdout).hostRuntimeDirectory);
     await this.runCommand(record, executor, {
       step: "prepare_directory",
       label: "Preparing persistent worker launcher",
@@ -87,9 +94,9 @@ export class ProvisioningWorkerLifecycle {
     });
     await this.runCommand(record, executor, {
       step: "prepare_directory",
-      label: "Allowing the workspace user to persist worker state",
+      label: "Protecting private worker runtime staging",
       command: "chmod",
-      args: ["1777", paths.hostRoot],
+      args: ["700", paths.hostRoot],
     });
     await prepareWorkerRuntimeAssets(executor, {
       paths,
@@ -152,15 +159,15 @@ export class ProvisioningWorkerLifecycle {
         publishedPort = getSinglePublishedPort(options.status);
       } catch (error) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
+          "invalid_environment_status",
+          "environment_status",
           String(error),
         );
       }
     }
 
     const workerPaths = options.workerLauncherPaths
-      ?? getWorkerPaths(options.targetDirectory, options.resolvedDirectory);
+      ?? getWorkerPathsForSupervisor(`${ENVIRONMENT_RUNTIME_ROOT}/supervisor.sh`);
     const workerEndpoint = options.relayOnlyWorker
       ? undefined
       : `https://${workerHostAddress!}:${publishedPort!.hostPort}`;
@@ -175,7 +182,7 @@ export class ProvisioningWorkerLifecycle {
     if (!enrollmentId || !joinCommand) {
       throw new ProvisioningFailedError(
         "missing_worker_enrollment",
-        "devbox_up",
+        "environment_up",
         "Automatic worker provisioning did not create an enrollment.",
       );
     }
@@ -187,11 +194,13 @@ export class ProvisioningWorkerLifecycle {
           executor,
           options.targetDirectory,
           workerPaths.containerSupervisor,
+          record.owner.id,
+          record.job.config.executionHostBinding.host,
         );
       },
     );
 
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
@@ -217,20 +226,20 @@ export class ProvisioningWorkerLifecycle {
             ]),
       ],
       {
-        step: "devbox_up",
+        step: "environment_up",
         label: "Bootstrapping the workspace worker",
         errorCode: "worker_bootstrap_failed",
         errorMessage: "Failed to bootstrap the workspace worker",
         captureStdout: false,
       },
     );
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
       ["sh", "-lc", `CLANKY_DATA_DIR=${shellQuote(workerData)} ${joinCommand}`],
       {
-        step: "devbox_up",
+        step: "environment_up",
         label: "Registering the workspace worker",
         errorCode: "worker_join_failed",
         errorMessage: "Failed to register the workspace worker",
@@ -242,15 +251,15 @@ export class ProvisioningWorkerLifecycle {
       record,
       this.maxLogEntries,
       "Workspace worker registration command completed",
-      "devbox_up",
+      "environment_up",
     );
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
       ["sh", workerPaths.containerLauncher],
       {
-        step: "devbox_up",
+        step: "environment_up",
         label: "Starting the workspace worker",
         errorCode: "worker_start_failed",
         errorMessage: "Failed to start the workspace worker",
@@ -265,15 +274,18 @@ export class ProvisioningWorkerLifecycle {
     executor: CommandExecutor,
     targetDirectory: string,
     resolvedDirectory?: string,
+    ownerId?: string,
+    host?: import("@/shared").ExecutionHostRef,
   ): Promise<void> {
-    const workerPaths = getWorkerPaths(
-      targetDirectory,
-      resolvedDirectory?.trim() || targetDirectory,
-    );
+    void resolvedDirectory;
+    if (!ownerId || !host) throw new Error("Worker cleanup requires its recorded owner and provisioning host.");
+    const workerPaths = getWorkerPathsForSupervisor(`${ENVIRONMENT_RUNTIME_ROOT}/supervisor.sh`);
     await this.stopWorkerProcess(
       executor,
       targetDirectory,
       workerPaths.containerSupervisor,
+      ownerId,
+      host,
     );
   }
 
@@ -289,7 +301,7 @@ export class ProvisioningWorkerLifecycle {
     if (!enrollmentId || (!options.relayOnlyWorker && !workerHostAddress)) {
       throw new ProvisioningFailedError(
         "missing_worker_enrollment",
-        "devbox_status",
+        "environment_status",
         "The workspace worker enrollment is unavailable.",
       );
     }
@@ -299,14 +311,14 @@ export class ProvisioningWorkerLifecycle {
         publishedPort = getSinglePublishedPort(options.status);
       } catch (error) {
         throw new ProvisioningFailedError(
-          "invalid_devbox_status",
-          "devbox_status",
+          "invalid_environment_status",
+          "environment_status",
           String(error),
         );
       }
     }
-    const paths = getWorkerPaths(options.targetDirectory, options.resolvedDirectory);
-    const updateResult = await this.runDevboxExec(
+    const paths = getWorkerPathsForSupervisor(`${ENVIRONMENT_RUNTIME_ROOT}/supervisor.sh`);
+    const updateResult = await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
@@ -336,6 +348,11 @@ export class ProvisioningWorkerLifecycle {
         "Cannot confirm that this maintenance operation installed the selected worker release.",
       );
     }
+    if (maintenanceResult.updateOutcome === "cached") {
+      if (!maintenanceResult.warning) throw new ProvisioningFailedError("worker_update_result_invalid", options.step, "Cached worker startup did not include its update warning.");
+      record.attempt?.update({ warnings: [...(record.job.state.warnings ?? []), maintenanceResult.warning] });
+      appendSystemLog(record, this.maxLogEntries, maintenanceResult.warning, options.step);
+    }
     appendSystemLog(
       record,
       this.maxLogEntries,
@@ -345,7 +362,7 @@ export class ProvisioningWorkerLifecycle {
     const workerEndpoint = options.relayOnlyWorker
       ? undefined
       : `https://${workerHostAddress!}:${publishedPort?.hostPort ?? ""}`;
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
@@ -358,7 +375,7 @@ export class ProvisioningWorkerLifecycle {
         captureStdout: false,
       },
     );
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
@@ -391,7 +408,7 @@ export class ProvisioningWorkerLifecycle {
         captureStdout: false,
       },
     );
-    await this.runDevboxExec(
+    await this.runEnvironmentExec(
       record,
       executor,
       options.targetDirectory,
@@ -498,7 +515,7 @@ export class ProvisioningWorkerLifecycle {
     );
   }
 
-  private async runDevboxExec(
+  private async runEnvironmentExec(
     record: ProvisioningJobRecord,
     executor: CommandExecutor,
     cwd: string,
@@ -515,7 +532,7 @@ export class ProvisioningWorkerLifecycle {
     return await this.runCommand(record, executor, {
       step: options.step,
       label: options.label,
-      command: "devbox",
+      command: "environment",
       args: ["exec", "--", ...args],
       cwd,
       errorCode: options.errorCode,
@@ -529,10 +546,13 @@ export class ProvisioningWorkerLifecycle {
     executor: CommandExecutor,
     cwd: string,
     supervisorPath: string,
+    ownerId: string,
+    host: import("@/shared").ExecutionHostRef,
   ): Promise<void> {
+    const invocation = environmentCommand(host, ownerId, ["exec", "--", "sh", supervisorPath, "stop"]);
     const result = await executor.exec(
-      "devbox",
-      ["exec", "--", "sh", supervisorPath, "stop"],
+      invocation.command,
+      invocation.args,
       { cwd },
     );
     if (!result.success) {
@@ -545,7 +565,7 @@ export class ProvisioningWorkerLifecycle {
     if (!isValidWorkerHostAddress(address)) {
       throw new ProvisioningFailedError(
         "invalid_worker_host_address",
-        "devbox_status",
+        "environment_status",
         "A valid worker host address without spaces is required for worker provisioning.",
       );
     }

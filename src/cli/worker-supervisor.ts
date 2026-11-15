@@ -1,5 +1,5 @@
 /**
- * Local CLI control for the Devbox-owned worker loop.
+ * Local CLI control for the Environment-owned worker loop.
  */
 
 import type { WorkerServiceCommand } from "./worker-service";

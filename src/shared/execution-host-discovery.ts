@@ -1,8 +1,8 @@
 /**
- * Prerequisites and Devbox templates discovered on an execution host.
+ * Prerequisites and Environment templates discovered on an execution host.
  */
 
-export interface DevboxTemplateSummary {
+export interface EnvironmentTemplateSummary {
   name: string;
   description: string;
   source: "built-in";
@@ -18,7 +18,7 @@ export type ExecutionHostPrerequisiteId =
   | "connection"
   | "bash"
   | "dtach"
-  | "devbox"
+  | "environment"
   | "docker"
   | "devcontainer"
   | "git"

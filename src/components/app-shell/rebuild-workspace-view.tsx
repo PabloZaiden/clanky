@@ -39,7 +39,7 @@ export function RebuildWorkspaceView({
       repoUrl: workspace.repoUrl ?? "",
       basePath: workspace.basePath ?? "",
       devcontainerSubpath: workspace.devcontainerSubpath ?? null,
-      devboxTemplate: null,
+      environmentTemplate: null,
       provider: workspace.serverSettings.agent.provider,
       adapter: workspace.serverSettings.agent.adapter,
       mode,

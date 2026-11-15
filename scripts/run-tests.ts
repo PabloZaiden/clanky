@@ -1,6 +1,6 @@
 import { availableParallelism } from "node:os";
 
-type TestMode = "all" | "mesh";
+type TestMode = "all" | "mesh" | "environments" | "ssh-keys";
 
 interface ArchitectureRule {
   description: string;
@@ -19,6 +19,10 @@ const testFilePattern = "tests/**/*.test.{ts,tsx,js,jsx}";
 const e2eTestFilePattern = "tests/e2e/**/*.test.{ts,tsx,js,jsx}";
 const e2eSourcePattern = "tests/e2e/**/*.{ts,tsx,js,jsx}";
 const meshTestFile = "tests/e2e/mesh-journey.test.ts";
+const optionalTests = {
+  environments: "tests/e2e/environment-journey.test.ts",
+  "ssh-keys": "tests/e2e/ssh-key-access-journey.test.ts",
+} as const;
 
 const architectureRules: ArchitectureRule[] = [
   {
@@ -67,8 +71,8 @@ function parseMode(rawMode: string | undefined): TestMode {
   if (rawMode === undefined || rawMode === "all") {
     return "all";
   }
-  if (rawMode === "mesh") {
-    return "mesh";
+  if (rawMode === "mesh" || rawMode === "environments" || rawMode === "ssh-keys") {
+    return rawMode;
   }
   throw new Error(`Unknown E2E test mode: ${rawMode}`);
 }
@@ -166,7 +170,9 @@ async function main(): Promise<void> {
   const discovered = await globFiles(e2eTestFilePattern);
   const files = mode === "mesh"
     ? discovered.filter((file) => file === meshTestFile)
-    : discovered;
+    : mode === "all"
+      ? discovered.filter((file) => !Object.values<string>(optionalTests).includes(file))
+      : discovered.filter((file) => file === optionalTests[mode]);
   if (files.length === 0) {
     throw new Error(`No E2E tests discovered for mode ${mode}`);
   }

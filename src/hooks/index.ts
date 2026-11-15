@@ -76,10 +76,10 @@ export {
 } from "./useTranscriptResource";
 export { toTranscriptStreamEvent } from "./transcript-event-adapter";
 export {
-  useDevboxTemplates,
-  type UseDevboxTemplatesOptions,
-  type UseDevboxTemplatesResult,
-} from "./useDevboxTemplates";
+  useEnvironmentTemplates,
+  type UseEnvironmentTemplatesOptions,
+  type UseEnvironmentTemplatesResult,
+} from "./useEnvironmentTemplates";
 export {
   useFileExplorer,
   useWorkspaceFiles,

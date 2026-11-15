@@ -12,6 +12,7 @@ import { meshExecutionRoutes } from "./execution";
 import { meshTerminalRoutes } from "./terminal";
 import { meshTunnelRoutes } from "./tunnel";
 import { meshHarnessRoutes } from "./harness";
+import { meshSshAgentRoutes } from "./ssh-agent";
 
 export const meshInternalRoutes = defineRoutes({
   ...meshControlRoutes,
@@ -19,13 +20,16 @@ export const meshInternalRoutes = defineRoutes({
   ...meshTerminalRoutes,
   ...meshTunnelRoutes,
   ...meshHarnessRoutes,
+  ...meshSshAgentRoutes,
 });
 
 export const meshControllerInternalRoutes = defineRoutes({
+  ...meshSshAgentRoutes,
   "/api/mesh/internal/enrollment": meshInternalRoutes["/api/mesh/internal/enrollment"]!,
 });
 
 export const meshWorkerInternalRoutes = defineRoutes({
+  ...meshSshAgentRoutes,
   ...meshHarnessRoutes,
   "/api/mesh/internal/protocol": meshControlRoutes["/api/mesh/internal/protocol"]!,
   "/api/mesh/internal/revocation": meshInternalRoutes["/api/mesh/internal/revocation"]!,

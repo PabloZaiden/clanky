@@ -27,6 +27,8 @@ import { gitRoutes } from "./git";
 import { workspacesRoutes } from "./workspaces";
 import { terminalSessionsRoutes } from "./terminal-sessions";
 import { provisioningRoutes } from "./provisioning";
+import { environmentRoutes } from "./environments";
+import { sshKeyAccessRoutes } from "./ssh-key-access";
 import { workerUpdateRoutes } from "./worker-update-jobs";
 import { chatsRoutes } from "./chats/index";
 import { trashRoutes } from "./trash";
@@ -58,6 +60,8 @@ export const nativeApiRoutes = {
   ...workspacesRoutes,
   ...terminalSessionsRoutes,
   ...provisioningRoutes,
+  ...environmentRoutes,
+  ...sshKeyAccessRoutes,
   ...workerUpdateRoutes,
   ...chatsRoutes,
   ...trashRoutes,

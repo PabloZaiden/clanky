@@ -48,6 +48,11 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
       {job.state.error ? (
         <ErrorState title={getProvisioningStatusLabel(job.state.status)} description={job.state.error.message} />
       ) : null}
+      {job.state.warnings?.map((warning) => (
+        <Panel key={warning} title="Worker update warning">
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{warning}</p>
+        </Panel>
+      ))}
       {job.state.status === "cancelled" && execution?.outcome === "unconfirmed" ? (
         <ErrorState title="Command outcome unconfirmed" description="Check the execution host before retrying." />
       ) : null}

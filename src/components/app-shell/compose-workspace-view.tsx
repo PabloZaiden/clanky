@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
-import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
+import { useEnvironmentTemplates } from "../../hooks/useEnvironmentTemplates";
 import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 import { ServerSettingsForm } from "../server-settings-form";
 import type { ServerSettings } from "@/shared/settings";
@@ -26,6 +26,7 @@ import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-setti
 import { useWorkerUpdatePreferences } from "../../hooks/useWorkerUpdatePreferences";
 import { WorkerChannelSelect } from "../worker-channel-select";
 import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
+import { ProvisioningSshKeyPicker } from "../ProvisioningSshKeyPicker";
 
 interface ComposeWorkspaceViewProps {
   navigateWithinShell: (route: WebAppRoute) => void;
@@ -196,10 +197,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticBasePath,
     automaticDevcontainerSubpath,
     setAutomaticDevcontainerSubpath,
-    automaticDevboxTemplate,
-    setAutomaticDevboxTemplate,
+    automaticEnvironmentTemplate,
+    setAutomaticEnvironmentTemplate,
     automaticGithubUser,
     setAutomaticGithubUser,
+    automaticSshKeyIds,
+    setAutomaticSshKeyIds,
     automaticAdvancedOpen,
     setAutomaticAdvancedOpen,
     automaticAdapter,
@@ -221,7 +224,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     ),
     [dashboardData.remoteOnly, executionTargets],
   );
-  const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
+  const autoSelectedEnvironmentTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
   const {
@@ -229,19 +232,19 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     templatesLoading,
     templatesError,
     refreshTemplates,
-  } = useDevboxTemplates({
+  } = useEnvironmentTemplates({
     executionHost: automaticExecutionHost,
   });
   useEffect(() => {
-    if (!automaticCreateNewRepository || automaticDevboxTemplate || templatesLoading) {
+    if (!automaticCreateNewRepository || automaticEnvironmentTemplate || templatesLoading) {
       return;
     }
     const firstTemplate = templates[0]?.name;
     if (firstTemplate) {
-      autoSelectedDevboxTemplateRef.current = firstTemplate;
-      setAutomaticDevboxTemplate(firstTemplate);
+      autoSelectedEnvironmentTemplateRef.current = firstTemplate;
+      setAutomaticEnvironmentTemplate(firstTemplate);
     }
-  }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
+  }, [automaticCreateNewRepository, automaticEnvironmentTemplate, setAutomaticEnvironmentTemplate, templates, templatesLoading]);
   const automaticFormValid =
     (!automaticWorker || automaticChannel !== "default"
       || (channelPreferences.data !== undefined && !channelPreferences.error)) &&
@@ -257,7 +260,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       && !isIncompleteGitHubRepositoryUrl(automaticRepoUrl)
     )) &&
     automaticBasePath.trim().length > 0 &&
-    (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
+    (!automaticCreateNewRepository || automaticEnvironmentTemplate.trim().length > 0);
   const manualFormValid =
     (localAdministration || Boolean(workspaceControllerId)) &&
     workspaceName.trim().length > 0 &&
@@ -426,7 +429,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     setWorkspaceWorkerEnrollmentSelected(true);
                     setAutomaticExecutionHost(null);
                     setAutomaticBasePath("/workspaces");
-                    setAutomaticDevboxTemplate("");
+                    setAutomaticEnvironmentTemplate("");
                     return;
                   }
                   if (workspaceWorkerEnrollment) {
@@ -435,7 +438,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   setWorkspaceWorkerEnrollmentSelected(false);
                   const host = value ? parseExecutionHostRef(value) : null;
                   setAutomaticExecutionHost(host);
-                  setAutomaticDevboxTemplate("");
+                  setAutomaticEnvironmentTemplate("");
                   const selectedTarget = executionTargets.find(
                     (target) => host
                       && serializeExecutionHostRef(target.ref) === serializeExecutionHostRef(host),
@@ -539,12 +542,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     setAutomaticCreateNewRepository(createNewRepository);
                     if (
                       !createNewRepository
-                      && autoSelectedDevboxTemplateRef.current
-                      && automaticDevboxTemplate === autoSelectedDevboxTemplateRef.current
+                      && autoSelectedEnvironmentTemplateRef.current
+                      && automaticEnvironmentTemplate === autoSelectedEnvironmentTemplateRef.current
                     ) {
-                      setAutomaticDevboxTemplate("");
+                      setAutomaticEnvironmentTemplate("");
                     }
-                    autoSelectedDevboxTemplateRef.current = null;
+                    autoSelectedEnvironmentTemplateRef.current = null;
                   }}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
@@ -582,6 +585,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 <ErrorState title="Adapter unavailable" description="Native adapters require an automatic worker workspace." />
               )}
 
+              <FormGroup title="SSH keys" description="Share selected keys with this workspace and its initial clone. No keys are shared by default.">
+                <ProvisioningSshKeyPicker
+                  keyIds={automaticSshKeyIds}
+                  onChange={setAutomaticSshKeyIds}
+                  disabled={workspaceCreateSubmitting}
+                />
+              </FormGroup>
               <FormGroup
                 title="Advanced options"
                 actions={(
@@ -600,7 +610,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 {automaticAdvancedOpen && (
                   <div id={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID} className="space-y-4">
                     <FormGroup
-                      title="Devbox template"
+                      title="Environment template"
                       actions={(
                         <Button
                           type="button"
@@ -614,21 +624,21 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                     >
                       {!automaticExecutionHost && workspaceWorkerEnrollment ? (
                         <TextField
-                          id="automatic-devbox-template"
-                          label="Devbox template"
-                          value={automaticDevboxTemplate}
-                          onChange={(event) => setAutomaticDevboxTemplate(event.target.value)}
-                          placeholder="community"
+                          id="automatic-environment-template"
+                          label="Environment template"
+                          value={automaticEnvironmentTemplate}
+                          onChange={(event) => setAutomaticEnvironmentTemplate(event.target.value)}
+                          placeholder="node"
                           required={automaticCreateNewRepository}
                         />
                       ) : (
                         <SelectField
-                          id="automatic-devbox-template"
+                          id="automatic-environment-template"
                           label="Template"
-                          value={automaticDevboxTemplate}
+                          value={automaticEnvironmentTemplate}
                           onChange={(event) => {
-                            autoSelectedDevboxTemplateRef.current = null;
-                            setAutomaticDevboxTemplate(event.target.value);
+                            autoSelectedEnvironmentTemplateRef.current = null;
+                            setAutomaticEnvironmentTemplate(event.target.value);
                           }}
                           disabled={!automaticExecutionHost || templatesLoading}
                         >
@@ -662,7 +672,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       value={automaticDevcontainerSubpath}
                       onChange={(event) => setAutomaticDevcontainerSubpath(event.target.value)}
                       placeholder="backend"
-                      disabled={automaticDevboxTemplate.length > 0}
+                      disabled={automaticEnvironmentTemplate.length > 0}
                     />
                   </div>
                 )}

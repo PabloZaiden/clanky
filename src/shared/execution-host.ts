@@ -60,7 +60,7 @@ export const EXECUTION_HOST_CAPABILITY_IDS = [
   "managedWorktrees",
   "interactiveTerminal",
   "provisioning",
-  "devboxLifecycle",
+  "environmentLifecycle",
   "tcpTunnel",
   "serverHealth",
 ] as const;
@@ -86,7 +86,7 @@ export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   managedWorktrees: MANAGED_WORKTREES_SELECTED_BRANCH_VERSION,
   interactiveTerminal: 1,
   provisioning: 1,
-  devboxLifecycle: 1,
+  environmentLifecycle: 1,
   tcpTunnel: 1,
   serverHealth: 1,
 } as const satisfies Record<ExecutionHostCapabilityId, number>;
@@ -163,7 +163,7 @@ export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,
   interactiveTerminal: 1,
   provisioning: 1,
-  devboxLifecycle: 1,
+  environmentLifecycle: 1,
   tcpTunnel: 1,
   serverHealth: 1,
 };

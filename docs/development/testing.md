@@ -31,7 +31,29 @@ CLANKY_LOG_LEVEL=info bun run test:mesh
 
 The suite requires Bun and Git, with no live provider credentials or
 fixture-only system-package installation. Mesh uses the native compiled binary
-on both Linux and macOS; it does not require Devbox or Homebrew packages.
+on both Linux and macOS; it does not require Docker or Homebrew packages.
+
+Managed-environment changes also require `bun run test:environments`, a small
+real Docker/Dev Containers CLI journey kept out of default discovery. It checks
+non-root tooling, original hooks, private state and host-side shell/recovery.
+Install Docker and `@devcontainers/cli@0.90.0` to run it. The PR workflow selects
+it for affected environment integration paths; manual workflow dispatch runs it
+explicitly. Do not replace it with an exhaustive language/adapter/platform
+matrix or add project-devcontainer builds to the default sanity gate.
+
+SSH-key integration changes also select `bun run test:ssh-keys`. It uses
+disposable loaded agent keys and compiled controller/worker processes, without
+Docker, personal credentials or a live provider. Both optional journeys stay
+out of `bun run test`; manual PR-workflow dispatch runs both.
+
+For self-hosting acceptance, use a disposable checkout of the implementation
+under test and Clanky's actual `.devcontainer/devcontainer.json`, without
+skipping its prerequisite hook. Validate the worker from that same revision,
+declared DinD with a real build/run, non-root checkout/state ownership, shell
+recovery, restart/update fallback and rebuild persistence. Run the normal build
+and sanity suite inside it. Record cold provisioning separately from test time;
+cached iterations do not establish cold correctness. Linux and macOS execution
+must be reported separately.
 
 ### Speed budget
 
