@@ -135,7 +135,7 @@
 			outputPaths = ("$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/clanky");
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nsource=\"$SRCROOT/../dist/apple/Controller/clanky\"\ntarget=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/clanky\"\nif [ ! -x \"$source\" ]; then\n  echo 'error: Bundled CLI missing. Run bun run build:apple:macos first.' >&2\n  exit 1\nfi\nfor arch in $ARCHS; do\n  if ! /usr/bin/lipo -verify_arch \"$arch\" \"$source\"; then\n    echo 'error: Bundled CLI architecture does not match the app. Build the app for the prepared CLI architecture.' >&2\n    exit 1\n  fi\ndone\nmkdir -p \"$(dirname \"$target\")\"\n/usr/bin/ditto \"$source\" \"$target\"\n/usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"$target\"\n";
+			shellScript = "set -eu\nsource=\"$SRCROOT/../dist/apple/Controller/clanky\"\ntarget=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/clanky\"\nif [ ! -x \"$source\" ]; then\n  echo 'error: Bundled CLI missing. Run bun run build:apple:macos first.' >&2\n  exit 1\nfi\nfor arch in $ARCHS; do\n  if ! /usr/bin/lipo -verify_arch \"$arch\" \"$source\"; then\n    echo 'error: Bundled CLI architecture does not match the app. Build the app for the prepared CLI architecture.' >&2\n    exit 1\n  fi\ndone\nmkdir -p \"$(dirname \"$target\")\"\n/usr/bin/ditto \"$source\" \"$target\"\n/usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" --identifier com.clanky.cli \"$target\"\n";
 		};
 		A00000000000000000000024 = {
 			isa = PBXFileReference;
