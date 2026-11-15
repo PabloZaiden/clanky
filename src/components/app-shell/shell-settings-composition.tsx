@@ -1,6 +1,10 @@
 import type { WebAppRootProps } from "@/platform/web/root-types";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
-import type { Workspace } from "@/shared";
+import {
+  VOICE_TRANSLATION_LANGUAGES,
+  VOICE_TRANSLATION_LANGUAGE_NAMES,
+  type Workspace,
+} from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "@/shared/preferences";
 import {
@@ -22,6 +26,7 @@ import type {
   UseFileExplorerFullTreePreferenceResult,
   UseGithubUsernameResult,
   UseMarkdownPreferenceResult,
+  UseTranslationSettingsResult,
   UseMeshResult,
   UseQuickChatSettingsResult,
   UseSchedulerTimezoneResult,
@@ -43,6 +48,7 @@ export interface ShellSettingsCompositionOptions {
   schedulerTimezone: UseSchedulerTimezoneResult;
   githubUsername: UseGithubUsernameResult;
   markdownPreference: UseMarkdownPreferenceResult;
+  translationSettings: UseTranslationSettingsResult;
   fullTreePreference: UseFileExplorerFullTreePreferenceResult;
   privateItemsPreference: PrivateItemsPreference;
   workspaces: Workspace[];
@@ -62,6 +68,7 @@ export function buildShellSettingsSections({
   schedulerTimezone,
   githubUsername,
   markdownPreference,
+  translationSettings,
   fullTreePreference,
   privateItemsPreference,
   workspaces,
@@ -74,7 +81,72 @@ export function buildShellSettingsSections({
   const selectedQuickChatWorkspace = workspaces.find(
     (workspace) => workspace.id === quickChatSettings.settings.workspaceId,
   ) ?? null;
+  const translationBusy = !translationSettings.data
+    || translationSettings.loading
+    || translationSettings.saveStatus === "saving";
+  const translationError = translationSettings.saveError ?? translationSettings.error;
+  const translationFeedback = translationError
+    ? <SettingsError>{String(translationError)}</SettingsError>
+    : translationSettings.saveStatus
+      ? <span role="status">{translationSettings.saveStatus === "saving" ? "Saving..." : "Saved"}</span>
+      : null;
   const sections: ShellSettingsSections = [
+    {
+      id: "translation",
+      title: "Translation",
+      category: { id: "chats", title: "Chats" },
+      scope: "user",
+      rows: [
+        {
+          id: "translation-enabled",
+          title: "Enable translations",
+          labelFor: "translation-enabled",
+          contentPlacement: "inline",
+          content: <SettingsCheckbox
+            id="translation-enabled"
+            ariaLabel="Enable translations"
+            checked={translationSettings.data?.enabled ?? false}
+            disabled={translationBusy}
+            onChange={(event) => {
+              if (translationSettings.data) void translationSettings.update({
+                ...translationSettings.data,
+                enabled: event.currentTarget.checked,
+              });
+            }}
+          />,
+          feedback: translationFeedback,
+        },
+        ...[0, 1].map((index) => ({
+          id: `translation-language-${index}`,
+          title: `Language ${index + 1}`,
+          labelFor: `translation-language-${index}`,
+          content: <SettingsSelect
+            id={`translation-language-${index}`}
+            aria-label={`Translation language ${index + 1}`}
+            value={translationSettings.data?.languages[index] ?? ""}
+            disabled={translationBusy}
+            onChange={(event) => {
+              if (!translationSettings.data) return;
+              const value = event.currentTarget.value;
+              const selected = VOICE_TRANSLATION_LANGUAGES.find((language) => language === value);
+              const languages = [translationSettings.data.languages[0], translationSettings.data.languages[1]];
+              languages[index] = selected;
+              void translationSettings.update({
+                ...translationSettings.data,
+                languages: languages.filter((language) => language !== undefined),
+              });
+            }}
+          >
+            <option value="">None</option>
+            {VOICE_TRANSLATION_LANGUAGES.map((language) => <option key={language} value={language}
+              disabled={translationSettings.data?.languages.some((selected, selectedIndex) =>
+                selectedIndex !== index && selected === language)}>
+              {VOICE_TRANSLATION_LANGUAGE_NAMES[language]}
+            </option>)}
+          </SettingsSelect>,
+        })),
+      ],
+    },
     {
       id: "agent-notifications",
       title: "Notifications",
@@ -373,7 +445,7 @@ export function buildShellSettingsSections({
   ];
   const capabilities = getClankyClientCapabilities();
   const controllerSections = new Set(["mesh", "controller", "relays", "automations", "github", "agent-notifications", "control-approvals", "control-oauth-grants", "control-credentials", "clanky-danger-zone"]);
-  return sections.filter((section) => section.id === "voice"
+  return sections.filter((section) => section.id === "voice" || section.id === "translation"
     ? capabilities.voice
     : capabilities.controllerAdministration || !controllerSections.has(section.id));
 }

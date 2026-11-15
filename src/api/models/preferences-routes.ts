@@ -37,6 +37,7 @@ import {
   SchedulerTimezoneQuerySchema,
   SetQuickChatSettingsRequestSchema,
   SetPromptTemplatesRequestSchema,
+  TranslationSettingsSchema,
 } from "@/contracts/schemas";
 
 const log = createLogger("api:preferences");
@@ -52,6 +53,46 @@ function logPreferenceSaveFailure(preference: string, error: unknown): void {
  * Preferences API routes.
  */
 export const preferencesRoutes = defineRoutes({
+  "/api/preferences/translation": {
+    auth: "user",
+    sameOrigin: "mutations",
+    tags: ["preferences"],
+    description: "Configure opt-in message translation with up to two distinct target languages.",
+    operations: {
+      GET: {
+        requestSchema: undefined,
+        querySchema: undefined,
+        responseSchema: TranslationSettingsSchema,
+        automation: { policy: "read" },
+      },
+      PUT: {
+        requestSchema: TranslationSettingsSchema,
+        querySchema: undefined,
+        responseSchema: TranslationSettingsSchema,
+        automation: { policy: "write" },
+      },
+    },
+    async GET(): Promise<Response> {
+      return Response.json(await preferencesManager.getTranslationSettings());
+    },
+    async PUT(req: Request, ctx): Promise<Response> {
+      const result = await parseAndValidate(TranslationSettingsSchema, req);
+      if (!result.success) return result.response;
+      try {
+        await preferencesManager.setTranslationSettings(result.data);
+        ctx.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.translationSettings);
+        return Response.json(result.data);
+      } catch (error) {
+        logPreferenceSaveFailure("translation", error);
+        return internalErrorResponse(error, {
+          error: "save_failed",
+          message: "Failed to save translation settings",
+          status: 500,
+        });
+      }
+    },
+  },
+
   "/api/preferences/notifications": {
     auth: "user",
     sameOrigin: "mutations",

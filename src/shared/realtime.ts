@@ -31,6 +31,7 @@ export const CLANKY_REALTIME_RESOURCES = {
   controlRequests: "control-requests",
   controlCredentials: "control-credentials",
   notificationSettings: "notification-settings",
+  translationSettings: "translation-settings",
   promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
   sidebarPins: "sidebar-pins",
 } as const;

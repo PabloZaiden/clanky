@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import {
   VOICE_MAX_TEXT_CHARS,
+  VOICE_TRANSLATION_LANGUAGE_NAMES,
   type TranscriptMessage,
   type VoiceTranslationLanguage,
 } from "@/shared";
@@ -25,6 +26,7 @@ interface MessageEntryProps {
   markdownEnabled: boolean;
   fileLinkContext?: TranscriptFileLinkContext;
   onReadAloud?: (messageId: string) => void;
+  translationLanguages: VoiceTranslationLanguage[];
   onTranslate: (
     sourceText: string,
     targetLanguage: VoiceTranslationLanguage,
@@ -44,6 +46,7 @@ export const MessageEntry = memo(function MessageEntry({
   markdownEnabled,
   fileLinkContext,
   onReadAloud,
+  translationLanguages,
   onTranslate,
   onTranslationError,
   playingReadAloudKey,
@@ -72,6 +75,7 @@ export const MessageEntry = memo(function MessageEntry({
   const demo = getDemoStorage() !== undefined;
   const canReadAloud = !demo && !isUser && Boolean(onReadAloud) && hasMessageText;
   const canTranslate = !demo && msg.role === "assistant"
+    && translationLanguages.length > 0
     && hasMessageText
     && sourceText.trim().length <= VOICE_MAX_TEXT_CHARS;
   const isReadAloudActive = playingReadAloudKey === msg.id;
@@ -181,40 +185,20 @@ export const MessageEntry = memo(function MessageEntry({
                   ) : isReadAloudActive ? "Stop summary" : "Read summary"}
                 </button>
               )}
-              {canTranslate && (
-                <>
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === "en" ? "no-underline" : ""}`}
-                    onClick={() => { void handleTranslate("en"); }}
-                    disabled={isTranslationBusy}
-                    aria-label="Translate to English"
-                    aria-busy={currentTranslationRequest?.language === "en"}
-                  >
-                    {currentTranslationRequest?.language === "en" ? (
-                      <>
-                        <ActivitySpinner className="h-3.5 w-3.5" />
-                        <span>Translating to English…</span>
-                      </>
-                    ) : "Translate to English"}
-                  </button>
-                  <button
-                    type="button"
-                    className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === "es" ? "no-underline" : ""}`}
-                    onClick={() => { void handleTranslate("es"); }}
-                    disabled={isTranslationBusy}
-                    aria-label="Translate to Spanish"
-                    aria-busy={currentTranslationRequest?.language === "es"}
-                  >
-                    {currentTranslationRequest?.language === "es" ? (
-                      <>
-                        <ActivitySpinner className="h-3.5 w-3.5" />
-                        <span>Translating to Spanish…</span>
-                      </>
-                    ) : "Translate to Spanish"}
-                  </button>
-                </>
-              )}
+              {canTranslate && translationLanguages.map((language) => (
+                <button
+                  key={language}
+                  type="button"
+                  className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === language ? "no-underline" : ""}`}
+                  onClick={() => { void handleTranslate(language); }}
+                  disabled={isTranslationBusy}
+                  aria-label={`Translate to ${VOICE_TRANSLATION_LANGUAGE_NAMES[language]}`}
+                  aria-busy={currentTranslationRequest?.language === language}
+                >
+                  {currentTranslationRequest?.language === language && <ActivitySpinner className="h-3.5 w-3.5" />}
+                  <span>{VOICE_TRANSLATION_LANGUAGE_NAMES[language]}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>

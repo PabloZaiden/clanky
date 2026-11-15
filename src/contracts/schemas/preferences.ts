@@ -11,9 +11,19 @@ import {
   DEFAULT_QUICK_CHAT_SETTINGS,
   isValidIanaTimeZone,
   PROMPT_TEMPLATE_LIMITS,
+  VOICE_TRANSLATION_LANGUAGES,
   type QuickChatSettings,
 } from "@/shared";
 import { ModelConfigSchema } from "./model";
+
+export const TranslationSettingsSchema = z.object({
+  enabled: z.boolean(),
+  languages: z.array(z.enum(VOICE_TRANSLATION_LANGUAGES))
+    .max(2, "Select at most two translation languages")
+    .refine((languages) => new Set(languages).size === languages.length, {
+      message: "Translation languages must be distinct",
+    }),
+});
 
 /**
  * Schema for setting last used model - PUT /api/preferences/last-model

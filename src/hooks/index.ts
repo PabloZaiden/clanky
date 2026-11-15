@@ -24,6 +24,7 @@ export { useWorkspacePreviews, type UseWorkspacePreviewsResult } from "./useWork
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useExecutionHostAddresses } from "./workspace-server-settings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
+export { useTranslationSettings, type UseTranslationSettingsResult } from "./useTranslationSettings";
 export {
   useFileExplorerFullTreePreference,
   type UseFileExplorerFullTreePreferenceResult,

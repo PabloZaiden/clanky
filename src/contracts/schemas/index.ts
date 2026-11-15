@@ -126,6 +126,7 @@ export {
 
 // Preferences schemas
 export {
+  TranslationSettingsSchema,
   SetLastModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetGithubUsernameRequestSchema,

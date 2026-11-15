@@ -17,10 +17,12 @@ import { SidebarPinsSchema } from "@/contracts/schemas/sidebar-pins";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requirePersistenceUserId } from "./ownership";
 import { DEFAULT_QUICK_CHAT_SETTINGS, DEFAULT_SCHEDULER_TIMEZONE, isValidIanaTimeZone, type QuickChatSettings } from "@/shared/preferences";
+import { DEFAULT_TRANSLATION_SETTINGS, type TranslationSettings } from "@/shared/preferences";
 import {
   normalizeQuickChatSettings,
   PromptTemplateListSchema,
   SetPromptTemplatesRequestSchema,
+  TranslationSettingsSchema,
 } from "@/contracts/schemas";
 import type { PromptTemplate } from "@/shared/prompt-templates";
 import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-update";
@@ -32,6 +34,20 @@ import {
 } from "@/contracts/schemas/agent-notifications";
 
 const log = createLogger("persistence:preferences");
+
+export async function getTranslationSettings(): Promise<TranslationSettings> {
+  const stored = getPreference("translationSettings");
+  if (stored === null) return structuredClone(DEFAULT_TRANSLATION_SETTINGS);
+  try {
+    return TranslationSettingsSchema.parse(JSON.parse(stored));
+  } catch (error) {
+    throw new Error("The stored translation settings are invalid.", { cause: error });
+  }
+}
+
+export async function setTranslationSettings(settings: TranslationSettings): Promise<void> {
+  setPreference("translationSettings", JSON.stringify(TranslationSettingsSchema.parse(settings)));
+}
 
 export function getSidebarPins(): SidebarPin[] {
   const stored = getPreference("sidebarPins");

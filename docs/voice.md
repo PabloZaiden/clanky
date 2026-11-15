@@ -32,12 +32,14 @@ phone or browser. The server must trust the provider's TLS certificate.
 Each signed-in user can configure their own endpoints; deployments must account
 for those users being able to connect to services reachable from the server.
 
-Assistant response blocks in chat and automation-run transcripts can be
-translated to English or Spanish. Translation sends the selected block's text
-to the configured, validated shared text-generation model. Clanky returns the
-result to the browser for display in that block only; it does not modify or
-persist the original conversation. The configured provider receives the
-selected text and applies its own data handling.
+In **Settings → Chats → Translation**, select up to two distinct languages
+and enable translations. Translations are disabled until you opt in.
+Assistant response blocks in chat and automation-run transcripts show an
+on-demand action named after each selected language. Translation sends the
+selected block's text to the configured, validated shared text-generation model.
+Clanky returns the result to the browser for display in that block only; it does
+not modify or persist the original conversation. The configured provider receives
+the selected text and applies its own data handling.
 
 The `languageHints` setting applies to provider-backed transcription. Piper
 detects the speech text's language locally and does not use those hints.
@@ -541,9 +543,10 @@ The `/api/voice/transcribe` endpoint continues to use the configured
 transcription provider.
 
 `POST /api/voice/translate` accepts
-`{"text":"<selected message text>","targetLanguage":"en"|"es"}` and returns
+`{"text":"<selected message text>","targetLanguage":"fr"}` and returns
 `{"translatedText":"<translation>"}`. It requires the user's validated shared
-text-generation capability, accepts at most 30,000 characters, and does not
+text-generation capability and a target language from the supported translation
+language list, accepts at most 30,000 characters, and does not
 persist or associate the submitted text with a chat or automation run.
 
 ## Upstream voice assets

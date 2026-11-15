@@ -1,7 +1,7 @@
 import { useCallback, useMemo, memo } from "react";
 import { Button, useToast } from "@pablozaiden/webapp/web";
 import type { VoiceTranslationResponse } from "@/contracts/schemas";
-import type { VoiceTranslationLanguage } from "@/shared";
+import { VOICE_TRANSLATION_LANGUAGE_NAMES, type VoiceTranslationLanguage } from "@/shared";
 import { hasToolCallImagePreview } from "@/shared/tool-call";
 import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
 import { apiRequest } from "../../lib/api-client";
@@ -30,7 +30,10 @@ import { LogEntryItem } from "./log-entry-item";
 import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 import { useTranscriptImagePreview } from "./use-transcript-image-preview";
 import { useLocalDayKey } from "./use-local-day-key";
+import { useTranslationSettings } from "../../hooks/useTranslationSettings";
 import { ActivityIndicator } from "./activity-indicator";
+
+const EMPTY_TRANSLATION_LANGUAGES: VoiceTranslationLanguage[] = [];
 
 function isAbortError(error: unknown): boolean {
   return typeof error === "object"
@@ -66,13 +69,14 @@ const ConversationPresentation = memo(function ConversationPresentation({
   loadingTranscript = false,
 }: ConversationViewerProps) {
   const localDayKey = useLocalDayKey();
+  const translationSettings = useTranslationSettings();
   const { error: notifyError } = useToast();
   const translateMessage = useCallback(async (
     text: string,
     targetLanguage: VoiceTranslationLanguage,
     signal: AbortSignal,
   ): Promise<string> => {
-    const language = targetLanguage === "en" ? "English" : "Spanish";
+    const language = VOICE_TRANSLATION_LANGUAGE_NAMES[targetLanguage];
     const response = await apiRequest<VoiceTranslationResponse>("/api/voice/translate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -272,6 +276,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                     onTranslate={translateMessage}
+                    translationLanguages={translationSettings.data?.enabled ? translationSettings.data.languages : EMPTY_TRANSLATION_LANGUAGES}
                     onTranslationError={handleTranslationError}
                     onReadAloud={onReadAloud}
                     playingReadAloudKey={messageReadAloudKey}
