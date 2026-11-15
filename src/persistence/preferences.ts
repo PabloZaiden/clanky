@@ -27,8 +27,8 @@ import type { WorkerUpdateMode, WorkerUpdatePreferences } from "@/shared/worker-
 import { WorkerUpdatePreferencesSchema } from "@/contracts/schemas/worker-update";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/shared/agent-notifications";
 import {
-  NotificationPreferencesSchema, NotificationDeliveryErrorSchema,
-  type NotificationPreferences, type NotificationDeliveryError, type SetAgentNotificationSettings,
+  NotificationPreferencesSchema, NotificationDeliveryErrorSchema, NotificationPayloadSchema,
+  type NotificationPreferences, type NotificationDeliveryError, type SetAgentNotificationSettings, type NotificationPayload,
 } from "@/contracts/schemas/agent-notifications";
 
 const log = createLogger("persistence:preferences");
@@ -58,6 +58,16 @@ export async function getNotificationWebhookUrl(ownerUserId?: string): Promise<s
 
 export function getNotificationWebhookGeneration(ownerUserId: string): string | null {
   return getPreference("notificationWebhookGeneration", ownerUserId);
+}
+
+export function getNotificationPayload(ownerUserId?: string): NotificationPayload {
+  const stored = getPreference("notificationPayload", ownerUserId);
+  if (stored === null) return { mode: "listen" };
+  try {
+    return NotificationPayloadSchema.parse(JSON.parse(stored));
+  } catch (error) {
+    throw new Error("The stored notification payload configuration is invalid.", { cause: error });
+  }
 }
 
 export function getNotificationPreferences(ownerUserId?: string): NotificationPreferences {
@@ -96,6 +106,11 @@ export function updateNotificationSettings(input: SetAgentNotificationSettings):
     if (input.webhookUrl !== undefined) {
       if (input.webhookUrl === null) deletePreference("notificationWebhookUrl");
       else setPreference("notificationWebhookUrl", input.webhookUrl);
+    }
+    if (input.payload !== undefined) {
+      setPreference("notificationPayload", JSON.stringify(input.payload));
+    }
+    if (input.webhookUrl !== undefined || input.payload !== undefined) {
       setPreference("notificationWebhookGeneration", crypto.randomUUID());
       deletePreference("notificationDeliveryError");
     }

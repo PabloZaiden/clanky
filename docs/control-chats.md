@@ -120,7 +120,7 @@ request a new confirmation before restarting.
 
 ## Agent notifications
 
-Set a Listen source's webhook URL in **Settings → Agents & integrations →
+Set your webhook URL in **Settings → Agents & integrations →
 Notifications**. The private URL is saved per user across workspaces and server
 restarts. Reads disclose preferences and whether it is configured, never its URL; paste a new URL to
 replace it or click **Clear** to remove it immediately and disable delivery.
@@ -130,6 +130,31 @@ Use HTTPS outside trusted local development. Clanky accepts HTTP(S) URLs without
 URL user credentials or fragments, including private self-hosted Listen servers.
 The webhook token remains on the controller, not in agent prompts, tools,
 execution-host configuration, or logs.
+
+**Payload** defaults to **Listen**, which sends Listen's native JSON automatically.
+Existing webhooks need no changes. To use another service, select **Custom JSON**,
+write a valid JSON template, and click **Save**. Changing the payload does not
+require pasting the saved webhook URL again.
+
+Use `{{title}}`, `{{shortDescription}}`, and `{{markdownContent}}` inside JSON
+string values, including nested objects and arrays. For a service accepting
+a `text` field:
+
+```json
+{
+  "text": "{{title}}\n{{markdownContent}}"
+}
+```
+
+Variables are substituted once and JSON-escaped, so quotes, backslashes, and
+newlines in notification text remain valid JSON. Numeric literals retain their
+original precision and notation. Keys are literal, and no code is evaluated.
+Unknown variables and invalid JSON are rejected before saving.
+Templates are limited to 64 KiB and rendered custom payloads to 1 MiB; an
+oversized result is rejected without sending. Both explicitly requested and
+opted-in automatic notifications use the saved payload. Templates persist
+across restarts and must not contain credentials or other secrets.
+Delivery remains a JSON POST; custom methods and headers are not supported.
 
 Native Copilot, Codex and OpenCode 2 workspace chats and managed Automation runs
 receive `clanky_send_notification` through the existing common control tools.
@@ -185,10 +210,10 @@ retain generic alerts. Notifications never copy submitted answers, private secre
 files, arbitrary transcript content, error diagnostics, tool arguments or webhook
 credentials. Request labels, purposes and approval descriptions should explain
 what is needed without embedding credentials, since that metadata is sent to
-Listen. Delivery failures appear in this Settings section with their timestamp
-and update live for that user. The last
-failure survives restart until the webhook is replaced or cleared; outstanding
-failures from the previous webhook configuration cannot restore that cleared error.
+the receiving service. Delivery failures appear in this Settings section with
+their timestamp and update live for that user. The last failure survives restart
+until the webhook is replaced or cleared, or its payload is changed; outstanding
+failures from the previous configuration cannot restore that cleared error.
 Delivery does not depend on an agent tool, an open browser, or native provider support.
 There is no replay of past events on startup or when preferences are enabled.
 
@@ -199,7 +224,7 @@ event notifications only, not explicitly requested `clanky_send_notification` ca
 This is an agent instruction and tool-description policy, not an additional
 application-enforced per-chat permission.
 
-The tool accepts Listen's text fields `title` (1–100 characters),
+The tool accepts the same text fields in both payload modes: `title` (1–100 characters),
 `shortDescription` (1–500 characters), and `markdownContent` (nonempty, at most
 800 KiB). The common control transport's 256 KiB whole-request JSON limit still
 applies. Titles and descriptions are trimmed. Icons are not supported.
@@ -212,7 +237,7 @@ validation errors do not send a request. HTTP rejection is reported with its
 status, without reflecting remote response bodies. Requests have a five-second
 deadline, do not follow redirects, and are never automatically retried.
 Network errors, timeouts and server errors can leave delivery uncertain:
-inspect Listen before repeating a send.
+inspect the receiving service before repeating a send.
 
 Deterministic programs use the same tool through
 `ctx.clanky.call("clanky_send_notification", { title, shortDescription, markdownContent })`.

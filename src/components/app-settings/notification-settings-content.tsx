@@ -1,45 +1,85 @@
 import { useState, type FormEvent } from "react";
 import {
-  Button, createLogger, LoadingState, SettingsFieldRow, useToast, useUnsavedChanges,
+  Button, createLogger, FormActions, LoadingState, SettingsFieldRow, TextAreaField, useToast, useUnsavedChanges,
 } from "@pablozaiden/webapp/web";
-import type { SetAgentNotificationSettings } from "@/contracts/schemas/agent-notifications";
-import { NOTIFICATION_EVENT_LABELS, type NotificationEventKind } from "@/shared/agent-notifications";
+import {
+  NotificationPayloadSchema, NotificationWebhookUrlSchema,
+  type NotificationPayload, type SetAgentNotificationSettings,
+} from "@/contracts/schemas/agent-notifications";
+import {
+  DEFAULT_NOTIFICATION_TEMPLATE, notificationTemplateError, NOTIFICATION_TEMPLATE_MAX_BYTES,
+  NOTIFICATION_EVENT_LABELS, type NotificationEventKind,
+} from "@/shared/agent-notifications";
 import type { NotificationSettings } from "../../hooks/useNotificationSettings";
-import { SettingsCheckbox, SettingsError, SettingsInput } from "./settings-row-controls";
+import { SettingsCheckbox, SettingsError, SettingsInput, SettingsSelect } from "./settings-row-controls";
 
 const log = createLogger("notification-settings");
 
 export function NotificationSettingsContent({ settings: query }: { settings: NotificationSettings }) {
   const { success } = useToast();
   const [url, setUrl] = useState("");
+  const [payloadMode, setPayloadMode] = useState<NotificationPayload["mode"] | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<string | null>(null);
   const { saving } = query;
   const [preferenceError, setPreferenceError] = useState<{ key: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const dirty = Boolean(url);
+  const savedPayload = query.data?.payload;
+  const mode = payloadMode ?? savedPayload?.mode ?? "listen";
+  const template = templateDraft ?? (savedPayload?.mode === "custom" ? savedPayload.template : DEFAULT_NOTIFICATION_TEMPLATE);
+  const payload: NotificationPayload = mode === "listen" ? { mode } : { mode, template };
+  const payloadDirty = Boolean(savedPayload && (mode !== savedPayload.mode
+    || (mode === "custom" && savedPayload.mode === "custom" && template !== savedPayload.template)));
+  const dirty = Boolean(url) || payloadDirty;
+  const templateError = mode === "custom" ? notificationTemplateError(template) : null;
   function reset() {
     setUrl("");
+    setPayloadMode(null);
+    setTemplateDraft(null);
     setError(null);
   }
   useUnsavedChanges(dirty, reset);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!dirty) return;
-    await update(url.trim());
+    if (!dirty || saving || !query.data) return;
+    setError(null);
+    const input: SetAgentNotificationSettings = {};
+    if (url) {
+      const parsedUrl = NotificationWebhookUrlSchema.safeParse(url);
+      if (!parsedUrl.success) {
+        setError(parsedUrl.error.issues[0]!.message);
+        return;
+      }
+      input.webhookUrl = parsedUrl.data;
+    }
+    if (payloadDirty) {
+      const parsedPayload = NotificationPayloadSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        setError(parsedPayload.error.issues[0]!.message);
+        return;
+      }
+      input.payload = parsedPayload.data;
+    }
+    try {
+      await query.update("webhook", input);
+      reset();
+      success("Webhook settings saved.");
+    } catch {
+      log.error("Could not save notification webhook settings.");
+      setError("Could not save webhook settings. Try again.");
+    }
   }
 
-  async function update(webhookUrl: string | null) {
-    if (saving || !query.data || (webhookUrl === null && !query.data.configured)) return;
+  async function clearWebhook() {
+    if (saving || !query.data?.configured) return;
     setError(null);
     try {
-      await query.update("webhook", { webhookUrl });
-      reset();
-      success(webhookUrl === null ? "Webhook cleared." : "Webhook saved.");
+      await query.update("webhook", { webhookUrl: null });
+      setUrl("");
+      success("Webhook cleared.");
     } catch {
-      log.error("Could not update the notification webhook.");
-      setError(webhookUrl === null
-        ? "Could not clear the webhook. Try again."
-        : "Could not save the webhook. Check the URL and try again.");
+      log.error("Could not clear the notification webhook.");
+      setError("Could not clear the webhook. Try again.");
     }
   }
 
@@ -85,19 +125,38 @@ export function NotificationSettingsContent({ settings: query }: { settings: Not
       {query.data.lastDeliveryError.message}
     </SettingsError> : null}
     <form onSubmit={(event) => void save(event)}>
-    <SettingsFieldRow title="Listen webhook URL"
+    <SettingsFieldRow title={mode === "listen" ? "Listen webhook URL" : "Webhook URL"}
       labelFor="notification-webhook-url"
       content={<SettingsInput id="notification-webhook-url" type="password" autoComplete="off"
-        aria-label="Listen webhook URL" placeholder={query.data.configured ? "Replace saved webhook URL" : "Listen webhook URL"}
-        value={url} maxLength={4096} required disabled={saving !== null}
+        aria-label="Webhook URL" placeholder={query.data.configured ? "Replace saved webhook URL" : "Webhook URL"}
+        value={url} maxLength={4096} disabled={saving !== null}
         onChange={(event) => setUrl(event.currentTarget.value)} />}
-      feedback={error ? <SettingsError>{error}</SettingsError> : null}
-      actions={<>
-        <Button type="button" disabled={!query.data.configured || saving !== null}
-          onClick={() => void update(null)}>Clear</Button>
-        <Button type="button" disabled={!dirty || saving !== null} onClick={reset}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={!dirty || saving !== null}>Save</Button>
-      </>} />
+      actions={<Button type="button" disabled={!query.data.configured || saving !== null}
+        onClick={() => void clearWebhook()}>Clear</Button>} />
+    <SettingsFieldRow title="Payload" labelFor="notification-payload-mode"
+      content={<SettingsSelect id="notification-payload-mode" aria-label="Webhook payload" value={mode}
+        disabled={saving !== null} onChange={(event) => {
+          setPayloadMode(event.currentTarget.value === "custom" ? "custom" : "listen");
+          setError(null);
+        }}>
+        <option value="listen">Listen</option>
+        <option value="custom">Custom JSON</option>
+      </SettingsSelect>} />
+    {mode === "custom" ? <SettingsFieldRow title="JSON template" labelFor="notification-payload-template"
+      content={<TextAreaField id="notification-payload-template" label="" aria-label="Custom JSON payload template"
+        className="font-mono" rows={7} value={template} maxLength={NOTIFICATION_TEMPLATE_MAX_BYTES}
+        disabled={saving !== null} spellCheck={false}
+        hint="Use {{title}}, {{shortDescription}}, and {{markdownContent}} in JSON string values. Maximum 64 KiB."
+        error={templateError ?? undefined}
+        onChange={(event) => {
+          setTemplateDraft(event.currentTarget.value);
+          setError(null);
+        }} />} /> : null}
+    {error ? <SettingsError>{error}</SettingsError> : null}
+    <FormActions>
+      <Button type="button" disabled={!dirty || saving !== null} onClick={reset}>Cancel</Button>
+      <Button type="submit" variant="primary" disabled={!dirty || saving !== null || Boolean(templateError)}>Save</Button>
+    </FormActions>
     </form>
   </>;
 }
