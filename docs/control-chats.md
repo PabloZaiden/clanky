@@ -147,8 +147,9 @@ a `text` field:
 ```
 
 Variables are substituted once and JSON-escaped, so quotes, backslashes, and
-newlines in notification text remain valid JSON. Keys are literal, and no code
-is evaluated. Unknown variables and invalid JSON are rejected before saving.
+newlines in notification text remain valid JSON. Numeric literals retain their
+original precision and notation. Keys are literal, and no code is evaluated.
+Unknown variables and invalid JSON are rejected before saving.
 Templates are limited to 64 KiB and rendered custom payloads to 1 MiB; an
 oversized result is rejected without sending. Both explicitly requested and
 opted-in automatic notifications use the saved payload. Templates persist
