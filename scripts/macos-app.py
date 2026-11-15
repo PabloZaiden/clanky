@@ -18,6 +18,7 @@ import zipfile
 
 
 SCRIPT = Path(__file__).resolve()
+UUID_HELPER = SCRIPT.with_name("macos-build-uuid.py")
 ZIP = "Clanky-macos-arm64.zip"
 CLI_SIGNING_IDENTIFIER = "com.clanky.cli"
 DOWNLOAD_PART_BYTES = 16 * 1024 * 1024
@@ -296,6 +297,7 @@ def sign_bundle(config, work, app):
         elif target.is_relative_to(sparkle):
             options = ["--options", "runtime"]
         if cli:
+            run(sys.executable, UUID_HELPER, target)
             options += ["--identifier", CLI_SIGNING_IDENTIFIER]
         run("codesign", "--force", "--sign", config["signingIdentity"], "--timestamp=none", *options, target)
         run("codesign", "--verify", "--strict", "--verbose=2", target)
@@ -342,6 +344,8 @@ def prepare(config, work):
     require(baseline["configurationSHA256"] == configuration_digest(config)
             and baseline["signingIdentityVerified"], "Signing preflight changed or failed")
     require((work / "macos-app.py").read_bytes() == SCRIPT.read_bytes(), "Driver changed; start a fresh run")
+    require((work / UUID_HELPER.name).read_bytes() == UUID_HELPER.read_bytes(),
+            "UUID helper changed; start a fresh run")
     for command in ["build", "test", "build:apple:macos:linux"]:
         run("bun", "run", command, capture=False, cwd=repository)
     app = repository / "dist/apple/macos-linux/Clanky.app"
@@ -356,6 +360,7 @@ def prepare(config, work):
     return {
         "sourceRevision": revision, "configurationSHA256": configuration_digest(config),
         "driverSHA256": digest(SCRIPT), "bundle": info, "archiveSHA256": digest(archive_path),
+        "uuidHelperSHA256": digest(UUID_HELPER),
         "archiveBytes": archive_path.stat().st_size,
         "validation": "bun run build && bun run test; Linux macOS arm64 app/controller build",
     }
@@ -366,6 +371,7 @@ def sign(config, work):
     build = read_json(work / "build.json")
     require(build["configurationSHA256"] == configuration_digest(config), "Signing parameters changed")
     require(build["driverSHA256"] == digest(SCRIPT), "Signing driver changed")
+    require(build["uuidHelperSHA256"] == digest(UUID_HELPER), "UUID helper changed")
     archive_path = work / "Clanky.tar.gz"
     require(archive_path.stat().st_size == build["archiveBytes"]
             and digest(archive_path) == build["archiveSHA256"], "App transfer checksum mismatch")
@@ -436,9 +442,13 @@ def requests(config, work, stage):
         write_json(frozen, config)
         with (work / "macos-app.py").open("xb") as target:
             target.write(SCRIPT.read_bytes())
+        with (work / UUID_HELPER.name).open("xb") as target:
+            target.write(UUID_HELPER.read_bytes())
         write_json(work / "create-only.json", {"x-clanky-file-conditions": '{"ifNoneMatch":"*"}'})
     require(config_at(frozen) == config and (work / "macos-app.py").read_bytes() == SCRIPT.read_bytes(),
             "Driver or frozen parameters changed; start a fresh run")
+    require((work / UUID_HELPER.name).read_bytes() == UUID_HELPER.read_bytes(),
+            "UUID helper changed; start a fresh run")
     remote = Path(config["remoteDirectory"]) / work.name
     parameters = [{"name": "kind", "value": config["executionHostKind"]},
                   {"name": "id", "value": config["executionHostId"]}]
@@ -478,6 +488,7 @@ def requests(config, work, stage):
                 "Prepare the private artifact directory on the selected Mac.")
         execute("/bin/mkdir", ["-m", "700", str(remote)], "Create a fresh Mac signing run directory.")
         upload("macos-app.py")
+        upload(UUID_HELPER.name)
         upload("parameters.json")
     elif stage == "sign":
         upload("Clanky.tar.gz")
