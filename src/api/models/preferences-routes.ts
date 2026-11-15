@@ -97,7 +97,7 @@ export const preferencesRoutes = defineRoutes({
     auth: "user",
     sameOrigin: "mutations",
     tags: ["preferences"],
-    description: "Configure the user's private Listen webhook and opt-in event notifications. Reads never disclose the saved webhook URL.",
+    description: "Configure the user's private notification webhook, Listen or custom JSON payload, and opt-in event notifications. Reads never disclose the saved webhook URL.",
     operations: {
       GET: {
         requestSchema: undefined, querySchema: undefined,
@@ -119,7 +119,7 @@ export const preferencesRoutes = defineRoutes({
       }
     },
     async PUT(req: Request): Promise<Response> {
-      const body = await parseAndValidate(SetAgentNotificationSettingsSchema, req, { maxBodyBytes: 32_768 });
+      const body = await parseAndValidate(SetAgentNotificationSettingsSchema, req, { maxBodyBytes: 512 * 1024 });
       if (!body.success) return body.response;
       try {
         return Response.json(await agentNotificationService.configure(body.data), { headers: { "Cache-Control": "no-store" } });

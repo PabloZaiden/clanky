@@ -122,7 +122,7 @@ export type ControlToolInput<T extends ControlToolName> = z.input<typeof control
 
 export const controlToolDescriptions: Record<ControlToolName, string> = {
   ...controlDirectDescriptions,
-  clanky_send_notification: "Send one text notification to the user's configured Listen webhook. "
+  clanky_send_notification: "Send one text notification to the user's configured webhook using its saved Listen or custom JSON payload. "
     + AGENT_NOTIFICATION_INSTRUCTIONS
     + " Supply title, shortDescription and markdownContent; never supply a webhook URL. "
     + "Returns webhook acceptance, not human receipt. Direct, no discovery or extra approval.",
