@@ -1,4 +1,5 @@
 export const ENVIRONMENT_RUNTIME_ROOT = "/var/lib/clanky";
+export const ENVIRONMENT_CONTAINER_STATE_ROOT = "/usr/local/share/clanky-environment/state";
 
 export const environmentRuntimeFeature = {
   id: "clanky-runtime",
@@ -39,6 +40,8 @@ install -d -m 700 -o "$user" -g "$group" "$runtime"
 [ ! -e /var/lib/clanky ] && [ ! -L /var/lib/clanky ] || { echo "The project image already uses /var/lib/clanky." >&2; exit 1; }
 ln -s "$runtime" /var/lib/clanky
 install -d -m 755 /usr/local/share/clanky-environment
+install -d -m 700 -o "$user" -g "$group" "$runtime-container"
+ln -s "$runtime-container" ${ENVIRONMENT_CONTAINER_STATE_ROOT}
 node -e 'require("node:fs").writeFileSync(process.argv[1],JSON.stringify({user:process.argv[2],home:process.argv[3],runtime:process.argv[4]}))' /usr/local/share/clanky-environment/runtime.json "$user" "$home" "$runtime"
 printf '%s\\n' "$user" > /usr/local/share/clanky-environment/user
 install -m 755 start.sh /usr/local/share/clanky-environment/start.sh
@@ -49,7 +52,7 @@ export const environmentRuntimeLaunch = `const fs = require("node:fs");
 const { spawnSync } = require("node:child_process");
 const root = "/var/lib/clanky";
 const environment = { ...process.env };
-for (const [name, value] of Object.entries(JSON.parse(fs.readFileSync(root + "/remote-env.json", "utf8")))) {
+for (const [name, value] of Object.entries(JSON.parse(fs.readFileSync("${ENVIRONMENT_CONTAINER_STATE_ROOT}/remote-env.json", "utf8")))) {
   if (value === null) delete environment[name];
   else if (typeof value === "string") environment[name] = value;
   else throw new Error("Invalid saved project environment.");
@@ -64,11 +67,15 @@ process.exit(result.status ?? 1);
 export const environmentRuntimeStart = `#!/bin/sh
 set -eu
 root=/var/lib/clanky
-[ -f "$root/startup-command" ] || return 0
 user=$(cat /usr/local/share/clanky-environment/user)
 uid=$(id -u "$user")
 command='umask 077
 process=$(cat /proc/1/stat); process=\${process##*) }; set -- $process; shift 19; boot=$1
+if [ ! -f ${ENVIRONMENT_CONTAINER_STATE_ROOT}/remote-env.json ]; then
+  printf "%s:unconfigured\\n" "$boot" > /var/lib/clanky/startup-state
+  exit 0
+fi
+[ -f /var/lib/clanky/startup-command ] || exit 0
 printf "%s:starting\\n" "$boot" > /var/lib/clanky/startup-state
 if node /usr/local/share/clanky-environment/launch.cjs >> /var/lib/clanky/startup.log 2>&1; then
   printf "%s:success\\n" "$boot" > /var/lib/clanky/startup-state

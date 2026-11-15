@@ -4,7 +4,7 @@ import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { environmentTemplateConfiguration } from "./templates";
-import { ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeStart } from "./runtime-feature";
+import { ENVIRONMENT_CONTAINER_STATE_ROOT, ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeStart } from "./runtime-feature";
 import { getWorkerPathsForSupervisor, shellQuote, type AutomaticWorkerChannel } from "../provisioning/worker-assets";
 import { getExistingLauncherChannel, withWorkerLauncherChannel } from "../provisioning/worker-runtime-assets";
 import { parseWorkerChannel } from "../worker-channel";
@@ -78,7 +78,7 @@ export class EnvironmentManager {
     if (previous) {
       if (!previous.State.Running) {
         await this.command("docker", ["start", previous.Id]);
-        await this.waitForStartup(record);
+        await this.runStartCommands(record);
       }
       await this.syncAssets(record);
       await this.saveStartupCommand(record);
@@ -114,15 +114,12 @@ export class EnvironmentManager {
     record.remoteUser = result.remoteUser;
     record.workdir = result.remoteWorkspaceFolder;
     await this.save(record);
-    await this.saveRemoteEnvironment(record);
-    if (!previous || rebuild) await this.waitForStartup(record);
+    const configured = await this.saveRemoteEnvironment(record);
     await this.syncAssets(record);
     await this.configureIdentity(record);
-    if (!previous || !rebuild) {
-      await this.saveStartupCommand(record);
-    }
-    if (this.options.startupCommand !== undefined && (!previous || !rebuild)) {
-      await this.execIn(record, ["sh", "-c", this.options.startupCommand]);
+    await this.saveStartupCommand(record);
+    if (!configured || this.options.startupCommand !== undefined) {
+      await this.launchStartupCommand(record);
     }
     return record;
   }
@@ -175,14 +172,12 @@ export class EnvironmentManager {
     if (!previous.State.Running) {
       await this.command("docker", ["start", previous.Id]);
       await this.runStartCommands(record);
-      await this.waitForStartup(record);
     }
     await this.syncAssets(record);
     await this.saveRemoteEnvironment(record);
     await this.saveStartupCommand(record);
     await this.command("docker", ["restart", record.containerId!]);
     await this.runStartCommands(record);
-    await this.waitForStartup(record);
   }
 
   async remove(resetCredentials: boolean): Promise<void> {
@@ -216,7 +211,6 @@ export class EnvironmentManager {
       if (container && !container.State.Running) {
         await this.command("docker", ["start", container.Id]);
         await this.runStartCommands(record);
-        await this.waitForStartup(record);
         started.push(record.id);
       }
     }
@@ -372,29 +366,42 @@ process.stdout.write(JSON.stringify({channel:read("update-channel"),launcher:rea
     }
   }
 
-  private async saveRemoteEnvironment(record: EnvironmentRecord): Promise<void> {
+  private async saveRemoteEnvironment(record: EnvironmentRecord): Promise<boolean> {
     const parsed = z.object({
       mergedConfiguration: z.object({ remoteEnv: z.record(z.string(), z.string().nullable()).optional() }),
     }).parse(await this.jsonCommand("devcontainer", [
       "read-configuration", ...this.execArgs(record), "--include-merged-configuration",
     ]));
     const names = Object.keys(parsed.mergedConfiguration.remoteEnv ?? {});
-    const environment = z.record(z.string(), z.string().nullable()).parse(JSON.parse(
+    const result = z.object({
+      configured: z.boolean(), environment: z.record(z.string(), z.string().nullable()),
+    }).parse(JSON.parse(
       await this.execIn(record, ["node", "-e", `
-process.stdout.write(JSON.stringify(Object.fromEntries(
-  ${JSON.stringify(names)}.map(name => [name, process.env[name] ?? null]),
-)));
+process.stdout.write(JSON.stringify({
+  configured: require("node:fs").existsSync("${ENVIRONMENT_CONTAINER_STATE_ROOT}/remote-env.json"),
+  environment: Object.fromEntries(${JSON.stringify(names)}.map(name => [name, process.env[name] ?? null])),
+}));
 `]),
     ));
     const source = join(dirname(record.override), "remote-env.json");
+    if (!result.configured) await this.waitForStartup(record, true);
     try {
-      await writeFile(source, JSON.stringify(environment), { mode: 0o600 });
-      await this.copyToRuntime(record, source, "remote-env.json");
+      await writeFile(source, JSON.stringify(result.environment), { mode: 0o600 });
+      await this.copyToRuntime(record, source, "remote-env.json", ENVIRONMENT_CONTAINER_STATE_ROOT);
     } finally { await rm(source, { force: true }); }
+    return result.configured;
   }
 
   private async runStartCommands(record: EnvironmentRecord): Promise<void> {
     await this.command("devcontainer", ["run-user-commands", ...this.execArgs(record), "--skip-post-attach"]);
+    const configured = await this.saveRemoteEnvironment(record);
+    if (!configured) await this.launchStartupCommand(record);
+    else await this.waitForStartup(record);
+  }
+
+  private async launchStartupCommand(record: EnvironmentRecord): Promise<void> {
+    await this.execIn(record, ["sh", "-c", ". /usr/local/share/clanky-environment/start.sh"]);
+    await this.waitForStartup(record);
   }
 
   private async saveStartupCommand(record: EnvironmentRecord): Promise<void> {
@@ -408,29 +415,29 @@ process.stdout.write(JSON.stringify(Object.fromEntries(
     }
   }
 
-  private async waitForStartup(record: EnvironmentRecord): Promise<void> {
+  private async waitForStartup(record: EnvironmentRecord, allowUnconfigured = false): Promise<void> {
     const deadline = Date.now() + 15 * 60_000;
     let observed = "starting";
     while (Date.now() < deadline) {
       const output = await this.command("docker", ["exec", "--user", record.remoteUser!, record.containerId!, "sh", "-c", `
-if [ ! -f /var/lib/clanky/startup-command ]; then printf success; exit 0; fi
+${allowUnconfigured ? "" : "if [ ! -f /var/lib/clanky/startup-command ]; then printf success; exit 0; fi"}
 process=$(cat /proc/1/stat); process=\${process##*) }; set -- $process; shift 19; boot=$1
 if [ -f /var/lib/clanky/startup-state ]; then
     state=$(cat /var/lib/clanky/startup-state)
-    case "$state" in "$boot:success") printf success;; "$boot:failed") printf failed;; *) printf starting;; esac
+    case "$state" in "$boot:success") printf success;; "$boot:failed") printf failed;; "$boot:unconfigured") printf unconfigured;; *) printf starting;; esac
 else printf starting
 fi`]);
       observed = output.trim();
-      if (observed === "success") return;
+      if (observed === "success" || (allowUnconfigured && observed === "unconfigured")) return;
       if (observed === "failed") throw new Error("The environment started, but Clanky worker startup failed. Inspect /var/lib/clanky/startup.log using environment shell.");
       await Bun.sleep(250);
     }
     throw new Error(`Environment worker startup was not confirmed (${observed}); the container operation was not replayed.`);
   }
 
-  private async copyToRuntime(record: EnvironmentRecord, source: string, name: string): Promise<void> {
+  private async copyToRuntime(record: EnvironmentRecord, source: string, name: string, directory = ENVIRONMENT_RUNTIME_ROOT): Promise<void> {
     await this.run("docker", ["exec", "-i", "--user", record.remoteUser!, record.containerId!, "sh", "-c",
-      `umask 077; cat > ${shellQuote(`${ENVIRONMENT_RUNTIME_ROOT}/${name}.pending`)} && mv ${shellQuote(`${ENVIRONMENT_RUNTIME_ROOT}/${name}.pending`)} ${shellQuote(`${ENVIRONMENT_RUNTIME_ROOT}/${name}`)}`],
+      `umask 077; cat > ${shellQuote(`${directory}/${name}.pending`)} && mv ${shellQuote(`${directory}/${name}.pending`)} ${shellQuote(`${directory}/${name}`)}`],
     true, Bun.file(source).stream());
   }
 
