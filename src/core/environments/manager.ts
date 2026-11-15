@@ -4,7 +4,7 @@ import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { environmentTemplateConfiguration } from "./templates";
-import { ENVIRONMENT_CONTAINER_STATE_ROOT, ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeProfileDefaults, environmentRuntimeStart } from "./runtime-feature";
+import { ENVIRONMENT_CONTAINER_STATE_ROOT, ENVIRONMENT_RUNTIME_ROOT, environmentRuntimeFeature, environmentRuntimeInstall, environmentRuntimeLaunch, environmentRuntimeProfileDefaults, environmentRuntimeStart, environmentRuntimeTrust } from "./runtime-feature";
 import { getWorkerPathsForSupervisor, shellQuote, type AutomaticWorkerChannel } from "../provisioning/worker-assets";
 import { getExistingLauncherChannel, withWorkerLauncherChannel } from "../provisioning/worker-runtime-assets";
 import { parseWorkerChannel } from "../worker-channel";
@@ -278,6 +278,7 @@ export class EnvironmentManager {
       writeFile(join(featureFolder, "devcontainer-feature.json"), JSON.stringify(environmentRuntimeFeature), { mode: 0o600 }),
       writeFile(join(featureFolder, "install.sh"), environmentRuntimeInstall, { mode: 0o700 }),
       writeFile(join(featureFolder, "start.sh"), environmentRuntimeStart, { mode: 0o700 }),
+      writeFile(join(featureFolder, "trust-workspace.sh"), environmentRuntimeTrust, { mode: 0o700 }),
       writeFile(join(featureFolder, "launch.cjs"), environmentRuntimeLaunch, { mode: 0o600 }),
     ]);
     const sourceFolder = dirname(record.config);

@@ -14,6 +14,7 @@ export const environmentRuntimeFeature = {
   name: "Clanky workspace runtime",
   description: "Private, non-root Clanky tooling and container-start recovery.",
   dependsOn: { "ghcr.io/devcontainers/features/node:2": {} },
+  onCreateCommand: ["/usr/local/share/clanky-environment/trust-workspace.sh"],
   entrypoint: "/usr/local/share/clanky-environment/start.sh",
 };
 
@@ -46,7 +47,25 @@ ln -s "$runtime-container" ${ENVIRONMENT_CONTAINER_STATE_ROOT}
 node -e 'require("node:fs").writeFileSync(process.argv[1],JSON.stringify({user:process.argv[2],home:process.argv[3],runtime:process.argv[4]}))' /usr/local/share/clanky-environment/runtime.json "$user" "$home" "$runtime"
 printf '%s\\n' "$user" > /usr/local/share/clanky-environment/user
 install -m 755 start.sh /usr/local/share/clanky-environment/start.sh
+install -m 755 trust-workspace.sh /usr/local/share/clanky-environment/trust-workspace.sh
 install -m 644 launch.cjs /usr/local/share/clanky-environment/launch.cjs
+`;
+
+export const environmentRuntimeTrust = `#!/bin/sh
+set -eu
+directory=$(pwd -P)
+while [ ! -e "$directory/.git" ]; do
+  [ "$directory" != / ] || exit 0
+  directory=$(dirname "$directory")
+done
+cd "$HOME"
+status=0
+git config --global --fixed-value --get-all safe.directory "$directory" >/dev/null || status=$?
+case "$status" in
+  0) ;;
+  1) git config --global --add safe.directory "$directory" ;;
+  *) echo "Cannot read the tooling user's trusted Git directories." >&2; exit "$status" ;;
+esac
 `;
 
 export const environmentRuntimeLaunch = `const fs = require("node:fs");
