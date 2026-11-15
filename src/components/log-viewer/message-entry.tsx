@@ -192,7 +192,7 @@ export const MessageEntry = memo(function MessageEntry({
                   className={`inline-flex items-center gap-1 text-xs text-gray-500 underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-gray-400 ${currentTranslationRequest?.language === language ? "no-underline" : ""}`}
                   onClick={() => { void handleTranslate(language); }}
                   disabled={isTranslationBusy}
-                  aria-label={VOICE_TRANSLATION_LANGUAGE_NAMES[language]}
+                  aria-label={`Translate to ${VOICE_TRANSLATION_LANGUAGE_NAMES[language]}`}
                   aria-busy={currentTranslationRequest?.language === language}
                 >
                   {currentTranslationRequest?.language === language && <ActivitySpinner className="h-3.5 w-3.5" />}

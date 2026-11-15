@@ -33,6 +33,8 @@ import { useLocalDayKey } from "./use-local-day-key";
 import { useTranslationSettings } from "../../hooks/useTranslationSettings";
 import { ActivityIndicator } from "./activity-indicator";
 
+const EMPTY_TRANSLATION_LANGUAGES: VoiceTranslationLanguage[] = [];
+
 function isAbortError(error: unknown): boolean {
   return typeof error === "object"
     && error !== null
@@ -274,7 +276,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                     markdownEnabled={markdownEnabled}
                     fileLinkContext={resolvedFileLinkContext}
                     onTranslate={translateMessage}
-                    translationLanguages={translationSettings.data?.enabled ? translationSettings.data.languages : []}
+                    translationLanguages={translationSettings.data?.enabled ? translationSettings.data.languages : EMPTY_TRANSLATION_LANGUAGES}
                     onTranslationError={handleTranslationError}
                     onReadAloud={onReadAloud}
                     playingReadAloudKey={messageReadAloudKey}
