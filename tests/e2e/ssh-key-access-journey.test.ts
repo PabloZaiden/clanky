@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import net from "node:net";
-import { lstat, mkdir, rm } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   compiledClankyCommand, enrollMeshWorker, meshJsonRequest, meshNodeDiagnostics,
   startMeshNode, stopMeshNode, type ManagedMeshNode,
@@ -15,8 +16,7 @@ interface Host { ref: { kind: "local" | "mesh"; nodeId: string } }
 interface Identity { publicKey: string; fingerprint: string; comment: string }
 
 test("workspace grants filter a Mesh custodian agent and revoke new signatures live", async () => {
-  const directory = resolve(`.ssh-${crypto.randomUUID().slice(0, 4)}`);
-  await mkdir(directory, { mode: 0o700 });
+  const directory = await mkdtemp(join(tmpdir(), "clanky-ssh-"));
   const previousTmpdir = process.env["TMPDIR"];
   process.env["TMPDIR"] = directory;
   for (const name of Object.keys(process.env)) if (name.startsWith("CLANKY_WORKER_")) delete process.env[name];
@@ -45,8 +45,7 @@ test("workspace grants filter a Mesh custodian agent and revoke new signatures l
     const unselected = join(directory, "unselected");
     for (const key of [selected, unselected]) await requireCommand(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", key === selected ? "selected" : "unselected", "-f", key], { cwd: directory, env: environment });
     await requireCommand(["ssh-add", selected, unselected], { cwd: directory, env: environment });
-    const command = process.env["CLANKY_CREDENTIAL_TEST_BINARY"]
-      ? [resolve(process.env["CLANKY_CREDENTIAL_TEST_BINARY"]!)] : await compiledClankyCommand();
+    const command = await compiledClankyCommand();
     const controller = await startMeshNode({
       role: "controller", command,
       environment: { HOME: home, SSH_AUTH_SOCK: undefined, CLANKY_SSH_AGENT_SOURCE_SOCK: "", CLANKY_SSH_AGENT_SOCKET_DIR: join(directory, "c") },

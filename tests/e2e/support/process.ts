@@ -41,9 +41,16 @@ function isMissingProcess(error: unknown): boolean {
 export function currentEnvironment(overrides: Record<string, string | undefined> = {}): Record<string, string> {
   const environment: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined) {
+    if (value !== undefined && !name.startsWith("CLANKY_WORKER_")) {
       environment[name] = value;
     }
+  }
+  if (overrides["HOME"]) {
+    const home = overrides["HOME"];
+    environment["XDG_CONFIG_HOME"] = `${home}/.config`;
+    environment["XDG_DATA_HOME"] = `${home}/.local/share`;
+    environment["XDG_CACHE_HOME"] = `${home}/.cache`;
+    environment["XDG_STATE_HOME"] = `${home}/.local/state`;
   }
   for (const [name, value] of Object.entries(overrides)) {
     if (value === undefined) {

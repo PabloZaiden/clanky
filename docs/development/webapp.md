@@ -414,18 +414,24 @@ Follow the [manual validation policy](testing.md#manual-visual-validation).
 For unattended local UI work:
 
 ```bash
-CLANKY_DISABLE_PASSKEY=true \
-  CLANKY_DATA_DIR=/tmp/clanky-ui-validation \
-  bun --hot src/index.ts serve
+env -i PATH="$PATH" HOME=<disposable-home> \
+  CLANKY_DISABLE_PASSKEY=true CLANKY_DATA_DIR=<disposable-data-directory> \
+  CLANKY_HOST=127.0.0.1 CLANKY_PORT=<unused-loopback-port> \
+  bun --no-env-file --hot src/index.ts serve
 ```
 
-Choose a fresh disposable data directory for each validation session.
+Use fresh private directories and an unused port for each validation session.
+The clean environment keeps inherited configuration, credentials, worker
+lifecycle metadata and XDG paths out of the server; default configuration paths
+resolve under the disposable home. Follow the
+[isolation requirements](testing.md#isolation-synchronization-and-cleanup)
+for the server, browser, and any CLI or data-generation subprocesses.
 The demo generator can populate one:
 
 ```bash
-CLANKY_DISABLE_PASSKEY=true \
-  bun tests/test-data-generation/generate-demo-ui-data.ts \
-  --data-dir /tmp/clanky-demo
+env -i PATH="$PATH" HOME=<disposable-home> CLANKY_DISABLE_PASSKEY=true \
+  bun --no-env-file tests/test-data-generation/generate-demo-ui-data.ts \
+  --data-dir <disposable-data-directory>
 ```
 
 The devcontainer installs SF Pro regular/italic for Apple-platform previews,

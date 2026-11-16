@@ -22,8 +22,12 @@ bun run dev
 
 The combined development server runs `bun --hot src/index.ts serve` at
 <http://localhost:3000>. Use Bun tooling, not a separate frontend development
-server or `CLANKY_WEB_DIST_DIR`. Use a disposable `CLANKY_DATA_DIR` for local
-experiments so developer/production data is not modified.
+server or `CLANKY_WEB_DIST_DIR`. Before starting it on a machine with an installed
+Clanky, select a disposable home/configuration/data environment and an unused
+loopback port, and clear inherited worker lifecycle metadata. Follow the
+[isolation requirements](development/testing.md#isolation-synchronization-and-cleanup)
+for development servers and manual experiments as well as tests; a disposable
+`CLANKY_DATA_DIR` alone is not sufficient.
 
 ## Local-only information
 

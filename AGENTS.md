@@ -38,6 +38,9 @@ the relevant guide before changing its area, not every guide for unrelated work.
 
 - Follow the [testing policy](docs/development/testing.md) for investigations,
   coverage and validation.
+- Isolate development servers, tests, and manual experiments from any installed
+  Clanky instance. Follow the [isolation requirements](docs/development/testing.md#isolation-synchronization-and-cleanup)
+  before running application commands; never use the installed instance as a fixture.
 - Before declaring completion, check the plan against observable results,
   resolve required validation failures, and update Todos and status. Do not
   claim completion while a goal or required check remains unmet.

@@ -197,6 +197,24 @@ credentials, sockets, and subprocesses. Use `CLANKY_DISABLE_PASSKEY=true` for
 unattended scenarios except those verifying authentication boundaries.
 Never modify the developer's data or SSH keys, or contact an external host.
 
+These requirements also apply to development servers and disposable manual
+investigations, especially when an installed Clanky is running on the same host.
+Invoke the checkout's source entrypoint or an absolute path to its freshly built
+`dist/clanky`, never `clanky` resolved from `PATH`. Do not install, update,
+restart, stop, reconfigure, or use the real instance, its worker service, or its
+credentials as part of development or validation. Stop only processes created
+by the current experiment and clean up only its explicitly owned paths.
+
+Give each experiment a disposable `HOME`, `CLANKY_DATA_DIR`, and XDG
+configuration/data/cache/state directories. Do not inherit application API
+targets, keys, provider credentials/configuration, SSH agents, or shell startup
+hooks from the real account. Set CLI targets explicitly to the experiment's
+loopback URL and ephemeral port. Disable automatic `.env` loading for isolated
+Bun subprocesses so checkout-local configuration cannot undo isolation.
+The canonical test runner starts each file with a disposable environment and
+inherits only basic platform/tool-resolution variables and the selected log
+level; helpers further select each application's own home and data directory.
+
 Fixed delays are not synchronization. Wait for health, public state, frames,
 process completion, or filesystem/Git effects with a bounded named condition
 and last-observed-state diagnostics. Do not retain sleeps that cross an old
@@ -234,8 +252,8 @@ resource/isolation constraint.
 Discover the current Git branch instead of assuming `main` or `master`.
 Keep fixture `HOME`, provider `PATH`, and shell initialization isolated from
 the host account.
-The canonical runner removes inherited `CLANKY_WORKER_*` lifecycle metadata
-before starting E2E processes. Isolated nodes must not reuse the hosting worker's
+Never inherit `CLANKY_WORKER_*` lifecycle metadata in E2E processes or manual
+experiments. Isolated nodes must not reuse the hosting worker's
 supervisor, stop marker, channel or instance identity. Disposable diagnostics
 run outside that runner must clear those inherited variables themselves; an
 isolated data directory alone does not isolate worker service/channel commands.

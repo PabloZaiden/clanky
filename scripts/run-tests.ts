@@ -1,4 +1,6 @@
-import { availableParallelism } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
 
 type TestMode = "all" | "mesh" | "environments" | "ssh-keys";
 
@@ -128,6 +130,7 @@ async function runFile(file: string): Promise<TestResult> {
   const startedAt = performance.now();
   const command = [
     process.execPath,
+    "--no-env-file",
     "test",
     "--timeout",
     "120000",
@@ -137,31 +140,45 @@ async function runFile(file: string): Promise<TestResult> {
     "1",
     file,
   ];
+  const directory = await mkdtemp(join(tmpdir(), "clanky-test-environment-"));
+  const home = join(directory, "home");
+  await mkdir(home, { mode: 0o700 });
   const environment: Record<string, string> = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (value !== undefined && !name.startsWith("CLANKY_WORKER_")) {
-      environment[name] = value;
-    }
+  for (const name of ["PATH", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TZ", "SYSTEMROOT", "WINDIR"]) {
+    const value = process.env[name];
+    if (value !== undefined) environment[name] = value;
   }
-  environment["CLANKY_LOG_LEVEL"] = process.env["CLANKY_LOG_LEVEL"] ?? "fatal";
-  const processHandle = Bun.spawn({
-    cmd: command,
-    cwd: rootDirectory,
-    env: environment,
-    stdout: "pipe",
-    stderr: "pipe",
+  Object.assign(environment, {
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, ".config"),
+    XDG_DATA_HOME: join(home, ".local", "share"),
+    XDG_CACHE_HOME: join(home, ".cache"),
+    XDG_STATE_HOME: join(home, ".local", "state"),
+    CLANKY_DATA_DIR: join(directory, "data"),
+    CLANKY_LOG_LEVEL: process.env["CLANKY_LOG_LEVEL"] ?? "fatal",
   });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(processHandle.stdout).text(),
-    new Response(processHandle.stderr).text(),
-    processHandle.exited,
-  ]);
-  return {
-    file,
-    exitCode,
-    output: [stdout, stderr].filter(Boolean).join("\n").trim(),
-    elapsedMs: performance.now() - startedAt,
-  };
+  try {
+    const processHandle = Bun.spawn({
+      cmd: command,
+      cwd: rootDirectory,
+      env: environment,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(processHandle.stdout).text(),
+      new Response(processHandle.stderr).text(),
+      processHandle.exited,
+    ]);
+    return {
+      file,
+      exitCode,
+      output: [stdout, stderr].filter(Boolean).join("\n").trim(),
+      elapsedMs: performance.now() - startedAt,
+    };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 async function main(): Promise<void> {

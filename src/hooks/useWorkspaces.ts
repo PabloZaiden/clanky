@@ -11,7 +11,8 @@ import type {
 } from "@/shared/workspace";
 import type { CreateWorkspaceRequest, UpdateWorkspaceRequest } from "@/contracts/schemas/workspace";
 import type { DeleteWorkspaceRequest } from "@/contracts/schemas/workspace";
-import { createLogger, useLiveQuery } from "@pablozaiden/webapp/web";
+import type { DeleteWorkspaceResponse } from "@/contracts/api";
+import { createLogger, useLiveQuery, useToast } from "@pablozaiden/webapp/web";
 import { apiRequest, readApiResponse, requestApiResponse } from "../lib/api-client";
 
 export interface UseWorkspacesResult {
@@ -43,6 +44,7 @@ export interface UseWorkspacesResult {
  */
 export function useWorkspaces(): UseWorkspacesResult {
   const log = createLogger("useWorkspaces");
+  const { warning: notifyWarning } = useToast();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -125,7 +127,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      await mutate((signal) => apiRequest(`/api/workspaces/${id}`, {
+      const result = await mutate((signal) => apiRequest<DeleteWorkspaceResponse>(`/api/workspaces/${id}`, {
         signal,
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -133,6 +135,9 @@ export function useWorkspaces(): UseWorkspacesResult {
         action: "Delete workspace",
         fallbackMessage: "Failed to delete workspace",
       }), (previous) => previous?.filter((workspace) => workspace.id !== id));
+      for (const warning of result.warnings ?? []) {
+        notifyWarning(warning);
+      }
       return { success: true };
     } catch (err) {
       log.error("Failed to delete workspace", { workspaceId: id, error: String(err) });
@@ -141,7 +146,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     } finally {
       setSaving(false);
     }
-  }, [mutate]);
+  }, [mutate, notifyWarning]);
 
   const pullLatestChanges = useCallback(async (
     id: string,
