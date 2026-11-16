@@ -57,19 +57,28 @@ visible and online, then another opportunity when it returns to the foreground,
 regains focus, or comes online. Recovery renews the image resource when needed;
 it does not change the stored icon or extend its authorization.
 
-Clanky discards SVG metadata and Inkscape named-view settings while
-preserving the drawing. Simple inline presentation styles,
+Clanky discards SVG metadata and Inkscape named-view settings while preserving
+the drawing. Simple inline presentation styles and embedded `<style>` rules,
 including fill and stroke colors, opacity, and stroke widths, are converted
-to sanitized SVG attributes. Inline styles take precedence over presentation
-attributes, including declaration order and `!important`. Other style
-properties are discarded. Declarations with invalid values for a supported
-property are ignored, so they cannot replace valid colors or override valid
-declarations through `!important`.
+to sanitized SVG attributes. Stylesheets can use simple element, class, or ID
+selectors, including comma-separated lists such as `.light, .dark`.
+Specificity, declaration order, inline styles, and `!important` determine the
+result; stylesheet rules also apply to elements appearing before the stylesheet.
+The saved SVG does not retain stylesheets or classes.
+
+Unsupported inline style properties are discarded. Inline declarations with
+invalid values for a supported property are ignored, so they cannot replace
+valid colors or override valid declarations through `!important`. Stylesheet
+rules with unsupported properties, invalid values, or unsupported selectors are
+rejected instead. For broader CSS features, export an SVG with presentation
+attributes or use PNG.
 
 SVG icons must remain static and self-contained. Scripts, embedded HTML,
-stylesheets, document types, and external references are not supported.
+document types, external references, CSS at-rules such as `@import`, conditional
+stylesheets, compound selectors, combinators, and pseudo-selectors are not
+supported.
 Gradient and other image references must point to IDs inside the same SVG.
-Supported inline style values include colors, numeric values with units,
+Supported style values include colors, numeric values with units,
 keywords, and local `url(#id)` references; CSS variables, escapes, and other
 complex CSS expressions are not supported.
 
