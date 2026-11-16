@@ -530,6 +530,9 @@ if (additions.length) fs.appendFileSync(target,
     try {
       await writeFile(source, token, { mode: 0o600 });
       await this.copyToRuntime(record, source, "github-token");
+      await this.execIn(record, ["sh", "-c",
+        'cd "$HOME" && GH_TOKEN=$(cat /var/lib/clanky/github-token) && export GH_TOKEN && gh auth setup-git --hostname github.com',
+      ]);
     } finally { await rm(source, { force: true }); }
   }
 
