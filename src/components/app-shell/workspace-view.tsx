@@ -166,14 +166,6 @@ export function WorkspaceView({
 
   return (
     <div className="min-w-0 space-y-6">
-      {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin") ? (
-        <WorkspaceEnvironmentPanel workspaceId={workspace.id} name={workspace.name} />
-      ) : null}
-      {!workspace.access || workspace.access === "admin" ? (
-        <Panel title="Shared SSH keys">
-          <SshKeyAccess path={`/api/workspaces/${encodeURIComponent(workspace.id)}/ssh-key-access`} contextLabel="workspace" />
-        </Panel>
-      ) : null}
       {workspace.workspaceType === "git" && !scratchpadPrivateHidden ? (
         <div className="flex flex-wrap justify-end gap-2">
           {!isWorkspaceReadOnly(workspace) ? (
@@ -249,6 +241,15 @@ export function WorkspaceView({
           )}
         </div>
       </Panel>
+
+      {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin") ? (
+        <WorkspaceEnvironmentPanel workspaceId={workspace.id} name={workspace.name} />
+      ) : null}
+      {!workspace.access || workspace.access === "admin" ? (
+        <Panel title="Shared SSH keys">
+          <SshKeyAccess path={`/api/workspaces/${encodeURIComponent(workspace.id)}/ssh-key-access`} contextLabel="workspace" />
+        </Panel>
+      ) : null}
 
       <ConfiguredAutomationsSection
         automations={relatedAutomations}
