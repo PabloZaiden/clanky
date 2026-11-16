@@ -43,6 +43,13 @@ bottom-anchored placement and native interactions.
 Show/Hide sidebar and Settings have higher native visibility priority than the
 other toolbar controls, without changing their order or system-managed spacing.
 Pages without actions leave no empty toolbar group reserving space.
+Declare each primary action and the page menu as explicit toolbar items so
+actions published after navigation participate in native layout and overflow.
+Scope each entry's collection identity to its route; do not hide changing
+toolbar structure inside an ordinary nested view or a route-level collection.
+Actions without a supplied symbol use an adaptive checkmark label, preserving
+their full accessible and overflow titles. Plain text controls can create a
+separate bottom bar instead of joining the system side bar.
 The shared page-actions menu is labeled **More** and uses the `list.bullet`
 symbol on every page. Its semantic icon-and-text label keeps the name visible
 when the system moves it into overflow, including with the keyboard open.

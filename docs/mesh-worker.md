@@ -891,8 +891,10 @@ adapter/provider and install only its current native CLI before starting the
 worker. Node/npm must be available in the container.
 Installation uses a private prefix, validates only that the
 selected executable was installed, and adds a stable private bin directory to
-the worker's PATH. OpenCode 2 is exposed as `opencode2`, without replacing a
-system OpenCode generation-1 executable. Claude Agent installs
+the worker's PATH. Private runtime selection belongs to the current managed
+supervisor; a separate worker on the same host keeps its own PATH even when
+managed runtime assets are present. OpenCode 2 is exposed as `opencode2`, without
+replacing a system OpenCode generation-1 executable. Claude Agent installs
 `@anthropic-ai/claude-code` and exposes `claude`; authenticate the CLI on
 the worker. See [Claude Agent setup](harnesses.md#claude-agent).
 When npm requires install-script approval, it is recorded only for the selected
