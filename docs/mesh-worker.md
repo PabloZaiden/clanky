@@ -852,12 +852,26 @@ definitions are rejected explicitly rather than rewritten. With no definition,
 choose a language using `clanky environment templates`.
 
 The tooling user comes from the merged project/image configuration. Clanky
-does not override `remoteUser` or `containerUser`, force root for rootless
-Docker, or repair checkout ownership. Standard Docker with a non-root tooling
-user is the supported baseline. The checkout must already be writable by that
-user. A different non-root `containerUser` cannot switch to `remoteUser` at
-startup; Clanky reports the limitation without elevating privileges. Explicit
-project root settings are not silently changed.
+does not override `remoteUser` or `containerUser` or change checkout ownership.
+Standard Docker requires a checkout writable by that user. Rootless Docker is
+also supported when Docker and the checkout share the same Linux provisioning
+host: install the `acl` package (`getfacl` and `setfacl`) and use a filesystem
+with POSIX ACL support. The workspace must bind-mount the selected checkout,
+whose files must initially belong to the provisioning user.
+
+Before project lifecycle commands run, Clanky resolves the rootless tooling
+user's host identity and grants it the checkout owner's access using ACLs.
+Existing identities retain their effective permissions; inherited ACLs share
+new files between the host and tooling users without granting public access.
+Explicit restrictive file creation modes still apply. Symlink targets outside
+the checkout, other mounts and foreign-owned files are not repaired. Missing
+prerequisites or incompatible ownership fail explicitly instead of changing
+users, ownership or Docker configuration. Clanky checks checkout and Git-directory
+write access as the tooling user before reporting the environment ready.
+
+A different non-root `containerUser` cannot switch to `remoteUser` at startup;
+Clanky reports the limitation without elevating privileges. Explicit project
+root settings are not silently changed.
 
 Git author identity and the provisioning host's standard public `known_hosts`
 entries are added without replacing the container user's existing entries.
