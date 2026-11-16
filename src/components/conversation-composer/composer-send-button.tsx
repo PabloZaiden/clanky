@@ -104,7 +104,7 @@ export function ComposerSendButton({ disabled, label, onStartVoice, children }: 
         ref={anchorRef}
         type="submit"
         disabled={disabled}
-        className="wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0 select-none"
+        className="clanky-composer-primary-action wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0 select-none"
         style={canTalk ? { touchAction: "none", WebkitTouchCallout: "none" } : undefined}
         aria-label={label}
         title={canTalk ? `${label}; hold and drag up for Talk` : label}

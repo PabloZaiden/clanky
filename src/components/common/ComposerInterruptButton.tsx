@@ -16,7 +16,7 @@ export function ComposerInterruptButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="clanky-composer-interrupt-button wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0"
+      className="clanky-composer-primary-action wapp-action-menu-trigger wapp-action-menu-trigger-compact flex-shrink-0"
       aria-label={ariaLabel}
       title={ariaLabel}
       aria-busy={busy || undefined}
