@@ -10,11 +10,13 @@ import { getExistingLauncherChannel, withWorkerLauncherChannel } from "../provis
 import { parseWorkerChannel } from "../worker-channel";
 import { scopedSshAgentEnvironment, workspaceSshAgentSocketPath } from "../ssh-agent-environment";
 import { isAgentSettings, type AgentSettings } from "@/shared/settings";
+import { checkoutAccessSchema, environmentCheckoutAccessCheck, prepareRootlessCheckoutAccess } from "./checkout-access";
 
 const environmentSchema = z.object({
   id: z.string().uuid(), owner: z.string().min(1), directory: z.string().min(1),
   config: z.string().min(1), override: z.string().min(1), volume: z.string().min(1),
   runtimeDirectory: z.string().optional(), remoteUser: z.string().optional(),
+  checkoutAccess: checkoutAccessSchema.optional(),
   containerId: z.string().optional(), workdir: z.string().optional(),
   createdAt: z.string(), template: z.string().optional(), githubUser: z.string().optional(),
 });
@@ -80,6 +82,7 @@ export class EnvironmentManager {
       record.githubUser = this.options.githubUser;
       await this.save(record);
     }
+    const rootless = await this.isRootlessDocker();
     const previous = (await this.inspectOwned(record))[0];
     if (previous) {
       if (!previous.State.Running) {
@@ -117,12 +120,18 @@ export class EnvironmentManager {
     await this.ensureVolume(record);
     const result = upSchema.parse(await this.jsonCommand("devcontainer", [
       "up", ...this.configArgs(record), "--id-label", this.label(record),
+      ...(rootless ? ["--skip-post-create"] : []),
       ...(rebuild ? ["--remove-existing-container"] : []),
     ]));
     record.containerId = result.containerId;
     record.remoteUser = result.remoteUser;
     record.workdir = result.remoteWorkspaceFolder;
     await this.save(record);
+    if (rootless) {
+      await this.prepareCheckoutAccess(record);
+      await this.command("devcontainer", ["run-user-commands", ...this.execArgs(record), "--skip-post-attach"]);
+    }
+    await this.verifyCheckoutAccess(record);
     const configured = await this.saveRemoteEnvironment(record);
     await this.syncAssets(record);
     await this.configureIdentity(record);
@@ -430,7 +439,9 @@ process.stdout.write(JSON.stringify({
   }
 
   private async runStartCommands(record: EnvironmentRecord): Promise<void> {
+    if (await this.isRootlessDocker()) await this.prepareCheckoutAccess(record);
     await this.command("devcontainer", ["run-user-commands", ...this.execArgs(record), "--skip-post-attach"]);
+    await this.verifyCheckoutAccess(record);
     const configured = await this.saveRemoteEnvironment(record);
     if (!configured) await this.launchStartupCommand(record);
     else await this.waitForStartup(record);
@@ -525,6 +536,25 @@ if (additions.length) fs.appendFileSync(target,
   private async execIn(record: EnvironmentRecord, args: string[]): Promise<string> {
     return await this.command("devcontainer", ["exec", ...this.execArgs(record), ...args]);
   }
+  private async isRootlessDocker(): Promise<boolean> {
+    return z.array(z.string()).parse(await this.jsonCommand("docker", ["info", "--format", "{{json .SecurityOptions}}"]))
+      .includes("name=rootless");
+  }
+  private async prepareCheckoutAccess(record: EnvironmentRecord): Promise<void> {
+    record.checkoutAccess = await prepareRootlessCheckoutAccess({
+      directory: record.directory, containerId: record.containerId!, remoteUser: record.remoteUser!,
+      workdir: record.workdir!, checkoutAccess: record.checkoutAccess,
+    }, (command, args, input) => this.command(command, args, input));
+    await this.verifyCheckoutAccess(record);
+    await this.save(record);
+  }
+  private async verifyCheckoutAccess(record: EnvironmentRecord): Promise<void> {
+    try {
+      await this.execIn(record, ["node", "-e", environmentCheckoutAccessCheck, record.workdir!]);
+    } catch (error) {
+      throw new Error(`The environment is not ready: ${record.remoteUser} cannot read and write the checkout or Git directories. Check the workspace mount and permissions. ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  }
   private async inspectOwned(record: EnvironmentRecord) {
     const ids = (await this.command("docker", ["ps", "--all", "--filter", `label=${this.label(record)}`, "--format", "{{.ID}}"])).trim().split(/\s+/).filter(Boolean);
     if (ids.length > 1) throw new Error("Multiple containers carry this environment identity; resolve ownership before continuing.");
@@ -590,8 +620,8 @@ if (additions.length) fs.appendFileSync(target,
   private async jsonCommand(command: string, args: string[]): Promise<unknown> {
     return JSON.parse((await this.command(command, args)).trim());
   }
-  private async command(command: string, args: string[]): Promise<string> {
-    const result = await this.run(command, args);
+  private async command(command: string, args: string[], input?: ReadableStream<Uint8Array>): Promise<string> {
+    const result = await this.run(command, args, true, input);
     return result.stdout;
   }
   private async run(command: string, args: string[], fail = true, input?: ReadableStream<Uint8Array>) {

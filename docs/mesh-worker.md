@@ -852,12 +852,33 @@ definitions are rejected explicitly rather than rewritten. With no definition,
 choose a language using `clanky environment templates`.
 
 The tooling user comes from the merged project/image configuration. Clanky
-does not override `remoteUser` or `containerUser`, force root for rootless
-Docker, or repair checkout ownership. Standard Docker with a non-root tooling
-user is the supported baseline. The checkout must already be writable by that
-user. A different non-root `containerUser` cannot switch to `remoteUser` at
-startup; Clanky reports the limitation without elevating privileges. Explicit
-project root settings are not silently changed.
+does not override `remoteUser` or `containerUser` or change checkout ownership.
+Standard Docker requires a checkout writable by that user. Rootless Docker is
+also supported when Docker and the checkout share the same Linux provisioning
+host: install the `acl` package (`getfacl` and `setfacl`) and use a filesystem
+with POSIX ACL support. The workspace must bind-mount the selected checkout,
+whose files must initially belong to the provisioning user.
+
+Before project lifecycle commands run, Clanky resolves the rootless tooling
+user's host identity and grants it the checkout owner's access using ACLs.
+Existing identities retain their effective permissions; inherited ACLs share
+new files between the host and tooling users without granting public access.
+Explicit restrictive file creation modes still apply. Cached preparation is
+bound to the checkout's filesystem identity; replacing the checkout prepares
+the new directory without changing retained tooling-owned files. The checkout's
+host group does not need to be mapped into the container.
+
+Symlink targets outside the checkout, other mounts and foreign-owned files are
+not repaired. Hard-linked files are rejected before ACL application because
+their inode may also exist outside the checkout; initial provisioning clones
+use `--no-hardlinks`. Missing prerequisites or incompatible ownership fail
+explicitly instead of changing users, ownership or Docker configuration.
+Clanky checks checkout and Git-directory write access as the tooling user
+before reporting the environment ready.
+
+A different non-root `containerUser` cannot switch to `remoteUser` at startup;
+Clanky reports the limitation without elevating privileges. Explicit project
+root settings are not silently changed.
 
 Git author identity and the provisioning host's standard public `known_hosts`
 entries are added without replacing the container user's existing entries.
@@ -892,6 +913,12 @@ including provider profile paths, with Clanky's explicit per-session settings
 applied afterward. This does not copy the controller or provisioning server's
 environment into another execution host.
 An unauthenticated provider does not remove an otherwise healthy workspace.
+
+Deleting an automatic workspace removes its owned container on the provisioning
+host before optionally deleting the source checkout. If container removal fails,
+the workspace and checkout are kept so deletion can be retried after fixing
+the host connection. Source deletion remains opt-in; private runtime credentials
+are retained according to the default `environment remove` behavior.
 
 Rebuild/restart preserve the current workspace runtime and private provider
 profiles; [GitHub token refresh](#github-cli-credentials-in-automatic-workspaces)

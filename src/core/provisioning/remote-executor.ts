@@ -154,7 +154,7 @@ export class ProvisioningRemoteExecutor {
         step: "clone_repo",
         label: `Cloning repository into ${targetDirectory}`,
         command: "git",
-        args: ["clone", config.repoUrl ?? "", targetDirectory],
+        args: ["clone", "--no-hardlinks", config.repoUrl ?? "", targetDirectory],
         env,
         timeout: GIT_CLONE_TIMEOUT_MS,
         streamOutput: true,
