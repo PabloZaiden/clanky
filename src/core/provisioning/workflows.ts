@@ -334,21 +334,6 @@ export class ProvisioningWorkflows {
       }
       appendSystemLog(record, this.maxLogEntries, `Created workspace ${workspace.name}`, "create_workspace");
 
-      setStep(record, this.maxLogEntries, "test_connection", "Testing workspace connection");
-      const connectionResult = await backendManager.testConnection(
-        serverSettings,
-        resolvedDirectory,
-        workspace.executionHostBinding.host,
-        workspace.executionHostBinding,
-      );
-      if (!connectionResult.success) {
-        throw new ProvisioningFailedError(
-          "connection_test_failed",
-          "test_connection",
-          connectionResult.error ?? "Workspace connection test failed",
-        );
-      }
-
       workspaceCleanup.commit();
       workerEnrollmentCleanup?.commit();
       workerProcessCleanup?.commit();
@@ -356,8 +341,8 @@ export class ProvisioningWorkflows {
       record.workspaceWorkerEnrollmentCleanup?.commit();
       await attempt.complete(
         record.job.state.workspaceAction === "reused"
-          ? `Workspace connection test succeeded. Existing workspace ${record.job.config.name} is ready.`
-          : `Workspace connection test succeeded. Workspace ${record.job.config.name} was created successfully and is ready.`,
+          ? `Existing workspace ${record.job.config.name} is ready.`
+          : `Workspace ${record.job.config.name} was created successfully and is ready.`,
         "workspace_ready",
       );
     } catch (error) {
@@ -390,7 +375,7 @@ export class ProvisioningWorkflows {
           commandLabel: "Running environment restart",
           errorCode: "environment_restart_failed",
           errorMessage: "Failed to restart environment",
-          completionMessage: `Workspace connection test succeeded. Environment for ${record.job.config.name} was restarted successfully.`,
+          completionMessage: `Environment for ${record.job.config.name} was restarted successfully.`,
           genericFailureCode: "restart_failed",
         }
       : {
@@ -399,7 +384,7 @@ export class ProvisioningWorkflows {
           commandLabel: "Running environment rebuild",
           errorCode: "environment_rebuild_failed",
           errorMessage: "Failed to rebuild environment",
-          completionMessage: `Workspace connection test succeeded. Environment for ${record.job.config.name} was rebuilt successfully.`,
+          completionMessage: `Environment for ${record.job.config.name} was rebuilt successfully.`,
           genericFailureCode: "rebuild_failed",
         };
     const attempt = this.ensureAttempt(record);
@@ -595,21 +580,6 @@ export class ProvisioningWorkflows {
       }
       appendSystemLog(record, this.maxLogEntries, "Updated workspace server settings", "environment_status");
 
-      setStep(record, this.maxLogEntries, "test_connection", "Testing workspace connection");
-      const connectionResult = await backendManager.testConnection(
-        serverSettings,
-        resolvedDirectory,
-        undefined,
-        updatedWorkspace.executionHostBinding,
-      );
-      if (!connectionResult.success) {
-        throw new ProvisioningFailedError(
-          "connection_test_failed",
-          "test_connection",
-          connectionResult.error ?? "Workspace connection test failed",
-        );
-      }
-
       await attempt.complete(action.completionMessage, "workspace_ready");
     } catch (error) {
       await attempt.fail(
@@ -686,7 +656,7 @@ export class ProvisioningWorkflows {
     } catch (error) {
       if (!(error instanceof ProvisioningFailedError)
         || error.code !== "provisioning_execution_unconfirmed") throw error;
-      // Continue only with the existing status/worker/backend probes, never replay the command.
+      // Continue only with the existing environment/worker probes, never replay the command.
       this.updateState(record, {
         status: "verifying",
         recovery: { step: options.step, status: "verifying" },

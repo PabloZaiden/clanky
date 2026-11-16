@@ -1,26 +1,5 @@
 import { DEFAULT_COLOR_TERM, DEFAULT_TERM } from "./terminal-env";
 
-const ENVIRONMENT_KEYS = new Set([
-  "COLORTERM",
-  "DISPLAY",
-  "GH_TOKEN",
-  "HOME",
-  "LANG",
-  "LOGNAME",
-  "PATH",
-  "SHELL",
-  "SSH_AUTH_SOCK",
-  "TERM",
-  "TMPDIR",
-  "TZ",
-  "USER",
-  "WAYLAND_DISPLAY",
-  "XDG_CACHE_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
-  "XDG_RUNTIME_DIR",
-]);
-
 export interface LocalTerminalSpawnConfig {
   command: string;
   args: string[];
@@ -34,7 +13,7 @@ export function buildLocalTerminalEnvironment(
 ): Record<string, string> {
   const environment: Record<string, string> = {};
   for (const [key, value] of Object.entries(sourceEnvironment)) {
-    if (value !== undefined && (ENVIRONMENT_KEYS.has(key) || key.startsWith("LC_"))) {
+    if (value !== undefined) {
       environment[key] = value;
     }
   }

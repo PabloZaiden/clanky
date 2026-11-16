@@ -76,6 +76,10 @@ export class EnvironmentManager {
       };
       await this.save(record);
     }
+    if (this.options.githubUser !== undefined && this.options.githubUser !== record.githubUser) {
+      record.githubUser = this.options.githubUser;
+      await this.save(record);
+    }
     const previous = (await this.inspectOwned(record))[0];
     if (previous) {
       if (!previous.State.Running) {
@@ -497,15 +501,25 @@ if (additions.length) fs.appendFileSync(target,
 `]);
     }
     const account = this.options.githubUser ?? record.githubUser;
-    if (account) {
-      const token = (await this.command("gh", ["auth", "token", "--user", account])).trim();
-      if (!token) throw new Error("The selected GitHub account did not provide a token.");
-      const source = join(dirname(record.override), "github-token");
-      try {
-        await writeFile(source, token, { mode: 0o600 });
-        await this.copyToRuntime(record, source, "github-token");
-      } finally { await rm(source, { force: true }); }
+    if (!Bun.which("gh")) {
+      await this.execIn(record, ["rm", "-f", `${ENVIRONMENT_RUNTIME_ROOT}/github-token`]);
+      if (account) throw new Error("GitHub CLI is required to share the selected GitHub account. Install and authenticate gh on the provisioning host.");
+      process.stderr.write("GitHub CLI is not installed on the provisioning host. Continuing without importing GitHub credentials.\n");
+      return;
     }
+    const result = await this.run("gh", ["auth", "token", ...(account ? ["--user", account] : [])], false);
+    const token = result.code === 0 ? result.stdout.trim() : "";
+    if (!token) {
+      await this.execIn(record, ["rm", "-f", `${ENVIRONMENT_RUNTIME_ROOT}/github-token`]);
+      if (account) throw new Error("The selected GitHub CLI account did not provide a token. Authenticate that account on the provisioning host.");
+      process.stderr.write(`GitHub CLI did not provide a default token (exit ${result.code}). Continuing without importing GitHub credentials; authentication can be configured later.\n`);
+      return;
+    }
+    const source = join(dirname(record.override), "github-token");
+    try {
+      await writeFile(source, token, { mode: 0o600 });
+      await this.copyToRuntime(record, source, "github-token");
+    } finally { await rm(source, { force: true }); }
   }
 
   private async execIn(record: EnvironmentRecord, args: string[]): Promise<string> {
