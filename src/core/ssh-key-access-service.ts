@@ -588,8 +588,8 @@ export async function removeWorkspaceSshKeyAccess(userId: string, workspaceId: s
   const opening = openingContexts.get(key);
   if (opening) await opening;
   const context = generalContexts.get(key);
-  generalContexts.delete(key);
   await context?.close();
+  generalContexts.delete(key);
   await closeSocket(workspaceId);
 }
 export async function invalidateSshAgentContexts(userId: string, workerNodeIds: readonly string[]): Promise<void> {
