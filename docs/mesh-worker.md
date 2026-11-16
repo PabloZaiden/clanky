@@ -1007,6 +1007,8 @@ Default Copilot, Codex, Claude and GitHub CLI profile directories also live in
 the private volume, alongside Clanky's managed OpenCode profile. Image, Feature
 and project profile environment settings remain authoritative, including empty
 values. Projects choosing custom paths must provide their own durable mounts.
+Clanky creates its default profile directories as the tooling user with private
+permissions at each container start, without changing custom profile paths.
 The tooling user's Git configuration trusts only the managed checkout before
 project lifecycle commands run. This permits Git on Docker Desktop bind mounts
 whose reported owner differs, without changing checkout permissions or trusting
