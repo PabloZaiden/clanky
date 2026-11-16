@@ -287,6 +287,7 @@ const API_DOMAIN_ERROR_CODES = {
   preview_server_unsupported: true,
   provisioning_target_busy: true,
   provisioning_cancelled: true,
+  invalid_repository_url: true,
   quick_chat_model_mismatch: true,
   base_branch_immutable: true,
   use_worktree_immutable: true,
@@ -1313,6 +1314,10 @@ const POLICY_PROFILES = {
       invalid_runtime: {
         status: 400,
         message: "Native adapters require an automatic worker workspace and matching provider.",
+      },
+      invalid_repository_url: {
+        status: 400,
+        message: "The repository URL is invalid. Use a URL such as https://github.com/owner/repo.git or git@github.com:owner/repo.git.",
       },
       invalid_clanky_release_channel: {
         status: 400,
