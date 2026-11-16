@@ -884,6 +884,11 @@ Clanky-managed rebuild/restart jobs are serialized per workspace. Previously
 installed private runtimes remain cached; global packages and authentication
 profiles are untouched. Authentication still needs to be configured separately.
 
+Provisioning, rebuild and restart validate the environment and worker health,
+not the native provider's connection or authentication. You can create the
+workspace first and authenticate its provider later from a workspace terminal.
+An unauthenticated provider does not remove an otherwise healthy workspace.
+
 Rebuild/restart preserves the current workspace runtime, identity and
 authentication. The additive Feature starts the worker as the tooling user on
 every actual container start, including a raw Docker restart without a
@@ -894,7 +899,7 @@ adapter to update those assets.
 Maintenance jobs distinguish connection failure before dispatch, returned
 command failure, confirmed interruption, and an unconfirmed remote outcome.
 If a restart/rebuild response is lost, Clanky verifies read-only environment status
-and worker/backend connectivity instead of resending the command. Automatic
+and worker connectivity instead of resending the command. Automatic
 workers also require installation evidence for that operation and fresh signed
 health reporting the full installed build version; an old healthy worker alone
 cannot confirm recovery. Missing evidence leaves the outcome unconfirmed.
@@ -1030,10 +1035,39 @@ the launcher again.
 
 ## GitHub CLI credentials in automatic workspaces
 
-When Clanky provisions an automatic workspace, it can pass the selected
-GitHub CLI account's `GH_TOKEN` to interactive terminals on that execution
-host. This lets `gh` and Copilot CLI reuse the workspace authentication
-without a second login.
+The default and recommended way to authenticate GitHub repositories in automatic
+workspaces is **HTTPS with the GitHub CLI account already logged in on the
+provisioning server**. On that host, authenticate `gh` and configure Git to use it:
+
+```bash
+gh auth login --hostname github.com --git-protocol https
+gh auth setup-git --hostname github.com
+```
+
+Use an HTTPS repository URL such as `https://github.com/owner/repository.git`.
+Leave **GitHub CLI account** empty to use the default account returned by
+`gh auth token`, or enter an account name to use that account instead.
+For Mesh provisioning, this is the selected host that creates the container,
+not necessarily the Clanky controller.
+
+Clanky imports that token into the workspace as `GH_TOKEN` for its worker and
+interactive terminals. This lets `gh` and Copilot CLI reuse it without a second
+login, provided the account/token has the required access. To let Git commands
+inside the workspace use the shared token as well, run
+`gh auth setup-git --hostname github.com` in a workspace terminal.
+
+If you prefer SSH repository URLs, use the
+[selected SSH-agent keys workflow](#selected-ssh-agent-keys) and choose the
+keys to share during creation. HTTPS plus `gh` is the simpler recommended path;
+SSH keys are an alternative for repository access, not authentication for Copilot
+or another AI provider.
+
+Without a default GitHub token, provisioning reports that no credentials were
+imported and continues. You can authenticate the native provider afterward;
+other providers still need their own login. An explicitly selected GitHub account
+must be available on the provisioning host. Private repository cloning still
+requires working Git credentials or the selected SSH keys before the container
+can be created.
 
 The selected token is stored in the workspace's private runtime volume, not in
 Git or public API responses, and restored into worker/shell environments on
