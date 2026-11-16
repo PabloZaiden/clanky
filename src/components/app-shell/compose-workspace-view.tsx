@@ -524,7 +524,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 label="Git repository URL"
                 value={automaticRepoUrl}
                 onChange={(event) => setAutomaticRepoUrl(event.target.value)}
-                placeholder="git@github.com:owner/repo.git"
+                placeholder="https://github.com/owner/repo.git"
                 required={!automaticCreateNewRepository}
                 disabled={automaticCreateNewRepository}
               />
