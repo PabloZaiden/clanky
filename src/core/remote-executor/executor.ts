@@ -48,6 +48,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   readonly pathStyle: ExecutionPathStyle;
   private readonly directory: string;
   private readonly defaultTimeoutMs: number;
+  private readonly environment?: Record<string, string>;
   private readonly localFileSystem = new LocalFileSystem();
   private executionDirectoryPromise: Promise<string> | undefined;
 
@@ -62,6 +63,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     this.pathStyle = this.localFileSystem.pathStyle;
     this.directory = config.directory;
     this.defaultTimeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.environment = config.environment;
   }
 
   async getExecutionDirectory(): Promise<string> {
@@ -89,7 +91,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       throw new Error(`Invalid environment variable name: ${name}`);
     }
-    return process.env[name] ?? null;
+    return this.environment?.[name] ?? process.env[name] ?? null;
   }
 
   async getGitEnvironmentVariable(
@@ -208,6 +210,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       const commandEnv = {
         ...process.env,
         ...(executableSearchPath ? { PATH: executableSearchPath } : {}),
+        ...this.environment,
         ...env,
       };
 

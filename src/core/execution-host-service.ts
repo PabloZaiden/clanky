@@ -55,6 +55,8 @@ import {
 } from "./execution-path";
 import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
 import { meshHealthService } from "./mesh-health-service";
+import { sshKeyAccessService } from "./ssh-key-access-service";
+import type { SshKeyAccessTarget } from "@/shared/ssh-key-access";
 
 const log = createLogger("core:execution-host-service");
 
@@ -63,6 +65,7 @@ export interface ExecutionHostCommandContext {
   provider?: AgentProvider;
   operationId: string;
   localUserId?: string;
+  sshKeyTarget?: SshKeyAccessTarget;
 }
 
 export interface ExecutionHostServiceDependencies {
@@ -530,6 +533,8 @@ export class ExecutionHostService {
   ): Promise<CommandExecutor> {
     assertExecutionHostAllowedInCurrentMode(host);
     const userId = context.localUserId ?? requireExecutionOwnerUserId();
+    const environment = context.sshKeyTarget && !isPrivateMeshExecutionHostRef(host)
+      ? await sshKeyAccessService.environment(userId, context.sshKeyTarget) : undefined;
     if (host.kind === "local") {
       const localIdentity = await ensureLocalMeshNodeIdentity();
       if (localIdentity.nodeId !== host.nodeId) {
@@ -540,6 +545,7 @@ export class ExecutionHostService {
       }
       return new CommandExecutorImpl({
         directory: context.directory,
+        environment,
       });
     }
 
@@ -559,6 +565,7 @@ export class ExecutionHostService {
         localUserId: userId,
         pathStyle,
         capabilities: runtime?.capabilities ?? {},
+        managedEnvironment: environment,
       });
     }
 

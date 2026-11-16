@@ -24,7 +24,7 @@ import { normalizeGitHubRepositoryUrl } from "../../lib/github-repository-url";
 import { isWorkspaceReadOnly } from "@/shared/workspace";
 import { getWorkItemLastInteractionAt } from "./shell-types";
 import { WorkspaceEnvironmentPanel } from "../WorkspaceEnvironmentPanel";
-import { WorkspaceSshKeyAccess } from "../WorkspaceSshKeyAccess";
+import { SshKeyAccess } from "../SshKeyAccess";
 
 async function openWorkspaceGitHubUrl(
   workspace: Workspace,
@@ -169,8 +169,11 @@ export function WorkspaceView({
       {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin") ? (
         <WorkspaceEnvironmentPanel workspaceId={workspace.id} name={workspace.name} />
       ) : null}
-      {workspace.sourceDirectory && workspace.provisioningHostBinding && (!workspace.access || workspace.access === "admin")
-        ? <WorkspaceSshKeyAccess workspaceId={workspace.id} /> : null}
+      {!workspace.access || workspace.access === "admin" ? (
+        <Panel title="Shared SSH keys">
+          <SshKeyAccess path={`/api/workspaces/${encodeURIComponent(workspace.id)}/ssh-key-access`} contextLabel="workspace" />
+        </Panel>
+      ) : null}
       {workspace.workspaceType === "git" && !scratchpadPrivateHidden ? (
         <div className="flex flex-wrap justify-end gap-2">
           {!isWorkspaceReadOnly(workspace) ? (

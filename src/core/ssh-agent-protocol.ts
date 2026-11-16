@@ -128,7 +128,9 @@ export async function requestSourceAgent(socketPath: string | undefined, payload
   });
 }
 export async function listSourceAgentIdentities(socketPath: string | undefined): Promise<SshAgentIdentity[]> {
-  const response = await requestSourceAgent(socketPath, Buffer.from([11]));
+  return parseSshAgentIdentities(await requestSourceAgent(socketPath, Buffer.from([11])));
+}
+export function parseSshAgentIdentities(response: Buffer): SshAgentIdentity[] {
   if (response[0] !== 12) throw sshAgentError("protocol_invalid", "The source SSH agent returned an invalid identity response.");
   const reader = new SshReader(response.subarray(1));
   const count = reader.uint32();

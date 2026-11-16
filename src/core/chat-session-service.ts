@@ -14,6 +14,7 @@ import { createTimestamp } from "@/shared/events";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
 import { createAgentSettings } from "@/shared/settings";
 import { backendManager, buildConnectionConfig } from "./backend";
+import { sshKeyAccessService } from "./ssh-key-access-service";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { createExecutionControlConnection } from "./control-tool-transport";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -163,6 +164,7 @@ export class ChatSessionService implements ChatSessionPort {
         ...buildConnectionConfig(
           await this.backendManager.getWorkspaceSettings(workspaceId),
           stagedWorking.directory,
+          await sshKeyAccessService.environment(requireExecutionOwnerUserId(), { kind: "workspace", id: workspaceId }),
         ),
         control,
         controlTools,
@@ -527,7 +529,9 @@ export class ChatSessionService implements ChatSessionPort {
       provider,
     );
     this.directChatBackends.set(chat.config.id, backend);
-    await backend.connect(buildConnectionConfig(settings, directory), options.signal);
+    await backend.connect(buildConnectionConfig(settings, directory,
+      await sshKeyAccessService.environment(requireExecutionOwnerUserId(), { kind: "host", host: source.executionHost.host }),
+    ), options.signal);
     return backend;
   }
 

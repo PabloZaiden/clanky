@@ -28,6 +28,7 @@ export class ExecutionHostCommandService {
     });
     const executor = await executionHostService.getCommandExecutor(binding, {
       operationId: `execution-host-exec:${crypto.randomUUID()}`,
+      sshKeyTarget: { kind: "host", host: ref },
       directory: workingDirectory.directory,
       localUserId: userId,
     });

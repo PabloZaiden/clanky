@@ -53,6 +53,7 @@ export interface MeshCommandExecutorConfig {
   localUserId?: string;
   pathStyle: ExecutionPathStyle | null;
   capabilities: ExecutionHostCapabilities;
+  managedEnvironment?: Record<string, string>;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }

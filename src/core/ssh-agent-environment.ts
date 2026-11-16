@@ -6,6 +6,14 @@ export function workspaceSshAgentSocketPath(dataDirectory: string, socketDirecto
   return join(socketDirectory ?? join(dataDirectory, "ssh-agent"), "workspace.s");
 }
 
+export function sharedSshAgentEnvironment(socketPath: string): Record<string, string> {
+  if (!isAbsolute(socketPath) || socketPath.includes("\0")) throw sshAgentError("socket_invalid", "The shared SSH-agent socket path is invalid.");
+  return {
+    SSH_AUTH_SOCK: socketPath,
+    CLANKY_SCOPED_SSH_AUTH_SOCK: socketPath,
+  };
+}
+
 export function scopedSshAgentEnvironment(socketPath: string): {
   SSH_AUTH_SOCK: string;
   GIT_SSH_VARIANT: "ssh";

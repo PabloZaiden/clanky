@@ -13,7 +13,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { backendManager } from "./backend-manager";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import { managedContextIdentityResolver } from "./managed-context-identity";
-import { buildManagedContextEnvironment } from "./managed-context-environment";
+import { buildManagedContextEnvironment, mergeRuntimeEnvironment } from "./managed-context-environment";
+import { sshKeyAccessService } from "./ssh-key-access-service";
 import { managedCredentialService, type ManagedRuntimeCredential } from "./managed-credential-service";
 import { terminalSessionManager } from "./terminal-session-manager";
 import {
@@ -282,6 +283,9 @@ export async function createTerminalConnection(
   const user = requireExecutionOwnerUser();
   const resolved = await resolveTerminal(sessionId);
   const host = resolved.executionHostBinding.host;
+  const sshEnvironment = await sshKeyAccessService.environment(user.id, resolved.workspace
+    ? { kind: "workspace", id: resolved.workspace.id }
+    : { kind: "host", host });
   const lifecycle: { exitStatus?: "disconnected" | "failed" } = {};
   let credential: ManagedRuntimeCredential | undefined;
   let environment: Record<string, string> | undefined;
@@ -323,6 +327,7 @@ export async function createTerminalConnection(
     credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
     environment = buildManagedContextEnvironment(credential);
   }
+  environment = mergeRuntimeEnvironment(environment, sshEnvironment);
   const statusCallbacks = buildStatusCallbacks(sessionId, user, callbacks, lifecycle);
   try {
     let connection: InteractiveTerminalConnection;
@@ -349,7 +354,7 @@ export async function createTerminalConnection(
         },
         onPersistentSessionAttachUnavailable: async () => {
           if (!resolved.workspace) {
-            return {};
+            return { environment: sshEnvironment };
           }
           const identity = await managedContextIdentityResolver.forTerminalSession(
             sessionId,
@@ -357,9 +362,7 @@ export async function createTerminalConnection(
           );
           credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
           return {
-            environment: credential
-              ? buildManagedContextEnvironment(credential)
-              : undefined,
+            environment: mergeRuntimeEnvironment(buildManagedContextEnvironment(credential), sshEnvironment),
           };
         },
       });
@@ -385,7 +388,7 @@ export async function createTerminalConnection(
         localUserId: user.id,
         onPersistentSessionAttachUnavailable: async () => {
           if (!resolved.workspace) {
-            return {};
+            return { environment: sshEnvironment };
           }
           const identity = await managedContextIdentityResolver.forTerminalSession(
             sessionId,
@@ -393,9 +396,7 @@ export async function createTerminalConnection(
           );
           credential = await managedCredentialService.ensureCredentialForRuntime(identity, "recreate");
           return {
-            environment: credential
-              ? buildManagedContextEnvironment(credential)
-              : undefined,
+            environment: mergeRuntimeEnvironment(buildManagedContextEnvironment(credential), sshEnvironment),
           };
         },
       });

@@ -3,7 +3,7 @@ import {
   MeshSshAgentRequestSchema, MeshSshAgentResponseSchema, SshAgentOperationSchema,
   type MeshSshAgentRequest, type SshAgentOperation,
 } from "@/contracts/schemas/ssh-key-access";
-import { MESH_SSH_AGENT_HEADER, MESH_SSH_AGENT_PATH, MESH_SSH_AGENT_VERSION } from "@/shared/ssh-key-access";
+import { MESH_SSH_AGENT_CONTEXT_VERSION, MESH_SSH_AGENT_HEADER, MESH_SSH_AGENT_PATH, MESH_SSH_AGENT_VERSION } from "@/shared/ssh-key-access";
 import { MESH_PROTOCOL_VERSION_HEADER } from "@/shared/mesh-protocol";
 import type { MeshPeerRoute } from "@/shared/mesh";
 import { ensureLocalMeshNodeIdentity, signMeshPayload, verifyMeshPayloadSignature } from "../persistence/mesh-node-identity";
@@ -34,6 +34,10 @@ export async function callSshMeshPeer(peer: SshMeshPeer, operation: SshAgentOper
     const capability = await callSshMeshPeer(peer, { kind: "capability" }, false);
     if (!capability || typeof capability !== "object" || !("sshAgent" in capability) || capability.sshAgent !== MESH_SSH_AGENT_VERSION) {
       throw sshAgentError("capability_unavailable", "Update the Mesh peers and relay to support scoped SSH-agent access.");
+    }
+    if ((operation.kind === "open-context" || operation.kind === "close-context" || operation.kind === "context-request")
+      && (!("contexts" in capability) || capability.contexts !== MESH_SSH_AGENT_CONTEXT_VERSION)) {
+      throw sshAgentError("capability_unavailable", "Update the controller and worker to support shared SSH keys on general workers.");
     }
   }
   const identity = await ensureLocalMeshNodeIdentity();
@@ -66,6 +70,7 @@ export async function callSshMeshPeer(peer: SshMeshPeer, operation: SshAgentOper
       ssh_agent_key_unavailable: "The selected SSH key is not available in its custodian agent.",
       ssh_agent_source_unavailable: "The selected SSH-agent source is disconnected or unavailable.",
       ssh_agent_access_denied: "The Mesh SSH-agent identity, registration or workspace binding is no longer authorized.",
+      ssh_agent_context_invalid: "The shared SSH-agent execution context is no longer authorized.",
       ssh_agent_capability_unavailable: "Update the Mesh peers and relay to support scoped SSH-agent access.",
       ssh_agent_operation_forbidden: "The SSH-agent request is not permitted.",
       ssh_agent_protocol_invalid: "The Mesh SSH-agent request or response is invalid.",

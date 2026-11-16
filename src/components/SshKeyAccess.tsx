@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { EmptyState, LoadingState, SettingsFieldRow } from "@pablozaiden/webapp/web";
-import { useWorkspaceSshKeyAccess } from "../hooks/useWorkspaceSshKeyAccess";
+import { useSshKeyAccess } from "../hooks/useSshKeyAccess";
 import { SettingsCheckbox, SettingsError } from "./app-settings/settings-row-controls";
 
-export function WorkspaceSshKeyAccess({ workspaceId, disabled = false }: { workspaceId: string; disabled?: boolean }) {
-  const query = useWorkspaceSshKeyAccess(workspaceId);
+export function SshKeyAccess({ path, contextLabel, disabled = false }: { path: string; contextLabel: string; disabled?: boolean }) {
+  const query = useSshKeyAccess(path);
   const [error, setError] = useState<string | null>(null);
   if (!query.data && query.loading) return <LoadingState title="Loading SSH-key access" />;
   return <div className="space-y-3">
@@ -18,7 +18,7 @@ export function WorkspaceSshKeyAccess({ workspaceId, disabled = false }: { works
         title={keyName}
         description={source ? source.name.trim() || "Unnamed SSH-agent source" : "Unavailable source"}
         content={<SettingsCheckbox
-          ariaLabel={`Allow ${keyName} in this workspace`}
+          ariaLabel={`Allow ${keyName} in this ${contextLabel}`}
           checked={query.data?.grants.some((grant) => grant.keyId === key.id && grant.enabled) ?? false}
           disabled={disabled || query.saving}
           onChange={(event) => {

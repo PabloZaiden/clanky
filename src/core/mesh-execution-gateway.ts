@@ -699,6 +699,7 @@ export class MeshExecutionGateway {
       executor: new CommandExecutorImpl({
         directory: executionRoot,
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
+        environment,
       }),
       requestIds: new Set(),
       activeControllers: new Set(),

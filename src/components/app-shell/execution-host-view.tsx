@@ -40,6 +40,7 @@ import { ClankyListRow } from "./clanky-list-row";
 import { WorkItemRow } from "./work-item-row";
 import { getWorkItemLastInteractionAt } from "./shell-types";
 import { PreviewSessionsView } from "./preview-sessions-view";
+import { SshKeyAccess } from "../SshKeyAccess";
 import { buildPreviewCliCommand } from "../../utils";
 import {
   formatStatusLabel,
@@ -267,6 +268,11 @@ export function ExecutionHostView({
   return (
     <div className="space-y-6">
       {error ? <ErrorState description={error} /> : null}
+      {host.ref.kind === "local" || (host.ref.kind === "mesh" && !("scope" in host.ref)) ? (
+        <Panel title="Shared SSH keys">
+          <SshKeyAccess path={`${apiPath}/ssh-key-access`} contextLabel="server" />
+        </Panel>
+      ) : null}
 
       {workspaces.length > 0 ? (
         <Panel title="Workspaces">

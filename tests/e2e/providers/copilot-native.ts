@@ -110,6 +110,15 @@ function requestTool(session: Session, name: string, args: Record<string, unknow
 }
 
 function execute(session: Session): void {
+  const sshKey = /\[ssh-key-check:([^\]\r\n]+)\]/.exec(session.prompt)?.[1];
+  if (sshKey) {
+    const signed = Bun.spawnSync(["ssh-add", "-T", sshKey], { cwd: session.directory });
+    const listed = Bun.spawnSync(["ssh-add", "-L"], { cwd: session.directory });
+    finish(session, signed.exitCode === 0 && listed.exitCode === 0
+      ? `SSH signature verified\n${listed.stdout.toString()}`
+      : `SSH signing failed\n${signed.stderr.toString()}\n${listed.stderr.toString()}`);
+    return;
+  }
   const secret = secretRequest(session.prompt);
   if (secret) {
     if (session.tools.some((tool) => tool.name === SECRET_TOOL)) requestTool(session, SECRET_TOOL, secret);

@@ -1751,7 +1751,13 @@ export class MeshManager {
         await Bun.write(supervisorStopFile, "");
       }
       try {
-        await meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId);
+        const { closeSshAgentContextsForController } = await import("./ssh-key-access-service");
+        const results = await Promise.allSettled([
+          meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId),
+          closeSshAgentContextsForController(envelope.controllerNodeId),
+        ]);
+        const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+        if (errors.length) throw new AggregateError(errors, "Revoked controller execution-resource cleanup failed.");
       } finally {
         if (stopWorker) {
           setTimeout(() => process.kill(process.pid, "SIGTERM"), MESH_WORKER_KILL_DELAY_MS);

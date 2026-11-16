@@ -205,6 +205,10 @@ export function renderSshAgentShellHelper(
   return [
     "#!/bin/sh",
     "# Managed by Clanky. Do not add secrets to this file.",
+    'if [ -n "${CLANKY_SCOPED_SSH_AUTH_SOCK-}" ]; then',
+    '  export SSH_AUTH_SOCK="$CLANKY_SCOPED_SSH_AUTH_SOCK"',
+    `  ${shellReturn(0)}`,
+    "fi",
     `export SSH_AUTH_SOCK=${socketPath}`,
     `if ! command -v ${sshAddPath} >/dev/null 2>&1; then`,
     "  printf '%s\\n' 'Clanky: ssh-add is required for the worker SSH agent.' >&2",

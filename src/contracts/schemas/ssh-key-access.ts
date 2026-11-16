@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MESH_SSH_AGENT_VERSION, SSH_AGENT_MAX_FRAME_BYTES } from "@/shared/ssh-key-access";
+import { ExecutionHostBindingSchema } from "./execution-host";
 
 const Id = z.string().uuid();
 const Host = z.discriminatedUnion("kind", [
@@ -15,10 +16,26 @@ export const RegisterSshPublicKeySchema = z.object({
   alias: z.string().trim().min(1).max(100),
 }).strict();
 export const SetWorkspaceSshKeyGrantSchema = z.object({ enabled: z.boolean() }).strict();
+export const SshKeyAccessTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("workspace"), id: Id }).strict(),
+  z.object({ kind: z.literal("host"), host: Host }).strict(),
+]);
+export const SshAgentContextSchema = z.object({
+  userId: z.string().min(1).max(200),
+  target: SshKeyAccessTargetSchema,
+  binding: ExecutionHostBindingSchema,
+}).strict();
 export const SshAgentOperationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("capability") }).strict(),
   z.object({ kind: z.literal("source-list") }).strict(),
   z.object({ kind: z.literal("open-workspace") }).strict(),
+  z.object({ kind: z.literal("open-context"), context: SshAgentContextSchema }).strict(),
+  z.object({ kind: z.literal("close-context"), context: SshAgentContextSchema }).strict(),
+  z.object({
+    kind: z.literal("context-request"),
+    context: SshAgentContextSchema,
+    frame: z.string().min(4).max(SSH_AGENT_MAX_FRAME_BYTES * 2),
+  }).strict(),
   z.object({
     kind: z.literal("source-sign"),
     publicKey: z.string().min(4).max(24 * 1024),

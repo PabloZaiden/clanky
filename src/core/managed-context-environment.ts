@@ -4,6 +4,7 @@
 
 import type { ManagedRuntimeCredential } from "./managed-credential-service";
 import { DomainError } from "../domain/domain-error";
+import { isAbsolute } from "node:path";
 
 export interface ManagedContextEnvironment extends Record<string, string> {
   CLANKY_BASE_URL: string;
@@ -13,6 +14,8 @@ export interface ManagedContextEnvironment extends Record<string, string> {
 const MANAGED_CONTEXT_ENVIRONMENT_KEYS = new Set([
   "CLANKY_BASE_URL",
   "CLANKY_API_KEY",
+  "SSH_AUTH_SOCK",
+  "CLANKY_SCOPED_SSH_AUTH_SOCK",
 ]);
 const MAX_MANAGED_CONTEXT_ENVIRONMENT_VALUE_BYTES = 32 * 1024;
 const MAX_MANAGED_CONTEXT_ENVIRONMENT_BYTES = 64 * 1024;
@@ -70,6 +73,8 @@ export function parseManagedContextEnvironment(
       || typeof entry !== "string"
       || entry.length === 0
       || Buffer.byteLength(entry, "utf8") > MAX_MANAGED_CONTEXT_ENVIRONMENT_VALUE_BYTES
+      || ((key === "SSH_AUTH_SOCK" || key === "CLANKY_SCOPED_SSH_AUTH_SOCK")
+        && (!isAbsolute(entry) || entry.includes("\0")))
     ) {
       throw new DomainError(
         errorCode,
@@ -79,6 +84,11 @@ export function parseManagedContextEnvironment(
     environment[key] = entry;
   }
 
+  if (
+    environment["SSH_AUTH_SOCK"] !== environment["CLANKY_SCOPED_SSH_AUTH_SOCK"]
+  ) {
+    throw new DomainError(errorCode, "The managed SSH-agent environment must select one matching scoped socket.");
+  }
   if (
     Buffer.byteLength(JSON.stringify(environment), "utf8")
     > MAX_MANAGED_CONTEXT_ENVIRONMENT_BYTES

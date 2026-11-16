@@ -9,6 +9,7 @@ const ENVIRONMENT_KEYS = new Set([
   "LOGNAME",
   "PATH",
   "SHELL",
+  "SSH_AUTH_SOCK",
   "TERM",
   "TMPDIR",
   "TZ",

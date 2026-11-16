@@ -1,6 +1,7 @@
-import type { ExecutionHostRef } from "./execution-host";
+import type { ExecutionHostBinding, ExecutionHostRef } from "./execution-host";
 
 export const MESH_SSH_AGENT_VERSION = 1;
+export const MESH_SSH_AGENT_CONTEXT_VERSION = 1;
 export const MESH_SSH_AGENT_HEADER = "x-clanky-mesh-ssh-agent";
 export const MESH_SSH_AGENT_PATH = "/api/mesh/internal/ssh-agent";
 export const SSH_AGENT_MAX_FRAME_BYTES = 256 * 1024;
@@ -35,4 +36,14 @@ export interface WorkspaceSshKeyAccess {
   keys: SshPublicKey[];
   sources: SshKeySource[];
   grants: WorkspaceSshKeyGrant[];
+}
+
+export type SshKeyAccessTarget =
+  | { kind: "workspace"; id: string }
+  | { kind: "host"; host: ExecutionHostRef };
+
+export interface SshAgentContext {
+  userId: string;
+  target: SshKeyAccessTarget;
+  binding: ExecutionHostBinding;
 }

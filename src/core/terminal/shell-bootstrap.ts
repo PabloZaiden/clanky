@@ -16,12 +16,12 @@ export function buildShellBootstrapCommand(options: { directory?: string; useTmu
     ? []
     : [
         "if command -v tmux >/dev/null 2>&1; then",
-        "tmux new-session \\; set-option destroy-unattached on;",
+        'tmux new-session -e "SSH_AUTH_SOCK=${SSH_AUTH_SOCK-}" -e "CLANKY_SCOPED_SSH_AUTH_SOCK=${CLANKY_SCOPED_SSH_AUTH_SOCK-}" \\; set-option destroy-unattached on;',
         "tmux_status=$?;",
         "if [ \"$tmux_status\" -eq 0 ]; then",
         "exit 0;",
         "fi;",
-        "tmux new-session;",
+        'tmux new-session -e "SSH_AUTH_SOCK=${SSH_AUTH_SOCK-}" -e "CLANKY_SCOPED_SSH_AUTH_SOCK=${CLANKY_SCOPED_SSH_AUTH_SOCK-}";',
         "tmux_status=$?;",
         "if [ \"$tmux_status\" -eq 0 ]; then",
         "exit 0;",
