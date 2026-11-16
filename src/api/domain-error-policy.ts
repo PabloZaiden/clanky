@@ -336,6 +336,7 @@ const API_DOMAIN_ERROR_CODES = {
   workspace_runtime_install_failed: true,
   workspace_runtime_rollback_failed: true,
   workspace_deletion_in_progress: true,
+  workspace_environment_cleanup_failed: true,
   workspace_execution_target_in_use: true,
   workspace_execution_target_missing: true,
   workspace_execution_target_not_trusted: true,
@@ -1701,6 +1702,10 @@ const POLICY_PROFILES = {
       workspace_exec_output_limit_exceeded: {
         status: 413,
         message: "Workspace command output exceeded the allowed limit.",
+      },
+      workspace_environment_cleanup_failed: {
+        status: 502,
+        message: "The workspace container could not be removed. The workspace and source directory were kept; check the provisioning host and retry deletion.",
       },
       workspace_not_auto_provisioned: {
         status: 400,

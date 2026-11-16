@@ -7,7 +7,9 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
 import { managedCredentialService } from "./managed-credential-service";
 import { terminalSessionManager } from "./terminal-session-manager";
-import { withWorkspaceExecutionLock } from "./workspace-execution-lock";
+import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspace-execution-lock";
+import { executeWorkspaceEnvironmentOperation } from "./environments/workspace-operation";
+import { closeCommandExecutor } from "./command-executor";
 import { meshManager } from "./mesh-manager";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -24,6 +26,7 @@ export type WorkspaceDeletionErrorCode =
   | "workspace_deletion_in_progress"
   | "workspace_not_found"
   | "workspace_not_auto_provisioned"
+  | "workspace_environment_cleanup_failed"
   | "workspace_delete_failed";
 
 export type DeleteWorkspaceResult =
@@ -67,32 +70,34 @@ async function deleteProvisionedServerDirectory(workspace: Workspace): Promise<v
     directory: sourceDirectory,
     provider: workspace.serverSettings.agent.provider,
   });
-  const result = await executor.exec("rm", ["-rf", "--", sourceDirectory], {
-    cwd: "/",
-    logFailures: false,
-  });
-  if (!result.success) {
-    throw new DomainError(
-      "workspace_delete_remote_failed",
-      "Failed to delete the auto-provisioned workspace directory",
-      {
-        details: {
-          workspaceId: workspace.id,
-          exitCode: result.exitCode,
+  try {
+    const result = await executor.exec("rm", ["-rf", "--", sourceDirectory], {
+      cwd: "/",
+      logFailures: false,
+    });
+    if (!result.success) {
+      throw new DomainError(
+        "workspace_delete_remote_failed",
+        "Failed to delete the auto-provisioned workspace directory",
+        {
+          details: {
+            workspaceId: workspace.id,
+            exitCode: result.exitCode,
+          },
         },
-      },
-    );
-  }
+      );
+    }
+  } finally { closeCommandExecutor(executor); }
 }
 
 export async function deleteWorkspaceWithOptions(
   id: string,
   options: DeleteWorkspaceOptions = {},
 ): Promise<DeleteWorkspaceResult> {
-  return await withWorkspaceExecutionLock(
+  return await withWorkspaceRuntimeLock(id, async () => await withWorkspaceExecutionLock(
     id,
     async () => await deleteWorkspaceWithOptionsUnlocked(id, options),
-  );
+  ));
 }
 
 async function deleteWorkspaceWithOptionsUnlocked(
@@ -132,20 +137,6 @@ async function deleteWorkspaceWithOptionsUnlocked(
       bestEffort: true,
     });
 
-    const warnings: string[] = [];
-    if (options.deleteServerDirectory) {
-      try {
-        await deleteProvisionedServerDirectory(workspace);
-      } catch (error) {
-        log.warn("Provisioned workspace directory cleanup failed; continuing workspace deletion", {
-          workspaceId: id,
-          sourceDirectory: workspace.sourceDirectory,
-          error: String(error),
-        });
-        warnings.push(`The server directory could not be removed. Clean it up manually: ${workspace.sourceDirectory}`);
-      }
-    }
-
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);
     const { removeWorkspaceSshKeyAccess } = await import("./ssh-key-access-service");
@@ -160,6 +151,36 @@ async function deleteWorkspaceWithOptionsUnlocked(
         dedicatedWorker.enrollment.id,
         { preserveRegistration: true },
       );
+    }
+    if (isAutoProvisionedWorkspace(workspace)) {
+      try {
+        await executeWorkspaceEnvironmentOperation(workspace, requireExecutionOwnerUserId(), "remove");
+      } catch (error) {
+        log.error("Managed environment cleanup failed; retaining workspace for retry", {
+          workspaceId: id,
+          error: String(error),
+          ...(error instanceof DomainError ? { details: error.details } : {}),
+        });
+        return deletionFailure(
+          "workspace_environment_cleanup_failed",
+          "The workspace container could not be removed. The workspace and source directory were kept; check the provisioning host and retry deletion.",
+          { workspaceId: id },
+        );
+      }
+    }
+
+    const warnings: string[] = [];
+    if (options.deleteServerDirectory) {
+      try {
+        await deleteProvisionedServerDirectory(workspace);
+      } catch (error) {
+        log.warn("Provisioned workspace directory cleanup failed; continuing workspace deletion", {
+          workspaceId: id,
+          sourceDirectory: workspace.sourceDirectory,
+          error: String(error),
+        });
+        warnings.push(`The server directory could not be removed. Clean it up manually: ${workspace.sourceDirectory}`);
+      }
     }
     const deleted = await deleteWorkspaceRecord(id);
     if (deleted) {

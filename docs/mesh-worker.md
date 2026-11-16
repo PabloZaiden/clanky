@@ -863,11 +863,18 @@ Before project lifecycle commands run, Clanky resolves the rootless tooling
 user's host identity and grants it the checkout owner's access using ACLs.
 Existing identities retain their effective permissions; inherited ACLs share
 new files between the host and tooling users without granting public access.
-Explicit restrictive file creation modes still apply. Symlink targets outside
-the checkout, other mounts and foreign-owned files are not repaired. Missing
-prerequisites or incompatible ownership fail explicitly instead of changing
-users, ownership or Docker configuration. Clanky checks checkout and Git-directory
-write access as the tooling user before reporting the environment ready.
+Explicit restrictive file creation modes still apply. Cached preparation is
+bound to the checkout's filesystem identity; replacing the checkout prepares
+the new directory without changing retained tooling-owned files. The checkout's
+host group does not need to be mapped into the container.
+
+Symlink targets outside the checkout, other mounts and foreign-owned files are
+not repaired. Hard-linked files are rejected before ACL application because
+their inode may also exist outside the checkout; initial provisioning clones
+use `--no-hardlinks`. Missing prerequisites or incompatible ownership fail
+explicitly instead of changing users, ownership or Docker configuration.
+Clanky checks checkout and Git-directory write access as the tooling user
+before reporting the environment ready.
 
 A different non-root `containerUser` cannot switch to `remoteUser` at startup;
 Clanky reports the limitation without elevating privileges. Explicit project
@@ -906,6 +913,12 @@ including provider profile paths, with Clanky's explicit per-session settings
 applied afterward. This does not copy the controller or provisioning server's
 environment into another execution host.
 An unauthenticated provider does not remove an otherwise healthy workspace.
+
+Deleting an automatic workspace removes its owned container on the provisioning
+host before optionally deleting the source checkout. If container removal fails,
+the workspace and checkout are kept so deletion can be retried after fixing
+the host connection. Source deletion remains opt-in; private runtime credentials
+are retained according to the default `environment remove` behavior.
 
 Rebuild/restart preserve the current workspace runtime and private provider
 profiles; [GitHub token refresh](#github-cli-credentials-in-automatic-workspaces)

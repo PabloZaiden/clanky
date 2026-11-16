@@ -165,12 +165,12 @@ export const crudRoutes = defineRoutes({
       },
       DELETE: {
         delegation: workspaceAdministrationOperation(),
-        description: "Delete a workspace and its dedicated worker registration, optionally attempting server directory cleanup. Cleanup failures are returned as warnings.",
+        description: "Delete a workspace, its owned container and dedicated worker registration, optionally attempting server directory cleanup. Failed container removal keeps the workspace for retry; directory and registration cleanup failures are returned as warnings.",
         requestSchema: DeleteWorkspaceRequestSchema,
         querySchema: undefined,
         automation: {
           policy: "confirm",
-          reason: "Permanently deletes workspace data and may delete its repository directory.",
+          reason: "Permanently deletes workspace data, removes its managed container and may delete its repository directory.",
           completion: "admission",
         },
       },

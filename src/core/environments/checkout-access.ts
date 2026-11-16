@@ -6,6 +6,7 @@ import { z } from "zod";
 export const checkoutAccessSchema = z.object({
   hostUid: z.number().int().nonnegative(),
   toolingUid: z.number().int().nonnegative(),
+  directoryIdentity: z.string().min(1),
 });
 
 type Command = (command: string, args: string[], input?: ReadableStream<Uint8Array>) => Promise<string>;
@@ -88,25 +89,28 @@ export async function prepareRootlessCheckoutAccess(
     throw new Error("Rootless checkout access requires a writable bind mount of the selected checkout. Other mounts are not modified.");
   }
   const identity = z.object({
-    uid: z.number().int().nonnegative(), uidMap: z.string(), gidMap: z.string(),
-    ownerUid: z.number().int().nonnegative(), ownerGid: z.number().int().nonnegative(),
-  }).parse(JSON.parse(await command("docker", ["exec", "--user", options.remoteUser, options.containerId, "node", "-e", `
+    uid: z.number().int().nonnegative(), uidMap: z.string(),
+    ownerUid: z.number().int().nonnegative(),
+  }).parse(JSON.parse(await command("docker", ["exec", "--workdir", "/", "--user", options.remoteUser, options.containerId, "node", "-e", `
 const fs = require("node:fs");
 const directory = fs.statSync(process.argv[1]);
 process.stdout.write(JSON.stringify({
   uid: process.getuid(), uidMap: fs.readFileSync("/proc/self/uid_map", "utf8"),
-  gidMap: fs.readFileSync("/proc/self/gid_map", "utf8"), ownerUid: directory.uid, ownerGid: directory.gid,
+  ownerUid: directory.uid,
 }));
 `, mount.Destination])));
   const host = userInfo();
-  const owner = await lstat(directory);
-  if (owner.uid !== host.uid || mappedId(identity.ownerUid, identity.uidMap) !== owner.uid
-    || mappedId(identity.ownerGid, identity.gidMap) !== owner.gid) {
+  const owner = await lstat(directory, { bigint: true });
+  if (owner.uid !== BigInt(host.uid) || BigInt(mappedId(identity.ownerUid, identity.uidMap)) !== owner.uid) {
     throw new Error("Rootless checkout ownership does not match the provisioning host. Select a checkout owned by the provisioning user; no permissions were changed.");
   }
-  const access = { hostUid: host.uid, toolingUid: mappedId(identity.uid, identity.uidMap) };
+  const access = {
+    hostUid: host.uid, toolingUid: mappedId(identity.uid, identity.uidMap),
+    directoryIdentity: `${owner.dev}:${owner.ino}:${owner.birthtimeNs}`,
+  };
   if (access.hostUid === access.toolingUid
-    || (options.checkoutAccess?.hostUid === access.hostUid && options.checkoutAccess.toolingUid === access.toolingUid)) return access;
+    || (options.checkoutAccess?.hostUid === access.hostUid && options.checkoutAccess.toolingUid === access.toolingUid
+      && options.checkoutAccess.directoryIdentity === access.directoryIdentity)) return access;
   if (!Bun.which("getfacl") || !Bun.which("setfacl")) {
     throw new Error("Rootless Docker requires getfacl and setfacl on the provisioning host. Install the Linux acl package and retry; checkout ownership is not changed.");
   }
@@ -119,10 +123,17 @@ process.stdout.write(JSON.stringify({
     const file = header.slice("# file: ".length).replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)));
     const suffix = relative(directory, file);
     if (suffix === ".." || suffix.startsWith("../") || isAbsolute(suffix)) throw new Error("Refusing to modify an ACL outside the checkout.");
-    const metadata = await lstat(file);
+    const metadata = await lstat(file, { bigint: true });
     if (metadata.isSymbolicLink()) continue;
-    if (metadata.uid !== host.uid || metadata.dev !== owner.dev || (!metadata.isDirectory() && !metadata.isFile())) {
+    if (metadata.isFile() && metadata.nlink > 1n) {
+      throw new Error("Hard-linked checkout files cannot receive rootless ACLs because they may share an inode outside the checkout. Clone with --no-hardlinks and retry; no ACLs were applied.");
+    }
+    if (metadata.dev !== owner.dev || (!metadata.isDirectory() && !metadata.isFile())) {
       throw new Error("Rootless ACL preparation requires checkout files owned by the provisioning user on the checkout filesystem. No ACLs were applied.");
+    }
+    if (metadata.uid === BigInt(access.toolingUid)) continue;
+    if (metadata.uid !== owner.uid) {
+      throw new Error("Rootless ACL preparation cannot change files owned by another host user. No ACLs were applied.");
     }
     const entries = parseAcl(lines, "");
     const permissions = entries.find((entry) => entry.tag === "user" && !entry.qualifier)?.permissions;
