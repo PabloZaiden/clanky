@@ -1,5 +1,6 @@
 import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace } from "../persistence/workspaces";
 import type { Workspace } from "@/shared/workspace";
+import type { DeleteWorkspaceResponse } from "@/contracts/api";
 import { executionHostService } from "./execution-host-service";
 import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -26,7 +27,7 @@ export type WorkspaceDeletionErrorCode =
   | "workspace_delete_failed";
 
 export type DeleteWorkspaceResult =
-  | { success: true }
+  | DeleteWorkspaceResponse
   | {
       success: false;
       error: DomainError<WorkspaceDeletionErrorCode>;
@@ -66,14 +67,6 @@ async function deleteProvisionedServerDirectory(workspace: Workspace): Promise<v
     directory: sourceDirectory,
     provider: workspace.serverSettings.agent.provider,
   });
-  if (!(await executor.directoryExists(sourceDirectory))) {
-    log.info("Provisioned workspace source directory is already absent", {
-      workspaceId: workspace.id,
-      sourceDirectory,
-    });
-    return;
-  }
-
   const result = await executor.exec("rm", ["-rf", "--", sourceDirectory], {
     cwd: "/",
     logFailures: false,
@@ -139,8 +132,18 @@ async function deleteWorkspaceWithOptionsUnlocked(
       bestEffort: true,
     });
 
+    const warnings: string[] = [];
     if (options.deleteServerDirectory) {
-      await deleteProvisionedServerDirectory(workspace);
+      try {
+        await deleteProvisionedServerDirectory(workspace);
+      } catch (error) {
+        log.warn("Provisioned workspace directory cleanup failed; continuing workspace deletion", {
+          workspaceId: id,
+          sourceDirectory: workspace.sourceDirectory,
+          error: String(error),
+        });
+        warnings.push(`The server directory could not be removed. Clean it up manually: ${workspace.sourceDirectory}`);
+      }
     }
 
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
@@ -168,14 +171,15 @@ async function deleteWorkspaceWithOptionsUnlocked(
             dedicatedWorker.enrollment.workerNodeId,
           );
         } catch (error) {
-          log.error("Failed to remove dedicated worker after workspace deletion", {
+          log.warn("Failed to remove dedicated worker after workspace deletion", {
             workspaceId: id,
             workerNodeId: dedicatedWorker.enrollment.workerNodeId,
             error: String(error),
           });
+          warnings.push("The workspace was deleted, but its dedicated worker registration could not be removed. Remove it manually.");
         }
       }
-      return { success: true };
+      return warnings.length > 0 ? { success: true, warnings } : { success: true };
     }
 
     const latestWorkspace = await getWorkspace(id);

@@ -165,7 +165,7 @@ export const crudRoutes = defineRoutes({
       },
       DELETE: {
         delegation: workspaceAdministrationOperation(),
-        description: "Delete a workspace, optionally including its server directory.",
+        description: "Delete a workspace and its dedicated worker registration, optionally attempting server directory cleanup. Cleanup failures are returned as warnings.",
         requestSchema: DeleteWorkspaceRequestSchema,
         querySchema: undefined,
         automation: {
@@ -274,7 +274,7 @@ export const crudRoutes = defineRoutes({
         }
         ctx.realtime.publishDeleted(CLANKY_REALTIME_RESOURCES.workspaces, id, { target: { userId: ownerUserId } });
         log.info(`Deleted workspace: ${id}`);
-        return Response.json({ success: true });
+        return Response.json(result);
       } catch (error) {
         log.error("Failed to delete workspace:", String(error));
         return mapDeleteWorkspaceError(error);

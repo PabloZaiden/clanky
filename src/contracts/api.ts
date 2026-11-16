@@ -191,6 +191,10 @@ export type ReconnectChatRequest = z.infer<typeof ReconnectChatRequestSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;
+export interface DeleteWorkspaceResponse {
+  success: true;
+  warnings?: string[];
+}
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;
 export type WorkspaceExecRequest = z.infer<typeof WorkspaceExecRequestSchema>;
 export type WorkspaceExecResponse = z.infer<typeof WorkspaceExecResponseSchema>;

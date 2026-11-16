@@ -220,6 +220,7 @@ export class E2EApplication {
         env: currentEnvironment({
           CLANKY_API_KEY: options.apiKey,
           CLANKY_BASE_URL: this.baseUrl,
+          CLANKY_DATA_DIR: this.dataDirectory,
           HOME: this.homeDirectory,
         }),
       },
@@ -241,6 +242,7 @@ export class E2EApplication {
         env: currentEnvironment({
           CLANKY_API_KEY: options.apiKey,
           CLANKY_BASE_URL: this.baseUrl,
+          CLANKY_DATA_DIR: this.dataDirectory,
           HOME: this.homeDirectory,
         }),
         stdoutPath: join(this.logsDirectory, `${suffix}.stdout.log`),
