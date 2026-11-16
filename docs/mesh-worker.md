@@ -381,9 +381,27 @@ worker. The workspace directory remains a navigation root, not a sandbox.
 Load keys into the SSH agent on the intended local or enrolled Mesh custodian
 using that host's normal agent tooling. In SSH-key source settings, explicitly
 authorize that host, discover its loaded public identities and register the
-desired aliases. Grant individual keys to each workspace; access starts empty.
+desired aliases. Grant individual keys in a workspace's **Shared SSH keys**
+panel or a registered server's **Shared SSH keys** panel; access starts empty.
 Clanky stores public metadata and grants, never private keys or passphrases.
 The custodian must remain connected and its selected keys must remain loaded.
+
+Ordinary workspaces and direct server commands, terminals and chats can use
+shared keys alongside the execution host's existing local agent identities,
+SSH configuration and key files. Server grants apply only to direct server
+execution; each workspace has separate grants. Clanky does not load or remove
+keys from the original agent. Duplicate identities use their independently
+available local signing route, so revoking a shared grant cannot revoke that
+local access.
+
+After enabling shared access for the first time, start a new terminal or
+reconnect the chat so it receives the scoped socket. New commands pick it up
+automatically. Later grant changes apply through that socket without restarting
+the runtime. A persistent terminal keeps the context with which it was created;
+reattaching does not change it. Shared identities remain listed if a custodian
+disconnects, but signing with them fails explicitly; local identities remain
+usable. Context deletion, changed execution bindings and revoked registrations
+prevent further shared signatures.
 
 Dedicated managed workers expose a private filtered `SSH_AUTH_SOCK` to their
 Git, terminal and agent processes. Enabling or disabling a grant takes effect
@@ -401,13 +419,22 @@ host-key verification. Provisioning hosts need the correct server entry in
 their normal known-hosts store; Clanky does not accept unknown host keys.
 
 This is an explicitly negotiated, signed `sshAgent: 1` extension within Mesh
-v7. Update controller, custodian, workspace worker and any relay before using
+v7, with additional `contexts: 1` negotiation for general consumers. Update
+controller, custodian, workspace worker and any relay before using
 it. Relays admit only the bounded SSH-agent route, not arbitrary API forwarding.
 Signing uses node trust and active grants, not an API token or control-tool
 conversation. Manual dedicated-worker integrations enable the socket with
 `CLANKY_WORKSPACE_SSH_AGENT=1`. If the application data directory is too long
 for a Unix socket pathname, set `CLANKY_SSH_AGENT_SOCKET_DIR` to an absolute,
 private directory owned by the worker user.
+
+Clanky-managed SSH agents and the local service relay remain unchanged. After
+updating a Linux worker, run `clanky worker service install` as its service
+account, using the existing `CLANKY_DATA_DIR`, to refresh the generated shell
+integration before using interactive shared-key terminals. This reinstalls and
+restarts the service; replacing the binary or restarting it alone does not
+regenerate the helper. The helper must preserve a Clanky-scoped runtime socket
+instead of replacing it with the server's base socket.
 
 ## Independent worker lifecycle
 

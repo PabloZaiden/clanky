@@ -7,4 +7,5 @@ export interface CommandExecutorConfig {
   directory: string;
   /** Default timeout in milliseconds */
   timeoutMs?: number;
+  environment?: Record<string, string>;
 }

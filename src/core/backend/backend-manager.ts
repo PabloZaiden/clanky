@@ -40,6 +40,8 @@ import { ensureLocalMeshNodeIdentity } from "../../persistence/mesh-node-identit
 import { getWorkerRegistration } from "../../persistence/mesh";
 import { requireExecutionOwnerUserId } from "../../context/user-context";
 import { executionHostService } from "../execution-host-service";
+import { invalidateSshAgentContexts, sshKeyAccessService } from "../ssh-key-access-service";
+import type { SshKeyAccessTarget } from "@/shared/ssh-key-access";
 import { executionHostBindingsEqual, getAgentExecutionHostCapability } from "@/shared/execution-host";
 import type {
   ExecutionHostBinding,
@@ -54,6 +56,7 @@ import { harnessActivityService } from "../harness-activity-service";
 
 interface WorkspaceBackendOptions {
   workspaceId: string;
+  sshKeyTarget?: SshKeyAccessTarget;
   localNodeId: string | null;
   executionHostBinding: ExecutionHostBinding;
 }
@@ -147,6 +150,7 @@ class BackendManager {
     const localNodeId = await this.getLocalMeshNodeId();
     return {
       workspaceId: workspace.id,
+      sshKeyTarget: { kind: "workspace", id: workspace.id },
       localNodeId,
       executionHostBinding: workspace.executionHostBinding,
     };
@@ -385,6 +389,7 @@ class BackendManager {
       }
       return await this.withTemporaryBackend({
         workspaceId: workspace.id,
+        sshKeyTarget: { kind: "workspace", id: workspace.id },
         localNodeId: state.localNodeId ?? null,
         executionHostBinding: workspace.executionHostBinding,
         userId,
@@ -433,7 +438,9 @@ class BackendManager {
     try {
       await this.connectBackend(
         state.backend,
-        buildConnectionConfig(state.settings, connection.directory),
+        buildConnectionConfig(state.settings, connection.directory,
+          await sshKeyAccessService.environment(state.userId, { kind: "workspace", id: workspaceId }),
+        ),
         connection.controller,
       );
       if (this.connections.get(workspaceId) === state) {
@@ -510,7 +517,8 @@ class BackendManager {
     await using connection = { backend, [Symbol.asyncDispose]: close };
     await this.connectBackend(
       connection.backend,
-      buildConnectionConfig(context.settings, context.directory),
+      buildConnectionConfig(context.settings, context.directory, context.sshKeyTarget
+        ? await sshKeyAccessService.environment(context.userId, context.sshKeyTarget) : undefined),
       controller,
     );
     return await operation(connection.backend);
@@ -597,6 +605,7 @@ class BackendManager {
       teardown.push(connection.close());
     }
     if (event.impact === "resources") {
+      teardown.push(invalidateSshAgentContexts(userId, workerNodeIds));
       for (const [contextId, state] of this.conversationConnections) {
         if (!matches(state)) continue;
         teardown.push(this.disconnectConversation(contextId, reason).then(() => {}));
@@ -804,6 +813,7 @@ class BackendManager {
       binding,
       {
         operationId: crypto.randomUUID(),
+        sshKeyTarget: { kind: "host", host: executionHost },
         directory,
         provider: settings.agent.provider,
       },
@@ -1072,9 +1082,11 @@ class BackendManager {
 
     const dir = directory ?? state.backend.getDirectory();
     const cacheKey = this.buildCommandExecutorCacheKey(workspaceId, dir);
-    const capabilitySnapshot = state.executionHostBinding?.host.kind === "mesh"
+    const capabilities = state.executionHostBinding?.host.kind === "mesh"
       ? JSON.stringify(executionHostService.validateBinding(state.executionHostBinding, state.userId).runtime.capabilities)
       : null;
+    const sshEnvironment = await sshKeyAccessService.environment(state.userId, { kind: "workspace", id: workspaceId });
+    const capabilitySnapshot = JSON.stringify({ capabilities, sshSocket: sshEnvironment?.["SSH_AUTH_SOCK"] ?? null });
     const cachedExecutor = this.commandExecutors.get(cacheKey);
     if (cachedExecutor) {
       if (cachedExecutor.capabilitySnapshot === capabilitySnapshot) {
@@ -1090,6 +1102,7 @@ class BackendManager {
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
     const commandContext = {
       operationId: workspaceId,
+      sshKeyTarget: { kind: "workspace" as const, id: workspaceId },
       directory: dir,
       provider: state.settings.agent.provider,
       localUserId: requireExecutionOwnerUserId(),
@@ -1150,6 +1163,7 @@ class BackendManager {
       this.assertPendingExecutionHost(pending);
       return await this.withTemporaryBackend({
         workspaceId: `execution-host:${crypto.randomUUID()}`,
+        sshKeyTarget: { kind: "host", host: context.binding.host },
         localNodeId,
         executionHostBinding: context.binding,
         settings,

@@ -5,10 +5,12 @@ import { sshKeyAccessService, revokeProvisioningSshKeyLease } from "../core/ssh-
 import { isDomainError } from "../domain/domain-error";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import { executionHostRefFromParts } from "@/shared/execution-host";
+import { sshAgentError } from "../core/ssh-agent-protocol";
 
 export function sshKeyAccessErrorResponse(error: unknown): Response {
   if (isDomainError(error) && error.code.startsWith("ssh_agent_")) {
-    const status = error.code === "ssh_agent_access_denied" || error.code === "ssh_agent_operation_forbidden" ? 403
+    const status = error.code === "ssh_agent_access_denied" || error.code === "ssh_agent_context_invalid" || error.code === "ssh_agent_operation_forbidden" ? 403
       : error.code === "ssh_agent_protocol_invalid" || error.code === "ssh_agent_lease_invalid" ? 400
       : error.code === "ssh_agent_key_revoked" ? 409 : 503;
     return errorResponse(error.code, error.message, status);
@@ -18,6 +20,11 @@ export function sshKeyAccessErrorResponse(error: unknown): Response {
 }
 const read = { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" as const } };
 const change = { policy: "confirm" as const, reason: "Changes access to owner-selected SSH-agent keys." };
+function hostFromParams(params: Record<string, string>) {
+  const host = executionHostRefFromParts(params["kind"]!, params["id"]!);
+  if (!host) throw sshAgentError("protocol_invalid", "The execution host must be local or Mesh.");
+  return host;
+}
 export const sshKeyAccessRoutes = defineRoutes({
   "/api/ssh-key-access": {
     auth: "user", sameOrigin: "mutations",
@@ -122,6 +129,30 @@ export const sshKeyAccessRoutes = defineRoutes({
     async DELETE(_req, ctx) {
       try { await revokeProvisioningSshKeyLease(ctx.requireUser().id, ctx.params["leaseId"]!); return Response.json({ success: true }); }
       catch (error) { return sshKeyAccessErrorResponse(error); }
+    },
+  },
+  "/api/execution-hosts/:kind/:id/ssh-key-access": {
+    auth: "user", sameOrigin: "mutations",
+    description: "List shared SSH keys explicitly granted to direct execution on this owned registered server. Workspaces have separate grants.",
+    tags: ["ssh-key-access", "execution-hosts"], operations: { GET: read },
+    async GET(_req, ctx) {
+      try { return Response.json(await sshKeyAccessService.hostAccess(ctx.requireUser().id, hostFromParams(ctx.params))); }
+      catch (error) { return sshKeyAccessErrorResponse(error); }
+    },
+  },
+  "/api/execution-hosts/:kind/:id/ssh-key-access/:keyId": {
+    auth: "user", sameOrigin: "mutations",
+    description: "Enable or revoke a shared SSH key for direct commands, terminals and chats on this registered server, without granting it to workspaces or changing local keys.",
+    tags: ["ssh-key-access", "execution-hosts"], requestSchema: SetWorkspaceSshKeyGrantSchema,
+    operations: { PUT: { requestSchema: SetWorkspaceSshKeyGrantSchema, querySchema: undefined, automation: change } },
+    async PUT(req, ctx) {
+      const parsed = await parseAndValidate(SetWorkspaceSshKeyGrantSchema, req);
+      if (!parsed.success) return parsed.response;
+      try {
+        const result = await sshKeyAccessService.setHostGrant(ctx.requireUser().id, hostFromParams(ctx.params), ctx.params["keyId"]!, parsed.data.enabled);
+        ctx.userRealtime.publishChanged("ssh-key-access");
+        return Response.json(result);
+      } catch (error) { return sshKeyAccessErrorResponse(error); }
     },
   },
 });
