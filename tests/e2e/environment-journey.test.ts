@@ -25,7 +25,7 @@ test("a host creates, enters and recovers its non-root project environment witho
     const initial = JSON.parse((await cli("status")).stdout);
     expect(initial.running).toBe(true);
     const output = await cli("exec", "--", "sh", "-c",
-      'test "$(id -u)" -ne 0 && test -w . && test "$(stat -c %a /var/lib/clanky/.)" = 700 && mkdir -p "$COPILOT_HOME" && printf retained > "$COPILOT_HOME/acceptance-profile" && cat /var/lib/clanky/project-hook');
+      'test "$(id -u)" -ne 0 && test -w . && test "$(stat -c %a /var/lib/clanky/.)" = 700 && printf retained > "$CODEX_HOME/acceptance-profile" && cat /var/lib/clanky/project-hook');
     expect(output.stdout).toBe("preserved");
     await cli("stop");
     expect(JSON.parse((await cli("status")).stdout).running).toBe(false);
@@ -40,7 +40,7 @@ test("a host creates, enters and recovers its non-root project environment witho
     await cli("restart");
     expect(JSON.parse((await cli("status")).stdout).containerId).toBe(rebuilt.containerId);
     expect((await cli("exec", "--", "cat", "/var/lib/clanky/starts")).stdout.trim().split("\n")).toHaveLength(4);
-    expect((await cli("exec", "--", "sh", "-c", 'cat "$COPILOT_HOME/acceptance-profile"')).stdout).toBe("retained");
+    expect((await cli("exec", "--", "sh", "-c", 'cat "$CODEX_HOME/acceptance-profile"')).stdout).toBe("retained");
     expect(await readFile(join(source, ".devcontainer", "devcontainer.json"), "utf8")).toBe(definition);
   } finally {
     try { await cli("remove", "--reset-credentials"); }

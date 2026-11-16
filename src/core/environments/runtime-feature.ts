@@ -91,6 +91,10 @@ user=$(cat /usr/local/share/clanky-environment/user)
 uid=$(id -u "$user")
 command='umask 077
 process=$(cat /proc/1/stat); process=\${process##*) }; set -- $process; shift 19; boot=$1
+if ! mkdir -p ${Object.values(environmentRuntimeProfileDefaults).join(" ")}; then
+  printf "%s:failed\\n" "$boot" > /var/lib/clanky/startup-state
+  exit 1
+fi
 if [ ! -f ${ENVIRONMENT_CONTAINER_STATE_ROOT}/remote-env.json ]; then
   printf "%s:unconfigured\\n" "$boot" > /var/lib/clanky/startup-state
   exit 0
