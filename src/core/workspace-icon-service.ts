@@ -395,7 +395,7 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
       }
       rootSeen = true;
     }
-    if (stack.at(-1) === "style") {
+    if (omittedDepth === 0 && stack.at(-1) === "style") {
       parseError = new Error("SVG stylesheets must contain only CSS text.");
       return;
     }
@@ -416,8 +416,9 @@ function sanitizeSvg(content: Uint8Array): Uint8Array {
     if (tag.name === "style") {
       const type = tag.attributes["type"]?.trim().toLowerCase();
       const media = tag.attributes["media"]?.trim().toLowerCase();
-      if ((type && type !== "text/css") || (media && media !== "all")) {
-        throw new Error("SVG contains an unsupported stylesheet type or media condition.");
+      const title = tag.attributes["title"];
+      if ((type && type !== "text/css") || (media && media !== "all") || title) {
+        throw new Error("SVG contains an unsupported or conditional stylesheet.");
       }
       svgAttributes(tag, []);
       styleSource = "";

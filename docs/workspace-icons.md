@@ -75,8 +75,8 @@ attributes or use PNG.
 
 SVG icons must remain static and self-contained. Scripts, embedded HTML,
 document types, external references, CSS at-rules such as `@import`, conditional
-stylesheets, compound selectors, combinators, and pseudo-selectors are not
-supported.
+stylesheets, stylesheets with a nonempty `title` attribute, compound selectors,
+combinators, and pseudo-selectors are not supported.
 Gradient and other image references must point to IDs inside the same SVG.
 Supported style values include colors, numeric values with units,
 keywords, and local `url(#id)` references; CSS variables, escapes, and other
