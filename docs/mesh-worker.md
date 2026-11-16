@@ -1094,9 +1094,10 @@ next up/rebuild; the previous default token is not pinned to the workspace.
 
 Clanky imports that token into the workspace as `GH_TOKEN` for its worker and
 interactive terminals. This lets `gh` and Copilot CLI reuse it without a second
-login, provided the account/token has the required access. To let Git commands
-inside the workspace use the shared token as well, run
-`gh auth setup-git --hostname github.com` in a workspace terminal.
+login, provided the account/token has the required access. Clanky installs GitHub
+CLI when needed and automatically configures the tooling user's GitHub HTTPS
+credential helper after importing the token, so Git commands inside the workspace
+use it too. No additional login or manual Git setup is required.
 
 If you prefer SSH repository URLs, use the
 [selected SSH-agent keys workflow](#selected-ssh-agent-keys) and choose the
