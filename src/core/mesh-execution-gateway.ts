@@ -778,9 +778,10 @@ export class MeshExecutionGateway {
       memberErrorCode: "mesh_execution_context_changed",
     });
     if (!session.adapter || !session.ownerId) throw new DomainError("mesh_execution_session_invalid", "The native session has no ownership.");
-    const paths = getWorkerPathsForSupervisor("/var/lib/clanky/supervisor.sh");
-    // Existing managed workers gain the private PATH without a process restart.
-    const environment = await session.executor.fileExists(pathPosix.join(paths.hostRoot, "runtime.json"))
+    const supervisor = process.env["CLANKY_WORKER_SUPERVISOR"];
+    const paths = supervisor ? getWorkerPathsForSupervisor(supervisor) : undefined;
+    // Existing managed workers gain their private PATH without a process restart.
+    const environment = paths && await session.executor.fileExists(paths.containerRuntime)
       ? { ...session.environment, PATH: `${pathPosix.join(paths.containerRoot, "runtime", "bin")}:${process.env["PATH"] ?? ""}` }
       : session.environment;
     return {

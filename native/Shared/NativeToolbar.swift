@@ -251,22 +251,33 @@ struct NativeToolbarContent: View {
                 .ignoresSafeArea()
                 .toolbar {
                     if toolbar.canPresent, let snapshot = toolbar.snapshot {
-                        ForEach([snapshot.scope], id: \.self) { scope in
-                            ForEach(snapshot.sidebar) { item in
-                                ToolbarItem(placement: .bottomBar) {
-                                    NativeToolbarButton(toolbar: toolbar, id: item.id, scope: scope)
-                                }
-                                .visibilityPriority(
-                                    item.id == "sidebar:toggle" || item.id == "sidebar:settings" ? .high : .automatic
-                                )
-                                .sharedBackgroundVisibility(.hidden)
+                        // Scope each toolbar entry, without nesting changing item collections.
+                        ForEach(
+                            snapshot.sidebar.map { (id: snapshot.scope + ":" + $0.id, item: $0) },
+                            id: \.id
+                        ) { entry in
+                            ToolbarItem(id: entry.id, placement: .bottomBar) {
+                                NativeToolbarButton(toolbar: toolbar, id: entry.item.id, scope: snapshot.scope)
                             }
-                            if !snapshot.primary.isEmpty || !snapshot.menu.isEmpty {
-                                ToolbarItemGroup(placement: .bottomBar) {
-                                    NativeToolbarPageActions(toolbar: toolbar, scope: scope)
-                                }
-                                .sharedBackgroundVisibility(.hidden)
+                            .visibilityPriority(
+                                entry.item.id == "sidebar:toggle" || entry.item.id == "sidebar:settings" ? .high : .automatic
+                            )
+                            .sharedBackgroundVisibility(.hidden)
+                        }
+                        ForEach(
+                            snapshot.primary.map { (id: snapshot.scope + ":" + $0.id, item: $0) },
+                            id: \.id
+                        ) { entry in
+                            ToolbarItem(id: entry.id, placement: .bottomBar) {
+                                NativeToolbarButton(toolbar: toolbar, id: entry.item.id, scope: snapshot.scope)
                             }
+                            .sharedBackgroundVisibility(.hidden)
+                        }
+                        ForEach(snapshot.menu.isEmpty ? [] : [snapshot.scope], id: \.self) { scope in
+                            ToolbarItem(id: scope + ":menu", placement: .bottomBar) {
+                                NativeToolbarPageMenu(toolbar: toolbar, scope: scope)
+                            }
+                            .sharedBackgroundVisibility(.hidden)
                         }
                     }
                 }
@@ -299,7 +310,7 @@ private struct NativeToolbarButton: View {
                 } else if let symbol = item.systemImage {
                     Label(item.label, systemImage: symbol).labelStyle(.iconOnly)
                 } else {
-                    Text(item.label)
+                    Label(item.label, systemImage: "checkmark")
                 }
             }
             .accessibilityLabel(item.label)
@@ -312,29 +323,24 @@ private struct NativeToolbarButton: View {
 }
 
 @available(iOS 27.1, *)
-private struct NativeToolbarPageActions: View {
+private struct NativeToolbarPageMenu: View {
     @ObservedObject var toolbar: NativeToolbar
     let scope: String
 
     var body: some View {
-        if let snapshot = toolbar.snapshot, snapshot.scope == scope {
-            ForEach(snapshot.primary) { item in
-                NativeToolbarButton(toolbar: toolbar, id: item.id, scope: scope)
-            }
-            if !snapshot.menu.isEmpty {
-                Menu {
-                    ForEach(snapshot.menu) { item in
-                        Button(item.label, role: item.destructive ? .destructive : nil) {
-                            toolbar.activate(item.id, scope: scope)
-                        }
-                        .disabled(item.disabled || item.busy)
+        if let snapshot = toolbar.snapshot, snapshot.scope == scope, !snapshot.menu.isEmpty {
+            Menu {
+                ForEach(snapshot.menu) { item in
+                    Button(item.label, role: item.destructive ? .destructive : nil) {
+                        toolbar.activate(item.id, scope: scope)
                     }
-                } label: {
-                    Label("More", systemImage: "list.bullet")
+                    .disabled(item.disabled || item.busy)
                 }
-                .accessibilityLabel("More")
-                .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
+            } label: {
+                Label("More", systemImage: "list.bullet")
             }
+            .accessibilityLabel("More")
+            .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
         }
     }
 }
