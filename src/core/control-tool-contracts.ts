@@ -9,7 +9,7 @@ import { ExecuteOperationSchema, type ControlToolDefinition } from "@/contracts/
 import { AgentNotificationSchema } from "@/contracts/schemas/agent-notifications";
 import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
-import { HtmlPreviewInputSchema, HtmlRenderInputSchema } from "@/contracts/schemas/html-render";
+import { HtmlRenderInputSchema } from "@/contracts/schemas/html-render";
 import { HTML_LAYOUT_GUIDE, HTML_THEME_GUIDE } from "@/shared/html-render";
 
 const optionalText = z.string().trim().min(1).max(500).nullable().default(null);
@@ -102,7 +102,6 @@ export const controlDirectDescriptions: Record<DirectToolName, string> = {
 export const controlToolSchemas = {
   ...controlDirectSchemas,
   clanky_send_notification: AgentNotificationSchema,
-  clanky_html_preview: HtmlPreviewInputSchema,
   clanky_html_render: HtmlRenderInputSchema,
   clanky_list_operations: z.object({}).strict(),
   clanky_find_operations: z.object({
@@ -126,12 +125,9 @@ export type ControlToolInput<T extends ControlToolName> = z.input<typeof control
 
 export const controlToolDescriptions: Record<ControlToolName, string> = {
   ...controlDirectDescriptions,
-  clanky_html_preview: "Preview a complete HTML document without publishing it. Supply exactly one of html or path on this chat's execution host. Returns a model-visible PNG, full contentHeight, actual capturedHeight/offset, clipping flag, bounded browser console, unresolved local resources and availableAttachments. Inspect and fix the image before clanky_html_render. Captures are capped; use offset for the rest. "
+  clanky_html_render: "Publish one persistent inline HTML artifact in this conversation. Supply exactly one of html or path on this chat's execution host, a short accessible title, and an estimated initial height in CSS pixels; the viewer adjusts the live height. The user sees the interactive page. Publication survives reload and source-file removal. Each call creates a new revision in the timeline; do not retry an uncertain publication. "
     + HTML_LAYOUT_GUIDE + " " + HTML_THEME_GUIDE
-    + " Local images (including SVG) in img/src, source/srcset, SVG image href, and CSS url() are embedded; file HTML resolves relative images beside that file, inline HTML uses the chat working directory. Use attachment:<filename> for an unambiguous original chat attachment, or attachment:<messageId>/<attachmentId> from availableAttachments. Images must be readable actual browser images, at most 10 MiB each, 64 local references and 25 MiB prepared HTML. External URLs remain external and are loaded directly by the browser; Clanky does not download them.",
-  clanky_html_render: "Publish one persistent inline HTML artifact in this conversation. Supply exactly one of html or path, a short accessible title, and the preview's contentHeight as height. Preview, inspect and correct first, including phone and desktop layouts. The user sees the live page, not the PNG. Publication survives reload and source-file removal. Each call creates a new revision in the timeline; do not retry an uncertain publication. "
-    + HTML_LAYOUT_GUIDE + " " + HTML_THEME_GUIDE
-    + " Image references and limits match clanky_html_preview; unresolved local resources reject publication. External URLs stay external. Scripts and forms run in an iframe sandbox without same-origin access or a Clanky tool bridge. No development server is needed.",
+    + " Local images (including SVG) in img/src, source/srcset, SVG image href, and CSS url() are embedded; file HTML resolves relative images beside that file, inline HTML uses the chat working directory. Use attachment:<filename> for an unambiguous original chat attachment, or attachment:<messageId>/<attachmentId>. Images must be readable actual browser images, at most 10 MiB each, 64 local references and 25 MiB prepared HTML. Unresolved local resources reject publication. External URLs remain external and are loaded directly by the browser; Clanky does not download them. Scripts and forms run in an iframe sandbox without same-origin access or a Clanky tool bridge. No development server is needed.",
   clanky_send_notification: "Send one text notification to the user's configured webhook using its saved Listen or custom JSON payload. "
     + AGENT_NOTIFICATION_INSTRUCTIONS
     + " Supply title, shortDescription and markdownContent; never supply a webhook URL. "
