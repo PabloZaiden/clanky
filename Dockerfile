@@ -78,9 +78,4 @@ CMD ["/app/clanky", "relay"]
 
 # Keep the main image as the default Dockerfile target.
 FROM runtime AS server
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    fonts-liberation \
-    fonts-noto-color-emoji \
-  && rm -rf /var/lib/apt/lists/*
 CMD ["/app/clanky", "serve"]

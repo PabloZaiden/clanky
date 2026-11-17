@@ -34,9 +34,8 @@ export async function executeControlTool(options: {
     if (isControlUiToolName(name)) return await executeControlUiTool(context, name, input);
     if (isDirectToolName(name)) return await executeDirectControlTool(context, name, input);
     switch (name) {
-      case "clanky_html_preview":
       case "clanky_html_render":
-        return await executeHtmlTool(context, name, input);
+        return await executeHtmlTool(context, input);
       case "clanky_send_notification":
         return await agentNotificationService.send(input, actions.signal);
       case "clanky_list_operations":

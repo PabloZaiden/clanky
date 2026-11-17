@@ -6,7 +6,7 @@ import type { StringNode, Url } from "css-tree";
 import { posix } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DomainError } from "@/domain/domain-error";
-import { HtmlPreviewInputSchema, HtmlRenderInputSchema, type HtmlSource } from "@/contracts/schemas/html-render";
+import { HtmlRenderInputSchema, type HtmlSource } from "@/contracts/schemas/html-render";
 import { createHtmlBootstrap, HTML_IMAGE_MAX_BYTES, HTML_MAX_BYTES } from "@/shared/html-render";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
 import { detectBrowserImageMimeType } from "@/utils/workspace-file-images";
@@ -18,7 +18,6 @@ import { getChatExecutionHostBinding } from "./chat-history-export-service";
 import { closeCommandExecutor, resolveCommandExecutorDirectory, type CommandExecutor } from "./command-executor";
 import { requireControlChat } from "./control-origin";
 import type { ControlToolContext } from "./control-tool-context";
-import { captureHtmlPreview } from "./html-preview-browser";
 import { chatManager } from "./chat-manager";
 import { ControlOperationAuthority } from "./control-authority";
 
@@ -80,7 +79,7 @@ async function prepareHtml(context: ControlToolContext, source: HtmlSource) {
   const authority = actions.authority;
   if (!(authority instanceof ControlOperationAuthority)) throw new DomainError("html_chat_unavailable", "HTML tools require an execution-owned control session.");
   const grant = await authority.revalidate();
-  if (grant.htmlArtifacts !== 1) throw new DomainError("html_host_unsupported", "Update the execution host to support native HTML preview image results.");
+  if (grant.htmlArtifacts !== 1) throw new DomainError("html_host_unsupported", "Update the execution host to support native HTML artifacts.");
   const chatId = origin?.current.chat;
   if (!chatId || !grant.executionHostBinding) throw new DomainError("html_chat_unavailable", "HTML tools require an active chat execution.");
   await requireControlChat(grant, chatId);
@@ -154,7 +153,7 @@ async function prepareHtml(context: ControlToolContext, source: HtmlSource) {
             attachmentId = selector.slice(slash + 1);
           } else {
             const matches = listHtmlAttachmentReferences(chatId, selector);
-            if (matches.length !== 1) throw new DomainError("html_resource_unavailable", `Attachment filename is missing or ambiguous: ${selector}. Use an exact attachment reference from availableAttachments.`);
+            if (matches.length !== 1) throw new DomainError("html_resource_unavailable", `Attachment filename is missing or ambiguous: ${selector}. Use attachment:<messageId>/<attachmentId>.`);
             ({ messageId, attachmentId } = matches[0]!);
           }
           const message = getChatMessageFromTranscript(chatId, messageId);
@@ -232,23 +231,13 @@ async function prepareHtml(context: ControlToolContext, source: HtmlSource) {
     }
     const prepared = serialize(document);
     if (Buffer.byteLength(prepared) > HTML_MAX_BYTES) throw new DomainError("html_resource_limit", "The prepared HTML exceeds 25 MiB.");
-    return { html: prepared, chatId, scope: chat.config.scope, authority, unresolved, availableAttachments: listHtmlAttachmentReferences(chatId) };
+    return { html: prepared, chatId, scope: chat.config.scope, authority, unresolved };
   } finally {
     closeCommandExecutor(executor);
   }
 }
 
-export async function executeHtmlTool(context: ControlToolContext, name: "clanky_html_preview" | "clanky_html_render", input: unknown): Promise<unknown> {
-  if (name === "clanky_html_preview") {
-    const options = HtmlPreviewInputSchema.parse(input);
-    const prepared = await prepareHtml(context, options);
-    const { data, ...preview } = await captureHtmlPreview({ ...options, html: prepared.html, signal: context.options.actions.signal });
-    return {
-      kind: "clanky_image_result",
-      result: { ok: true, ...preview, unresolvedImages: prepared.unresolved, availableAttachments: prepared.availableAttachments },
-      images: [{ mimeType: "image/png", data }],
-    };
-  }
+export async function executeHtmlTool(context: ControlToolContext, input: unknown): Promise<unknown> {
   const options = HtmlRenderInputSchema.parse(input);
   const prepared = await prepareHtml(context, options);
   if (prepared.unresolved.length) throw new DomainError("html_resources_unresolved", prepared.unresolved.map((item) => `${item.reference}: ${item.message}`).join("\n").slice(0, 10_000));

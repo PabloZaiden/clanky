@@ -120,14 +120,14 @@ request a new confirmation before restarting.
 
 ## Inline visuals
 
-Native chats can use `clanky_html_preview` to inspect a generated page and
-`clanky_html_render` to publish it inline. No project server or open browser
-tab is required. Preview requires Chrome or Chromium on the controller, not
-on Mesh workers. The server Docker image includes Chromium and fonts; other
-installations must install a compatible browser or set `CLANKY_HTML_BROWSER`
-to its executable. Publication and viewing do not require a controller browser.
+Native chats can use `clanky_html_render` to publish interactive HTML inline.
+No project server or browser on the controller is required. Visual inspection
+is optional: agents use render-and-view tools already available in their
+execution environment when possible, otherwise review the source and publish
+without blocking on that check. They must not install a browser solely for
+inspection or claim visual inspection they did not perform.
 Existing Codex threads retain their original tool catalog; use a new thread
-for newly added tools.
+to refresh the available tools.
 
 Supply either complete inline `html` or a `.html`/`.htm` `path` on the chat's
 execution host. Relative image paths resolve beside that file, or against the
@@ -135,19 +135,17 @@ chat's working directory for inline HTML. Static image `src`/`srcset`, SVG
 image references, and CSS `url()` references are embedded after image-format
 validation, including SVG. Original chat attachments can be referenced as
 `attachment:filename.png` when unambiguous, or by the exact
-`attachment:<messageId>/<attachmentId>` references returned by preview.
+`attachment:<messageId>/<attachmentId>` form.
 Local non-image resources must be inlined or use external URLs.
 External URLs remain external and are loaded directly by the browser;
-Clanky does not download, proxy, or rewrite them. Preview uses an HTTPS fallback
-base for protocol-relative resources; published visuals inherit the app's
-scheme. An explicit external base URL takes precedence.
+Clanky does not download, proxy, or rewrite them. Protocol-relative resources
+inherit the app's scheme. An explicit external base URL takes precedence.
 
 Images are limited to 10 MiB each, 64 distinct local references, and 25 MiB
 of prepared HTML. Inline tool input is limited to 128,000 characters; use
-a file for larger pages. Preview reports missing resources and returns a
-bounded PNG, console messages, full content height, and screenshot clipping
-information. Inspect phone and desktop widths before publishing.
-Publication rejects unresolved local resources.
+a file for larger pages. Supply an estimated initial `height` in CSS pixels;
+the viewer measures and adjusts the live height. Publication rejects unresolved
+local resources.
 
 Published pages use the message-column width and a script/form-enabled
 iframe without same-origin access or a Clanky tool bridge. Shared CSS theme
@@ -159,10 +157,6 @@ The saved HTML and embedded images survive source-file removal and server
 restart. Recoverable Trash retains them; permanent chat deletion removes them.
 Ordinary history carries only the reference, with HTML loaded separately.
 External resources still depend on their original hosts.
-
-Preview executes page scripts on the controller's network. Its iframe sandbox
-and temporary browser profile are not process or network isolation. Root-run
-Chromium uses `--no-sandbox`; do not use previews for hostile HTML.
 
 General notification and visual-use guidance is configured through each
 harness's native session instruction channel, not appended to user messages.
