@@ -41,9 +41,9 @@ export function htmlThemeVariables(appearance: "light" | "dark"): Record<string,
 export const HTML_THEME_GUIDE = `Use injected CSS variables, not fixed theme colors: ${Object.keys(htmlThemeVariables("dark")).join(", ")}. The base sheet sets text, font, and a transparent background. For canvas or script-rendered colors, redraw on the window's clanky:theme-change event.`;
 export const HTML_LAYOUT_GUIDE = "The frame follows the message-column width, about 360px on phones and wider on desktop. Use fluid widths and responsive columns that stack; wrap long text and keep images within their containers. Leave html, body, and the outer container transparent, without an outer card, banner title, border, or side padding. Clanky supplies an 8px gutter. Let content set height; do not use vh/svh/lvh/dvh or height:100% on html/body. Charts may use explicit pixel heights.";
 
-export function bootstrapHtml(html: string): string {
+export function createHtmlBootstrap(): string {
   const variables = JSON.stringify(htmlThemeVariables("dark"));
-  const bootstrap = `<style>
+  return `<style>
 :root{${Object.entries(htmlThemeVariables("dark")).map(([k, v]) => `${k}:${v}`).join(";")}}
 html{padding:8px;box-sizing:border-box}
 *,*:before,*:after{box-sizing:border-box}
@@ -85,8 +85,22 @@ img,video,svg{max-width:100%}img,video{height:auto}body{overflow-wrap:anywhere}
   addEventListener("load", schedule);
   addEventListener("resize", schedule);
   document.addEventListener("click", event => {
+    if (event.defaultPrevented) return;
     const anchor = event.target.closest?.("a[href]");
     if (!anchor) return;
+    const href = anchor.getAttribute("href").trim();
+    if (href.startsWith("#")) {
+      event.preventDefault();
+      let id;
+      try { id = decodeURIComponent(href.slice(1)); } catch (error) {
+        console.warn("Invalid HTML artifact fragment link", error);
+        return;
+      }
+      const target = document.getElementById(id) || document.getElementsByName(id)[0];
+      if (target) target.scrollIntoView();
+      else if (!id || id.toLowerCase() === "top") scrollTo(0, 0);
+      return;
+    }
     let url;
     try { url = new URL(anchor.href); } catch { return; }
     if (!["http:", "https:", "mailto:", "tel:"].includes(url.protocol)) return;
@@ -94,5 +108,4 @@ img,video,svg{max-width:100%}img,video{height:auto}body{overflow-wrap:anywhere}
     parent.postMessage({ type: "clanky-html-link", url: url.href }, "*");
   });
 })();</script>`;
-  return html.replace(/<head(?:\s[^>]*)?>/i, (head) => `${head}${bootstrap}`);
 }

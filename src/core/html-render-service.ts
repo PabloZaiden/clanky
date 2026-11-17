@@ -1,4 +1,4 @@
-import { parse, serialize, type DefaultTreeAdapterMap } from "parse5";
+import { defaultTreeAdapter, parse, parseFragment, serialize, type DefaultTreeAdapterMap } from "parse5";
 import parseCss from "css-tree/parser";
 import walkCss from "css-tree/walker";
 import generateCss from "css-tree/generator";
@@ -7,7 +7,7 @@ import { posix } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { DomainError } from "@/domain/domain-error";
 import { HtmlPreviewInputSchema, HtmlRenderInputSchema, type HtmlSource } from "@/contracts/schemas/html-render";
-import { bootstrapHtml, HTML_IMAGE_MAX_BYTES, HTML_MAX_BYTES } from "@/shared/html-render";
+import { createHtmlBootstrap, HTML_IMAGE_MAX_BYTES, HTML_MAX_BYTES } from "@/shared/html-render";
 import { executionHostBindingsEqual } from "@/shared/execution-host";
 import { detectBrowserImageMimeType } from "@/utils/workspace-file-images";
 import { loadChatMetadata, getChatMessageFromTranscript } from "../persistence/chats";
@@ -100,7 +100,7 @@ async function prepareHtml(context: ControlToolContext, source: HtmlSource) {
     if (Buffer.byteLength(html) > HTML_MAX_BYTES || !/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(html)) {
       throw new DomainError("html_source_invalid", "Use a complete HTML document beginning with <!doctype html> or <html>, at most 25 MiB.");
     }
-    const document = parse(html);
+    const document = parse(/^\s*<html\b/i.test(html) ? `<!doctype html>${html}` : html);
     let baseDirectory = path ? posix.dirname(path) : workingDirectory;
     let externalBase = false;
     const unresolved: { reference: string; message: string }[] = [];
@@ -221,7 +221,16 @@ async function prepareHtml(context: ControlToolContext, source: HtmlSource) {
         for (const child of node.childNodes) if (child.nodeName === "#text" && "value" in child) child.value = await rewriteCss(child.value, false);
       }
     }
-    const prepared = bootstrapHtml(serialize(document));
+    const head = nodes.find((node): node is DefaultTreeAdapterMap["element"] => "tagName" in node && node.tagName === "head");
+    if (!head) throw new DomainError("html_source_invalid", "The HTML document must have a head element.");
+    const bootstrap = parseFragment(head, createHtmlBootstrap(), {});
+    const first = head.childNodes[0];
+    for (const child of [...bootstrap.childNodes]) {
+      defaultTreeAdapter.detachNode(child);
+      if (first) defaultTreeAdapter.insertBefore(head, child, first);
+      else defaultTreeAdapter.appendChild(head, child);
+    }
+    const prepared = serialize(document);
     if (Buffer.byteLength(prepared) > HTML_MAX_BYTES) throw new DomainError("html_resource_limit", "The prepared HTML exceeds 25 MiB.");
     return { html: prepared, chatId, scope: chat.config.scope, authority, unresolved, availableAttachments: listHtmlAttachmentReferences(chatId) };
   } finally {

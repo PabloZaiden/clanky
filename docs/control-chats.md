@@ -138,7 +138,9 @@ validation, including SVG. Original chat attachments can be referenced as
 `attachment:<messageId>/<attachmentId>` references returned by preview.
 Local non-image resources must be inlined or use external URLs.
 External URLs remain external and are loaded directly by the browser;
-Clanky does not download or proxy them.
+Clanky does not download, proxy, or rewrite them. Preview uses an HTTPS fallback
+base for protocol-relative resources; published visuals inherit the app's
+scheme. An explicit external base URL takes precedence.
 
 Images are limited to 10 MiB each, 64 distinct local references, and 25 MiB
 of prepared HTML. Inline tool input is limited to 128,000 characters; use
@@ -157,6 +159,10 @@ The saved HTML and embedded images survive source-file removal and server
 restart. Recoverable Trash retains them; permanent chat deletion removes them.
 Ordinary history carries only the reference, with HTML loaded separately.
 External resources still depend on their original hosts.
+
+Preview executes page scripts on the controller's network. Its iframe sandbox
+and temporary browser profile are not process or network isolation. Root-run
+Chromium uses `--no-sandbox`; do not use previews for hostile HTML.
 
 General notification and visual-use guidance is configured through each
 harness's native session instruction channel, not appended to user messages.
