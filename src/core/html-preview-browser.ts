@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { DomainError } from "@/domain/domain-error";
+import { waitForProcessExit } from "@/core/process-lifecycle";
 import { CONTROL_IMAGE_MAX_BYTES } from "@/shared/control-tool-result";
 import { HTML_MAX_FIT_HEIGHT, htmlThemeVariables } from "@/shared/html-render";
 
@@ -38,10 +39,11 @@ class ChromePipe {
   }>();
   private failure?: Error;
   private readonly input: Duplex;
-  readonly closed: Promise<void>;
   readonly console: string[] = [];
 
-  constructor(private readonly child: ChildProcess) {
+  constructor(child: ChildProcess) {
+    child.once("exit", () => this.fail(new Error("Chrome exited before completing the preview.")));
+    child.on("error", (error) => this.fail(error));
     const input = child.stdio[3];
     const output = child.stdio[4];
     if (!(input instanceof Duplex) || !(output instanceof Duplex)) throw new Error("Chrome debugging pipes are unavailable.");
@@ -75,13 +77,9 @@ class ChromePipe {
     });
     input.on("error", (error) => this.fail(error));
     output.on("error", (error) => this.fail(error));
-    child.on("error", (error) => this.fail(error));
+    output.once("end", () => this.fail(new Error("Chrome closed its debugging pipe before completing the preview.")));
     // Drain browser diagnostics without allowing stderr to block the process.
     child.stderr?.resume();
-    this.closed = new Promise((resolve) => child.once("close", () => {
-      this.fail(new Error("Chrome closed before completing the preview."));
-      resolve();
-    }));
   }
 
   fail(error: Error): void {
@@ -98,11 +96,34 @@ class ChromePipe {
       this.input.write(`${JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) })}\0`);
     });
   }
+}
 
-  async close(): Promise<void> {
-    this.child.kill("SIGTERM");
-    const timer = setTimeout(() => this.child.kill("SIGKILL"), 2000);
-    try { await this.closed; } finally { clearTimeout(timer); }
+async function closeBrowser(child: ChildProcess): Promise<void> {
+  const signalGroup = (signal: NodeJS.Signals) => {
+    if (child.pid === undefined) return;
+    try { process.kill(-child.pid, signal); }
+    catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+    }
+  };
+  const running = () => child.pid !== undefined && child.exitCode === null && child.signalCode === null;
+  try {
+    signalGroup("SIGTERM");
+    if (running()) await waitForProcessExit(child, 2000);
+    if (running()) {
+      signalGroup("SIGKILL");
+      await waitForProcessExit(child, 2000);
+      if (running()) {
+        throw new DomainError("html_browser_shutdown_failed", "Chrome did not exit after forced preview cleanup.");
+      }
+    }
+  } finally {
+    try {
+      // Helpers can outlive the browser and retain its pipes even after the leader exits.
+      signalGroup("SIGKILL");
+    } finally {
+      for (const stream of child.stdio) stream?.destroy();
+    }
   }
 }
 
@@ -114,13 +135,14 @@ export async function captureHtmlPreview(options: {
   signal.throwIfAborted();
   const profile = await mkdtemp(join(tmpdir(), "clanky-html-preview-"));
   let chrome: ChromePipe | undefined;
+  let child: ChildProcess | undefined;
   try {
-    const child = spawn(executable, [
+    child = spawn(executable, [
       "--headless=new", "--remote-debugging-pipe", `--user-data-dir=${profile}`,
       "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
       "--disable-dev-shm-usage", "--disable-extensions",
       ...(process.getuid?.() === 0 ? ["--no-sandbox"] : []),
-    ], { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
+    ], { detached: true, stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
     chrome = new ChromePipe(child);
     const onAbort = () => chrome?.fail(new DomainError("html_preview_cancelled", "HTML preview was cancelled or exceeded its time limit."));
     signal.addEventListener("abort", onAbort, { once: true });
@@ -172,7 +194,7 @@ export async function captureHtmlPreview(options: {
     if (error instanceof DomainError) throw error;
     throw new DomainError("html_preview_failed", `Chrome could not capture the HTML preview: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   } finally {
-    await chrome?.close();
-    await rm(profile, { recursive: true, force: true });
+    try { if (child) await closeBrowser(child); }
+    finally { await rm(profile, { recursive: true, force: true }); }
   }
 }
