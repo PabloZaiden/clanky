@@ -10,6 +10,8 @@ import { oauthError, secureOAuthUrl, validateOAuthRedirectUri, type ValidatedOAu
 import { AuthError } from "./types";
 
 const MAX_METADATA_BYTES = 16 * 1024;
+const MAX_UNAPPROVED_CLIENTS = 1024;
+const REGISTRATION_TTL_MS = 24 * 60 * 60 * 1000;
 const metadataSchema = z.object({
   client_name: z.string().trim().min(1).max(200).default("MCP client"),
   redirect_uris: z.array(z.string().min(1).max(2048)).min(1).max(20),
@@ -168,9 +170,16 @@ export function createOAuthClients(config: ValidatedOAuthConfig, store: OAuthSto
       const metadata = parsed.data;
       const secret = metadata.token_endpoint_auth_method === "client_secret_basic" ? createOAuthClientSecret() : undefined;
       const client = clientFromMetadata(metadata, `oauth_client_${randomToken()}`, secret?.secretHash);
-      store.transaction(() => store.saveClient(config.issuer, client));
+      const now = Date.now();
+      store.transaction(() => {
+        store.deleteExpired(now);
+        if (store.countUnapprovedClients(config.issuer) >= MAX_UNAPPROVED_CLIENTS) {
+          oauthError("temporarily_unavailable", "Too many pending client registrations. Try again after unused registrations expire.", 429);
+        }
+        store.saveClient(config.issuer, client, now + REGISTRATION_TTL_MS);
+      });
       return {
-        client_id: client.clientId, client_id_issued_at: Math.floor(Date.now() / 1000),
+        client_id: client.clientId, client_id_issued_at: Math.floor(now / 1000),
         client_name: client.clientName, redirect_uris: client.redirectUris, grant_types: client.grantTypes,
         response_types: metadata.response_types, token_endpoint_auth_method: client.tokenEndpointAuthMethod,
         ...(secret ? { client_secret: secret.secret, client_secret_expires_at: 0 } : {}),
@@ -178,7 +187,7 @@ export function createOAuthClients(config: ValidatedOAuthConfig, store: OAuthSto
     },
     async resolve(clientId: string | null, signal?: AbortSignal): Promise<OAuthClient> {
       if (!clientId || clientId.length > 2048) oauthError("invalid_client", "Provide a valid client ID", 401);
-      const registered = store.getClient(config.issuer, clientId);
+      const registered = store.getClient(config.issuer, clientId, Date.now());
       if (registered) return registered;
       const cached = cache.get(clientId);
       if (cached && cached.cacheUntil > Date.now()) return cached.client;

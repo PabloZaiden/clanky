@@ -125,8 +125,9 @@ export type OAuthSessionRecord = z.infer<typeof oauthSessionSchema>;
 export interface OAuthStore {
   initialize(): void;
   transaction<T>(operation: () => T): T;
-  getClient(issuer: string, clientId: string): OAuthClient | undefined;
-  saveClient(issuer: string, client: OAuthClient): void;
+  getClient(issuer: string, clientId: string, now: number): OAuthClient | undefined;
+  countUnapprovedClients(issuer: string): number;
+  saveClient(issuer: string, client: OAuthClient, expiresAt: number): void;
   getAuthorization(requestHash: string): OAuthAuthorizationRecord | undefined;
   getAuthorizationByCode(codeHash: string): OAuthAuthorizationRecord | undefined;
   saveAuthorization(record: OAuthAuthorizationRecord): void;

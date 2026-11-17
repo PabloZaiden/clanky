@@ -320,6 +320,11 @@ the registration response returns their generated secret only once. Registered
 clients and authorized grants persist across controller restarts. Store client
 credentials and tokens privately in the client.
 
+Unused DCR registrations expire automatically. Pending registrations have a
+bounded admission capacity; if registration is temporarily limited, retry later
+or use CIMD. User-approved grants retain their client registrations through their
+grant deadlines and do not consume the unapproved-registration capacity.
+
 Public callbacks require HTTPS; loopback callbacks may use HTTP. Literal
 loopback callbacks can choose a different listening port without changing their
 registered host, path or query. Metadata retrieval requires valid HTTPS and

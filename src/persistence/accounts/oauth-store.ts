@@ -25,6 +25,10 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
     if (typeof data !== "string") throw new Error("Invalid persisted OAuth session");
     return oauthSessionSchema.parse(JSON.parse(data) as unknown);
   }
+  function retainClient(issuer: string, clientId: string, expiresAt: number, authorized = false): void {
+    db.query(`UPDATE webapp_oauth_clients SET expires_at = MAX(expires_at, ?), authorized = MAX(authorized, ?)
+      WHERE issuer = ? AND client_id = ?`).run(expiresAt, authorized ? 1 : 0, issuer, clientId);
+  }
   const store: OAuthStore = {
     initialize() {
       db.exec(`
@@ -43,16 +47,23 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
       `);
     },
     transaction: operation => db.transaction(() => synchronous(operation())).immediate(),
-    getClient(issuer, clientId) {
-      const row = db.query<{ data: string }, [string, string]>(
-        "SELECT data FROM webapp_oauth_clients WHERE issuer = ? AND client_id = ?",
-      ).get(issuer, clientId);
+    getClient(issuer, clientId, now) {
+      const row = db.query<{ data: string }, [string, string, number]>(
+        "SELECT data FROM webapp_oauth_clients WHERE issuer = ? AND client_id = ? AND expires_at > ?",
+      ).get(issuer, clientId, now);
       return row ? oauthClientSchema.parse(JSON.parse(row.data) as unknown) : undefined;
     },
-    saveClient(issuer, client) {
+    countUnapprovedClients(issuer) {
+      const row = db.query<{ count: number }, [string]>(
+        "SELECT COUNT(*) AS count FROM webapp_oauth_clients WHERE issuer = ? AND authorized = 0",
+      ).get(issuer);
+      if (!row) throw new Error("Unable to count pending OAuth clients");
+      return row.count;
+    },
+    saveClient(issuer, client, expiresAt) {
       const parsed = oauthClientSchema.parse(client);
-      db.query("INSERT INTO webapp_oauth_clients (issuer, client_id, data) VALUES (?, ?, ?)")
-        .run(issuer, parsed.clientId, JSON.stringify(parsed));
+      db.query("INSERT INTO webapp_oauth_clients (issuer, client_id, data, expires_at) VALUES (?, ?, ?, ?)")
+        .run(issuer, parsed.clientId, JSON.stringify(parsed), expiresAt);
     },
     getAuthorization: hash => readAuthorization(db.query("SELECT data FROM webapp_oauth_authorizations WHERE request_hash = ?").get(hash)),
     getAuthorizationByCode: hash => readAuthorization(db.query("SELECT data FROM webapp_oauth_authorizations WHERE code_hash = ?").get(hash)),
@@ -61,6 +72,7 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
       db.query(`INSERT INTO webapp_oauth_authorizations (request_hash, code_hash, expires_at, data) VALUES (?, ?, ?, ?)
         ON CONFLICT(request_hash) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, data = excluded.data`)
         .run(parsed.requestHash, parsed.codeHash ?? null, parsed.expiresAt, JSON.stringify(parsed));
+      retainClient(parsed.issuer, parsed.clientId, parsed.expiresAt);
     },
     getSessionByTokenHash: hash => readSession(db.query("SELECT data FROM webapp_oauth_sessions WHERE access_hash = ? OR refresh_hash = ?").get(hash, hash)),
     saveSession(record) {
@@ -69,6 +81,7 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET data = excluded.data`)
         .run(parsed.id, parsed.familyId, parsed.userId, parsed.accessHash, parsed.refreshHash ?? null, parsed.expiresAt, JSON.stringify(parsed));
+      retainClient(parsed.issuer, parsed.clientId, parsed.expiresAt, true);
     },
     listSessions: userId => db.query("SELECT data FROM webapp_oauth_sessions WHERE user_id = ?").all(userId).map(row => readSession(row)!),
     revokeFamily(familyId, revokedAt) {
@@ -81,6 +94,7 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
     deleteExpired(now) {
       db.query("DELETE FROM webapp_oauth_authorizations WHERE expires_at <= ?").run(now);
       db.query("DELETE FROM webapp_oauth_sessions WHERE expires_at <= ?").run(now);
+      db.query("DELETE FROM webapp_oauth_clients WHERE expires_at <= ?").run(now);
     },
   };
   return store;
