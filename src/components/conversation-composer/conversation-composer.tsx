@@ -16,6 +16,7 @@ import {
   MicrophoneIcon,
   PaperclipIcon,
 } from "../common";
+import { ArrowUpIcon } from "../common/Icons";
 import { VoiceListeningPanel } from "./voice-listening-panel";
 import { ComposerSendButton } from "./composer-send-button";
 import { useConversationComposer } from "./use-conversation-composer";
@@ -23,10 +24,10 @@ import type { ConversationComposerProps } from "./types";
 import { TokenUsage } from "../token-usage";
 import { ChatRepositorySection } from "../chat-details/chat-repository-section";
 
-function ThinkingSpinner() {
+function ThinkingSpinner({ className = "border-blue-500" }: { className?: string }) {
   return (
     <span
-      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
+      className={`inline-block h-4 w-4 animate-spin rounded-full border-2 ${className} border-t-transparent`}
       aria-hidden="true"
     />
   );
@@ -169,20 +170,6 @@ export function ConversationComposer(props: ConversationComposerProps) {
                 </div>
               )}
               <div className="flex min-w-0 items-end gap-2 sm:gap-3">
-                <textarea
-                  ref={(node) => {
-                    composerTextareaRef.current = node;
-                    composerRef(node);
-                  }}
-                  id={messageInputId}
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  onKeyDown={handleComposerKeyDown}
-                  onPaste={handlePaste}
-                  disabled={controlsDisabled}
-                  rows={composerRows}
-                  className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
-                />
                 <ComposerActionsMenu
                   ariaLabel="Conversation options"
                   disabled={controlsDisabled}
@@ -255,6 +242,20 @@ export function ConversationComposer(props: ConversationComposerProps) {
                     />
                   </ComposerActionsMenuSection>
                 </ComposerActionsMenu>
+                <textarea
+                  ref={(node) => {
+                    composerTextareaRef.current = node;
+                    composerRef(node);
+                  }}
+                  id={messageInputId}
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  onPaste={handlePaste}
+                  disabled={controlsDisabled}
+                  rows={composerRows}
+                  className={`clanky-composer-field ${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60`}
+                />
                 {active && !hasContent && props.onInterrupt ? (
                   <ComposerInterruptButton
                     onClick={() => void handleInterrupt()}
@@ -274,9 +275,9 @@ export function ConversationComposer(props: ConversationComposerProps) {
                       ? voice.start : undefined}
                   >
                     {isComposerBusy ? (
-                      <ThinkingSpinner />
+                      <ThinkingSpinner className="border-current" />
                     ) : (
-                      <span className="text-lg leading-none" aria-hidden="true">↑</span>
+                      <ArrowUpIcon size="h-5 w-5" />
                     )}
                   </ComposerSendButton>
                 )}

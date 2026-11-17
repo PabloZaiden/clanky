@@ -242,10 +242,14 @@ execution-host/file context, not controller-local path guesses.
 Steer is a text-style action below queued input. Admission, native delivery,
 and model obedience remain separate concepts.
 
-Chat composers place the conversation-options control between the
-message textbox and the send/queue/interrupt button. Its sliders icon
+Chat composers place the conversation-options control to the left of the
+message textbox and keep the send/queue/interrupt button on the right. Its sliders icon
 distinguishes conversation controls and information from sidebar navigation;
-the options panel opens above it, aligned to the right.
+the options panel opens above it, aligned to the left.
+Keep this trigger borderless in every state; keyboard focus changes the icon
+color instead of drawing a ring.
+Send/Queue uses a blue circular button with a white up-arrow in both themes;
+disabled colors follow the theme, while the existing Talk gesture remains.
 Repository details occupy one fixed-height row while loading and after lookup,
 so asynchronous results do not resize the panel. Show the branch without a
 label, truncate it and copy its full name on activation. A nonshrinking PR

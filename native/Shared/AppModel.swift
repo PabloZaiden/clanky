@@ -480,6 +480,7 @@ final class BrowserModel: ObservableObject {
         #if os(iOS)
         // The shared web UI owns safe areas; WebKit owns keyboard avoidance.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        WebKeyboardAccessory.hideFormAccessoryBar()
         #endif
         return webView
     }

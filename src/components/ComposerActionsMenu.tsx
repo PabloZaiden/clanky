@@ -45,7 +45,7 @@ export function ComposerActionsMenu({
         type="button"
         onClick={() => setIsOpen((current) => !current)}
         disabled={disabled}
-        className="wapp-action-menu-trigger wapp-action-menu-trigger-compact relative flex-shrink-0"
+        className="clanky-composer-options-action wapp-action-menu-trigger wapp-action-menu-trigger-compact relative flex-shrink-0"
         aria-label={ariaLabel}
         title={ariaLabel}
         aria-expanded={isOpen}
@@ -63,7 +63,7 @@ export function ComposerActionsMenu({
           ariaLabel={ariaLabel}
           role="group"
           id={menuId}
-          placement="top-end"
+          placement="top-start"
           // Focus the panel body rather than its first control: focusing a
           // select opens the native picker on iOS.
           focusSelector="[data-composer-actions-body]"
