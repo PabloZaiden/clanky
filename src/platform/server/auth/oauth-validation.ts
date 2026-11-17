@@ -2,17 +2,9 @@ import { z } from "zod";
 import { readRequestText } from "@pablozaiden/webapp/server";
 import { AuthError } from "./types";
 import { secureEqual, sha256 } from "./crypto";
-import type { OAuthConfig } from "./oauth-types";
+import type { OAuthClient, OAuthConfig } from "./oauth-types";
 
 const scopeSchema = z.string().min(1).max(200).regex(/^[\x21\x23-\x5B\x5D-\x7E]+$/).refine(scope => scope !== "*");
-const clientSchema = z.object({
-  clientId: z.string().min(1).max(500),
-  clientName: z.string().min(1).max(200),
-  redirectUris: z.array(z.string().min(1).max(2048)).min(1).max(20),
-  grantTypes: z.array(z.enum(["authorization_code", "refresh_token"])).default(["authorization_code"]),
-  tokenEndpointAuthMethod: z.enum(["none", "client_secret_basic"]).default("none"),
-  clientSecretHash: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
-}).strict();
 
 export function oauthError(code: string, message: string, status = 400): never {
   throw new AuthError(code, message, status);
@@ -22,7 +14,7 @@ function loopback(hostname: string): boolean {
   return hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "localhost";
 }
 
-function secureUrl(value: string): URL {
+export function secureOAuthUrl(value: string): URL {
   const url = new URL(value);
   if ((url.protocol !== "https:" && !(url.protocol === "http:" && loopback(url.hostname)))
     || url.username || url.password || value.includes("#") || /[\u0000-\u0020\u007f]/.test(value)) {
@@ -32,34 +24,31 @@ function secureUrl(value: string): URL {
 }
 
 export function canonicalOAuthResource(value: string): string {
-  const url = secureUrl(value);
+  const url = secureOAuthUrl(value);
   return `${url.origin}${url.pathname === "/" && !value.replace(/\?.*$/, "").endsWith("/") ? "" : url.pathname}${url.search}`;
 }
 
-/** Validate operator-provided client configuration without introducing a client-management API. */
-export function parseOAuthClients(value: unknown) {
-  const clients = z.array(clientSchema).parse(value);
-  if (new Set(clients.map(client => client.clientId)).size !== clients.length) throw new Error("Duplicate OAuth client ID");
-  for (const client of clients) {
-    if (!client.grantTypes.includes("authorization_code")
-      || (client.tokenEndpointAuthMethod === "client_secret_basic") !== Boolean(client.clientSecretHash)) {
-      throw new Error("Invalid OAuth client authentication or grant configuration");
-    }
-    for (const redirect of client.redirectUris) {
-      const url = secureUrl(redirect);
-      if (["code", "state", "iss", "error", "error_description"].some(key => url.searchParams.has(key))) {
-        throw new Error("OAuth redirect URIs cannot contain authorization response parameters");
-      }
-    }
-    Object.freeze(client.redirectUris);
-    Object.freeze(client.grantTypes);
-    Object.freeze(client);
+export function validateOAuthRedirectUri(value: string): void {
+  const url = secureOAuthUrl(value);
+  if (["code", "state", "iss", "error", "error_description"].some(key => url.searchParams.has(key))) {
+    throw new Error("OAuth redirect URIs cannot contain authorization response parameters");
   }
-  return Object.freeze(clients);
+}
+
+export function oauthRedirectMatches(client: OAuthClient, redirectUri: string): boolean {
+  if (client.redirectUris.includes(redirectUri)) return true;
+  if (!URL.canParse(redirectUri)) return false;
+  const requested = new URL(redirectUri);
+  if (requested.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(requested.hostname)) return false;
+  return client.redirectUris.some(registered => {
+    const url = new URL(registered);
+    url.port = requested.port;
+    return url.href === redirectUri;
+  });
 }
 
 export function validateOAuthConfig(input: OAuthConfig) {
-  const issuerUrl = secureUrl(input.issuer);
+  const issuerUrl = secureOAuthUrl(input.issuer);
   if (input.issuer.includes("?")) throw new Error("OAuth issuer cannot contain a query");
   const resource = canonicalOAuthResource(input.resource);
   const resourceUrl = new URL(resource);
@@ -68,7 +57,6 @@ export function validateOAuthConfig(input: OAuthConfig) {
   const resourceScopes = z.array(scopeSchema).min(1).parse(input.resourceScopes ?? Object.keys(scopes));
   if (resourceScopes.some(scope => !Object.hasOwn(scopes, scope))) throw new Error("Unknown OAuth resource scope");
   if (resourceScopes.includes("offline_access")) throw new Error("offline_access is not a resource requirement");
-  const clients = parseOAuthClients(input.clients);
   const consent = new URL(input.consentPath, input.issuer);
   if (!input.consentPath.startsWith("/") || input.consentPath.startsWith("//")
     || consent.origin !== issuerUrl.origin || consent.search
@@ -100,12 +88,13 @@ export function validateOAuthConfig(input: OAuthConfig) {
   }
   return {
     issuer: input.issuer, issuerUrl, resource, scopes: Object.freeze(scopes),
-    resourceScopes: Object.freeze(resourceScopes), clients: Object.freeze(clients),
+    resourceScopes: Object.freeze(resourceScopes),
     consentPath: consent.pathname, consentUrl: consent.href, prefix, metadataPath, issuerMetadataPath,
     protectedResourceMetadataUrl: `${resourceUrl.origin}${metadataPath}`,
     authorizationEndpoint: `${base}/api/oauth/authorize`,
     tokenEndpoint: `${base}/api/oauth/token`,
     revocationEndpoint: `${base}/api/oauth/revoke`,
+    registrationEndpoint: `${base}/api/oauth/register`,
     authorizeConsent: input.authorizeConsent,
     getConsentContext: input.getConsentContext,
     resolveScopes: input.resolveScopes,
@@ -117,7 +106,6 @@ export function validateOAuthConfig(input: OAuthConfig) {
 }
 
 export type ValidatedOAuthConfig = ReturnType<typeof validateOAuthConfig>;
-export type ValidatedOAuthClient = ValidatedOAuthConfig["clients"][number];
 
 export function uniqueOAuthParameters(parameters: URLSearchParams): URLSearchParams {
   const seen = new Set<string>();
@@ -158,16 +146,14 @@ export async function describeOAuthScopes(config: ValidatedOAuthConfig, scopes: 
   return Object.fromEntries(result);
 }
 
-export function oauthClient(config: ValidatedOAuthConfig, clientId: string | null): ValidatedOAuthClient {
-  const client = config.clients.find(candidate => candidate.clientId === clientId);
-  if (!client) oauthError("invalid_client", "Unknown client", 401);
-  return client;
-}
-
-export function authenticateOAuthClient(config: ValidatedOAuthConfig, request: Request, parameters: URLSearchParams): ValidatedOAuthClient {
+export async function authenticateOAuthClient(
+  resolveClient: (clientId: string | null) => Promise<OAuthClient>,
+  request: Request,
+  parameters: URLSearchParams,
+): Promise<OAuthClient> {
   const authorization = request.headers.get("authorization");
   if (!authorization) {
-    const client = oauthClient(config, parameters.get("client_id"));
+    const client = await resolveClient(parameters.get("client_id"));
     if (client.tokenEndpointAuthMethod !== "none" || parameters.has("client_secret")) {
       oauthError("invalid_client", "Client authentication failed", 401);
     }
@@ -188,7 +174,7 @@ export function authenticateOAuthClient(config: ValidatedOAuthConfig, request: R
   } catch {
     oauthError("invalid_client", "Client authentication failed", 401);
   }
-  const client = oauthClient(config, clientId);
+  const client = await resolveClient(clientId);
   if (parameters.has("client_id") && parameters.get("client_id") !== clientId) {
     oauthError("invalid_client", "Client authentication failed", 401);
   }

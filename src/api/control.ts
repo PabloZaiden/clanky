@@ -25,7 +25,7 @@ const ERROR_STATUS: Readonly<Record<string, number>> = {
   control_scope_required: 403, control_scope_invalid: 403, control_actor_mismatch: 403,
   control_origin_invalid: 403, control_workspace_administration_forbidden: 403,
   control_operation_unavailable: 403, control_reference_invalid: 400,
-  control_credential_invalid: 401, control_credential_unavailable: 404,
+  control_credential_invalid: 401, control_credential_unavailable: 404, control_credential_expiry_invalid: 400,
   control_workspace_unavailable: 404, control_context_unavailable: 410,
   control_authority_unavailable: 403, control_context_ended: 410,
   control_request_unavailable: 410, control_tool_unavailable: 404,

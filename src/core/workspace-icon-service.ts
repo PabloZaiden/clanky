@@ -19,6 +19,7 @@ import type {
   WorkspaceIconMimeType,
 } from "@/shared/workspace";
 import type { WorkspaceIconCandidate } from "@/contracts/schemas";
+import { isPublicIpAddress } from "@/shared/ip-address";
 import { DomainError } from "../domain/domain-error";
 import { deleteWorkspaceIcon, getWorkspaceIcon, saveWorkspaceIcon } from "../persistence/workspaces";
 import { backendManager } from "./backend-manager";
@@ -878,20 +879,6 @@ function normalizeUrlHostname(hostname: string): string {
   return hostname.startsWith("[") && hostname.endsWith("]")
     ? hostname.slice(1, -1)
     : hostname;
-}
-
-function isPublicIpAddress(address: string): boolean {
-  if (!ipaddr.isValid(address)) {
-    return false;
-  }
-  const parsedAddress = ipaddr.process(address);
-  if (
-    parsedAddress.kind() === "ipv6"
-    && parsedAddress.toByteArray().slice(0, 12).every((byte) => byte === 0)
-  ) {
-    return false;
-  }
-  return parsedAddress.range() === "unicast";
 }
 
 function isBlockedHostname(hostname: string): boolean {

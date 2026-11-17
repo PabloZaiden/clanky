@@ -1021,7 +1021,17 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       db.query("DELETE FROM webapp_api_keys WHERE user_id = ?").run(userId);
     },
     deleteExpiredApiKeys: (now) => {
-      db.query("DELETE FROM webapp_api_keys WHERE expires_at IS NOT NULL AND expires_at <= ?").run(now);
+      // Extended ISO years do not sort chronologically as text.
+      const cutoff = Date.parse(now);
+      immediateTransaction(() => {
+        const records = db.query<{ id: string; expires_at: string }, []>(
+          "SELECT id, expires_at FROM webapp_api_keys WHERE expires_at IS NOT NULL",
+        ).all();
+        const remove = db.query("DELETE FROM webapp_api_keys WHERE id = ?");
+        for (const record of records) {
+          if (Date.parse(record.expires_at) <= cutoff) remove.run(record.id);
+        }
+      });
     },
 
     saveDeviceAuthRequest: (record) => {
