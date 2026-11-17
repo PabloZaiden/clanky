@@ -385,6 +385,60 @@
   min-height: 2rem;
 }
 
+.clanky-composer-options-action.wapp-action-menu-trigger {
+  border: 0;
+  box-shadow: none;
+}
+
+.clanky-composer-options-action.wapp-action-menu-trigger:focus {
+  outline: none;
+}
+
+.clanky-composer-options-action.wapp-action-menu-trigger:focus-visible {
+  color: var(--color-blue-600);
+}
+
+.clanky-composer-send-action.wapp-action-menu-trigger {
+  align-items: flex-end;
+  padding: 0 0 0.125rem;
+  border-radius: 9999px;
+}
+
+.clanky-composer-send-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: var(--color-blue-600);
+  color: white;
+  transition: background 120ms ease;
+}
+
+.clanky-composer-send-action:hover:not(:disabled) .clanky-composer-send-icon {
+  background: var(--color-blue-700);
+}
+
+.clanky-composer-send-action.wapp-action-menu-trigger:focus-visible {
+  outline: none;
+}
+
+.clanky-composer-send-action:focus-visible .clanky-composer-send-icon {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 2px;
+}
+
+.clanky-composer-send-action.wapp-action-menu-trigger:disabled {
+  opacity: 1;
+}
+
+.clanky-composer-send-action:disabled .clanky-composer-send-icon {
+  background: var(--wapp-surface-pill);
+  color: var(--wapp-muted);
+}
+
 .clanky-composer-field {
   border: 1px solid var(--wapp-border);
   background: var(--wapp-surface-raised);

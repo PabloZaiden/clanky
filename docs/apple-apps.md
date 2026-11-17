@@ -26,6 +26,17 @@ The shared shell follows the keyboard's visual viewport even when a tablet or
 unfolded Duo uses its wide layout, keeping the composer above the keyboard and
 restoring the full height when it closes.
 
+On iPhone, the shell hides WebKit's previous/next/Done form accessory bar while
+keeping the web composer and system keyboard. This requires a runtime override
+of an internal WebKit view, not a supported Apple configuration switch. Recheck
+text entry, keyboard dismissal and layout when upgrading iOS. If the internal
+view or getter is unavailable, the shell logs the failure and leaves the system
+behavior unchanged. iPad and macOS do not receive this override.
+The override affects every WKWebView in the iPhone app process. Before
+distribution, validate physical-device keyboard/accessibility behavior and
+assess the workaround for the intended distribution channel; simulator success
+does not establish App Store acceptance.
+
 On iOS 27.1, the host also reports public system-reserved regions to the shared
 shell. When a top status area occupies only a corner, the web header uses the
 free part of that row instead of adding a second row beneath it. Camera and

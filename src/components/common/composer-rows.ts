@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const SINGLE_LINE_ROWS = 1 as const;
-const MULTILINE_ROWS = 2 as const;
+const TWO_LINE_ROWS = 2 as const;
+const THREE_LINE_ROWS = 3 as const;
 const SINGLE_LINE_MIN_HEIGHT_CLASS = "min-h-9" as const;
-const MULTILINE_MIN_HEIGHT_CLASS = "min-h-[58px]" as const;
+const TWO_LINE_MIN_HEIGHT_CLASS = "min-h-[58px]" as const;
+const THREE_LINE_MIN_HEIGHT_CLASS = "min-h-[78px]" as const;
 const SINGLE_LINE_PADDING_CLASS = "py-1.5" as const;
 const MULTILINE_PADDING_CLASS = "py-2" as const;
 const COMPOSER_WRAP_THRESHOLD_PX = 1;
 const FALLBACK_LINE_HEIGHT_PX = 20;
 
-export type ComposerRows = typeof SINGLE_LINE_ROWS | typeof MULTILINE_ROWS;
+export type ComposerRows = typeof SINGLE_LINE_ROWS | typeof TWO_LINE_ROWS | typeof THREE_LINE_ROWS;
 export type ComposerMinHeightClass =
   | typeof SINGLE_LINE_MIN_HEIGHT_CLASS
-  | typeof MULTILINE_MIN_HEIGHT_CLASS;
+  | typeof TWO_LINE_MIN_HEIGHT_CLASS
+  | typeof THREE_LINE_MIN_HEIGHT_CLASS;
 export type ComposerPaddingClass =
   | typeof SINGLE_LINE_PADDING_CLASS
   | typeof MULTILINE_PADDING_CLASS;
@@ -20,6 +23,7 @@ export type ComposerPaddingClass =
 export interface ComposerRowsMeasurement {
   contentHeight: number;
   singleLineContentHeight: number;
+  lineHeight: number;
 }
 
 interface ComposerSizingResult {
@@ -27,10 +31,6 @@ interface ComposerSizingResult {
   composerRows: ComposerRows;
   composerMinHeightClass: ComposerMinHeightClass;
   composerPaddingClass: ComposerPaddingClass;
-}
-
-function hasComposerLineBreak(value: string): boolean {
-  return value.includes("\n") || value.includes("\r");
 }
 
 function parsePixelValue(value: string): number {
@@ -54,7 +54,8 @@ function getComposerLineHeight(styles: CSSStyleDeclaration): number {
 
 function getComposerRowsMeasurement(textarea: HTMLTextAreaElement): ComposerRowsMeasurement {
   const styles = window.getComputedStyle(textarea);
-  const singleLineContentHeight = getComposerLineHeight(styles)
+  const lineHeight = getComposerLineHeight(styles);
+  const singleLineContentHeight = lineHeight
     + parsePixelValue(styles.paddingTop)
     + parsePixelValue(styles.paddingBottom);
   const parent = textarea.parentElement;
@@ -109,29 +110,40 @@ function getComposerRowsMeasurement(textarea: HTMLTextAreaElement): ComposerRows
   return {
     contentHeight,
     singleLineContentHeight,
+    lineHeight,
   };
 }
 
 export function getComposerRows(value: string, measurement?: ComposerRowsMeasurement): ComposerRows {
-  if (hasComposerLineBreak(value)) {
-    return MULTILINE_ROWS;
+  const lineCount = value.split(/\r\n|\r|\n/, THREE_LINE_ROWS).length;
+  if (
+    lineCount >= THREE_LINE_ROWS
+    || (measurement && measurement.contentHeight
+      > measurement.singleLineContentHeight + measurement.lineHeight + COMPOSER_WRAP_THRESHOLD_PX)
+  ) {
+    return THREE_LINE_ROWS;
   }
 
-  if (!measurement) {
-    return SINGLE_LINE_ROWS;
+  if (
+    lineCount >= TWO_LINE_ROWS
+    || (measurement && measurement.contentHeight
+      > measurement.singleLineContentHeight + COMPOSER_WRAP_THRESHOLD_PX)
+  ) {
+    return TWO_LINE_ROWS;
   }
 
-  return measurement.contentHeight > measurement.singleLineContentHeight + COMPOSER_WRAP_THRESHOLD_PX
-    ? MULTILINE_ROWS
-    : SINGLE_LINE_ROWS;
+  return SINGLE_LINE_ROWS;
 }
 
 export function getComposerMinHeightClass(rows: ComposerRows): ComposerMinHeightClass {
-  return rows === MULTILINE_ROWS ? MULTILINE_MIN_HEIGHT_CLASS : SINGLE_LINE_MIN_HEIGHT_CLASS;
+  if (rows === THREE_LINE_ROWS) {
+    return THREE_LINE_MIN_HEIGHT_CLASS;
+  }
+  return rows === TWO_LINE_ROWS ? TWO_LINE_MIN_HEIGHT_CLASS : SINGLE_LINE_MIN_HEIGHT_CLASS;
 }
 
 export function getComposerPaddingClass(rows: ComposerRows): ComposerPaddingClass {
-  return rows === MULTILINE_ROWS ? MULTILINE_PADDING_CLASS : SINGLE_LINE_PADDING_CLASS;
+  return rows === SINGLE_LINE_ROWS ? SINGLE_LINE_PADDING_CLASS : MULTILINE_PADDING_CLASS;
 }
 
 export function useComposerSizing(value: string): ComposerSizingResult {
@@ -144,11 +156,9 @@ export function useComposerSizing(value: string): ComposerSizingResult {
   const updateComposerRows = useCallback(() => {
     const textarea = textareaRef.current;
     const currentValue = valueRef.current;
-    const nextRows = hasComposerLineBreak(currentValue)
-      ? getComposerRows(currentValue)
-      : textarea
-        ? getComposerRows(currentValue, getComposerRowsMeasurement(textarea))
-        : getComposerRows(currentValue);
+    const nextRows = textarea
+      ? getComposerRows(currentValue, getComposerRowsMeasurement(textarea))
+      : getComposerRows(currentValue);
 
     setComposerRows((currentRows) => currentRows === nextRows ? currentRows : nextRows);
   }, []);

@@ -4,6 +4,7 @@ import WebKit
 #if os(macOS)
 import AppKit
 #else
+import ObjectiveC
 import UIKit
 #endif
 
@@ -60,6 +61,26 @@ struct WebView: NSViewRepresentable {
     static func dismantleNSView(_ view: WKWebView, coordinator: BrowserDelegate) { coordinator.stop() }
 }
 #else
+@MainActor
+enum WebKeyboardAccessory {
+    static func hideFormAccessoryBar() { _ = install }
+
+    private static let install: Void = {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        let selector = #selector(getter: UIResponder.inputAccessoryView)
+        guard let contentView = NSClassFromString("WKContentView"),
+              let method = class_getInstanceMethod(contentView, selector),
+              let types = method_getTypeEncoding(method) else {
+            NSLog("Clanky could not hide the keyboard form accessory bar: WebKit's content view is unavailable.")
+            return
+        }
+        let getter: @convention(block) (AnyObject) -> UIView? = { _ in nil }
+        // WebKit exposes no public switch; replace only its content-view getter,
+        // even if a future version inherits that method from a UIKit superclass.
+        class_replaceMethod(contentView, selector, imp_implementationWithBlock(getter), types)
+    }()
+}
+
 struct WebView: UIViewRepresentable {
     @ObservedObject var browser: BrowserModel
     func makeCoordinator() -> BrowserDelegate { BrowserDelegate(browser: browser) }
