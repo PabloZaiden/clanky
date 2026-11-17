@@ -21,6 +21,7 @@ import { requireBoundWorkspaceResource } from "./workspace-operation-authority";
 import type { OperationAuthority, OperationRequest, OperationResult, PreparedOperation } from "./clanky-operation-service";
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";
 import { prepareControlOperationFiles } from "./control-operation-files";
+import { getExecutionHostByRef } from "../persistence/execution-hosts";
 
 export const CONTROL_INTERACTION_TAG = "clanky-control-interaction";
 const WORKSPACE_RESOURCES = new Set(["chat", "workspace"]);
@@ -32,6 +33,7 @@ export interface ControlGrant {
   readonly workspaceId?: string;
   readonly managedContext?: ManagedContextIdentity;
   readonly executionHostBinding?: ExecutionHostBinding;
+  readonly htmlArtifacts?: 1;
 }
 
 export async function requireControlWorker(grant: ControlGrant, workerNodeId: string): Promise<void> {
@@ -98,6 +100,9 @@ export async function resolveExecutionControlGrant(
     throw new DomainError("control_context_unavailable", "The originating execution host binding has changed.");
   }
   const general = workspace.allowClankyContext === true;
+  const host = workspace.executionHostBinding.host;
+  const htmlArtifacts = host.kind === "local"
+    || (getExecutionHostByRef(user.id, host)?.runtime.capabilities["htmlArtifacts"] ?? 0) >= 1;
   // A transport reconnect must not replace domain ownership or broaden its ceiling.
   const id = admitted?.id ?? `execution:${JSON.stringify([
     identity.userId, identity.workspaceId, identity.contextType, identity.contextId,
@@ -107,6 +112,7 @@ export async function resolveExecutionControlGrant(
   return Object.freeze({
     id, user: Object.freeze({ ...user }), general,
     workspaceId: identity.workspaceId, managedContext: Object.freeze({ ...identity }),
+    ...(htmlArtifacts ? { htmlArtifacts: 1 as const } : {}),
     executionHostBinding: Object.freeze({
       ...workspace.executionHostBinding, host: Object.freeze({ ...workspace.executionHostBinding.host }),
     }),

@@ -23,7 +23,8 @@ import type { HarnessEvent, HarnessEventScope } from "@/shared/harness-events";
 import type { HarnessUsageSnapshot, TokenCounts } from "@/shared/harness-usage";
 import type { ClankyControlContext } from "@/shared/clanky-control";
 import type { ControlToolConnection } from "../../core/control-tool-transport";
-import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
+import { buildAgentInstructions } from "@/shared/agent-instructions";
+import { controlResultContent } from "@/shared/control-tool-result";
 import { RequestSecretSchema } from "@/contracts/schemas/harness-secret";
 import { HarnessError } from "../harness-errors";
 import { HarnessEventHub } from "../harness-event-hub";
@@ -354,6 +355,10 @@ export class ClaudeBackend implements Backend {
       return {};
     };
     const options: Options = {
+      systemPrompt: {
+        type: "preset", preset: "claude_code",
+        append: buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: mcp?.htmlArtifacts === true }),
+      },
       ...(model ? { model } : {}),
       ...(resume ? { resume: binding.nativeId } : { sessionId: binding.nativeId }),
       canUseTool: async (name, input, invocation): Promise<PermissionResult> => {
@@ -366,7 +371,7 @@ export class ClaudeBackend implements Backend {
         return { behavior: "allow", updatedInput: input };
       },
       disallowedTools: binding.questionPolicy === "interactive" ? [] : ["AskUserQuestion"],
-      ...(mcp ? { mcpServers: { clanky: mcp } } : {}),
+      ...(mcp ? { mcpServers: { clanky: mcp.server } } : {}),
       hooks: {
         PreToolUse: [{ matcher: "^(mcp__clanky__.*|AskUserQuestion)$", hooks: [guard], onFailure: "block" }],
       },
@@ -457,9 +462,9 @@ export class ClaudeBackend implements Backend {
       const value = request.params.name === secretToolDefinition.name && secret
         ? await this.secrets.request(binding, request.params.arguments, active.abort.signal)
         : await this.getControlTools().invoke(request.params.name, request.params.arguments, active.context, active.abort.signal);
-      return { content: [{ type: "text", text: JSON.stringify(value) }], isError: isRecord(value) && value["ok"] === false };
+      return { content: controlResultContent(value), isError: isRecord(value) && value["ok"] === false };
     });
-    return server;
+    return { server, htmlArtifacts: definitions.some((tool) => tool.name === "clanky_html_render") };
   }
 
   private getControlTools(): ClankyControlToolService {
@@ -580,7 +585,6 @@ export class ClaudeBackend implements Backend {
       else if (part.resource.mimeType === "application/pdf") content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: part.resource.blob } });
       else throw new HarnessError("harness_unsupported_feature", "Binary resources must be materialized as execution-host file references.");
     }
-    content.push({ type: "text", text: AGENT_NOTIFICATION_INSTRUCTIONS });
     return { type: "user", message: { role: "user", content }, parent_tool_use_id: null, session_id: id, uuid, ...(priority ? { priority } : {}) };
   }
 

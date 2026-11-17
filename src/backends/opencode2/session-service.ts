@@ -14,6 +14,7 @@ import type { OpenCodeModelCatalog } from "./model-catalog";
 import { OpenCodeEventTranslator } from "./event-translator";
 import { toOpenCodePrompt } from "./prompt";
 import type { OpenCodeControlTools } from "./control-tools";
+import { buildAgentInstructions } from "@/shared/agent-instructions";
 
 interface Conversation { info: AgentSession; native: NativeSession; admitting?: boolean }
 type ActivitySession = Pick<NativeSession, "id" | "parentID" | "projectID" | "location" | "title" | "agent" | "model" | "time" | "outcome">;
@@ -112,6 +113,7 @@ export class OpenCodeSessionService {
       const existing = this.conversations.get(native.id);
       const info = existing?.info ?? await this.attach(native, binding);
       if (existing && existing.info.binding?.controlTools !== binding.controlTools) await this.dependencies.controlTools.register(binding);
+      if (existing) await this.instructions(native.id, binding);
       info.binding = binding;
       if (binding.questionPolicy !== "interactive") {
         // Persisted children retain their own permission snapshots on resume.
@@ -129,6 +131,16 @@ export class OpenCodeSessionService {
     }).finally(() => { this.resumes.delete(binding.nativeId); });
     this.resumes.set(binding.nativeId, { binding, promise });
     return promise;
+  }
+
+  private async instructions(sessionID: string, binding: HarnessConversationBinding): Promise<void> {
+    const entries = this.dependencies.client.experimental.session.instructions.entry;
+    const key = "clanky.guidance";
+    const value = buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: this.dependencies.controlTools.hasHtmlTools(sessionID) });
+    const current = (await entries.list({ sessionID })).find((entry) => entry.key === key);
+    if (value) {
+      if (current?.value !== value) await entries.put({ sessionID, key, value });
+    } else if (current) await entries.remove({ sessionID, key });
   }
   private questionPermissions(
     binding: Pick<HarnessConversationBinding, "questionPolicy">,
@@ -244,6 +256,7 @@ export class OpenCodeSessionService {
     };
     await this.updateInfo(conversation);
     await this.dependencies.controlTools.register(binding);
+    await this.instructions(native.id, binding);
     this.conversations.set(native.id, conversation);
     this.track(native, native.id);
     return conversation.info;

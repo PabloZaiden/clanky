@@ -17,6 +17,8 @@ import { requireControlChat, resolveControlOrigin } from "./control-origin";
 import { controlUiActionService } from "./control-ui-action-service";
 import { chatEventEmitter, resourcePrivacyEventEmitter } from "./event-emitter";
 import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
+import { CONTROL_IMAGE_RESULT_MAX_BYTES, readControlImageResult } from "@/shared/control-tool-result";
+import { isHtmlToolName } from "@/shared/html-render";
 
 const log = createLogger("core:control-sessions");
 const SESSION_TTL_MS = 10 * 60_000;
@@ -103,7 +105,8 @@ export class ControlSessionService {
     const session = await this.session(access);
     if (chatId) await requireControlChat(access.grant, chatId);
     return [
-      ...controlToolDefinitions.filter(({ name }) => session.authority.general || !GENERAL_TOOLS.has(name)),
+      ...controlToolDefinitions.filter(({ name }) => (session.authority.general || !GENERAL_TOOLS.has(name))
+        && (!isHtmlToolName(name) || !!chatId && access.grant.htmlArtifacts === 1)),
       ...(chatId ? controlUiToolDefinitions : []),
     ];
   }
@@ -218,7 +221,8 @@ export class ControlSessionService {
       signal: controller.signal, ...(browser?.clientId ? { clientId: browser.clientId } : {}),
     }, invoke)));
     run.work = work.then(
-      (result) => this.finish(session, run, readBytes(result) <= MAX_RESULT_BYTES ? result : {
+      (result) => this.finish(session, run, readBytes(result) <= (readControlImageResult(result)
+        ? CONTROL_IMAGE_RESULT_MAX_BYTES : MAX_RESULT_BYTES) ? result : {
         ok: false, code: "control_result_too_large", completion: "outcome_unknown",
         message: "The result exceeded the transport bound. Read the affected resource before deciding what to do next.",
       }),

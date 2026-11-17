@@ -54,6 +54,11 @@ import type {
 } from "./types";
 
 let nextLiveTranscriptSequence = Math.floor(Date.now() * 1000);
+const SUMMARY_TOOL_INPUT_SQL = `CASE
+  WHEN tool_name IN ('clanky_html_preview', 'clanky_html_render')
+    OR tool_name GLOB '*[_.]clanky_html_preview' OR tool_name GLOB '*[_.]clanky_html_render'
+  THEN CASE WHEN json_type(tool_input) = 'object' THEN json_remove(tool_input, '$.html') ELSE NULL END
+  ELSE tool_input END AS tool_input`;
 
 function allocateLiveTranscriptSequence(): number {
   nextLiveTranscriptSequence += 1;
@@ -460,7 +465,7 @@ export function listTranscriptEntriesForUser(
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
-      tool_name, tool_status, ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
+      tool_name, tool_status, ${includeToolPayload ? "tool_input, tool_output, tool_extras" : `${SUMMARY_TOOL_INPUT_SQL}, NULL AS tool_output, NULL AS tool_extras`},
       CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
       tool_has_image_preview
     FROM ${config.entriesTable}
@@ -532,7 +537,7 @@ export function listTranscriptEntriesAfterForUser(
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
       tool_name, tool_status,
-      ${includeToolPayload ? "tool_input, tool_output, tool_extras" : "tool_input, NULL AS tool_output, NULL AS tool_extras"},
+      ${includeToolPayload ? "tool_input, tool_output, tool_extras" : `${SUMMARY_TOOL_INPUT_SQL}, NULL AS tool_output, NULL AS tool_extras`},
       CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
       tool_has_image_preview
     FROM ${config.entriesTable}
@@ -643,7 +648,7 @@ function getEntriesBetween(
   const rows = getDatabase().prepare(`
     SELECT entry_id, kind, timestamp, sequence, payload,
       updated_at,
-      tool_name, tool_status, tool_input, NULL AS tool_output, NULL AS tool_extras,
+      tool_name, tool_status, ${SUMMARY_TOOL_INPUT_SQL}, NULL AS tool_output, NULL AS tool_extras,
       CASE WHEN tool_output IS NOT NULL THEN 1 ELSE 0 END AS tool_has_output,
       tool_has_image_preview
     FROM ${config.entriesTable}

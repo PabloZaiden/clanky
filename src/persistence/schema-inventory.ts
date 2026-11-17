@@ -141,6 +141,7 @@ export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
   resetOnlyTable("tasks", "clanky"),
   currentTable("retired_task_resources", "clanky"),
   currentTable("conversation_attachment_locations", "clanky"),
+  { ...currentTable("html_renders", "clanky"), introspectable: false },
   currentTable("chat_transcript_meta", "clanky", {
     resource: "chat",
     role: "meta",

@@ -2060,6 +2060,18 @@ export class ChatConversationService implements ChatConversationPort {
     };
   }
 
+  emitPublishedHtmlRender(chatId: string, scope: Chat["config"]["scope"], log: ConversationLogEntry): void {
+    const stream = this.activeStreams.get(chatId)?.streamState;
+    if (stream) {
+      stream.transcriptMemory.logs.upsert(log);
+      stream.chat = { ...stream.chat, state: { ...stream.chat.state, logs: stream.transcriptMemory.logs.values } };
+    }
+    this.emitter.emit({
+      type: "chat.log", chatId, scope, log, timestamp: log.timestamp,
+      ...(stream ? { streamPosition: stream.transcriptMemory.version.change } : {}),
+    });
+  }
+
   async emitChatLog(
     chat: Chat,
     level: ConversationLogEntry["level"],

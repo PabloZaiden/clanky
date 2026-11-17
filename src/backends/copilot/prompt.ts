@@ -4,7 +4,6 @@
 
 import type { MessageOptions } from "@github/copilot-sdk";
 import type { PromptInput } from "@/shared/harness-input";
-import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
 
 export function toCopilotMessage(input: PromptInput): MessageOptions {
   const text: string[] = [];
@@ -25,6 +24,5 @@ export function toCopilotMessage(input: PromptInput): MessageOptions {
       });
     }
   }
-  text.push(AGENT_NOTIFICATION_INSTRUCTIONS);
   return { prompt: text.join("\n\n"), attachments };
 }

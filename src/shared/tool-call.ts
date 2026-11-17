@@ -1,4 +1,5 @@
 import type { MessageAttachment } from "./message-attachments";
+import { htmlToolSummaryInput, isHtmlToolName } from "./html-render";
 import {
   getToolCallOutputLabel,
   getToolCallSummary,
@@ -57,6 +58,7 @@ export function isToolCallSummary(value: ToolCallDisplayData): value is ToolCall
 }
 
 export function hasToolCallImagePreview(tool: ToolCallDisplayData): boolean {
+  if (isHtmlToolName(tool.name) && tool.name.endsWith("_preview")) return false;
   return isToolCallSummary(tool)
     ? tool.hasImagePreview === true
     : tool.extras?.some((extra) => extra.type === "image_preview" && extra.image.data.length > 0) === true;
@@ -82,15 +84,16 @@ export function createToolCallSummary(
   tool: ToolCallRecord,
   metadata: { hasOutput?: boolean; hasImagePreview?: boolean; detailRevision?: string } = {},
 ): ToolCallSummary {
-  const kind = inferToolCallKind(tool);
+  const summaryTool = { ...tool, input: htmlToolSummaryInput(tool.name, tool.input) };
+  const kind = inferToolCallKind(summaryTool);
   const detailRevision = metadata.detailRevision ?? tool.detailRevision;
   return {
     id: tool.id,
     name: tool.name,
-    ...(tool.input !== undefined ? { input: tool.input } : {}),
+    ...(summaryTool.input !== undefined ? { input: summaryTool.input } : {}),
     status: tool.status,
     timestamp: tool.timestamp,
-    summary: getToolCallSummary(tool, kind),
+    summary: getToolCallSummary(summaryTool, kind),
     kind,
     outputLabel: getToolCallOutputLabel(kind, tool.status),
     outputType: typeof tool.output === "string" ? "text" : "json",
