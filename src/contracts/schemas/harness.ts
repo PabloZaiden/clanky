@@ -19,6 +19,7 @@ export const HarnessConversationBindingSchema = z.object({
   secretFiles: z.literal(1).optional(),
   controlTools: z.boolean().optional(),
   controlChatId: z.string().min(1).max(500).optional(),
+  htmlArtifacts: z.literal(1).optional(),
 });
 
 export const HarnessNativeReferencesSchema = z.object({

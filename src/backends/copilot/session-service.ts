@@ -2,7 +2,7 @@
  * Owns Clanky-created SDK conversations, native bindings and lifetime listeners.
  */
 
-import { approveAll, type CopilotSession, type Tool } from "@github/copilot-sdk";
+import { approveAll, convertMcpCallToolResult, type CopilotSession, type Tool } from "@github/copilot-sdk";
 import type { AgentSession, CreateSessionOptions, ConfigOption, PromptInput } from "../types";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { ClankyControlContext } from "@/shared/clanky-control";
@@ -20,6 +20,8 @@ import type { CopilotModelCatalog } from "./model-catalog";
 import type { CopilotQuestionCoordinator } from "./question-coordinator";
 import { settleCopilotWork } from "./work-service";
 import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
+import { buildAgentInstructions } from "@/shared/agent-instructions";
+import { controlResultContent, readControlImageResult } from "@/shared/control-tool-result";
 
 const log = createLogger("backend:copilot:sessions");
 
@@ -70,8 +72,13 @@ export class CopilotSessionService {
     if (!options.ownership) throw new HarnessError("harness_session_not_owned", "Native conversations require Clanky ownership.");
     if (options.directory !== this.runtime.directory) throw new HarnessError("harness_session_not_owned", "Native conversations must use their selected execution host directory.");
     const choice = options.model ? await this.catalog.requireModel(options.model) : undefined;
+    const tools = await this.nativeTools(options.ownership);
     const session = await this.runtime.client.createSession({
       workingDirectory: options.directory,
+      systemMessage: {
+        mode: "append",
+        content: buildAgentInstructions({ controlTools: options.ownership.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
+      },
       model: choice?.model.id,
       reasoningEffort: choice?.reasoningEffort,
       streaming: true,
@@ -79,7 +86,7 @@ export class CopilotSessionService {
       excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
-      tools: await this.nativeTools(options.ownership),
+      tools,
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -116,6 +123,7 @@ export class CopilotSessionService {
   }
 
   private async resumeNative(binding: HarnessConversationBinding): Promise<AgentSession> {
+    const tools = await this.nativeTools(binding);
     const metadata = await this.runtime.client.getSessionMetadata(binding.nativeId);
     if (!metadata) {
       throw new HarnessError(
@@ -125,13 +133,17 @@ export class CopilotSessionService {
     }
     const session = await this.runtime.client.resumeSession(binding.nativeId, {
       workingDirectory: binding.directory,
+      systemMessage: {
+        mode: "append",
+        content: buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
+      },
       streaming: true,
       continuePendingWork: false,
       onPermissionRequest: approveAll,
       excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
       askUserVariant: "legacy",
       onUserInputRequest: this.questions.handler(binding.questionPolicy),
-      tools: await this.nativeTools(binding),
+      tools,
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();
@@ -355,10 +367,13 @@ export class CopilotSessionService {
             message: "The Clanky tool call is not correlated with an active owned turn.",
           },
         };
-        return await service.invoke(definition.name, args, active.context, AbortSignal.any([
+        const result = await service.invoke(definition.name, args, active.context, AbortSignal.any([
           ...(invocation.signal ? [invocation.signal] : []),
           active.abort.signal,
         ]));
+        return readControlImageResult(result)
+          ? convertMcpCallToolResult({ content: controlResultContent(result) })
+          : result;
       },
     }));
   }

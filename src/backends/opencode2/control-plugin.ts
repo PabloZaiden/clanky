@@ -38,6 +38,17 @@ export default {
               const result = await request("/invoke", {
                 sessionId: invocation.sessionID, name: definition.name, input,
               }, invocation.signal, definition.name === "clanky_request_secret");
+              if (result?.kind === "clanky_image_result" && Array.isArray(result.images)) {
+                return {
+                  output: result.result,
+                  content: [
+                    { type: "text", text: JSON.stringify(result.result) },
+                    ...result.images.map((image) => ({
+                      type: "file", uri: "data:" + image.mimeType + ";base64," + image.data, mime: image.mimeType,
+                    })),
+                  ],
+                };
+              }
               return { output: result, content: JSON.stringify(result) };
             },
           });

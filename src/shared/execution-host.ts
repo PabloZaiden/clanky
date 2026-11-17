@@ -54,6 +54,7 @@ export type ExecutionHostRef =
 export const EXECUTION_HOST_CAPABILITY_IDS = [
   "commandExecution",
   "claudeHarness",
+  "htmlArtifacts",
   "fileOperations",
   "directoryTree",
   "git",
@@ -80,6 +81,7 @@ export const MANAGED_WORKTREES_SELECTED_BRANCH_VERSION = 3;
 export const EXECUTION_HOST_CAPABILITY_VERSIONS = {
   commandExecution: 1,
   claudeHarness: 1,
+  htmlArtifacts: 1,
   fileOperations: 2,
   directoryTree: 1,
   git: 2,
@@ -158,6 +160,7 @@ export interface ExecutionNodeConfiguration {
 export const POSIX_EXECUTION_HOST_CAPABILITIES: ExecutionHostCapabilities = {
   commandExecution: 1,
   claudeHarness: EXECUTION_HOST_CAPABILITY_VERSIONS.claudeHarness,
+  htmlArtifacts: 1,
   fileOperations: 2,
   git: 2,
   managedWorktrees: EXECUTION_HOST_CAPABILITY_VERSIONS.managedWorktrees,

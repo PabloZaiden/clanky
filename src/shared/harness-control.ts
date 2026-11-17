@@ -21,6 +21,8 @@ export interface HarnessConversationBinding {
   secretFiles?: 1;
   controlTools?: boolean;
   controlChatId?: string;
+  /** HTML tools were registered when this native thread was created. */
+  htmlArtifacts?: 1;
 }
 
 export interface HarnessHistoryRecovery {

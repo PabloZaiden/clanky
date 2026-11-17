@@ -21,6 +21,7 @@ interface Session {
   title: string;
   agent: string;
   metadata: Record<string, unknown>;
+  instructions?: Record<string, unknown>;
   permissions: Array<{ action: string; resource: string; effect: string }>;
   time: { created: number; updated: number };
   sequence: number;
@@ -35,7 +36,9 @@ interface Tool {
   name: string;
   description: string;
   input: unknown;
-  execute(input: unknown, invocation: { sessionID: string; messageID: string; signal: AbortSignal }): Promise<{ output: unknown; content: string }>;
+  execute(input: unknown, invocation: { sessionID: string; messageID: string; signal: AbortSignal }): Promise<{
+    output: unknown; content: string | Array<{ type: string; text?: string; uri?: string; mime?: string }>;
+  }>;
 }
 
 interface ContextEvent { sessionID: string; tools: Record<string, { description: string; input: unknown }> }
@@ -221,7 +224,9 @@ async function execute(session: Session): Promise<void> {
       emit(session, "session.tool.called", { id, input: request.input });
       const result = await tool.execute(request.input, { sessionID: session.id, messageID, signal: execution.abort.signal });
       results.push(result.output);
-      emit(session, "session.tool.success", { id, content: [{ type: "text", text: result.content }] });
+      emit(session, "session.tool.success", {
+        id, content: typeof result.content === "string" ? [{ type: "text", text: result.content }] : result.content,
+      });
     }
     if (execution.abort.signal.aborted) return;
     const fileReceipt = await inspectAttachedFiles(execution.prompt, session.location.directory);
@@ -367,6 +372,27 @@ const server = Bun.serve({
     if (path === "/api/session") return Response.json({
       data: [...sessions.values()].filter((session) => session.parentID === url.searchParams.get("parentID")), cursor: {},
     });
+    const instructions = /^\/api\/experimental\/session\/([^/]+)\/instructions\/entries(?:\/([^/]+))?$/.exec(path);
+    if (instructions) {
+      const session = sessions.get(instructions[1]!);
+      if (!session) return new Response(null, { status: 404 });
+      const key = instructions[2] ? decodeURIComponent(instructions[2]) : undefined;
+      if (!key && request.method === "GET") return Response.json({
+        data: Object.entries(session.instructions ?? {}).map(([key, value]) => ({ key, value })),
+      });
+      if (key && request.method === "PUT") {
+        session.instructions ??= {};
+        session.instructions[key] = (await request.json()).value;
+        await save(session);
+        return new Response(null, { status: 204 });
+      }
+      if (key && request.method === "DELETE") {
+        delete session.instructions?.[key];
+        await save(session);
+        return new Response(null, { status: 204 });
+      }
+      return new Response(null, { status: 405 });
+    }
     const logSessionId = /^\/api\/experimental\/session\/([^/]+)\/log$/.exec(path)?.[1];
     if (logSessionId) {
       const session = sessions.get(logSessionId);

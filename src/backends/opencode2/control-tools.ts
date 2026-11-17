@@ -143,6 +143,10 @@ export class OpenCodeControlTools {
     conversation.active = { context, abort: new AbortController() };
   }
 
+  hasHtmlTools(id: string): boolean {
+    return this.conversations.get(id)?.definitions.some((tool) => tool.name === "clanky_html_render") === true;
+  }
+
   prepareSteering(id: string, clientId: string | undefined): void {
     const active = this.conversations.get(id)?.active;
     if (active?.context?.clientId && active.context.clientId !== clientId) {
