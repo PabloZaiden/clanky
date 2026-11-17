@@ -102,7 +102,7 @@ export function ControlCredentialsContent() {
           <ControlGrantFields options={query.data.options} value={grant} onChange={setGrant}
             idPrefix="control-credential" disabled={saving} />
         </FormGroup> : null}
-        <TextField id="control-credential-expiry" label="Expires in days" type="number" min={1} max={90} step={1}
+        <TextField id="control-credential-expiry" label="Expires in days" type="number" min={1} step={1}
           required value={expiresInDays} disabled={saving} onChange={(event) => setExpiresInDays(event.currentTarget.value)} />
         {error ? <ErrorState title="Credential not created" description={error} /> : null}
         <FormActions>

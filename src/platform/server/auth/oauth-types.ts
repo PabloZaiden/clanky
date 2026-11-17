@@ -3,15 +3,15 @@ import type { CurrentUser } from "../../contracts";
 
 export type OAuthAuthorizationContext = { [key: string]: z.JSONType };
 
-export interface OAuthClient {
-  clientId: string;
-  clientName: string;
-  redirectUris: readonly string[];
-  grantTypes?: readonly ("authorization_code" | "refresh_token")[];
-  tokenEndpointAuthMethod?: "none" | "client_secret_basic";
-  /** SHA-256 hash returned by createOAuthClientSecret(), never an application API key. */
-  clientSecretHash?: string;
-}
+export const oauthClientSchema = z.object({
+  clientId: z.string().min(1).max(2048),
+  clientName: z.string().min(1).max(200),
+  redirectUris: z.array(z.string().min(1).max(2048)).min(1).max(20).readonly(),
+  grantTypes: z.array(z.enum(["authorization_code", "refresh_token"])).min(1).max(2).readonly(),
+  tokenEndpointAuthMethod: z.enum(["none", "client_secret_basic"]),
+  clientSecretHash: z.string().regex(/^[A-Za-z0-9_-]{43}$/).optional(),
+}).strict().readonly();
+export type OAuthClient = z.infer<typeof oauthClientSchema>;
 
 export interface OAuthPrincipal {
   user: CurrentUser;
@@ -45,7 +45,6 @@ export interface OAuthConfig {
   /** Resolve application-owned dynamic scope names to human-readable descriptions. */
   resolveScopes?: (requestedScopes: readonly string[]) =>
     false | Readonly<Record<string, string>> | Promise<false | Readonly<Record<string, string>>>;
-  clients: readonly OAuthClient[];
   /** Same-origin UI path, optionally with a canonical #/view route; request is added to URL search, preserving the hash. */
   consentPath: string;
   /** Authenticated presentation data only; authorizeConsent must validate the chosen approval independently. */
@@ -86,6 +85,7 @@ const common = {
 
 export const oauthAuthorizationSchema = z.object({
   ...common,
+  client: oauthClientSchema,
   requestHash: z.string(),
   redirectUri: z.string(),
   codeChallenge: z.string(),
@@ -104,6 +104,7 @@ export const oauthAuthorizationSchema = z.object({
 
 export const oauthSessionSchema = z.object({
   ...common,
+  clientName: z.string(),
   id: z.string(),
   familyId: z.string(),
   userId: z.string(),
@@ -124,6 +125,9 @@ export type OAuthSessionRecord = z.infer<typeof oauthSessionSchema>;
 export interface OAuthStore {
   initialize(): void;
   transaction<T>(operation: () => T): T;
+  getClient(issuer: string, clientId: string, now: number): OAuthClient | undefined;
+  countUnapprovedClients(issuer: string): number;
+  saveClient(issuer: string, client: OAuthClient, expiresAt: number): void;
   getAuthorization(requestHash: string): OAuthAuthorizationRecord | undefined;
   getAuthorizationByCode(codeHash: string): OAuthAuthorizationRecord | undefined;
   saveAuthorization(record: OAuthAuthorizationRecord): void;

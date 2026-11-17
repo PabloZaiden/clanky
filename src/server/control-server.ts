@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { authenticateApiKey, parseOAuthClients, type OAuthConfig, type OAuthPrincipal, type RouteContext, type ClankyAccountStore } from "@/platform/server";
+import { authenticateApiKey, type OAuthConfig, type OAuthPrincipal, type RouteContext, type ClankyAccountStore } from "@/platform/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { WebAppServer } from "@/platform/server";
 import { routeToHash } from "@pablozaiden/webapp/web";
@@ -31,15 +31,6 @@ const log = createLogger("server:control");
 function bearer(request: Request): string | undefined {
   const header = request.headers.get("authorization");
   return header && header.length <= 4096 ? /^Bearer[ \t]+([^\s,]+)$/i.exec(header)?.[1] : undefined;
-}
-
-function oauthClients() {
-  const raw = process.env["CLANKY_MCP_OAUTH_CLIENTS"];
-  try { return parseOAuthClients(raw === undefined ? [] : JSON.parse(raw)); }
-  catch (error) {
-    if (!(error instanceof z.ZodError) && !(error instanceof SyntaxError)) throw error;
-    throw new Error("CLANKY_MCP_OAUTH_CLIENTS must be a valid registered OAuth client array.", { cause: error });
-  }
 }
 
 export class ControlServer {
@@ -76,11 +67,10 @@ export class ControlServer {
       onerror: (error) => log[error instanceof ProtocolError ? "warn" : "error"]("MCP protocol request failed", { type: error.name }),
     });
     const base = options.getBaseUrl();
-    const clients = oauthClients();
     if (base) {
       const resource = new URL("mcp", `${base.replace(/\/+$/u, "")}/`).href;
       this.oauth = {
-        issuer: base.replace(/\/+$/u, ""), resource, clients,
+        issuer: base.replace(/\/+$/u, ""), resource,
         scopes: { [CLANKY_CONTROL_SCOPE]: "Control chats and explicitly selected Clanky resources." },
         resourceScopes: [CLANKY_CONTROL_SCOPE],
         consentPath: `/${routeToHash({ view: "control-consent" })}`,
@@ -132,8 +122,6 @@ export class ControlServer {
           } catch (error) { return controlErrorResponse(error); }
         },
       };
-    } else if (clients.length) {
-      throw new Error("Configured MCP OAuth clients require CLANKY_PUBLIC_BASE_URL or a fixed loopback listening port.");
     }
   }
 

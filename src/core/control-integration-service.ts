@@ -45,9 +45,13 @@ export class ControlIntegrationService {
     if (this.list().length >= MAX_CREDENTIALS) {
       throw new DomainError("control_credential_limit", "Revoke an unused integration before creating another credential.");
     }
+    const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000);
+    if (!Number.isFinite(expiresAt.getTime())) {
+      throw new DomainError("control_credential_expiry_invalid", "Choose a duration with a valid expiration date.");
+    }
     const { key, token } = createManagedApiKey(this.store, requireCurrentUser(), {
       managedBy: MANAGED_BY, prefix: "clanky_control", name: input.name,
-      scopes: controlGrantScopes(grant), expiresAt: new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString(),
+      scopes: controlGrantScopes(grant), expiresAt: expiresAt.toISOString(),
     });
     return { credential: this.summary(key), token };
   }
