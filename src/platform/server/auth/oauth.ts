@@ -13,13 +13,13 @@ import type { UserRecord, ClankyAccountStore } from "./store";
 import { AuthError } from "./types";
 import { toCurrentUser } from "./users";
 import {
-  authenticateOAuthClient, describeOAuthScopes, oauthClient, oauthError, oauthForm, oauthScopes,
+  authenticateOAuthClient, describeOAuthScopes, oauthError, oauthForm, oauthScopes, oauthRedirectMatches,
   requireOAuthResource, uniqueOAuthParameters, validateOAuthConfig,
-  type ValidatedOAuthClient,
 } from "./oauth-validation";
 import type {
-  OAuthAuthorizationRecord, OAuthConfig, OAuthPrincipal, OAuthService, OAuthSessionRecord,
+  OAuthAuthorizationRecord, OAuthClient, OAuthConfig, OAuthPrincipal, OAuthService, OAuthSessionRecord,
 } from "./oauth-types";
+import { createOAuthClients } from "./oauth-clients";
 
 const ACCESS_SECONDS = 600;
 const REFRESH_SECONDS = 30 * 24 * 60 * 60;
@@ -34,11 +34,6 @@ const approvalSchema = z.object({
   scopes: z.array(z.string()).min(1).optional(),
   authorizationContext: z.record(z.string(), z.json()).default({}),
 }).strict();
-
-export function createOAuthClientSecret(): { secret: string; secretHash: string } {
-  const secret = `oauth_secret_${randomToken()}`;
-  return { secret, secretHash: sha256(secret) };
-}
 
 function protocolResponse(data: unknown, status = 200): Response {
   return jsonResponse(data, {
@@ -63,6 +58,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
   const store = accounts.oauth;
   if (!store) throw new Error("OAuth requires a ClankyAccountStore with atomic OAuth persistence");
   store.initialize();
+  const clients = createOAuthClients(config, store);
 
   function account(userId: string | undefined, authVersion: number | undefined, expectedRole?: UserRecord["role"]): UserRecord {
     const user = userId ? accounts.getUserById(userId) : undefined;
@@ -84,8 +80,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
 
   function validSession(session: OAuthSessionRecord | undefined, now: number): session is OAuthSessionRecord {
     return Boolean(session && session.revokedAt === undefined && session.expiresAt > now
-      && session.resource === config.resource && session.issuer === config.issuer
-      && config.clients.some(client => client.clientId === session.clientId));
+      && session.resource === config.resource && session.issuer === config.issuer);
   }
 
   async function admitted(subject: OAuthPrincipal): Promise<boolean> {
@@ -161,8 +156,8 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
       || record.issuer !== config.issuer || record.resource !== config.resource) {
       oauthError("invalid_request", "Authorization request is invalid or expired");
     }
-    if (!oauthClient(config, record.clientId).redirectUris.includes(record.redirectUri)) {
-      oauthError("invalid_request", "The redirect URI is no longer registered");
+    if (record.client.clientId !== record.clientId || !oauthRedirectMatches(record.client, record.redirectUri)) {
+      oauthError("invalid_request", "The redirect URI does not match the authorization");
     }
     return record;
   }
@@ -178,9 +173,9 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
   async function begin(request: Request): Promise<Response> {
     if (request.url.length > 16 * 1024) oauthError("invalid_request", "Authorization request is too large");
     const parameters = uniqueOAuthParameters(new URL(request.url).searchParams);
-    const client = oauthClient(config, parameters.get("client_id"));
+    const client = await clients.resolve(parameters.get("client_id"), request.signal);
     const redirectUri = parameters.get("redirect_uri");
-    if (!redirectUri || !client.redirectUris.includes(redirectUri)) {
+    if (!redirectUri || !oauthRedirectMatches(client, redirectUri)) {
       oauthError("invalid_request", "The redirect URI is not registered");
     }
     try {
@@ -198,7 +193,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
       store!.transaction(() => {
         store!.deleteExpired(Date.now());
         store!.saveAuthorization({
-          issuer: config.issuer, resource: config.resource, clientId: client.clientId,
+          issuer: config.issuer, resource: config.resource, clientId: client.clientId, client,
           requestHash: sha256(handle), redirectUri, scopes, scopeDescriptions, codeChallenge, state,
           expiresAt: Date.now() + AUTHORIZATION_SECONDS * 1000, status: "pending",
         });
@@ -232,7 +227,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
       store!.saveAuthorization(bound);
       return bound;
     });
-    const client = oauthClient(config, record.clientId);
+    const client = record.client;
     const context = config.getConsentContext
       ? z.record(z.string(), z.json()).parse(await config.getConsentContext({
         user, client, resource: record.resource, scopes: Object.freeze([...record.scopes]),
@@ -249,7 +244,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
       account(current.userId, current.authVersion, observedRole);
       browserUser(request, false, current.userId);
       return protocolResponse({
-        request: handle, client: { clientId: client.clientId, clientName: client.clientName },
+        request: handle, client: { clientId: client.clientId, clientName: client.clientName, redirectUri: record.redirectUri },
         resource: record.resource,
         scopes: record.scopes.map(scope => ({ scope, description: record.scopeDescriptions[scope] })),
         expiresAt: new Date(record.expiresAt).toISOString(),
@@ -266,7 +261,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
     if (record.status !== "pending" || record.userId !== user.id) oauthError("access_denied", "Review authorization before deciding", 403);
     account(record.userId, record.authVersion, observedRole);
     browserUser(request, true, record.userId);
-    const client = oauthClient(config, record.clientId);
+    const client = record.client;
     const decision = body.decision === "approve"
       ? await config.authorizeConsent({
         user, client, resource: record.resource, scopes: Object.freeze([...record.scopes]), approval: body.approval,
@@ -304,7 +299,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
 
   function issue(
     source: Pick<OAuthSessionRecord, "userId" | "authVersion" | "clientId" | "scopes" | "authorizationContext">,
-    client: ValidatedOAuthClient,
+    client: OAuthClient,
     familyId: string,
     expiresAt: number,
   ): Response {
@@ -312,7 +307,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
     const access = `oauth_access_${randomToken()}`;
     const refresh = client.grantTypes.includes("refresh_token") ? `oauth_refresh_${randomToken()}` : undefined;
     const session: OAuthSessionRecord = {
-      ...source, issuer: config.issuer, resource: config.resource,
+      ...source, issuer: config.issuer, resource: config.resource, clientName: client.clientName,
       id: crypto.randomUUID(), familyId, accessHash: sha256(access), refreshHash: refresh ? sha256(refresh) : undefined,
       accessExpiresAt: Math.min(expiresAt, now + ACCESS_SECONDS * 1000),
       expiresAt: refresh ? expiresAt : Math.min(expiresAt, now + ACCESS_SECONDS * 1000), createdAt: now,
@@ -327,7 +322,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
 
   async function token(request: Request): Promise<Response> {
     const parameters = await oauthForm(request);
-    const client = authenticateOAuthClient(config, request, parameters);
+    const client = await authenticateOAuthClient(id => clients.resolve(id, request.signal), request, parameters);
     requireOAuthResource(config, parameters.get("resource"));
     if (parameters.get("grant_type") === "authorization_code") {
       const code = parameters.get("code");
@@ -338,7 +333,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
         const record = store!.getAuthorizationByCode(sha256(code));
         if (!record || !["approved", "consumed"].includes(record.status)
           || record.clientId !== client.clientId || record.redirectUri !== parameters.get("redirect_uri")
-          || !client.redirectUris.includes(record.redirectUri)
+          || !oauthRedirectMatches(client, record.redirectUri)
           || record.issuer !== config.issuer || record.resource !== config.resource
           || !secureEqual(record.codeChallenge, sha256(verifier))) {
           oauthError("invalid_grant", "Invalid authorization code or PKCE verifier");
@@ -397,7 +392,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
 
   async function revoke(request: Request): Promise<Response> {
     const parameters = await oauthForm(request);
-    const client = authenticateOAuthClient(config, request, parameters);
+    const client = await authenticateOAuthClient(id => clients.resolve(id, request.signal), request, parameters);
     const value = parameters.get("token");
     if (!value) oauthError("invalid_request", "A token is required");
     return store!.transaction(() => {
@@ -431,7 +426,7 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
           return current?.authVersion === session.authVersion;
         }).map(session => ({
           id: session.familyId, clientId: session.clientId,
-          clientName: oauthClient(config, session.clientId).clientName,
+          clientName: session.clientName,
           resource: session.resource, scopes: session.scopes,
           authorizationContext: session.authorizationContext,
           createdAt: new Date(session.createdAt).toISOString(), expiresAt: new Date(session.expiresAt).toISOString(),
@@ -445,12 +440,22 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
     const resourceMetadata = path === config.metadataPath || path === "/.well-known/oauth-protected-resource";
     const asMetadata = path === config.issuerMetadataPath;
     const endpoint = path.startsWith(`${config.prefix}/`) ? path.slice(config.prefix.length) : undefined;
+    const publicEndpoint = endpoint === "/register" || endpoint === "/token" || endpoint === "/revoke";
+    function respond(response: Response): Response {
+      if (publicEndpoint) {
+        response.headers.set("access-control-allow-origin", "*");
+        response.headers.set("access-control-allow-methods", "POST, OPTIONS");
+        response.headers.set("access-control-allow-headers", "Content-Type, Authorization");
+      }
+      return response;
+    }
     const resourceRequest = path === config.resourcePath && config.handleResource !== undefined;
     if (!resourceMetadata && !asMetadata && !endpoint && !resourceRequest) return undefined;
     try {
       if (config.issuerUrl.protocol === "https:" && !getRequestOriginInfo(request, runtime).secure) {
         oauthError("invalid_request", "HTTPS is required");
       }
+      if (publicEndpoint && request.method === "OPTIONS") return respond(new Response(null, { status: 204 }));
       if (resourceRequest && config.handleResource) {
         if (new URL(request.url).searchParams.has("access_token")) {
           return protocolResponse({ error: "invalid_request", error_description: "Use the Authorization header" }, 400);
@@ -476,23 +481,28 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
           : protocolResponse({
             issuer: config.issuer, authorization_endpoint: config.authorizationEndpoint,
             token_endpoint: config.tokenEndpoint, revocation_endpoint: config.revocationEndpoint,
+            registration_endpoint: config.registrationEndpoint,
             response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"], scopes_supported: Object.keys(config.scopes),
             token_endpoint_auth_methods_supported: ["none", "client_secret_basic"],
             revocation_endpoint_auth_methods_supported: ["none", "client_secret_basic"],
             authorization_response_iss_parameter_supported: true,
-            client_id_metadata_document_supported: false,
+            client_id_metadata_document_supported: true,
           });
         response.headers.set("access-control-allow-origin", "*");
         return response;
       }
       switch (endpoint) {
+        case "/register": return respond(request.method === "POST"
+          ? protocolResponse(clients.register(await parseJson(request, z.unknown(), {
+            requireContentType: true, maxBytes: 16 * 1024,
+          })), 201) : methodNotAllowed(["POST"]));
         case "/authorize": return request.method === "GET" ? await begin(request) : methodNotAllowed(["GET"]);
         case "/consent":
           if (request.method === "GET") return await consentDetails(request);
           return request.method === "POST" ? await consentDecision(request) : methodNotAllowed(["GET", "POST"]);
-        case "/token": return request.method === "POST" ? await token(request) : methodNotAllowed(["POST"]);
-        case "/revoke": return request.method === "POST" ? await revoke(request) : methodNotAllowed(["POST"]);
+        case "/token": return respond(request.method === "POST" ? await token(request) : methodNotAllowed(["POST"]));
+        case "/revoke": return respond(request.method === "POST" ? await revoke(request) : methodNotAllowed(["POST"]));
         case "/grants": return ["GET", "DELETE"].includes(request.method) ? await grants(request) : methodNotAllowed(["GET", "DELETE"]);
         default: return protocolResponse({ error: "not_found" }, 404);
       }
@@ -500,11 +510,11 @@ export function createOAuthService(input: OAuthConfig, accounts: ClankyAccountSt
       if (error instanceof AuthError) {
         const response = protocolResponse({ error: error.code, error_description: error.message }, error.status);
         if (error.code === "invalid_client" && error.status === 401) response.headers.set("www-authenticate", 'Basic realm="oauth"');
-        return response;
+        return respond(response);
       }
-      if (requestBodyErrorResponse(error)) return protocolResponse({ error: "invalid_request" }, 400);
+      if (requestBodyErrorResponse(error)) return respond(protocolResponse({ error: "invalid_request" }, 400));
       // Application/store failures may contain credentials or private consent data.
-      return protocolResponse({ error: "server_error" }, 500);
+      return respond(protocolResponse({ error: "server_error" }, 500));
     }
   }
 

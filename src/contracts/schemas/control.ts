@@ -63,7 +63,7 @@ export const ControlDecisionSchema = z.object({ approved: z.boolean() }).strict(
 export const CreateControlCredentialSchema = z.object({
   name: z.string().trim().min(1).max(100),
   grant: ControlGrantSelectionSchema,
-  expiresInDays: z.number().int().min(1).max(90).default(30),
+  expiresInDays: z.number().int().min(1).default(30),
 }).strict();
 export const ControlCredentialSummarySchema = z.object({
   id: z.string().min(1).max(500),

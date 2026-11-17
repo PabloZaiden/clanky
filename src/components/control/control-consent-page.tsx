@@ -10,7 +10,7 @@ import { useControlExpiry } from "./use-control-expiry";
 
 interface ConsentReview {
   request: string;
-  client: { clientId: string; clientName: string };
+  client: { clientId: string; clientName: string; redirectUri: string };
   resource: string;
   scopes: Array<{ scope: string; description: string }>;
   expiresAt: string;
@@ -64,7 +64,10 @@ export function ControlConsentPage() {
     {query.error ? <ErrorState title="Consent unavailable" description={String(query.error)}
       action={<Button disabled={submitting || query.loading} onClick={() => void query.refresh()}>Retry</Button>} /> : null}
     {!review && query.loading ? <LoadingState title="Loading authorization request" /> : null}
-    {review ? <Panel title={review.client.clientName} description="Review this integration before granting access.">
+    {review ? <Panel title={review.client.clientName} description="Client details are self-reported. Only authorize integrations you trust.">
+      {review.client.clientId.toLowerCase().startsWith("https://")
+        ? <CodeValue label="Client metadata" value={review.client.clientId} /> : null}
+      <CodeValue label="Return URL" value={review.client.redirectUri} />
       <CodeValue label="Requested resource" value={review.resource} />
       <DataList>
         {review.scopes.map((scope) => <DataListRow key={scope.scope} title="Requested permission" description={scope.description} />)}

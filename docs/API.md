@@ -165,8 +165,8 @@ Internal native/deterministic control derives from the admitted execution,
 not CLI/raw REST credentials, even with general access. Use the provided native
 tools or `ctx.clanky.call()`; do not bypass a `403` through CLI, key management
 or session endpoints. External control credentials remain explicitly scoped.
-For external configuration, OAuth
-preregistration, service grants and human approval links, see
+For external configuration, automatic OAuth
+onboarding, service grants and human approval links, see
 [Agent control and MCP](deployment.md#agent-control-and-mcp).
 
 ## Deterministic automation execution

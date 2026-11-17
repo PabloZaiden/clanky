@@ -1020,6 +1020,18 @@ export const migrations: Migration[] = [
     name: "add_scoped_ssh_agent_key_access",
     up: migrateSshKeyAccess,
   },
+  {
+    version: 100,
+    name: "add_oauth_registered_clients",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS webapp_oauth_clients (
+          issuer TEXT NOT NULL, client_id TEXT NOT NULL, data TEXT NOT NULL,
+          PRIMARY KEY (issuer, client_id)
+        )
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

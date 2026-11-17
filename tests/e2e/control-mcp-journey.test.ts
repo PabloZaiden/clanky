@@ -38,9 +38,13 @@ test("an MCP client reads its project and a user approves a requested change", a
       name: "Project discussion", workspaceId: workspace.id, useWorktree: false,
       baseBranch: git.branch, model: { providerID: model.providerID, modelID: model.modelID, variant: "" },
     }, 201);
-    const credential = await human<{ token: string }>("/api/control/credentials", "POST", {
-      name: "Project integration", grant: { level: "workspace", workspaceId: workspace.id }, expiresInDays: 1,
+    const requestedAt = Date.now();
+    const credential = await human<{ token: string; credential: { expiresAt: string } }>("/api/control/credentials", "POST", {
+      name: "Project integration", grant: { level: "workspace", workspaceId: workspace.id }, expiresInDays: 365,
     }, 201);
+    const year = 365 * 86_400_000;
+    expect(Date.parse(credential.credential.expiresAt)).toBeGreaterThanOrEqual(requestedAt + year);
+    expect(Date.parse(credential.credential.expiresAt)).toBeLessThanOrEqual(Date.now() + year);
     await client.connect(new StreamableHTTPClientTransport(new URL("/mcp", application.baseUrl), {
       requestInit: { headers: { authorization: `Bearer ${credential.token}` } },
       fetch: (input, options) => fetch(input, { ...options, signal: operationSignal(options?.signal) }),

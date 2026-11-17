@@ -187,7 +187,6 @@ The most common server settings are environment variables:
 | `CLANKY_PORT` | HTTP port | `3000` |
 | `CLANKY_DATA_DIR` | Directory for database, configuration, and logs | `$HOME/.clanky` |
 | `CLANKY_PUBLIC_BASE_URL` | External origin used for Mesh, control links and MCP OAuth | unset |
-| `CLANKY_MCP_OAUTH_CLIENTS` | JSON array of operator-registered MCP OAuth clients | `[]` |
 | `CLANKY_REMOTE_ONLY` | Disable the local execution host | unset |
 | `CLANKY_API_ONLY` | Serve API and server-origin authentication/account pages without the app UI | `false` |
 | `CLANKY_MANAGED_TLS` | Select controller-managed HTTPS on the existing listener; configure its endpoint with `controller tls enable` | `false` |
@@ -308,24 +307,25 @@ port or change its issuer/resource URL while grants are in use.
 
 ### OAuth clients
 
-Register each supported client through `CLANKY_MCP_OAUTH_CLIENTS`, for example:
+Point the client's Streamable HTTP connection at `/mcp`. No client allowlist,
+client credentials supplied by the operator, or client-specific server
+configuration is required. OAuth discovery advertises Client ID Metadata
+Documents (CIMD) and Dynamic Client Registration (DCR), so supported clients
+onboard automatically before requesting user consent. Registration is public
+and grants no account or workspace access by itself.
 
-```json
-[
-  {
-    "clientId": "my-desktop-agent",
-    "clientName": "My desktop agent",
-    "redirectUris": ["http://127.0.0.1:8181/callback"],
-    "grantTypes": ["authorization_code", "refresh_token"]
-  }
-]
-```
+Public clients can identify themselves with an HTTPS metadata document or
+register dynamically. DCR also supports clients using `client_secret_basic`;
+the registration response returns their generated secret only once. Registered
+clients and authorized grants persist across controller restarts. Store client
+credentials and tokens privately in the client.
 
-Use the client's actual ID and exact callback URI, including its loopback port.
-Public callbacks require HTTPS; literal loopback callbacks may use HTTP.
-Clients must support operator pre-registration. Dynamic client registration and
-automatic client-ID-metadata onboarding are not supported; a client requiring
-either cannot use this OAuth configuration unchanged.
+Public callbacks require HTTPS; loopback callbacks may use HTTP. Literal
+loopback callbacks can choose a different listening port without changing their
+registered host, path or query. Metadata retrieval requires valid HTTPS and
+blocks private network destinations except the controller's explicitly
+configured issuer origin. Keep metadata documents small and publicly reachable
+when hosting them separately from Clanky.
 
 The client uses protected-resource/authorization-server discovery, requests the
 `clanky:control` scope for the exact `/mcp` resource, and starts an authorization
@@ -344,7 +344,8 @@ an MCP client.
 ### Unattended service credentials
 
 In **Settings → Agents & integrations**, create a named integration, select its
-workspace/general grant and choose an expiry of one to ninety days. Copy the
+workspace/general grant and choose an expiry in positive whole days. The default
+is thirty days, with no product-level maximum. Copy the
 token when it is first shown and store it privately in the client's credential
 configuration. Send it as `Authorization: Bearer <token>` to `/mcp`; never put
 it in prompts, source files, command history or query strings. The token is not

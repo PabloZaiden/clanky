@@ -65,6 +65,7 @@ function internalAccountTable(name: string): SchemaTableDefinition {
 }
 
 export const SCHEMA_TABLE_INVENTORY: readonly SchemaTableDefinition[] = [
+  internalAccountTable("webapp_oauth_clients"),
   internalAccountTable("webapp_oauth_authorizations"),
   internalAccountTable("webapp_oauth_sessions"),
   internalAccountTable("webapp_audit_events"),

@@ -134,6 +134,5 @@ export {
   type OAuthSessionRecord,
   type OAuthStore,
 } from "./auth/oauth-types";
-export { createOAuthClientSecret } from "./auth/oauth";
-export { parseOAuthClients } from "./auth/oauth-validation";
+export { createOAuthClientSecret } from "./auth/oauth-clients";
 export type { WebAppServer, WebAppServerConfig, WebAppWebSocketData } from "./server-types";

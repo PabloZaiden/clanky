@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import {
-  oauthAuthorizationSchema, oauthSessionSchema,
+  oauthClientSchema, oauthAuthorizationSchema, oauthSessionSchema,
   type OAuthAuthorizationRecord, type OAuthSessionRecord, type OAuthStore,
 } from "@/platform/server/auth/oauth-types";
 
@@ -43,6 +43,17 @@ export function sqliteOAuthStore(db: Database): OAuthStore {
       `);
     },
     transaction: operation => db.transaction(() => synchronous(operation())).immediate(),
+    getClient(issuer, clientId) {
+      const row = db.query<{ data: string }, [string, string]>(
+        "SELECT data FROM webapp_oauth_clients WHERE issuer = ? AND client_id = ?",
+      ).get(issuer, clientId);
+      return row ? oauthClientSchema.parse(JSON.parse(row.data) as unknown) : undefined;
+    },
+    saveClient(issuer, client) {
+      const parsed = oauthClientSchema.parse(client);
+      db.query("INSERT INTO webapp_oauth_clients (issuer, client_id, data) VALUES (?, ?, ?)")
+        .run(issuer, parsed.clientId, JSON.stringify(parsed));
+    },
     getAuthorization: hash => readAuthorization(db.query("SELECT data FROM webapp_oauth_authorizations WHERE request_hash = ?").get(hash)),
     getAuthorizationByCode: hash => readAuthorization(db.query("SELECT data FROM webapp_oauth_authorizations WHERE code_hash = ?").get(hash)),
     saveAuthorization(record) {
