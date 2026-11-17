@@ -24,6 +24,8 @@ import { SecretCoordinator, secretToolDefinition } from "../secret-coordinator";
 import { SECRET_TOOL_NAME } from "@/shared/harness-secrets";
 import { z } from "zod";
 import type { HarnessUsageSnapshot, TokenCounts } from "@/shared/harness-usage";
+import { buildAgentInstructions } from "@/shared/agent-instructions";
+import { controlResultContent } from "@/shared/control-tool-result";
 
 const DynamicToolCallParamsSchema = z.object({
   threadId: z.string().min(1),
@@ -36,7 +38,9 @@ const DynamicToolCallParamsSchema = z.object({
 
 function dynamicToolResponse(result: unknown) {
   return {
-    contentItems: [{ type: "inputText" as const, text: JSON.stringify(result) }],
+    contentItems: controlResultContent(result).map((content) => content.type === "text"
+      ? { type: "inputText" as const, text: content.text }
+      : { type: "inputImage" as const, imageUrl: `data:${content.mimeType};base64,${content.data}` }),
     success: !(typeof result === "object" && result !== null && "ok" in result && result.ok === false),
   };
 }
@@ -116,10 +120,15 @@ export class CodexSessionService {
       cwd: options.directory, model: options.model, ephemeral: false,
       approvalPolicy: "never", sandbox: "danger-full-access", allowProviderModelFallback: false,
       config: await codexQuestionConfig(this.dependencies.runtime, options.ownership.questionPolicy),
+      developerInstructions: await this.instructions({
+        ...options.ownership,
+        htmlArtifacts: dynamicTools.some((tool) => tool.name === "clanky_html_render") ? 1 : undefined,
+      }),
       ...(dynamicTools ? { dynamicTools } : {}),
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership, adapter: "codex", nativeId: result.thread.id, directory: options.directory,
+      ...(dynamicTools.some((tool) => tool.name === "clanky_html_render") ? { htmlArtifacts: 1 as const } : {}),
     };
     try {
       return await this.attach(result.thread, binding, options.title);
@@ -160,12 +169,25 @@ export class CodexSessionService {
       threadId: binding.nativeId, excludeTurns: true, cwd: binding.directory,
       approvalPolicy: "never", sandbox: "danger-full-access",
       config: await codexQuestionConfig(this.dependencies.runtime, binding.questionPolicy),
+      developerInstructions: await this.instructions(binding),
     });
     if (result.thread.cwd !== binding.directory || result.thread.parentThreadId !== null) {
       throw new HarnessError("harness_session_not_owned", "The native root thread does not match its persisted binding.");
     }
 
     return this.attach(result.thread, binding);
+  }
+
+  private async instructions(binding: Pick<HarnessConversationBinding, "controlTools" | "htmlArtifacts">): Promise<string | undefined> {
+    const guidance = buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: binding.htmlArtifacts === 1 });
+    if (!guidance) return undefined;
+    const { config } = await this.dependencies.runtime.rpc.request("config/read", {
+      cwd: this.dependencies.runtime.directory, includeLayers: false,
+    });
+    if (config.developer_instructions != null && typeof config.developer_instructions !== "string") {
+      throw new HarnessError("harness_runtime_unavailable", "Codex returned invalid configured developer instructions.");
+    }
+    return [config.developer_instructions, guidance].filter(Boolean).join("\n\n");
   }
 
   get(id: string): Conversation {

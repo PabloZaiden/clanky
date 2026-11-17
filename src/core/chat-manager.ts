@@ -9,6 +9,7 @@ import type {
   SessionInfo,
   TranscriptSnapshotOptions,
   ToolCallRecord,
+  ConversationLogEntry,
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
@@ -145,6 +146,9 @@ function isChatServiceBundle(
 }
 
 export class ChatManager {
+  emitPublishedHtmlRender(chatId: string, scope: Chat["config"]["scope"], log: ConversationLogEntry): void {
+    this.services.conversation.emitPublishedHtmlRender(chatId, scope, log);
+  }
   beginShutdown(): void {
     this.services.interaction.beginShutdown();
     this.services.conversation.beginShutdown();

@@ -1035,6 +1035,24 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 101,
+    name: "add_html_renders",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE html_renders (
+          id TEXT PRIMARY KEY,
+          chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES webapp_users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          height INTEGER NOT NULL,
+          html TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX html_renders_chat ON html_renders(chat_id, user_id);
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

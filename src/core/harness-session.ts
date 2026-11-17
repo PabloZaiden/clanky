@@ -36,7 +36,10 @@ export async function createOwnedHarnessSession(
   const binding: HarnessConversationBinding = { ...context, adapter: backend.harness.capabilities.adapter, nativeId: session.id };
   if (session.binding) requireMatchingHarnessBinding(JSON.stringify(session.binding), binding);
   else throw new HarnessError("harness_session_not_owned", "The native adapter did not return an owned conversation.");
-  return { ...session, binding };
+  return { ...session, binding: {
+    ...binding,
+    ...(session.binding.htmlArtifacts === 1 ? { htmlArtifacts: 1 as const } : {}),
+  } };
 }
 
 export async function resumeOwnedHarnessSession(
@@ -44,7 +47,10 @@ export async function resumeOwnedHarnessSession(
   stored: SessionInfo,
   context: SessionContext,
 ): Promise<AgentSession | null> {
-  const expected: HarnessConversationBinding = { ...context, adapter: backend.harness.capabilities.adapter, nativeId: stored.id };
+  const expected: HarnessConversationBinding = {
+    ...context, adapter: backend.harness.capabilities.adapter, nativeId: stored.id,
+    ...(stored.binding?.htmlArtifacts === 1 ? { htmlArtifacts: 1 as const } : {}),
+  };
   requireMatchingHarnessBinding(JSON.stringify(stored.binding), expected);
   const session = await backend.resumeSession(expected);
   if (!session) return null;

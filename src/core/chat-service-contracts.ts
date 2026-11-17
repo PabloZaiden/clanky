@@ -223,6 +223,7 @@ export interface ChatSessionPort {
 }
 
 export interface ChatConversationPort {
+  emitPublishedHtmlRender(chatId: string, scope: ChatConfig["scope"], log: ConversationLogEntry): void;
   beginShutdown(): void;
   shutdown(): Promise<void>;
   withLiveActivity(chat: Chat): Chat;

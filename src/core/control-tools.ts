@@ -11,6 +11,7 @@ import { controlToolSchemas } from "./control-tool-contracts";
 import { isDomainError } from "../domain/domain-error";
 import { isControlUiToolName, executeControlUiTool } from "./control-ui-tools";
 import { agentNotificationService } from "./agent-notification-service";
+import { executeHtmlTool } from "./html-render-service";
 
 const log = createLogger("core:control-tools");
 
@@ -33,6 +34,9 @@ export async function executeControlTool(options: {
     if (isControlUiToolName(name)) return await executeControlUiTool(context, name, input);
     if (isDirectToolName(name)) return await executeDirectControlTool(context, name, input);
     switch (name) {
+      case "clanky_html_preview":
+      case "clanky_html_render":
+        return await executeHtmlTool(context, name, input);
       case "clanky_send_notification":
         return await agentNotificationService.send(input, actions.signal);
       case "clanky_list_operations":

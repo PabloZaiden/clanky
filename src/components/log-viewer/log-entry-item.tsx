@@ -5,6 +5,8 @@ import type { TranscriptFileLinkContext } from "./types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { TranscriptTextContent } from "./transcript-file-links";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
+import { HtmlRenderReferenceSchema } from "@/shared/html-render";
+import { HtmlRenderEntry } from "./html-render-entry";
 
 interface LogEntryItemProps {
   data: ConversationLogEntry;
@@ -47,6 +49,11 @@ export const LogEntryItem = memo(function LogEntryItem({
     ),
     [details]
   );
+
+  if (logKind === "html-render") {
+    const parsed = HtmlRenderReferenceSchema.safeParse(details?.["htmlRender"]);
+    if (parsed.success) return <HtmlRenderEntry reference={parsed.data} />;
+  }
 
   if (isReasoning && !hasResponseContent && !hasOtherDetails) {
     return null;

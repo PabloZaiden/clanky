@@ -5,7 +5,6 @@
 import type { PromptInput } from "../types";
 import type { UserInput } from "./generated/v2/UserInput";
 import { HarnessError } from "../harness-errors";
-import { AGENT_NOTIFICATION_INSTRUCTIONS } from "@/shared/agent-notifications";
 
 export function toCodexInput(prompt: PromptInput): UserInput[] {
   const input = prompt.parts.map((part): UserInput => {
@@ -19,6 +18,5 @@ export function toCodexInput(prompt: PromptInput): UserInput[] {
     }
     throw new HarnessError("harness_unsupported_feature", "Codex does not accept this inline binary attachment.");
   });
-  input.push({ type: "text", text: AGENT_NOTIFICATION_INSTRUCTIONS, text_elements: [] });
   return input;
 }

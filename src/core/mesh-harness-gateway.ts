@@ -233,7 +233,10 @@ export class MeshHarnessGateway {
           } : {}),
         },
       });
-      const binding = { ...canonical, nativeId: session.id };
+      const binding = {
+        ...canonical, nativeId: session.id,
+        ...(session.binding?.htmlArtifacts === 1 ? { htmlArtifacts: 1 as const } : {}),
+      };
       try {
         const adopted = await this.adopt(host, session, binding);
         saveMeshHarnessConversation(host.config, binding);

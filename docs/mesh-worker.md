@@ -174,6 +174,14 @@ Deterministic tools and current-conversation prompts use their trusted runner
 and selected executor's existing communication, without public HTTP or injected
 CLI credentials. Explicit human CLI/terminal behavior is unchanged.
 
+HTML artifact tools require the execution host's additive `htmlArtifacts: 1`
+capability. It indicates native image tool-result support in all harness
+adapters, not browser installation on the worker. Controllers withhold these
+tools from older workers rather than returning PNG bytes as JSON text.
+Preview capture runs on the controller; local source images are resolved on
+the admitted execution host. Existing v7 relays forward the bounded results
+through the same control channel.
+
 ### Private CLI secret files
 
 Native harness capability discovery optionally advertises `secretFiles: 1`.

@@ -37,7 +37,7 @@ export class ClaudeRuntime {
         cwd: this.directory, env: this.env, pathToClaudeCodeExecutable: this.executable,
         abortController, includePartialMessages: true, forwardSubagentText: true,
         settingSources: ["user", "project", "local"],
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        systemPrompt: options.systemPrompt ?? { type: "preset", preset: "claude_code" },
         spawnClaudeCodeProcess: ({ command, args, cwd, env, signal }) => {
           const child = spawn(command, args, { cwd, env, signal, stdio: ["pipe", "pipe", "pipe"] });
           const output = stateFrames((next, sessionId) => {
