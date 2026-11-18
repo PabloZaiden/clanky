@@ -8,7 +8,7 @@ import type { HarnessEvent } from "@/shared/harness-events";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import { formatHarnessAnswers, isQuestionOpen } from "@/shared/harness-questions";
-import { ChatBusyError, isChatBusyStatus, type Chat } from "@/shared/chat";
+import { ChatBusyError, hasRemoteChatContinuity, isChatBusyStatus, type Chat } from "@/shared/chat";
 import { HarnessError } from "../backends/harness-errors";
 import { requireMatchingHarnessBinding } from "../backends/harness-binding";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -42,17 +42,19 @@ export class ChatQuestionService {
       if (binding.ownerId !== requireExecutionOwnerUserId()) throw new HarnessError("harness_session_not_owned", "The question is not owned by this user.");
       const questions = chat.state.harness?.questions ?? [];
       const existing = questions.find((request) => request.requestId === event.requestId);
+      const retainedRemote = hasRemoteChatContinuity(chat);
+      const statusChangedAt = retainedRemote ? event.timestamp ?? new Date().toISOString() : undefined;
       if (event.type === "question.resolved") {
         if (existing && isQuestionOpen(existing)) {
           await this.save(chat, questions.map((request) => request === existing
             ? { ...request, status: event.outcome, resolvedAt: new Date().toISOString(), error: undefined }
-            : request));
+            : request), undefined, statusChangedAt);
         }
         return;
       }
       if (existing) {
         if (isQuestionOpen(existing) && chat.state.status !== "waiting" && !chat.state.startupStage) {
-          await this.save(chat, questions);
+          await this.save(chat, questions, undefined, retainedRemote ? null : undefined);
         }
         return;
       }
@@ -77,7 +79,7 @@ export class ChatQuestionService {
             ? questionMessageId ?? event.scope.native.messageId : `${id}-question`,
           answerMessageId: `${id}-answer`,
         },
-      }]);
+      }], undefined, statusChangedAt);
     });
   }
 
@@ -257,7 +259,7 @@ export class ChatQuestionService {
       request.requestId === requestId ? { ...request, ...updates } : request));
   }
 
-  private async save(chat: Chat, questions: HarnessQuestionRequest[], answerMessage?: MessageData): Promise<Chat> {
+  private async save(chat: Chat, questions: HarnessQuestionRequest[], answerMessage?: MessageData, statusChangedAt?: string | null): Promise<Chat> {
     // Metadata-only reads do not carry transcript counts or collections.
     const updated = await this.dependencies.state.mutateState(chat.config.id, (current) => {
       if (!current.state.session?.binding || !chat.state.session?.binding) {
@@ -280,9 +282,9 @@ export class ChatQuestionService {
           ? current.state.messages.filter((message) => message.id !== answerMessage.id).concat(answerMessage)
           : current.state.messages,
         harness: { ...current.state.harness, questions: next },
-        lastActivityAt: new Date().toISOString(),
+        lastActivityAt: statusChangedAt === null ? current.state.lastActivityAt : new Date().toISOString(),
       };
-    });
+    }, { statusChangedAt });
     this.dependencies.state.emitChatUpdated(updated);
     return updated;
   }

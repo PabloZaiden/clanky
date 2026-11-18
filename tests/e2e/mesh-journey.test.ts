@@ -74,6 +74,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
     const worker = await startMeshNode({
       role: "worker",
       command,
+      outboundOnly: true,
       instanceName: "smoke-worker",
       environment: {
         HOME: workerHome,
@@ -96,7 +97,7 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
       },
     );
     const host = hosts.body.find((candidate) => candidate.ref.kind === "mesh")!;
-    const execution = await meshJsonRequest<{
+    const execution = await pollUntil(async () => await meshJsonRequest<{
       success: boolean; exitCode: number; stdout: string; stderr: string;
     }>(controller, `/api/execution-hosts/mesh/${encodeURIComponent(host.ref.nodeId!)}/exec`, {
       method: "POST",
@@ -106,6 +107,10 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
         cwd: git.repositoryDirectory,
         timeoutMs: MESH_OPERATION_TIMEOUT_MS,
       },
+    }), (response) => response.status === 200 && response.body.success, {
+      description: "outbound worker connection to execute in its project",
+      timeoutMs: MESH_OPERATION_TIMEOUT_MS,
+      formatLastObserved: (response) => JSON.stringify(response),
     });
     expect(execution.status, JSON.stringify(execution.body)).toBe(200);
     expect(execution.body.success, JSON.stringify(execution.body)).toBe(true);

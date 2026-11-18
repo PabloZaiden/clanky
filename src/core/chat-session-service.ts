@@ -49,7 +49,7 @@ export interface ChatSessionServiceDependencies {
   >;
   hasActiveStream?: (chatId: string) => boolean;
   onHarnessEvent?: (chatId: string, binding: HarnessConversationBinding, event: HarnessEvent) => Promise<void>;
-  onNativeSession?: (chat: Chat, backend: Backend, binding: HarnessConversationBinding, recover: boolean | "live") => Promise<void>;
+  onNativeSession?: (chat: Chat, backend: Backend, binding: HarnessConversationBinding, recover: boolean | "live", signal?: AbortSignal) => Promise<void>;
   onNativeDisconnect?: (chatId: string) => Promise<void>;
 }
 
@@ -304,17 +304,30 @@ export class ChatSessionService implements ChatSessionPort {
 
   async reconnectSession(chat: Chat, options: ReconnectChatOptions = {}): Promise<Chat> {
     let reconnectingChat = chat;
+    let cancelRecovery: (() => void) | undefined;
     try {
       const backend = await this.ensureBackendConnected(chat, options);
+      if (backend.harness.capabilities.remoteContinuity === 1 && options.signal) {
+        // Cancel this attachment's I/O, not the worker-owned native execution.
+        cancelRecovery = () => backend.abortAllSubscriptions(
+          new HarnessError("harness_transport_closed", "Remote conversation reattachment was cancelled."),
+        );
+        options.signal.addEventListener("abort", cancelRecovery, { once: true });
+        if (options.signal.aborted) {
+          cancelRecovery();
+          options.signal.throwIfAborted();
+        }
+      }
+      const retainedRemote = backend.harness.capabilities.remoteContinuity === 1;
       reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
-        ...current.state, status: "reconnecting", error: undefined, lastActivityAt: createTimestamp(),
-        ...(backend.harness.capabilities.remoteContinuity === 1 ? { connectionStatus: "connecting" as const } : {}),
-      }));
+        ...current.state, status: "reconnecting", error: undefined,
+        ...(retainedRemote ? { connectionStatus: "connecting" as const } : { lastActivityAt: createTimestamp() }),
+      }), { statusChangedAt: retainedRemote ? null : undefined });
       if (!reconnectingChat.state.session?.id) {
         reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
           signal: options.signal,
         });
-        return this.finishReconnect(reconnectingChat);
+        return await this.finishReconnect(reconnectingChat);
       }
 
       const context = await this.sessionContext(reconnectingChat, backend);
@@ -355,6 +368,7 @@ export class ChatSessionService implements ChatSessionPort {
         ...current.state, session: { id: existing.id, binding: existing.binding },
       }));
       if (existing.binding) await this.observe(chat.config.id, existing.binding, backend, existing.continuity === "live" ? "live" : true, options.signal);
+      return await this.finishReconnect(reconnectingChat);
     } catch (error) {
       if (options.signal?.aborted) throw error;
       if (reconnectingChat === chat && !hasRemoteChatContinuity(chat)) throw error;
@@ -363,15 +377,15 @@ export class ChatSessionService implements ChatSessionPort {
           "mesh_worker_connection_unavailable", "mesh_relay_unavailable", "mesh_execution_session_invalid"].includes(error.code)) {
         const disconnected = await this.state.mutateState(chat.config.id, (current) => ({
           ...current.state, status: "reconnecting", connectionStatus: "disconnected", startupStage: undefined,
-        }));
+        }), { statusChangedAt: null });
         this.state.emitChatUpdated(disconnected);
         throw error;
       }
       await this.failChat(reconnectingChat, error);
       throw error;
+    } finally {
+      if (cancelRecovery) options.signal?.removeEventListener("abort", cancelRecovery);
     }
-
-    return this.finishReconnect(reconnectingChat);
   }
 
   async createSessionFromHistory(
@@ -551,7 +565,7 @@ export class ChatSessionService implements ChatSessionPort {
     if (this.onNativeSession) {
       const chat = await this.state.getChat(chatId);
       if (!chat) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
-      await this.onNativeSession(chat, backend, binding, recover);
+      await this.onNativeSession(chat, backend, binding, recover, signal);
     }
     await harnessActivityService.observe({ kind: "chat", id: chatId }, binding, backend,
       this.onHarnessEvent ? (event) => this.onHarnessEvent!(chatId, binding, event) : undefined);
@@ -624,6 +638,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   private async finishReconnect(chat: Chat): Promise<Chat> {
+    const retainedRemote = hasRemoteChatContinuity(chat);
     return this.state.mutateState(chat.config.id, (current) => {
       if (current.state.status !== "reconnecting") return undefined;
       const waiting = current.state.harness?.questions?.some((request) => request.blocking && isQuestionOpen(request));
@@ -636,9 +651,9 @@ export class ChatSessionService implements ChatSessionPort {
           ? "connected"
           : current.state.connectionStatus,
         startupStage: undefined,
-        lastActivityAt: createTimestamp(),
+        ...(retainedRemote ? {} : { lastActivityAt: createTimestamp() }),
       };
-    });
+    }, { statusChangedAt: retainedRemote ? null : undefined });
   }
 }
 

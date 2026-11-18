@@ -2,6 +2,7 @@
  * Harness prompt execution and persisted conversation materialization.
  */
 
+import { setImmediate } from "node:timers/promises";
 import type {
   Backend,
   PromptInput,
@@ -755,11 +756,12 @@ export class ChatConversationService implements ChatConversationPort {
       || stream.native.backend.isObservationRecovering?.(stream.native.binding.nativeId) === true);
   }
 
-  async observeNativeSession({ chat, backend, binding, recover }: {
+  async observeNativeSession({ chat, backend, binding, recover, signal }: {
     chat: Chat;
     backend: Backend;
     binding: HarnessConversationBinding;
     recover: boolean | "live";
+    signal?: AbortSignal;
   }): Promise<void> {
     this.assertRunning();
     const chatId = chat.config.id;
@@ -793,6 +795,11 @@ export class ChatConversationService implements ChatConversationPort {
       await this.runStreamExecution(entry, () => observer.start({
         backend, sessionId: binding.nativeId,
         recover: () => this.runStreamExecution(entry, async () => {
+          const incomplete = chat.state.harness?.nativeHistoryRecovery;
+          if (incomplete?.nativeId === binding.nativeId) requireMatchingHarnessBindings(incomplete, binding);
+          if (recover === true || incomplete?.nativeId === binding.nativeId) {
+            await this.recoverNativeSession(chatId, entry, signal);
+          }
           if (recover === "live") {
             const activity = await backend.harness.getActivity(binding.nativeId);
             if (activity.observation !== "available") {
@@ -800,7 +807,7 @@ export class ChatConversationService implements ChatConversationPort {
                 "The retained native execution state is unavailable.");
             }
             entry.native!.executing = activity.principalProcessing;
-          } else if (recover) await this.recoverNativeSession(chatId, entry);
+          }
         }),
         onEvent: (event) => this.runStreamExecution(entry, async () => {
           if (this.activeStreams.get(chatId) !== entry) return;
@@ -863,7 +870,7 @@ export class ChatConversationService implements ChatConversationPort {
       const updated = await this.state.mutateState(chatId, (current) => ({
         ...current.state, status: "reconnecting", connectionStatus: "disconnected",
         harness: { ...current.state.harness, activity: { observation: "unavailable", reason: "disconnected" } },
-      }));
+      }), { statusChangedAt: null });
       this.state.emitChatUpdated(updated);
       return;
     }
@@ -1023,6 +1030,9 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.chat = await this.updateState(streamState.chat, {
           ...streamState.chat.state, status: "streaming", startupStage: undefined,
           error: undefined, completedAt: undefined, lastActivityAt: createTimestamp(),
+        }, {
+          statusChangedAt: native.backend.isObservationRecovering?.(native.binding.nativeId)
+            ? event.timestamp ?? createTimestamp() : undefined,
         });
       }
     }
@@ -1199,11 +1209,21 @@ export class ChatConversationService implements ChatConversationPort {
     if (!recovered) await this.recordNativeMessageCheckpoint(chatId, entry);
   }
 
-  private async recoverNativeSession(chatId: string, entry: ActiveChatStream): Promise<void> {
+  private async recoverNativeSession(chatId: string, entry: ActiveChatStream, signal?: AbortSignal): Promise<void> {
     const native = entry.native!;
     if (!native.backend.readSessionHistory) throw new HarnessError("harness_event_gap", "This execution host cannot recover native conversation history.");
+    if (native.backend.harness.capabilities.remoteContinuity === 1) {
+      const updated = await this.state.mutateMetadata(chatId, (current) => {
+        if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
+        requireMatchingHarnessBindings(native.binding, current.state.session.binding);
+        return { ...current.state, harness: { ...current.state.harness, nativeHistoryRecovery: native.binding } };
+      });
+      const streamState = entry.streamState!;
+      streamState.chat = { ...streamState.chat, state: { ...streamState.chat.state, harness: updated.state.harness } };
+    }
     let cursor: string | undefined;
     do {
+      signal?.throwIfAborted();
       const history = await native.backend.readSessionHistory(native.binding.nativeId, cursor);
       const finalMessages = new Map<string, Extract<AgentEvent, { type: "message.complete" }>>();
       let messageId: string | undefined;
@@ -1212,7 +1232,10 @@ export class ChatConversationService implements ChatConversationPort {
         if (event.type === "message.start") messageId = event.messageId;
         if (event.type === "message.complete" && messageId) finalMessages.set(messageId, event);
       }
-      for (const event of history.events) {
+      for (const [index, event] of history.events.entries()) {
+        // Resolved persistence promises alone do not let socket I/O progress.
+        if (index % 16 === 0) await setImmediate(undefined, { signal });
+        signal?.throwIfAborted();
         if (event.scope.kind !== "principal") continue;
         if (event.type === "message.start") {
           const persisted = await this.state.getChatMessage(chatId, event.messageId);
@@ -1247,6 +1270,9 @@ export class ChatConversationService implements ChatConversationPort {
       status: streamState.chat.state.status === "starting" || streamState.chat.state.status === "reconnecting"
         ? streamState.chat.state.status : native.executing ? "streaming" : "idle",
       startupStage: undefined, error: undefined, interruptRequested: false,
+      harness: { ...streamState.chat.state.harness, nativeHistoryRecovery: undefined },
+    }, {
+      statusChangedAt: native.backend.harness.capabilities.remoteContinuity === 1 ? null : undefined,
     });
   }
 
@@ -1260,16 +1286,18 @@ export class ChatConversationService implements ChatConversationPort {
     const updated = await this.state.mutateMetadata(chatId, (current) => {
       if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
       requireMatchingHarnessBindings(native.binding, current.state.session.binding);
+      const unfinishedMessages = native.unfinishedMessageIds.size > 0
+        ? {
+          nativeId: native.binding.nativeId,
+          messageIds: [...native.unfinishedMessageIds],
+          ...(native.retainedMessages.size > 0 ? { completedTurnMessageIds: [...native.retainedMessages.keys()] } : {}),
+        } : undefined;
+      if (JSON.stringify(unfinishedMessages) === JSON.stringify(current.state.harness?.unfinishedMessages)) return undefined;
       return {
         ...current.state,
         harness: {
           ...current.state.harness,
-          unfinishedMessages: native.unfinishedMessageIds.size > 0
-            ? {
-              nativeId: native.binding.nativeId,
-              messageIds: [...native.unfinishedMessageIds],
-              ...(native.retainedMessages.size > 0 ? { completedTurnMessageIds: [...native.retainedMessages.keys()] } : {}),
-            } : undefined,
+          unfinishedMessages,
         },
       };
     });
@@ -1810,7 +1838,10 @@ export class ChatConversationService implements ChatConversationPort {
               activeTurnAttachmentBytes: 0,
             },
             lastActivityAt: createTimestamp(),
-          }, { completedTurn: true });
+          }, {
+            completedTurn: true,
+            statusChangedAt: backend.harness.capabilities.remoteContinuity === 1 ? event.timestamp ?? now : undefined,
+          });
         }
         streamState.interpreter.acknowledgeCheckpoint();
         if (!this.activeStreams.get(chatId)?.native) {
@@ -2554,6 +2585,7 @@ export class ChatConversationService implements ChatConversationPort {
       expectedStatus?: ChatStatus;
       streaming?: boolean;
       completedTurn?: boolean;
+      statusChangedAt?: string | null;
     },
   ): Promise<Chat> {
     const native = this.activeStreams.get(chat.config.id)?.native;
