@@ -9,6 +9,12 @@ import { getClankyRouteUnavailableReason } from "../../client-sdk/capabilities";
 
 export const HOME_ROUTE: WebAppRoute = { view: "home" };
 
+declare global {
+  interface Window {
+    clankyOpenSettings?: () => void;
+  }
+}
+
 interface UseShellNavigationOptions {
   setRoute: Dispatch<SetStateAction<WebAppRoute>>;
 }
@@ -24,6 +30,14 @@ export function useShellNavigation({
   const focusSidebarSearch = useCallback(() => {
     webAppRootRef.current?.sidebar.focusSearch();
   }, []);
+
+  useEffect(() => {
+    const openSettings = () => navigateWithinShell({ view: "settings" });
+    window.clankyOpenSettings = openSettings;
+    return () => {
+      if (window.clankyOpenSettings === openSettings) delete window.clankyOpenSettings;
+    };
+  }, [navigateWithinShell]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -44,16 +44,37 @@ struct ClankyApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             ControllerCommands(controller: model.controller)
+            ClankySettingsCommands()
             AppUpdateCommands(updater: updater)
         }
         #endif
         #if os(macOS)
-        Settings {
+        Window("Update Settings", id: "update-settings") {
             AppUpdateSettings(updater: updater)
         }
+        .windowResizability(.contentSize)
         #endif
     }
 }
+
+#if os(macOS)
+private struct ClankySettingsCommands: Commands {
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings...") {
+                // Resolve the responder at invocation; scene focus can lag behind WebKit window changes.
+                if !NSApp.sendAction(#selector(BrowserWebView.openClankySettings(_:)), to: nil, from: nil) {
+                    let alert = NSAlert()
+                    alert.messageText = "Clanky Settings is unavailable"
+                    alert.informativeText = "Select a Clanky window and try again."
+                    alert.runModal()
+                }
+            }
+                .keyboardShortcut(",", modifiers: .command)
+        }
+    }
+}
+#endif
 
 struct BrowserWindow: View {
     @EnvironmentObject private var app: AppModel
