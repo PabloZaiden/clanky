@@ -52,7 +52,7 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   const themeGroupId = useId();
   const selected = selectedAppearanceTheme(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedAppearance);
-  const disabled = pending || saving || importing.pending;
+  const disabled = pending || saving || importing.pending || Boolean(appearance.error);
 
   useEffect(() => { setDraft(savedAppearance); }, [savedAppearance]);
   useEffect(() => () => preview(undefined), [preview]);

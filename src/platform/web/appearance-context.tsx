@@ -49,6 +49,7 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
   useEffect(() => { void retry(); }, [retry]);
 
   const save = useCallback(async (value: AppearancePreference) => {
+    if (error) throw error;
     const next = AppearancePreferenceSchema.parse(value);
     const token = start();
     if (!token) throw new Error("Appearance settings are busy. Try again when the current operation finishes.");
@@ -67,7 +68,7 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
     } finally {
       finish(token);
     }
-  }, [accountBacked, key, start, finish, isCurrent]);
+  }, [accountBacked, key, error, start, finish, isCurrent]);
   const state = useMemo<AppearanceState>(() => ({
     saved, pending, error, preview: setPreview, save, retry,
   }), [saved, pending, error, save, retry]);
