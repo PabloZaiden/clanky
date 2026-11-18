@@ -62,4 +62,4 @@ the current theme unchanged and show an error. Check readable text, borders,
 focus and selected states in both color modes before sharing.
 
 The supported properties and their validation are defined by the
-[framework visual-theme contract](https://github.com/PabloZaiden/webapp/blob/9b5823eef10f8344609513b11dffd233ff3dc0d8/docs/settings.md#visual-themes).
+[framework visual-theme contract](https://github.com/PabloZaiden/webapp/blob/341d292f4f6f035cd0e51142c2cd34b8e1a77c0e/docs/settings.md#visual-themes).
