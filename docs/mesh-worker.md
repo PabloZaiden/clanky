@@ -332,23 +332,75 @@ batching target without invalidating the read.
   A lost, malformed, or mismatched receipt remains unknown.
 - Native leases use the existing signed controller grant, protected managed
   environment, execution-host ownership, renewal, and relay protections.
-  Expiry, revocation, disconnect, and shutdown close the lease-owned runtime
-  and its subscriptions/processes. Deleting one conversation does not release
-  unrelated conversations on the same lease.
+  Without negotiated remote continuity, lease expiry and transport loss close
+  the lease-owned runtime. Authorization revocation and worker shutdown still
+  close retained runtimes. Deleting one conversation does not release unrelated
+  conversations on the same lease.
 - Cold resume must retain the original adapter, native ID, user, workspace,
   context, directory, and execution-host binding. Worker-side ownership is
   durable across leases; a changed or foreign binding is rejected rather than
   silently replaced. Resolving a selected-host working directory does not
   rewrite the original directory in its ownership binding.
-- Event observation has no retained global history. A sequence
-  gap invalidates observation and requires authoritative refresh
-  and owned resume, not blind prompt or steering replay.
+- Observation frames are sequenced per connection, not a global event history.
+  Native source or framing gaps still require authoritative refresh and owned
+  resume, never blind prompt or steering replay.
+
+### Controller reconnection
+
+Updated controllers and remote workers explicitly negotiate execution
+continuity within Mesh v7. It uses existing harness routes and needs no relay
+protocol update. Older peers keep their existing disconnect behavior; execution
+local to the controller is unchanged.
+
+The worker retains active native execution, owned background work, pending
+questions, permissions and private-input callbacks while the controller is
+unreachable. There is no disconnect grace deadline. The controller automatically
+reattaches using the original authenticated conversation binding, restores
+actual activity and pending interactions, and observes output produced while
+offline without resending the prompt.
+
+Unacknowledged events stay ordered and in memory during healthy operation.
+Disconnection spills outstanding and subsequent events to a private temporary
+disk queue. That queue remains during catch-up; acknowledged prefixes are
+reclaimed and the spool is removed when caught up. Both transcript consumers
+acknowledge only after their projections are saved, and text offsets reconcile
+replayed partial output without appending it twice. Replay stays bounded by
+confirmed consumer progress, rather than loading an outage's entire disk queue
+into controller memory. Recovered chats wait for
+this durable catch-up before accepting another prompt or finalizing an
+automation run. Provision enough worker
+temporary storage for output produced during an extended outage. Storage
+failures are explicit observation failures, not dropped events.
+
+Controller-dependent calls can wait for reconnection, but the worker does not
+become an authorization authority. Operations already marked as dispatched
+return an uncertain-outcome failure rather than executing again. Native
+interaction receipts reconcile answers whose response was lost. Explicit stops
+and authorization revocation are not reconnection requests. An unconfirmed
+remote stop remains pending and is retried when the worker is reachable, even
+after a controller restart. Moving a retained remote chat to Trash requires
+that stop to be confirmed first; if its worker is unavailable, retry deletion
+after the pending stop finishes.
+
+Already-admitted remote non-deterministic automation runs also reconnect to
+their original run and conversation. Recovery does not repeat the prompt,
+prepare another worktree, or start a replacement run. Code/deterministic
+automations retain their existing restart/interruption policy; their execution
+is not reconstructed or replayed.
+
+This is not live recovery across a worker restart. Worker shutdown still stops
+its runtimes, and a restarted worker uses the existing cold conversation
+recovery. Lost in-flight execution and native callbacks are not reconstructed;
+stale callback questions and permissions are expired during cold recovery.
+An automation whose live execution was lost fails explicitly instead of
+treating an idle cold-resumed conversation as proof of successful completion.
+Its prompt is not repeated; ordinary chat history recovery remains available.
 
 Native event-response backpressure is not an observation gap. A full response
 queue pauses consumption; the 15-second heartbeat skips a keepalive when no
 response capacity is available instead of closing the native lease. Provider
 events retain their order; native event hubs and Mesh conversation/control
-subscriptions do not impose a default queued-event cap. Native events and
+subscriptions do not discard output at an arbitrary queue-size threshold. Native events and
 complete NDJSON observation records are not rejected for exceeding the former
 2/4 MiB ceilings.
 Validated provider images are forwarded in full instead of omitted solely
@@ -377,8 +429,8 @@ disconnect as proof of the initiating failure.
 
 Upgrade both worker and controller for the complete diagnostic propagation,
 and the relay for its new failure metrics. This uses existing optional error
-details and requires no wire-generation change. It does not reconnect chats,
-replay inputs or automatically recover observation.
+details and requires no wire-generation change. Diagnostics alone do not enable
+the negotiated continuity described above, and never authorize input replay.
 
 Preserve the worker data directory during upgrades and service restarts. Do
 not copy a conversation binding to another user, workspace, controller, or
@@ -463,7 +515,12 @@ and worker. Intentional connection closures report `harness_transport_closed`
 with their lifecycle reason. New execution cannot reuse a revoked grant.
 General-worker revocation marks the controller grant revoked immediately,
 attempts the signed worker notice, and then invalidates its transport resources
-even when notice delivery fails.
+even when notice delivery fails. Undelivered notices are persisted and retried
+when connectivity returns, including after controller restart or registration
+removal. Pending teardown retains outbound transport reachability only; it
+does not restore execution, control-tool, or SSH-agent authorization. Once the
+worker confirms cleanup, that transport identity is removed. Re-enrollment
+cancels a queued notice for the previous registration.
 Relay maintenance affects the routes using that relay, not direct workers or
 workers using another relay. Switching the primary relay does not migrate
 existing routes.

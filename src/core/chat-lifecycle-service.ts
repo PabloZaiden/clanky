@@ -13,6 +13,7 @@ import {
   isStandaloneChat,
   getChatWorkspaceId,
   isWorkspaceChat,
+  hasRemoteChatContinuity,
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -478,6 +479,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       return false;
     }
 
+    if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
     if (options.deferCleanup) {
       const result = await this.deleteChatDeferred(chat);
       return result.deleted;

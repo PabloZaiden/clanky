@@ -118,6 +118,7 @@ const HarnessHistoryRecoverySchema = z.object({
 });
 
 export const HarnessConversationStateSchema = z.object({
+  remoteExecutionLost: z.literal(true).optional(),
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
   unfinishedMessages: z.object({
     nativeId: z.string().min(1),
@@ -136,6 +137,7 @@ export const HarnessConversationStateSchema = z.object({
     history: z.literal("completed").optional(),
     subagentHistory: z.literal("completed").optional(),
     usage: z.literal("tokens").optional(),
+    remoteContinuity: z.literal(1).optional(),
   }).optional(),
   gitSafety: z.union([
     z.object({ status: z.literal("safe"), observedAt: z.string() }),

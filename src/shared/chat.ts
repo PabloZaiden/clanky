@@ -26,6 +26,11 @@ export type { ModelConfig };
 
 export type ChatScope = "workspace" | "automation";
 
+export function hasRemoteChatContinuity(chat: { state: Pick<ChatState, "harness" | "session"> }): boolean {
+  return chat.state.harness?.capabilities?.remoteContinuity === 1
+    && chat.state.session?.binding?.executionHost?.host.kind === "mesh";
+}
+
 export interface ChatActivityUpdate {
   timestamp: string;
   source: "stream" | "user";

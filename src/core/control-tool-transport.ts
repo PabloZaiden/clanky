@@ -13,6 +13,7 @@ export type ControlToolRequestHandler = (
 ) => Promise<unknown>;
 export interface ControlToolConnection {
   request: ControlToolRequestHandler;
+  deferWhileDisconnected?: boolean;
 }
 export interface ExecutionControlConnection extends ControlToolConnection {
   readonly access: ControlAccess;
@@ -42,7 +43,9 @@ export async function requestControlTool(
   if (Buffer.byteLength(serialized) > CONTROL_REQUEST_MAX_BYTES) {
     throw new DomainError("control_request_invalid", "The control request exceeds the supported size limit.");
   }
-  const bounded = AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]);
+  const bounded = connection.deferWhileDisconnected
+    ? signal ?? new AbortController().signal
+    : AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]);
   bounded.throwIfAborted();
   const parsed = ControlToolRequestSchema.safeParse(JSON.parse(serialized));
   if (!parsed.success) throw new DomainError("control_request_invalid", "The control request is invalid.");

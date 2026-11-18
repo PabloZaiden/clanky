@@ -193,6 +193,7 @@ interface MeshExecutionSession {
   environment?: Record<string, string>;
   controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION;
   legacyControlCredential?: string;
+  continuity?: MeshExecutionSessionRequest["continuity"];
   executor: CommandExecutor;
   requestIds: Set<string>;
   activeControllers: Set<AbortController>;
@@ -696,6 +697,7 @@ export class MeshExecutionGateway {
       environment,
       controlTools: request.controlTools,
       legacyControlCredential: request.controlCredential,
+      continuity: request.continuity,
       executor: new CommandExecutorImpl({
         directory: executionRoot,
         timeoutMs: MESH_EXECUTION_DEFAULT_TIMEOUT_MS,
@@ -772,6 +774,7 @@ export class MeshExecutionGateway {
     callerNodeId: string; workspaceId: string; ownerId: string;
     executionNodeId: string;
     adapter: HarnessAdapter; directory: string; bindingDirectory: string; environment?: Record<string, string>; controlTools?: typeof MESH_EXECUTION_CONTROL_VERSION; legacyControlCredential?: string;
+    continuity?: MeshExecutionSessionRequest["continuity"];
   }> {
     const { session } = await this.requireValidatedSession(sessionId, sessionToken, {
       expectedChannel: MESH_HARNESS_CHANNEL,
@@ -788,6 +791,7 @@ export class MeshExecutionGateway {
       callerNodeId: session.callerNodeId, workspaceId: session.workspaceId, ownerId: session.ownerId,
       executionNodeId: (await ensureLocalMeshNodeIdentity()).nodeId,
       adapter: session.adapter, directory: session.directory, bindingDirectory: session.bindingDirectory, environment,
+      continuity: session.continuity,
       controlTools: session.controlTools,
       legacyControlCredential: session.legacyControlCredential,
     };
@@ -816,6 +820,11 @@ export class MeshExecutionGateway {
   }
 
   private readonly closeListeners = new Set<(sessionId: string) => void>();
+  private readonly callerCloseListeners = new Set<(callerNodeId: string) => Promise<void>>();
+
+  onCallerClosed(listener: (callerNodeId: string) => Promise<void>): void {
+    this.callerCloseListeners.add(listener);
+  }
 
   onSessionClosed(listener: (sessionId: string) => void): () => void {
     this.closeListeners.add(listener);
@@ -823,11 +832,14 @@ export class MeshExecutionGateway {
   }
 
   async closeSessionsForCaller(callerNodeId: string): Promise<void> {
+    const results = await Promise.allSettled([...this.callerCloseListeners].map((listener) => listener(callerNodeId)));
     for (const session of this.sessions.values()) {
       if (session.callerNodeId === callerNodeId) this.closeSession(session.sessionId);
     }
     this.abortAsyncCommandsForCaller(callerNodeId);
-    await this.awaitCommandCleanup(callerNodeId);
+    try { await this.awaitCommandCleanup(callerNodeId); } catch (reason) { results.push({ status: "rejected", reason }); }
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Revoked Mesh execution could not be completely cleaned up.");
   }
 
   async startAsyncCommand(

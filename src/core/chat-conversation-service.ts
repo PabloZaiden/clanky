@@ -16,7 +16,6 @@ import type {
   MessageData,
   PersistedMessage,
   PersistedToolCall,
-  SessionInfo,
   ConversationLogEntry,
   TranscriptChangeSet,
 } from "@/shared";
@@ -29,6 +28,7 @@ import {
   isExecutionHostChat,
   isStandaloneChat,
   isWorkspaceChat,
+  hasRemoteChatContinuity,
 } from "@/shared/chat";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
@@ -43,6 +43,7 @@ import { StreamVersion } from "./stream-version";
 import type { LiveTranscriptState } from "./transcript-stream-projection";
 import {
   AgentEventTranscriptInterpreter,
+  reconcileHarnessDelta,
   type AgentEventTranscriptBlock,
 } from "./agent-event-transcript-interpreter";
 import { createLogger } from "@pablozaiden/webapp/server";
@@ -83,6 +84,7 @@ import type { CurrentUser } from "@/platform/contracts";
 import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner, runWithWorkspaceExecutionContext, type WorkspaceExecutionContext } from "../context/user-context";
 import { ChatDirectoryService } from "./chat-directory-service";
 import { INITIAL_PLANNING_GUIDANCE } from "@/shared/prompt-templates";
+import { backendManager } from "./backend";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -497,7 +499,7 @@ export class ChatConversationService implements ChatConversationPort {
       }
       if (startupOperation.interrupted) {
         if (this.startupOperations.get(chat.config.id) === startupOperation && latest) {
-          if (this.shuttingDown) return await this.persistDisconnectedChat(chat.config.id, true);
+          if (this.shuttingDown) return await this.persistDisconnectedChat(chat.config.id, !hasRemoteChatContinuity(latest));
           return await this.completeInterruptedChat(latest);
         }
         return latest ?? chat;
@@ -521,14 +523,17 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
-  async waitForChatIdle(chatId: string, timeoutMs = DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS): Promise<Chat> {
+  async waitForChatIdle(chatId: string, timeoutMs = DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS, signal?: AbortSignal): Promise<Chat> {
     const startedAt = Date.now();
     while (true) {
+      signal?.throwIfAborted();
       const summary = await this.state.getChatSummary(chatId);
       if (!summary) {
         throw new Error(`Chat not found: ${chatId}`);
       }
-      if (!this.hasActiveStream(chatId) && !isChatBusyStatus(summary.state.status)) {
+      const reconnecting = hasRemoteChatContinuity(summary) && summary.state.connectionStatus !== "connected"
+        && !["done", "stopped", "failed"].includes(summary.state.status);
+      if (!this.hasActiveStream(chatId) && !isChatBusyStatus(summary.state.status) && !reconnecting) {
         return await this.state.getChat(chatId) ?? summary;
       }
       if (Date.now() - startedAt > timeoutMs) {
@@ -538,7 +543,8 @@ export class ChatConversationService implements ChatConversationPort {
     }
   }
 
-  async interruptChat(chatId: string, reason?: string): Promise<Chat | null> {
+  async interruptChat(chatId: string, reason?: string, signal?: AbortSignal): Promise<Chat | null> {
+    signal?.throwIfAborted();
     let chat = await this.state.getChat(chatId);
     if (!chat) {
       return null;
@@ -614,10 +620,11 @@ export class ChatConversationService implements ChatConversationPort {
       }
     }
 
-    if (startupOperation || activeStream || backend) {
+    if (startupOperation || activeStream || backend || hasRemoteChatContinuity(chat)) {
       try {
-        await this.session.disconnectChat(chatId);
+        await this.session.disconnectChat(chatId, { signal });
       } catch (error) {
+        if (hasRemoteChatContinuity(chat)) return await this.leaveRemoteInterruptPending(chatId, error);
         log.warn("Failed to disconnect chat backend during interrupt", {
           chatId,
           error: String(error),
@@ -660,6 +667,24 @@ export class ChatConversationService implements ChatConversationPort {
       : latestChat;
     this.scheduleQueuedMessageDrain(chatId);
     return completed;
+  }
+
+  private async leaveRemoteInterruptPending(chatId: string, error: unknown): Promise<never> {
+    if (isDomainError(error) && [
+      "execution_host_unavailable", "mesh_execution_registration_inactive", "mesh_peer_not_trusted", "harness_session_not_owned",
+    ].includes(error.code)) {
+      const current = await this.state.getChat(chatId);
+      if (current) await this.state.markChatError({
+        ...current, state: { ...current.state, interruptRequested: false, connectionStatus: "disconnected" },
+      }, `The remote stop could not be confirmed: ${error.message}`, error.code);
+      throw error;
+    }
+    log.warn("Remote interruption is waiting for worker connectivity", { chatId, error: String(error) });
+    const pending = await this.state.mutateMetadata(chatId, (current) => ({
+      ...current.state, status: "interrupting", interruptRequested: true, connectionStatus: "disconnected",
+    }));
+    this.state.emitChatUpdated(pending);
+    throw error;
   }
 
   closeActiveStream(chatId: string): void {
@@ -726,14 +751,15 @@ export class ChatConversationService implements ChatConversationPort {
 
   hasActiveStream(chatId: string): boolean {
     const stream = this.activeStreams.get(chatId);
-    return stream !== undefined && (!stream.native || stream.native.executing);
+    return stream !== undefined && (!stream.native || stream.native.executing
+      || stream.native.backend.isObservationRecovering?.(stream.native.binding.nativeId) === true);
   }
 
   async observeNativeSession({ chat, backend, binding, recover }: {
     chat: Chat;
     backend: Backend;
     binding: HarnessConversationBinding;
-    recover: boolean;
+    recover: boolean | "live";
   }): Promise<void> {
     this.assertRunning();
     const chatId = chat.config.id;
@@ -767,7 +793,14 @@ export class ChatConversationService implements ChatConversationPort {
       await this.runStreamExecution(entry, () => observer.start({
         backend, sessionId: binding.nativeId,
         recover: () => this.runStreamExecution(entry, async () => {
-          if (recover) await this.recoverNativeSession(chatId, entry);
+          if (recover === "live") {
+            const activity = await backend.harness.getActivity(binding.nativeId);
+            if (activity.observation !== "available") {
+              throw new HarnessError(activity.reason === "disconnected" ? "harness_transport_closed" : "harness_event_gap",
+                "The retained native execution state is unavailable.");
+            }
+            entry.native!.executing = activity.principalProcessing;
+          } else if (recover) await this.recoverNativeSession(chatId, entry);
         }),
         onEvent: (event) => this.runStreamExecution(entry, async () => {
           if (this.activeStreams.get(chatId) !== entry) return;
@@ -782,12 +815,22 @@ export class ChatConversationService implements ChatConversationPort {
             return;
           }
           requireMatchingHarnessBindings(latest.binding, binding);
-          if (event.scope.kind !== "principal"
-            && event.type !== "question.asked" && event.type !== "question.resolved"
-            && event.type !== "permission.asked") return;
-          await this.consumeNativeEvent(chatId, entry, event);
+          if (event.scope.kind === "principal"
+            || event.type === "question.asked" || event.type === "question.resolved"
+            || event.type === "permission.asked") {
+            await this.consumeNativeEvent(chatId, entry, event);
+            if (event.delivery) await this.checkpointNativeMessages(chatId, entry);
+          }
+          await backend.acknowledgeEvent?.(binding.nativeId, event, "conversation");
         }),
-        onFailure: (error) => this.runStreamExecution(entry, () => this.handleNativeObservationFailure(chatId, entry, error)),
+        onFailure: (error) => this.runStreamExecution(entry, async () => {
+          try { await this.handleNativeObservationFailure(chatId, entry, error); }
+          finally {
+            if (backend.harness.capabilities.remoteContinuity === 1) {
+              backend.abortAllSubscriptions(error instanceof Error ? error : new HarnessError("harness_event_gap", "Native recovery failed.", { cause: error }));
+            }
+          }
+        }),
         onClosed: () => this.runStreamExecution(entry, () => {
           if (this.activeStreams.get(chatId) === entry) this.closeActiveStream(chatId);
         }),
@@ -816,6 +859,14 @@ export class ChatConversationService implements ChatConversationPort {
     if (!latest || this.activeStreams.get(chatId) !== entry
       || latest.state.session?.binding?.nativeId !== entry.native!.binding.nativeId) return;
     const transportLost = isDomainError(failure) && failure.code === "harness_transport_closed";
+    if (transportLost && entry.native!.backend.harness.capabilities.remoteContinuity === 1) {
+      const updated = await this.state.mutateState(chatId, (current) => ({
+        ...current.state, status: "reconnecting", connectionStatus: "disconnected",
+        harness: { ...current.state.harness, activity: { observation: "unavailable", reason: "disconnected" } },
+      }));
+      this.state.emitChatUpdated(updated);
+      return;
+    }
     const interrupted = entry.native!.executing || isChatBusyStatus(latest.state.status)
       || entry.native!.pendingMessages.size > 0;
     if (!transportLost || interrupted) await this.cancelUnobservedNativeExecution(chatId, entry);
@@ -891,7 +942,7 @@ export class ChatConversationService implements ChatConversationPort {
     ));
     const disconnected = await Promise.allSettled(streams.map(([chatId, stream]) =>
       this.runStreamExecution(stream, () => withTimeout(
-        this.session.disconnectChat(chatId), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Chat session shutdown timed out",
+        this.session.disconnectChat(chatId, { preserveRemote: true }), CHAT_INTERRUPT_ABORT_TIMEOUT_MS, "Chat session shutdown timed out",
       )),
     ));
     errors.push(...results.flatMap((result) => result.status === "rejected" ? [result.reason] : []));
@@ -925,7 +976,7 @@ export class ChatConversationService implements ChatConversationPort {
     const native = entry.native!;
     const streamState = entry.streamState!;
     const messageEvent = event.type === "message.start" || event.type === "message.delta" || event.type === "message.complete";
-    if (messageEvent) {
+    if (event.type === "message.start" || event.type === "message.delta" || event.type === "message.complete") {
       if (!event.messageId) throw new HarnessError("harness_event_gap", "A native message has no observed identity.");
       if (native.completedMessages.has(event.messageId)) return;
       if (!recovered && native.retainedMessages.has(event.messageId)) {
@@ -937,6 +988,29 @@ export class ChatConversationService implements ChatConversationPort {
         pendingMessages: native.pendingMessages.size,
       });
       await this.selectNativeMessage(chatId, entry, { ...event, messageId: event.messageId }, recovered);
+      if (event.type === "message.delta" && event.delivery) {
+        const content = reconcileHarnessDelta(event.content, streamState.interpreter.state.responseContent, event.delivery.offset);
+        if (!content) return;
+        event = { ...event, content };
+      }
+    }
+    if (event.type === "reasoning.delta" && event.delivery && event.reasoningId) {
+      const state = streamState.interpreter.state;
+      const id = `mesh-reasoning:${event.delivery.executionId}:${event.reasoningId}`;
+      if (state.activeBlockKind !== "reasoning" || state.currentReasoningLogId !== id) {
+        await this.flushChatStreamBlocksAfterMetadataReload(chatId, streamState, streamState.interpreter.flushActiveBlocks());
+        const previous = streamState.transcriptMemory.logs.get(id)
+          ?? (await this.state.getChat(chatId))?.state.logs.find((entry) => entry.id === id);
+        const content = previous?.details?.["responseContent"];
+        Object.assign(state, {
+          activeBlockKind: "reasoning", currentReasoningLogId: id,
+          activeReasoningContent: typeof content === "string" ? content : "",
+          currentReasoningLogContent: typeof content === "string" ? content : "",
+        });
+      }
+      const content = reconcileHarnessDelta(event.content, state.activeReasoningContent, event.delivery.offset);
+      if (!content) return;
+      event = { ...event, content };
     }
     if ((event.type === "tool.start" || event.type === "tool.complete")
       && event.toolCallId && native.completedTools.has(event.toolCallId)) return;
@@ -1054,6 +1128,11 @@ export class ChatConversationService implements ChatConversationPort {
       native.retainedMessages.set(event.messageId, interpreter);
     }
     if (event.type === "message.start") return;
+    if (event.type === "message.delta" && event.delivery) {
+      const content = reconcileHarnessDelta(event.content, interpreter.state.responseContent, event.delivery.offset);
+      if (!content) return;
+      event = { ...event, content };
+    }
     const streamState: ChatStreamConsumptionState = { ...entry.streamState!, interpreter, passiveMessage: true };
     await this.handleChatStreamEvent(chatId, native.backend, entry.generation, streamState, event);
     if (event.type === "message.complete") {
@@ -1089,11 +1168,12 @@ export class ChatConversationService implements ChatConversationPort {
     streamState.completedResponse = undefined;
     native.currentMessageId = event.messageId;
     if (!started) return;
-    await this.handleChatStreamEvent(chatId, native.backend, entry.generation, streamState, {
-      ...event, type: "message.start", messageId: event.messageId,
-    });
-    if (native.unfinishedMessageIds.has(event.messageId)) {
-      const segments = await this.getNativeMessageSegments(chatId, event.messageId);
+    const start: AgentEvent = { ...event, type: "message.start", messageId: event.messageId };
+    const segments = event.delivery || native.unfinishedMessageIds.has(event.messageId)
+      ? await this.getNativeMessageSegments(chatId, event.messageId) : [];
+    if (event.delivery && segments.length > 0) interpreter.handle(start);
+    else await this.handleChatStreamEvent(chatId, native.backend, entry.generation, streamState, start);
+    if (segments.length > 0) {
       interpreter.state.responseContent = segments.map((message) => message.content).join("");
       interpreter.state.totalResponseLength = interpreter.state.responseContent.length;
       interpreter.state.responseSegmentCount = segments.length;
@@ -1491,6 +1571,8 @@ export class ChatConversationService implements ChatConversationPort {
     if (streamState.deletionCheckpointed) return { stop: true };
 
     const now = createTimestamp();
+    const eventLogId = event.delivery
+      ? `mesh-event:${event.delivery.executionId}:${event.delivery.sequence}:${event.type}` : undefined;
     const isInterrupted = !streamState.passiveMessage
       && (streamState.chat.state.status === "interrupting" || streamState.chat.state.interruptRequested);
 
@@ -1512,7 +1594,7 @@ export class ChatConversationService implements ChatConversationPort {
         "agent",
         "AI started generating response",
         { logKind: "system" },
-        undefined,
+        eventLogId,
         undefined,
         { memory: streamState.transcriptMemory },
       );
@@ -1681,7 +1763,7 @@ export class ChatConversationService implements ChatConversationPort {
               logKind: "system",
               responseLength: completedMessage.responseLength,
             },
-            undefined,
+            eventLogId,
             undefined,
             { memory: streamState.transcriptMemory },
           );
@@ -1745,7 +1827,7 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.chat = await this.emitChatLog(
           streamState.chat, "warn", event.message,
           { code: event.code, ...event.details },
-          undefined, now, { memory: streamState.transcriptMemory },
+          eventLogId, now, { memory: streamState.transcriptMemory },
         );
         streamState.chat = await this.updateState(streamState.chat, {
           ...streamState.chat.state,
@@ -2474,6 +2556,11 @@ export class ChatConversationService implements ChatConversationPort {
       completedTurn?: boolean;
     },
   ): Promise<Chat> {
+    const native = this.activeStreams.get(chat.config.id)?.native;
+    if (chat.state.connectionStatus === "connecting" && native?.backend.isObservationRecovering?.(native.binding.nativeId)
+      && !["done", "stopped", "failed", "interrupting"].includes(state.status)) {
+      state = { ...state, status: "reconnecting" };
+    }
     return this.state.updateState(chat, state, options);
   }
 
@@ -2507,8 +2594,6 @@ export class ChatConversationService implements ChatConversationPort {
     message: string,
   ): Promise<void> {
     const timer = createChatLatencyTimer();
-    let tempSession: SessionInfo | null = null;
-    let cleanupTempSession: (() => Promise<void>) | undefined;
     const directory = chat.state.worktree?.worktreePath
       ?? backend.getDirectory()
       ?? chat.config.directory;
@@ -2530,20 +2615,31 @@ export class ChatConversationService implements ChatConversationPort {
         return;
       }
 
-      tempSession = await createTransientHarnessSession(backend, {
-        title: "Chat Name Generation",
-        directory,
-      });
-      const nameSession = tempSession;
-      cleanupTempSession = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(backend, nameSession.id));
-      const name = await timer.measure("name_generation", () => generateChatName({
-        message,
-        backend,
-        sessionId: nameSession.id,
-        model: chat.config.model,
-        timeoutMs: DEFAULT_CHAT_NAME_TIMEOUT_MS,
-        cancelSession: cleanupTempSession,
-      }));
+      const generate = async (nameBackend: Backend): Promise<string> => {
+        const nameSession = await createTransientHarnessSession(nameBackend, {
+          title: "Chat Name Generation", directory,
+        });
+        const cleanup = createIdempotentAsyncOperation(() => cleanupTransientHarnessSession(nameBackend, nameSession.id));
+        try {
+          return await timer.measure("name_generation", () => generateChatName({
+            message, backend: nameBackend, sessionId: nameSession.id,
+            model: chat.config.model, timeoutMs: DEFAULT_CHAT_NAME_TIMEOUT_MS,
+            cancelSession: cleanup,
+          }));
+        } finally {
+          try { await cleanup(); }
+          catch (cleanupError) {
+            log.warn("Failed to clean up temporary chat name generation session", {
+              chatId: chat.config.id, sessionId: nameSession.id, error: String(cleanupError),
+            });
+          }
+        }
+      };
+      const name = backend.harness.capabilities.remoteContinuity === 1
+        ? await backendManager.withWorkspaceBackend({
+          workspaceId, directory, expectedBinding: chat.config.executionHostBinding,
+        }, generate)
+        : await generate(backend);
 
       const latest = await this.state.getChatSummary(chat.config.id);
       if (!latest) {
@@ -2581,17 +2677,6 @@ export class ChatConversationService implements ChatConversationPort {
         error: String(error),
       });
     } finally {
-      if (tempSession) {
-        try {
-          await cleanupTempSession?.();
-        } catch (cleanupError) {
-          log.warn("Failed to clean up temporary chat name generation session", {
-            chatId: chat.config.id,
-            sessionId: tempSession.id,
-            error: String(cleanupError),
-          });
-        }
-      }
       const timing = timer.complete();
       log.info("Chat name generation timing", {
         chatId: chat.config.id,

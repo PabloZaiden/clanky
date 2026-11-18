@@ -393,6 +393,18 @@ export async function stopMeshNode(node: ManagedMeshNode): Promise<void> {
   await removeMeshDataDirectory(node.dataDir);
 }
 
+export async function restartMeshNode(node: ManagedMeshNode): Promise<void> {
+  const previous = await stopNodeServer(node);
+  const started = spawnNodeServer(node);
+  node.child = started.child;
+  node.output = {
+    stdout: started.output.stdout,
+    stderr: started.output.stderr.then((output) => `${previous}\n${output}`),
+    snapshot: () => `${previous}\n${started.output.snapshot()}`,
+  };
+  await waitForNodeHealth(node, `restarted ${node.role} to become healthy`, MESH_STARTUP_TIMEOUT_MS);
+}
+
 export async function meshJsonRequest<T>(
   node: MeshHttpNode,
   path: string,

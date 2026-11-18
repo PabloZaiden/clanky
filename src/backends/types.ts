@@ -46,6 +46,7 @@ export interface BackendConnectionConfig {
   control?: ControlToolConnection;
   /** Enable Clanky control tools for a normal chat in the designated workspace. */
   controlTools?: boolean;
+  continuity?: { contextId: string; binding?: HarnessConversationBinding };
   /** Working directory for the backend */
   directory: string;
   /** Remote ownership metadata; local adapters reject remote execution. */
@@ -105,6 +106,12 @@ export interface ConfigOption {
  */
 export interface AgentSession {
   binding?: HarnessConversationBinding;
+  continuity?: "live" | "cold";
+  pendingInteractions?: {
+    questions: string[];
+    permissions: string[];
+    resolvedQuestions: Record<string, "answered" | "cancelled" | "expired">;
+  };
   /** Session ID */
   id: string;
   /** Session title */
@@ -177,6 +184,10 @@ export interface Backend {
 
   /** Disconnect from the backend server */
   disconnect(): Promise<void>;
+  startObservation?(sessionId: string, signal?: AbortSignal): Promise<void>;
+  isObservationRecovering?(sessionId: string): boolean;
+  acknowledgeEvent?(sessionId: string, event: HarnessEvent, consumer: "conversation" | "activity"): Promise<void>;
+  releaseRemoteExecution?(signal?: AbortSignal): Promise<void>;
 
   /** Check if connected to the backend */
   isConnected(): boolean;

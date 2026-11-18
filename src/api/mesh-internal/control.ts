@@ -48,6 +48,7 @@ export const meshControlRoutes = defineRoutes({
           meshRequestProtocolVersions(req),
           controlVersion === String(MESH_EXECUTION_CONTROL_VERSION) ? MESH_EXECUTION_CONTROL_VERSION
             : controlVersion === "1" ? 1 : undefined,
+          req.headers.get("x-clanky-mesh-continuity") === "1" ? 1 : undefined,
         );
         return Response.json(descriptor, { headers: {
           [MESH_PROTOCOL_VERSION_HEADER]: String(descriptor.protocolVersion),

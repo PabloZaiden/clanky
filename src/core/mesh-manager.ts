@@ -51,6 +51,9 @@ import {
   listWorkerRegistrations,
   revokeControllerGrant,
   revokeWorkerRegistration,
+  listPendingWorkerRevocations,
+  acknowledgeWorkerRevocation,
+  type PendingWorkerRevocation,
   deleteRevokedWorkerRegistration,
   claimMeshWorkerKillNonce,
   saveControllerGrant,
@@ -213,6 +216,67 @@ function workerSnapshotImpact(
 }
 
 export class MeshManager {
+  private readonly revocationDeliveries = new Map<string, Promise<void>>();
+
+  async retryWorkerRevocations(userId: string, signal?: AbortSignal): Promise<void> {
+    const pending = await listPendingWorkerRevocations(userId);
+    await Promise.all(pending.map(async (notice) => {
+      try {
+        await this.deliverWorkerRevocation(notice, signal);
+      } catch (error) {
+        if (!signal?.aborted) log.warn("Pending worker revocation delivery failed", {
+          workerNodeId: notice.registration.workerNodeId, error: String(error),
+        });
+      }
+    }));
+  }
+
+  private async deliverWorkerRevocation(notice: PendingWorkerRevocation, signal?: AbortSignal): Promise<void> {
+    const target = notice.registration;
+    const key = JSON.stringify([target.localUserId, target.workerNodeId]);
+    const existing = this.revocationDeliveries.get(key);
+    if (existing) return await existing;
+    const delivery = (async () => {
+      signal?.throwIfAborted();
+      const identity = await ensureLocalMeshNodeIdentity();
+      const envelope: Omit<MeshRevocationNotice, "signature"> = {
+        protocolVersion: meshWorkerRouteVersion(target),
+        controllerNodeId: identity.nodeId,
+        workerNodeId: target.workerNodeId,
+        controllerPublicKey: identity.publicKey,
+        controllerFingerprint: identity.fingerprint,
+        nonce: crypto.randomUUID(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+      const signature = await signMeshPayload(buildMeshRevocationNoticeSigningPayload(envelope));
+      // Re-enrollment cancels an older queued revocation, including after a crash.
+      if (getWorkerRegistration(target.workerNodeId, target.localUserId)?.grantStatus === "active") {
+        acknowledgeWorkerRevocation(notice.id, target.localUserId);
+        return;
+      }
+      const response = await postMeshControlMessage(target.route, "api/mesh/internal/revocation",
+        { ...envelope, signature }, identity.nodeId, {
+          signal, headers: { "x-clanky-mesh-node-id": identity.nodeId },
+        });
+      const result = await readMeshControlResponseJson(response, { signal });
+      if (!result || typeof result !== "object" || !("success" in result) || result.success !== true) {
+        throw new DomainError("mesh_revocation_unconfirmed", "The worker did not confirm revocation cleanup.");
+      }
+      acknowledgeWorkerRevocation(notice.id, target.localUserId);
+      if (getWorkerRegistration(target.workerNodeId, target.localUserId)?.grantStatus !== "active") {
+        meshStateEventEmitter.emit({
+          type: "mesh.changed", reason: "revoked", impact: "resources",
+          scope: { userId: target.localUserId, workerNodeIds: [target.workerNodeId] },
+        }, { userId: target.localUserId });
+      }
+    })();
+    const tracked = delivery.finally(() => {
+      if (this.revocationDeliveries.get(key) === tracked) this.revocationDeliveries.delete(key);
+    });
+    this.revocationDeliveries.set(key, tracked);
+    await tracked;
+  }
+
   // --- Controller: enrollment token management ---
 
   async createEnrollmentToken(
@@ -777,36 +841,9 @@ export class MeshManager {
     // The controller is authoritative. A worker may be offline, so failure to
     // prepare or deliver the signed notice must not undo the local revocation.
     try {
-      const identity = await ensureLocalMeshNodeIdentity();
-      const nonce = crypto.randomUUID();
-      const expiresAt = new Date(
-        Date.now() + 60_000,
-      ).toISOString();
-      const envelope: Omit<MeshRevocationNotice, "signature"> = {
-        protocolVersion: meshWorkerRouteVersion(target),
-        controllerNodeId: identity.nodeId,
-        workerNodeId,
-        controllerPublicKey: identity.publicKey,
-        controllerFingerprint: identity.fingerprint,
-        nonce,
-        expiresAt,
-      };
-      await postMeshControlMessage(
-        target.route,
-        "api/mesh/internal/revocation",
-        {
-          ...envelope,
-          signature: await signMeshPayload(
-            buildMeshRevocationNoticeSigningPayload(envelope),
-          ),
-        },
-        identity.nodeId,
-        {
-          headers: {
-            "x-clanky-mesh-node-id": identity.nodeId,
-          },
-        },
-      );
+      const notice = (await listPendingWorkerRevocations(userId))
+        .find((pending) => pending.registration.workerNodeId === workerNodeId);
+      if (notice) await this.deliverWorkerRevocation(notice);
     } catch (error) {
       if (isDomainError(error)) {
         log.warn("Worker remote revocation notice could not be prepared or delivered", {
@@ -969,42 +1006,17 @@ export class MeshManager {
       );
     }
 
-    const identity = await ensureLocalMeshNodeIdentity();
-    const nonce = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    await revokeWorkerRegistration(registration.workerNodeId, userId);
     try {
-      const envelope: Omit<MeshRevocationNotice, "signature"> = {
-        protocolVersion: meshWorkerRouteVersion(registration),
-        controllerNodeId: identity.nodeId,
-        workerNodeId: registration.workerNodeId,
-        controllerPublicKey: identity.publicKey,
-        controllerFingerprint: identity.fingerprint,
-        nonce,
-        expiresAt,
-      };
-      await postMeshControlMessage(
-        registration.route,
-        "api/mesh/internal/revocation",
-        {
-          ...envelope,
-          signature: await signMeshPayload(
-            buildMeshRevocationNoticeSigningPayload(envelope),
-          ),
-        },
-        identity.nodeId,
-        {
-          headers: {
-            "x-clanky-mesh-node-id": identity.nodeId,
-          },
-        },
-      );
+      const notice = (await listPendingWorkerRevocations(userId))
+        .find((pending) => pending.registration.workerNodeId === registration.workerNodeId);
+      if (notice) await this.deliverWorkerRevocation(notice);
     } catch (error) {
       log.warn("Dedicated worker remote revocation could not be delivered", {
         workerNodeId: registration.workerNodeId,
         error: String(error),
       });
     } finally {
-      await revokeWorkerRegistration(registration.workerNodeId, userId);
       if (registration.workspaceWorkerEnrollmentId) {
         workspaceWorkerEnrollmentService.markFailed(
           userId,
@@ -1742,26 +1754,26 @@ export class MeshManager {
       log.info("Controller revoked this worker's grant", {
         controllerNodeId: envelope.controllerNodeId,
       });
-      const supervisorStopFile = process.env["CLANKY_WORKER_SUPERVISOR_STOP_FILE"];
-      const stopWorker = supervisorStopFile && !(await listControllerGrants()).some(
-        (controller) => controller.grantStatus === "active",
-      );
+    }
+    const supervisorStopFile = process.env["CLANKY_WORKER_SUPERVISOR_STOP_FILE"];
+    const stopWorker = supervisorStopFile && !(await listControllerGrants()).some(
+      (controller) => controller.grantStatus === "active",
+    );
+    if (stopWorker) {
+      // Persist the intentional stop before exiting so the workspace loop cannot resurrect it.
+      await Bun.write(supervisorStopFile, "");
+    }
+    try {
+      const { closeSshAgentContextsForController } = await import("./ssh-key-access-service");
+      const results = await Promise.allSettled([
+        meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId),
+        closeSshAgentContextsForController(envelope.controllerNodeId),
+      ]);
+      const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+      if (errors.length) throw new AggregateError(errors, "Revoked controller execution-resource cleanup failed.");
+    } finally {
       if (stopWorker) {
-        // Persist the intentional stop before exiting so the workspace loop cannot resurrect it.
-        await Bun.write(supervisorStopFile, "");
-      }
-      try {
-        const { closeSshAgentContextsForController } = await import("./ssh-key-access-service");
-        const results = await Promise.allSettled([
-          meshExecutionGateway.closeSessionsForCaller(envelope.controllerNodeId),
-          closeSshAgentContextsForController(envelope.controllerNodeId),
-        ]);
-        const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-        if (errors.length) throw new AggregateError(errors, "Revoked controller execution-resource cleanup failed.");
-      } finally {
-        if (stopWorker) {
-          setTimeout(() => process.kill(process.pid, "SIGTERM"), MESH_WORKER_KILL_DELAY_MS);
-        }
+        setTimeout(() => process.kill(process.pid, "SIGTERM"), MESH_WORKER_KILL_DELAY_MS);
       }
     }
   }

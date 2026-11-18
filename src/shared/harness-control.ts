@@ -53,6 +53,7 @@ export interface HarnessCapabilities {
   history?: "completed";
   subagentHistory?: "completed";
   usage?: "tokens";
+  remoteContinuity?: 1;
 }
 
 export interface HarnessActivity {
@@ -117,6 +118,7 @@ export interface HarnessInputReceipt {
 
 export interface HarnessConversationState {
   capabilities?: HarnessCapabilities;
+  remoteExecutionLost?: true;
   activeTurnAttachmentBytes?: number;
   unfinishedMessages?: { nativeId: string; messageIds: string[]; completedTurnMessageIds?: string[] };
   activity?: HarnessActivitySnapshot;

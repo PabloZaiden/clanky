@@ -17,6 +17,10 @@ import { invalidateChatMetadataForUser } from "./metadata-cache";
 
 const log = createLogger("persistence:chats");
 const STALE_CHAT_RESET_MESSAGE = "Forcefully stopped by connection reset";
+const RETAINED_REMOTE = `
+  COALESCE(json_extract(CASE WHEN json_valid(harness_state_json) THEN harness_state_json END, '$.capabilities.remoteContinuity'), 0) = 1
+  AND COALESCE(json_extract(CASE WHEN json_valid(session_binding_json) THEN session_binding_json END, '$.executionHost.host.kind'), '') = 'mesh'`;
+const EXCLUDE_RETAINED_REMOTE = `AND NOT (${RETAINED_REMOTE})`;
 
 const ACTIVE_CHAT_STATUSES: ChatStatus[] = [
   "idle",
@@ -34,6 +38,15 @@ const STALE_CHAT_STATUSES: ChatStatus[] = [
   "interrupting",
   "reconnecting",
 ];
+
+export async function listPendingRemoteInterruptions(): Promise<Chat[]> {
+  const rows = getDatabase().query<Record<string, unknown>, (string | null)[]>(`
+    SELECT ${CHAT_METADATA_COLUMNS} FROM chats
+    WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL
+      AND interrupt_requested = 1 AND ${RETAINED_REMOTE}
+  `).all(requireResourcePersistenceUserId("chat"), ...workspacePersistenceParameters());
+  return rows.map(rowToChat);
+}
 
 export async function getActiveChatByDirectory(directory: string, workspaceId: string): Promise<Chat | null> {
   const placeholders = ACTIVE_CHAT_STATUSES.map(() => "?").join(", ");
@@ -69,6 +82,7 @@ function resetStale(chatId?: string): number {
   return db.transaction(() => {
     const rows = db.query<{ id: string; harness_state_json: string | null }, (string | null)[]>(`
       SELECT id, harness_state_json FROM chats WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders})
+      ${EXCLUDE_RETAINED_REMOTE}
       ${chatId ? "AND id = ?" : ""}
     `).all(userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     for (const row of rows) {
@@ -102,7 +116,7 @@ function resetStale(chatId?: string): number {
         pending_permission_requests = '[]',
         connection_status = 'disconnected',
         startup_stage = NULL
-    WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders}) ${chatId ? "AND id = ?" : ""}
+    WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL AND status IN (${placeholders}) ${EXCLUDE_RETAINED_REMOTE} ${chatId ? "AND id = ?" : ""}
   `).run(now, STALE_CHAT_RESET_MESSAGE, now, now, userId, ...workspacePersistenceParameters(), ...STALE_CHAT_STATUSES, ...(chatId ? [chatId] : []));
     return result.changes;
   })();
@@ -120,6 +134,13 @@ export async function resetStaleChats(): Promise<number> {
   const userId = requireResourcePersistenceUserId("chat");
   invalidateChatMetadataForUser(db, userId);
   db.transaction(() => {
+    db.run(`UPDATE chats SET status = 'reconnecting', startup_stage = NULL,
+      state_revision = state_revision + 1
+      WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL
+      AND (status IN ('starting', 'streaming', 'waiting', 'reconnecting')
+        OR status = 'idle' AND connection_status IN ('connected', 'connecting'))
+      AND ${RETAINED_REMOTE}`,
+    [userId, ...workspacePersistenceParameters()]);
     const rows = db.query<{ id: string; harness_state_json: string | null }, (string | null)[]>(
       "SELECT id, harness_state_json FROM chats WHERE user_id = ? AND (? IS NULL OR workspace_id = ?) AND deleted_at IS NULL",
     ).all(userId, ...workspacePersistenceParameters());
