@@ -826,7 +826,7 @@ export class ChatConversationService implements ChatConversationPort {
         onFailure: (error) => this.runStreamExecution(entry, async () => {
           try { await this.handleNativeObservationFailure(chatId, entry, error); }
           finally {
-            if (backend.isObservationRecovering?.(binding.nativeId)) {
+            if (backend.harness.capabilities.remoteContinuity === 1) {
               backend.abortAllSubscriptions(error instanceof Error ? error : new HarnessError("harness_event_gap", "Native recovery failed.", { cause: error }));
             }
           }

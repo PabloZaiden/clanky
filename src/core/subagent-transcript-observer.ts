@@ -58,6 +58,7 @@ export class SubagentTranscriptObserver {
             coverage: "partial", observation: "error", error: "Some native subagent events could not be saved.",
           });
           this.changed(child);
+          if (event.delivery) throw error;
         }
       }
     }));

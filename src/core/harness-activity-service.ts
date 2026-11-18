@@ -192,7 +192,7 @@ export class HarnessActivityService {
         }
       } catch (error) {
         log.warn("Harness activity observation interrupted", { context: observation.context, error: String(error) });
-        if (observation.backend.isObservationRecovering?.(observation.binding.nativeId)) {
+        if (observation.backend.harness.capabilities.remoteContinuity === 1) {
           observation.backend.abortAllSubscriptions(error instanceof Error ? error
             : new HarnessError("harness_event_gap", "Native activity recovery failed.", { cause: error }));
         }

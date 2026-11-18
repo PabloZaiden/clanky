@@ -212,6 +212,9 @@ export class ChatSessionService implements ChatSessionPort {
       }
       if (existing.binding) chat = await this.state.updateState(chat, {
         ...chat.state, session: { id: existing.id, binding: existing.binding },
+        ...(existing.continuity === "cold" ? {
+          harness: { ...chat.state.harness, remoteExecutionLost: true as const },
+        } : {}),
       });
       if (existing.binding) await this.observe(chat.config.id, existing.binding, backend, existing.continuity === "live" ? "live" : true, options?.signal);
       return await this.state.getChat(chat.config.id) ?? chat;
@@ -329,6 +332,7 @@ export class ChatSessionService implements ChatSessionPort {
           ...current.state, pendingPermissionRequests: [],
           harness: {
             ...current.state.harness,
+            remoteExecutionLost: true,
             questions: closeOpenQuestions(current.state.harness?.questions, "expired"),
           },
         }));

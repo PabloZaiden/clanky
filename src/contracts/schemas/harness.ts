@@ -118,6 +118,7 @@ const HarnessHistoryRecoverySchema = z.object({
 });
 
 export const HarnessConversationStateSchema = z.object({
+  remoteExecutionLost: z.literal(true).optional(),
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
   unfinishedMessages: z.object({
     nativeId: z.string().min(1),

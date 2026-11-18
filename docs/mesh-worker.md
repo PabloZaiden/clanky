@@ -364,7 +364,9 @@ Disconnection spills outstanding and subsequent events to a private temporary
 disk queue. That queue remains during catch-up; acknowledged prefixes are
 reclaimed and the spool is removed when caught up. Both transcript consumers
 acknowledge only after their projections are saved, and text offsets reconcile
-replayed partial output without appending it twice. Recovered chats wait for
+replayed partial output without appending it twice. Replay stays bounded by
+confirmed consumer progress, rather than loading an outage's entire disk queue
+into controller memory. Recovered chats wait for
 this durable catch-up before accepting another prompt or finalizing an
 automation run. Provision enough worker
 temporary storage for output produced during an extended outage. Storage
@@ -390,12 +392,15 @@ This is not live recovery across a worker restart. Worker shutdown still stops
 its runtimes, and a restarted worker uses the existing cold conversation
 recovery. Lost in-flight execution and native callbacks are not reconstructed;
 stale callback questions and permissions are expired during cold recovery.
+An automation whose live execution was lost fails explicitly instead of
+treating an idle cold-resumed conversation as proof of successful completion.
+Its prompt is not repeated; ordinary chat history recovery remains available.
 
 Native event-response backpressure is not an observation gap. A full response
 queue pauses consumption; the 15-second heartbeat skips a keepalive when no
 response capacity is available instead of closing the native lease. Provider
 events retain their order; native event hubs and Mesh conversation/control
-subscriptions do not impose a default queued-event cap. Native events and
+subscriptions do not discard output at an arbitrary queue-size threshold. Native events and
 complete NDJSON observation records are not rejected for exceeding the former
 2/4 MiB ceilings.
 Validated provider images are forwarded in full instead of omitted solely
@@ -510,7 +515,12 @@ and worker. Intentional connection closures report `harness_transport_closed`
 with their lifecycle reason. New execution cannot reuse a revoked grant.
 General-worker revocation marks the controller grant revoked immediately,
 attempts the signed worker notice, and then invalidates its transport resources
-even when notice delivery fails.
+even when notice delivery fails. Undelivered notices are persisted and retried
+when connectivity returns, including after controller restart or registration
+removal. Pending teardown retains outbound transport reachability only; it
+does not restore execution, control-tool, or SSH-agent authorization. Once the
+worker confirms cleanup, that transport identity is removed. Re-enrollment
+cancels a queued notice for the previous registration.
 Relay maintenance affects the routes using that relay, not direct workers or
 workers using another relay. Switching the primary relay does not migrate
 existing routes.

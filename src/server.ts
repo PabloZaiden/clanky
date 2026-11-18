@@ -123,7 +123,7 @@ import { reconcileLocalMeshEndpoint } from "./persistence/mesh-node-identity";
 import { isOwnerInitialized } from "./platform/server/auth/users";
 
 const PREVIEW_BRIDGE_IDLE_TIMEOUT_SECONDS = 0;
-const WORKSPACE_WORKER_RECONCILE_INTERVAL_MS = 30_000;
+const MESH_WORKER_RECONCILE_INTERVAL_MS = 30_000;
 const ROUTE_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 const MESH_WORKER_CONTROL_ROUTE_METHODS = {
   "/api/mesh/status": ["GET"],
@@ -138,8 +138,8 @@ let appRelayOnlyMode: boolean | undefined;
 let appApiOnlyMode: boolean | undefined;
 let appManagedTlsMode: boolean | undefined;
 let realtimeBridgeUnsubscribers: Array<() => void> | undefined;
-let workspaceWorkerReconcileTimer: Timer | undefined;
-let workspaceWorkerReconcileRunning = false;
+let meshWorkerReconcileTimer: Timer | undefined;
+let meshWorkerReconciliation: { controller: AbortController; promise: Promise<void> } | undefined;
 
 function normalizeLocalManagedCredentialHost(host: string): string | undefined {
   const normalizedHost = host.trim().toLowerCase();
@@ -224,40 +224,45 @@ async function reconcileStartupState(): Promise<void> {
   await sweepChatTrash();
 }
 
-async function reconcileWorkspaceWorkerEnrollments(): Promise<void> {
-  if (workspaceWorkerReconcileRunning) {
-    return;
-  }
-  workspaceWorkerReconcileRunning = true;
-  try {
-    await runForEachActiveUser(async (user) => {
-      await meshManager.reconcileWorkspaceWorkerEnrollments(user.id);
-    });
-  } catch (error) {
-    log.error("Workspace worker enrollment reconciliation failed", {
-      error: String(error),
-    });
-  } finally {
-    workspaceWorkerReconcileRunning = false;
-  }
+function reconcileMeshWorkers(): Promise<void> {
+  if (meshWorkerReconciliation) return meshWorkerReconciliation.promise;
+  const controller = new AbortController();
+  const promise = runForEachActiveUser(async (user) => {
+    if (controller.signal.aborted) return;
+    const results = await Promise.allSettled([
+      meshManager.reconcileWorkspaceWorkerEnrollments(user.id),
+      meshManager.retryWorkerRevocations(user.id, controller.signal),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected" && !controller.signal.aborted) {
+        log.error("Mesh worker reconciliation failed", { userId: user.id, error: String(result.reason) });
+      }
+    }
+  }).catch((error: unknown) => {
+    if (!controller.signal.aborted) log.error("Mesh worker reconciliation failed", { error: String(error) });
+  }).finally(() => {
+    if (meshWorkerReconciliation?.promise === promise) meshWorkerReconciliation = undefined;
+  });
+  meshWorkerReconciliation = { controller, promise };
+  return promise;
 }
 
-function startWorkspaceWorkerReconciliation(): void {
-  if (workspaceWorkerReconcileTimer) {
+function startMeshWorkerReconciliation(): void {
+  if (meshWorkerReconcileTimer) {
     return;
   }
-  workspaceWorkerReconcileTimer = setInterval(() => {
-    void reconcileWorkspaceWorkerEnrollments();
-  }, WORKSPACE_WORKER_RECONCILE_INTERVAL_MS);
-  workspaceWorkerReconcileTimer.unref?.();
+  meshWorkerReconcileTimer = setInterval(() => {
+    void reconcileMeshWorkers();
+  }, MESH_WORKER_RECONCILE_INTERVAL_MS);
+  meshWorkerReconcileTimer.unref?.();
+  void reconcileMeshWorkers();
 }
 
-function stopWorkspaceWorkerReconciliation(): void {
-  if (!workspaceWorkerReconcileTimer) {
-    return;
-  }
-  clearInterval(workspaceWorkerReconcileTimer);
-  workspaceWorkerReconcileTimer = undefined;
+async function stopMeshWorkerReconciliation(): Promise<void> {
+  if (meshWorkerReconcileTimer) clearInterval(meshWorkerReconcileTimer);
+  meshWorkerReconcileTimer = undefined;
+  meshWorkerReconciliation?.controller.abort();
+  await meshWorkerReconciliation?.promise;
 }
 
 function startMacWorkerPermissionPreflight(): void {
@@ -348,7 +353,7 @@ async function completeStartup(
   }
   if (options.startBackgroundWorkers !== false) {
     automationScheduler.start();
-    startWorkspaceWorkerReconciliation();
+    startMeshWorkerReconciliation();
     startChatTrashMaintenance();
   }
 
@@ -364,9 +369,9 @@ async function completeStartup(
   log.info(`Clanky server running at ${server.url}`);
 }
 
-function stopBackgroundWorkers(): void {
+async function stopBackgroundWorkers(): Promise<void> {
   automationScheduler.stop();
-  stopWorkspaceWorkerReconciliation();
+  await stopMeshWorkerReconciliation();
 }
 
 export const routes = defineRoutes<ClankyRealtimeEvent>({

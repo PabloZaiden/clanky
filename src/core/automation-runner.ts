@@ -529,6 +529,9 @@ export class AutomationRunner {
       });
       const interrupted = abortController.signal.aborted || completedChat.state.error?.code === "interrupted"
         || observingRemote && observer.signal.reason === REMOTE_RUN_INTERRUPTED;
+      if (!interrupted && completedChat.state.harness?.remoteExecutionLost) {
+        throw new DomainError("automation_execution_lost", "The worker lost the automation's live execution. Cold history recovery does not establish successful completion; the prompt was not repeated.");
+      }
       if (!interrupted && recoveredChat && completedChat.state.harness?.inputs?.some((receipt) => receipt.admission.status === "unknown")) {
         throw new DomainError("automation_input_unconfirmed", "The automation input has no authoritative delivery receipt and was not repeated.");
       }
@@ -624,7 +627,8 @@ export class AutomationRunner {
         error: {
           message: abortController.signal.aborted ? "Automation run interrupted" : String(error),
           timestamp: now,
-          ...(abortController.signal.aborted ? { code: "interrupted" } : {}),
+          ...(abortController.signal.aborted ? { code: "interrupted" }
+            : error instanceof DomainError ? { code: error.code } : {}),
         },
         updatedAt: now,
       };

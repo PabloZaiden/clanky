@@ -66,6 +66,13 @@ const Session = z.object({
 });
 const OBSERVATION_PEER_PROBE_TIMEOUT_MS = 5_000;
 
+interface Acknowledgements {
+  executionId: string;
+  sequence: number;
+  pending: Map<number, number>;
+  flushing?: Promise<void>;
+}
+
 export class MeshHarnessBackend implements Backend {
   readonly name: string;
   readonly harness: HarnessControl;
@@ -93,9 +100,7 @@ export class MeshHarnessBackend implements Backend {
   }>();
   private readonly recoveredInteractions = new Map<string, HarnessEvent[]>();
   private readonly interactionFences = new Map<string, { executionId: string; sequence: number; pending: Set<string> }>();
-  private readonly acknowledgements = new Map<string, {
-    executionId: string; sequence: number; pending: Map<number, number>; flushing?: Promise<void>;
-  }>();
+  private readonly acknowledgements = new Map<string, Acknowledgements>();
 
   constructor(private readonly options: { adapter: HarnessAdapter; workspaceId: string; executionNodeId: string }) {
     this.name = `${options.adapter}-mesh`;
@@ -351,7 +356,7 @@ export class MeshHarnessBackend implements Backend {
   }
 
   private observationFailed(error: unknown): void {
-    if (this.releasing) return;
+    if (this.releasing || this.controlFailure) return;
     const failure = error instanceof Error ? error : new HarnessError("harness_event_gap", "Native observation was lost.");
     this.controlFailure = failure;
     for (const recovery of this.recoveryWaiters.values()) recovery.completion.reject(failure);
@@ -762,19 +767,25 @@ export class MeshHarnessBackend implements Backend {
 
   async acknowledgeEvent(id: string, event: HarnessEvent, consumer: "conversation" | "activity"): Promise<void> {
     if (!event.delivery) return;
+    const failure = this.observationFailures.get(id);
+    if (failure) throw failure;
     const state = this.acknowledgements.get(id);
     if (!state || state.executionId !== event.delivery.executionId) throw new HarnessError("harness_event_gap", "The remote execution event identity changed.");
     if (event.delivery.sequence <= state.sequence) return;
     state.pending.set(event.delivery.sequence, (state.pending.get(event.delivery.sequence) ?? 0)
       | (consumer === "conversation" ? 1 : 2));
+    this.flushAcknowledgements(id, state);
+  }
+
+  private flushAcknowledgements(id: string, state: Acknowledgements): void {
+    if (state.flushing) return;
     const required = this.capabilities.activity === "unavailable" ? 1 : 3;
-    while (true) {
-      if (state.flushing) { await state.flushing; continue; }
-      let sequence = state.sequence;
-      while (((state.pending.get(sequence + 1) ?? 0) & required) === required) sequence++;
-      if (sequence === state.sequence) return;
-      const acknowledged = sequence;
-      const flushing = (async () => {
+    // Consumers record persistence without waiting for the cumulative network ACK.
+    state.flushing = Promise.resolve().then(async () => {
+      while (this.client && !this.controlFailure && this.acknowledgements.get(id) === state) {
+        let acknowledged = state.sequence;
+        while (((state.pending.get(acknowledged + 1) ?? 0) & required) === required) acknowledged++;
+        if (acknowledged === state.sequence) return;
         await this.rpc({ operation: "ack", sessionId: id, executionId: state.executionId, sequence: acknowledged });
         for (let cursor = state.sequence + 1; cursor <= acknowledged; cursor++) state.pending.delete(cursor);
         state.sequence = acknowledged;
@@ -782,10 +793,16 @@ export class MeshHarnessBackend implements Backend {
         if (recovery?.executionId === state.executionId && state.sequence >= recovery.sequence) {
           recovery.completion.resolve();
         }
-      })();
-      state.flushing = flushing;
-      try { await flushing; } finally { if (state.flushing === flushing) state.flushing = undefined; }
-    }
+      }
+    }).catch((error: unknown) => {
+      if (this.client && this.acknowledgements.get(id) === state) this.observationFailed(error);
+    }).finally(() => {
+      state.flushing = undefined;
+      if (this.client && !this.controlFailure && this.acknowledgements.get(id) === state
+        && ((state.pending.get(state.sequence + 1) ?? 0) & required) === required) {
+        this.flushAcknowledgements(id, state);
+      }
+    });
   }
 
   private async acknowledgeIgnoredEvent(id: string, event: HarnessEvent): Promise<void> {
@@ -826,6 +843,7 @@ export class MeshHarnessBackend implements Backend {
   async getModelVariants(directory: string, modelId: string): Promise<string[]> { return z.array(z.string()).max(1000).parse(await this.rpc({ operation: "variants", directory, modelId })); }
   isConnected(): boolean { try { this.connection(); return !this.controlFailure && this.observationFailures.size === 0; } catch { return false; } }
   abortAllSubscriptions(reason?: Error): void {
+    if (reason) this.observationFailed(reason);
     for (const recovery of this.recoveryWaiters.values()) {
       recovery.completion.reject(reason ?? new HarnessError("harness_transport_closed", "Native observation was closed during recovery."));
     }
@@ -846,6 +864,7 @@ export class MeshHarnessBackend implements Backend {
     await Promise.all([
       ...[...this.observers.values()].map((observer) => observer.promise),
       ...[...this.controlRequests.values()].map((request) => request.promise),
+      ...[...this.acknowledgements.values()].flatMap((state) => state.flushing ? [state.flushing] : []),
       ...(this.controlObserver ? [this.controlObserver.promise] : []),
     ]);
     this.controlObserver = undefined;

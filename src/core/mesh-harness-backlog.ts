@@ -8,6 +8,8 @@ import type { EventStream } from "../utils/event-stream";
 
 type Record = { event: HarnessEvent } | { offset: number; bytes: number };
 const cleanedSpoolRoots = new Set<string>();
+const REPLAY_WINDOW_EVENTS = 32;
+const REPLAY_WINDOW_BYTES = 1024 * 1024;
 
 /** Unacknowledged execution events; only a detached or catching-up queue uses disk. */
 export class MeshHarnessBacklog {
@@ -51,7 +53,7 @@ export class MeshHarnessBacklog {
         }
       }
       cleanedSpoolRoots.add(root);
-    } catch (error) { throw this.fail(error); }
+    } catch (error) { throw this.storageFailed(error); }
   }
 
   get hasPending(): boolean { return this.records.size > 0; }
@@ -94,7 +96,7 @@ export class MeshHarnessBacklog {
         ? { event: delivered } : this.write(delivered));
       if (this.detached && this.file === undefined) this.detach();
     } catch (error) {
-      throw this.fail(error);
+      throw this.storageFailed(error);
     }
     this.wake();
     return delivered;
@@ -113,7 +115,7 @@ export class MeshHarnessBacklog {
         }
       }
     } catch (error) {
-      throw this.fail(error);
+      throw this.storageFailed(error);
     }
     this.wake();
   }
@@ -122,25 +124,37 @@ export class MeshHarnessBacklog {
     this.assertOpen();
     this.detached = false;
     if (!this.records.size) {
-      try { this.removeSpool(); } catch (error) { throw this.fail(error); }
+      try { this.removeSpool(); } catch (error) { throw this.storageFailed(error); }
     }
     let cursor = this.acknowledged;
     let closed = false;
+    const outstanding = new Map<number, number>();
+    let outstandingBytes = 0;
     return {
       next: async () => {
         while (!closed && !this.closed) {
           this.assertOpen();
+          for (const [sequence, bytes] of outstanding) {
+            if (sequence > this.acknowledged) break;
+            outstanding.delete(sequence);
+            outstandingBytes -= bytes;
+          }
           const sequence = Math.max(cursor + 1, this.acknowledged + 1);
           const record = this.records.get(sequence);
-          if (record) {
-            cursor = sequence;
-            try { return "event" in record ? record.event : this.read(record); }
-            catch (error) { throw this.fail(error); }
+          if (record && outstanding.size < REPLAY_WINDOW_EVENTS) {
+            const bytes = "event" in record ? Buffer.byteLength(JSON.stringify(record.event)) : record.bytes;
+            if (!outstanding.size || outstandingBytes + bytes <= REPLAY_WINDOW_BYTES) {
+              cursor = sequence;
+              outstanding.set(sequence, bytes);
+              outstandingBytes += bytes;
+              try { return "event" in record ? record.event : this.read(record); }
+              catch (error) { throw this.storageFailed(error); }
+            }
           }
           await new Promise<void>((resolve) => {
             const wake = (): void => { this.waiters.delete(wake); resolve(); };
             this.waiters.add(wake);
-            if (closed || this.closed || this.failure || this.records.has(sequence)) wake();
+            if (closed || this.closed || this.failure) wake();
           });
         }
         if (this.failure) throw this.failure;
@@ -174,7 +188,7 @@ export class MeshHarnessBacklog {
         ftruncateSync(this.file, this.bytes);
         this.discardedBytes = 0;
       }
-    } catch (error) { throw this.fail(error); }
+    } catch (error) { throw this.storageFailed(error); }
     this.wake();
   }
 
@@ -227,13 +241,17 @@ export class MeshHarnessBacklog {
     if (errors.length) throw new AggregateError(errors, "The temporary remote event queue could not be removed.");
   }
 
-  private fail(cause: unknown): Error {
-    this.failure = new DomainError("harness_event_gap", "The temporary remote event queue could not be stored or read.", {
-      cause,
-      details: { reason: "remote_event_storage_failed" },
-    });
+  fail(error: Error): Error {
+    this.failure ??= error;
     this.wake();
     return this.failure;
+  }
+
+  private storageFailed(cause: unknown): Error {
+    return this.fail(new DomainError("harness_event_gap", "The temporary remote event queue could not be stored or read.", {
+      cause,
+      details: { reason: "remote_event_storage_failed" },
+    }));
   }
 
   private assertOpen(): void {

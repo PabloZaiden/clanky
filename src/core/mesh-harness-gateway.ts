@@ -240,6 +240,7 @@ export class MeshHarnessGateway {
         const failure = error instanceof DomainError ? error : createHarnessObservationError(
           stage === "source" ? "native_source_failed" : "unknown", {}, error,
         );
+        conversation.backlog?.fail(failure);
         for (const subscriber of conversation.subscribers) subscriber.fail(failure);
         log[failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh observation ended", {
           adapter: host.config.adapter,

@@ -226,6 +226,9 @@ export async function saveWorkerRegistration(
     ],
   );
 
+  db.run("DELETE FROM mesh_worker_revocations WHERE local_user_id = ? AND worker_node_id = ?",
+    [input.localUserId, input.workerNodeId]);
+
   // Ensure the worker's canonical host exists, but keep dedicated hosts
   // scoped to their enrollment or workspace instead of global discovery.
   ensureExecutionHost(
@@ -324,6 +327,9 @@ export async function revokeWorkerRegistration(
     if (!row) {
       throw new Error(`Worker registration not found: ${workerNodeId}`);
     }
+    db.run(`INSERT INTO mesh_worker_revocations (id, local_user_id, worker_node_id, registration_json)
+      VALUES (?, ?, ?, ?) ON CONFLICT(local_user_id, worker_node_id) DO NOTHING`,
+    [crypto.randomUUID(), localUserId, workerNodeId, JSON.stringify(row)]);
     const host = getExecutionHostByRef(
       localUserId,
       getWorkerRegistrationExecutionHostRef({
@@ -350,6 +356,30 @@ export async function revokeWorkerRegistration(
 
   txn();
   log.info("Revoked worker registration", { workerNodeId });
+}
+
+export interface PendingWorkerRevocation {
+  id: string;
+  registration: MeshWorkerRegistration;
+}
+
+export async function listPendingWorkerRevocations(localUserId: string): Promise<PendingWorkerRevocation[]> {
+  const rows = getDatabase().query("SELECT id, registration_json FROM mesh_worker_revocations WHERE local_user_id = ?")
+    .all(localUserId) as Array<{ id: string; registration_json: string }>;
+  const pending: PendingWorkerRevocation[] = [];
+  for (const row of rows) {
+    try {
+      pending.push({ id: row.id, registration: mapWorkerRegistrationRow(JSON.parse(row.registration_json) as WorkerRegistrationRow) });
+    } catch (error) {
+      if (!(error instanceof InvalidMeshRelayRouteError)) throw error;
+      log.warn("Pending worker revocation has an invalid persisted route", { id: row.id });
+    }
+  }
+  return pending;
+}
+
+export function acknowledgeWorkerRevocation(id: string, localUserId: string): void {
+  getDatabase().run("DELETE FROM mesh_worker_revocations WHERE id = ? AND local_user_id = ?", [id, localUserId]);
 }
 
 export async function deleteRevokedWorkerRegistration(

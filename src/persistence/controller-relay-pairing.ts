@@ -312,11 +312,11 @@ export function assertActiveControllerWorkerIdentity(
 }
 
 /**
- * Return active workers routed through the controller's paired relay. Global
- * identity invariants are checked across every active registration before
- * non-matching direct or relay routes are omitted.
+ * Return active-worker and pending-teardown transport identities. Global
+ * identity invariants are checked before non-matching routes are omitted.
+ * Pending teardown keeps transport reachability, never an execution grant.
  */
-export function listActiveControllerWorkerIdentities(
+export function listControllerWorkerTransportIdentities(
   route: ControllerRelayAuthorizationRoute,
 ): MeshRelayPeerIdentity[] {
   const rows = getDatabase().query(`
@@ -324,6 +324,18 @@ export function listActiveControllerWorkerIdentities(
       route_kind, relay_url, relay_fingerprint
     FROM mesh_worker_registrations
     WHERE grant_status = 'active'
+    UNION ALL
+    SELECT worker_node_id,
+      json_extract(registration_json, '$.worker_public_key'),
+      json_extract(registration_json, '$.worker_fingerprint'),
+      json_extract(registration_json, '$.route_kind'),
+      json_extract(registration_json, '$.relay_url'),
+      json_extract(registration_json, '$.relay_fingerprint')
+    FROM mesh_worker_revocations pending
+    WHERE NOT EXISTS (
+      SELECT 1 FROM mesh_worker_registrations active
+      WHERE active.worker_node_id = pending.worker_node_id AND active.grant_status = 'active'
+    )
     ORDER BY worker_node_id, worker_fingerprint, worker_public_key
   `).all() as ActiveWorkerIdentityRow[];
   const byNodeId = new Map<string, MeshRelayPeerIdentity>();
