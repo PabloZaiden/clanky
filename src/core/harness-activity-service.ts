@@ -21,7 +21,7 @@ const log = createLogger("harness-activity");
 interface Observation {
   context: HarnessContext;
   binding: HarnessConversationBinding;
-  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected" | "readSubagentHistory">;
+  backend: Pick<Backend, "harness" | "subscribeToEvents" | "isConnected" | "readSubagentHistory" | "acknowledgeEvent" | "isObservationRecovering" | "abortAllSubscriptions">;
   stream: EventStream<HarnessEvent>;
   stopped: boolean;
   interval?: ReturnType<typeof setInterval>;
@@ -86,8 +86,8 @@ export class HarnessActivityService {
     }
   }
 
-  close(context: HarnessContext): Promise<void> {
-    return this.operations.run(this.key(context), () => this.closeCurrent(context, true));
+  close(context: HarnessContext, settleWork = true): Promise<void> {
+    return this.operations.run(this.key(context), () => this.closeCurrent(context, settleWork));
   }
 
   async closeBackend(backend: Observation["backend"]): Promise<void> {
@@ -180,6 +180,7 @@ export class HarnessActivityService {
             await observation.usage.refresh();
           }
           if (observation.onEvent) await observation.onEvent(event);
+          await observation.backend.acknowledgeEvent?.(observation.binding.nativeId, event, "activity");
           if (event.type === "activity.changed" || event.type === "prompt.complete" || event.type === "session.status" || event.type === "tool.start" || event.type === "tool.complete") {
             this.scheduleRefresh(observation);
           }
@@ -191,6 +192,10 @@ export class HarnessActivityService {
         }
       } catch (error) {
         log.warn("Harness activity observation interrupted", { context: observation.context, error: String(error) });
+        if (observation.backend.isObservationRecovering?.(observation.binding.nativeId)) {
+          observation.backend.abortAllSubscriptions(error instanceof Error ? error
+            : new HarnessError("harness_event_gap", "Native activity recovery failed.", { cause: error }));
+        }
         this.publishUnavailable(observation, error);
         await observation.subagents.reconcile({ observation: "unavailable", reason: "gap" });
         if (this.isPermanentFailure(error)) {

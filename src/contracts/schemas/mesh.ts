@@ -70,6 +70,7 @@ export const MeshWorkerProtocolDescriptorSchema = z.object({
   supportedProtocolVersions: MeshProtocolVersionsSchema,
   preferredProtocolVersion: MeshProtocolGenerationSchema,
   controlTools: z.union([z.literal(1), z.literal(MESH_EXECUTION_CONTROL_VERSION)]).optional(),
+  continuity: z.literal(1).optional(),
   signature: z.string().min(1).max(16_384),
 }).strict().superRefine(assertMeshProtocolMetadata);
 export type MeshWorkerProtocolDescriptor = z.infer<typeof MeshWorkerProtocolDescriptorSchema>;

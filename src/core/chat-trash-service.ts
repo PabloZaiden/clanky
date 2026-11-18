@@ -2,7 +2,7 @@
  * Recoverable standalone chat deletion; Automation cleanup stays permanent.
  */
 import { createLogger } from "@pablozaiden/webapp/server";
-import { CHAT_TRASH_RETENTION_MS, isStandaloneChat } from "@/shared/chat";
+import { CHAT_TRASH_RETENTION_MS, isStandaloneChat, hasRemoteChatContinuity } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import type { ChatTrashQuery, ChatTrashResult } from "@/contracts/schemas/chat-trash";
 import { DomainError } from "../domain/domain-error";
@@ -27,7 +27,7 @@ export class ChatTrashService {
   constructor(
     private readonly state: ChatStatePort,
     private readonly lifecycle: Pick<ChatLifecycleService, "cleanupTrashResources">,
-    private readonly conversation: Pick<ChatConversationPort, "checkpointForDeletion">,
+    private readonly conversation: Pick<ChatConversationPort, "checkpointForDeletion" | "interruptChat">,
   ) {}
 
   list(options: ChatTrashQuery) {
@@ -39,6 +39,7 @@ export class ChatTrashService {
       if (loadTrashedChat(chatId)) return;
       const chat = await this.state.getChatSummary(chatId);
       if (!chat || !isStandaloneChat(chat)) throw this.notFound();
+      if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
       const trashed = this.conversation.checkpointForDeletion(chatId, markChatTrashed);
       if (!trashed) throw this.notFound();
       this.state.emitChatDeleted(chat, createTimestamp());

@@ -40,6 +40,7 @@ interface Session {
 const sessions = new Map<string, Session>();
 const pending = new Map<string, { session: Session; name: string; timer?: ReturnType<typeof setTimeout> }>();
 const waiting = new Map<string, AbortController>();
+const userQuestions = new Map<JsonRpcId, Session>();
 const background = new Map<string, { controller: AbortController; operation: Promise<void> }>();
 const stateDirectory = join(process.env["HOME"]!, "copilot-native-sessions");
 await mkdir(stateDirectory, { recursive: true });
@@ -225,6 +226,13 @@ async function sendInput(session: Session | undefined, params: Record<string, un
         await save();
         void startBackground(session, delegated);
       }
+    } else if (prompt.includes("[confirm-implementation]")) {
+      const requestId = crypto.randomUUID();
+      userQuestions.set(requestId, session);
+      write({ id: requestId, method: "userInput.request", params: {
+        sessionId: session.id, requestId, question: "Proceed with the approved implementation plan?",
+        choices: ["Proceed"], allowFreeform: false,
+      } });
     } else if (releaseFile) {
       const controller = new AbortController();
       waiting.set(session.id, controller);
@@ -368,6 +376,18 @@ async function completeAfterInputFile(session: Session, path: string, controller
 }
 
 async function dispatch(frame: JsonRpcMessage): Promise<void> {
+  if (frame.id !== undefined && !frame.method && userQuestions.has(frame.id)) {
+    const session = userQuestions.get(frame.id)!;
+    userQuestions.delete(frame.id);
+    if (frame.error) {
+      event(session, "session.error", { errorType: "protocol", message: frame.error.message });
+      idle(session, { aborted: true });
+    } else if (!await handleProjectInput(session)) {
+      finish(session, `User answered: ${JSON.stringify(frame.result)}`);
+    }
+    await save();
+    return;
+  }
   if (frame.id === undefined || !frame.method) return;
   const params = frame.params && typeof frame.params === "object" ? frame.params as Record<string, unknown> : {};
   const session = typeof params["sessionId"] === "string" ? await loadSession(params["sessionId"]) : undefined;

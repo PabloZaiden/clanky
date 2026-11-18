@@ -53,6 +53,7 @@ export interface HarnessCapabilities {
   history?: "completed";
   subagentHistory?: "completed";
   usage?: "tokens";
+  remoteContinuity?: 1;
 }
 
 export interface HarnessActivity {

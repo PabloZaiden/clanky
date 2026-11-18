@@ -13,6 +13,9 @@ import { automationEventEmitter } from "./event-emitter";
 import { automationRunner } from "./automation-runner";
 import { calculateNextRunAt } from "./automation-schedule";
 import { runForEachActiveUser } from "./background-users";
+import { remoteChatRecovery } from "./remote-chat-recovery";
+import { chatManager } from "./chat-manager";
+import { listPendingRemoteInterruptions } from "../persistence/chats/queries";
 
 const log = createLogger("automation-scheduler");
 const POLL_INTERVAL_MS = 5000;
@@ -101,7 +104,15 @@ export class AutomationScheduler {
       if (activeRuns.length === 0 && !automation.state.activeRunId) {
         continue;
       }
+      let recovered = false;
       for (const run of activeRuns) {
+        if (await automationRunner.resumeRemoteRun(automation, run)) {
+          const chat = await chatManager.getChatSummary(run.chatId!);
+          if (!chat) throw new Error("The recovered automation conversation is unavailable.");
+          remoteChatRecovery.recover(chat);
+          recovered = true;
+          continue;
+        }
         await saveAutomationRun({
           ...run,
           status: "failed",
@@ -114,6 +125,7 @@ export class AutomationScheduler {
           updatedAt: now,
         });
       }
+      if (recovered) continue;
       await saveAutomation({
         config: {
           ...automation.config,
@@ -132,6 +144,9 @@ export class AutomationScheduler {
             : automation.state.lastError,
         },
       });
+    }
+    for (const chat of await listPendingRemoteInterruptions()) {
+      if (chat.config.scope === "automation") remoteChatRecovery.recover(chat);
     }
   }
 

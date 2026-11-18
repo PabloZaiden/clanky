@@ -1,6 +1,7 @@
 import type { Automation, AutomationRun, AutomationRunTrigger } from "@/shared/automation";
 import { isAutomationCodeEnabled } from "@/shared/automation";
-import type { ChatEvent } from "@/shared";
+import type { Chat, ChatEvent } from "@/shared";
+import { hasRemoteChatContinuity } from "@/shared/chat";
 import { createTranscriptChangeSet } from "@/shared";
 import type { MessageAttachment } from "@/shared/message-attachments";
 import { createTimestamp } from "@/shared/events";
@@ -19,9 +20,11 @@ import { MAX_PERSISTED_LOGS } from "./conversation-limits";
 import { AutomationRunStreamPersistence } from "./automation-run-stream-persistence";
 import { getWorkspace } from "../persistence/workspaces";
 import { assertWorktreesAllowed } from "./workspace-capabilities";
-import { captureWorkspaceExecutionContext, runWithWorkspaceExecutionContext } from "../context/user-context";
+import { captureWorkspaceExecutionContext, runWithWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 
 const log = createLogger("automation-runner");
+const REMOTE_RUN_SUSPENDED = Symbol("remote-run-suspended");
+const REMOTE_RUN_INTERRUPTED = Symbol("remote-run-interrupted");
 
 function isAutomationChatEvent(event: ChatEvent): boolean {
   if ("scope" in event) {
@@ -82,11 +85,44 @@ function mergeRunLogs(chatLogs: AutomationRun["logs"], outputLogs: AutomationRun
 
 export class AutomationRunner {
   private readonly activeRuns = new Map<string, Promise<AutomationRun>>();
-  private readonly activeRunControllers = new Map<string, AbortController>();
+  private readonly activeRunControllers = new Map<string, {
+    controller: AbortController; observer: AbortController; owner: ReturnType<typeof requireExecutionOwnerUser>;
+  }>();
   private readonly activeRunPersistences = new Map<string, AutomationRunStreamPersistence>();
 
   isRunActive(runId: string): boolean {
     return this.activeRuns.has(runId);
+  }
+
+  private trackRun(runId: string, promise: Promise<AutomationRun>): void {
+    this.activeRuns.set(runId, promise);
+    void promise.then(() => this.activeRuns.delete(runId), (error: unknown) => {
+      this.activeRuns.delete(runId);
+      log.error("Automation execution could not be finalized", { runId, error: String(error) });
+    });
+  }
+
+  async resumeRemoteRun(automation: Automation, run: AutomationRun): Promise<boolean> {
+    if (this.activeRuns.has(run.id)) return true;
+    if (!run.chatId || run.status !== "running" || automation.state.activeRunId !== run.id
+      || isAutomationCodeEnabled(run.configSnapshot)) return false;
+    const chat = await chatManager.getChat(run.chatId);
+    if (!chat || !hasRemoteChatContinuity(chat) || !chat.state.lastUserMessageAt) return false;
+    const execution = captureWorkspaceExecutionContext(run.configSnapshot.workspaceId);
+    this.trackRun(run.id, runWithWorkspaceExecutionContext(execution, () => this.executeRun(automation, run, chat)));
+    return true;
+  }
+
+  async suspendRemoteRuns(): Promise<void> {
+    await Promise.all([...this.activeRunControllers].map(([runId, { observer, owner }]) =>
+      runWithExecutionOwner(owner, async () => {
+        const run = this.activeRunPersistences.get(runId)?.currentRun;
+        if (!run?.chatId || isAutomationCodeEnabled(run.configSnapshot)) return;
+        const chat = await chatManager.getChatSummary(run.chatId);
+        if (!chat || !hasRemoteChatContinuity(chat)) return;
+        observer.abort(REMOTE_RUN_SUSPENDED);
+        await this.activeRuns.get(runId);
+      })));
   }
 
   getLiveTranscript(runId: string) {
@@ -144,10 +180,7 @@ export class AutomationRunner {
 
     const execution = captureWorkspaceExecutionContext(automation.config.workspaceId);
     const promise = runWithWorkspaceExecutionContext(execution, () => this.executeRun(automation, run));
-    this.activeRuns.set(run.id, promise);
-    promise.finally(() => {
-      this.activeRuns.delete(run.id);
-    });
+    this.trackRun(run.id, promise);
     run = {
       ...run,
       status: "scheduled",
@@ -202,7 +235,7 @@ export class AutomationRunner {
   }
 
   async interruptRun(run: AutomationRun, reason = "Automation run interrupted"): Promise<AutomationRun> {
-    this.activeRunControllers.get(run.id)?.abort();
+    this.activeRunControllers.get(run.id)?.controller.abort();
     if (!run.chatId) {
       if (this.activeRunControllers.has(run.id)) {
         const now = createTimestamp();
@@ -305,19 +338,16 @@ export class AutomationRunner {
     });
   }
 
-  private async executeRun(automation: Automation, run: AutomationRun): Promise<AutomationRun> {
+  private async executeRun(automation: Automation, run: AutomationRun, recoveredChat?: Chat): Promise<AutomationRun> {
     const abortController = new AbortController();
-    this.activeRunControllers.set(run.id, abortController);
-    await this.setAutomationRunning(automation, run.id);
-    let currentRun: AutomationRun = {
-      ...run,
-      status: "starting",
-      startedAt: createTimestamp(),
-      updatedAt: createTimestamp(),
-    };
-    await saveAutomationRun(currentRun, {
-      transcriptChanges: createTranscriptChangeSet(currentRun),
-    });
+    const observer = new AbortController();
+    this.activeRunControllers.set(run.id, { controller: abortController, observer, owner: requireExecutionOwnerUser() });
+    let currentRun = run;
+    if (!recoveredChat) {
+      await this.setAutomationRunning(automation, run.id);
+      currentRun = { ...run, status: "starting", startedAt: createTimestamp(), updatedAt: createTimestamp() };
+      await saveAutomationRun(currentRun, { transcriptChanges: createTranscriptChangeSet(currentRun) });
+    }
 
     let chatId: string | null = null;
     let unsubscribeChatEvents: (() => void) | undefined;
@@ -327,7 +357,7 @@ export class AutomationRunner {
       if (abortController.signal.aborted) {
         throw new Error("Automation run interrupted");
       }
-      const chat = await chatManager.createAutomationRunChat({
+      const chat = recoveredChat ?? await chatManager.createAutomationRunChat({
         name: `Automation: ${automation.config.name}`,
         workspaceId: automation.config.workspaceId,
         modelProviderID: automation.config.model.providerID,
@@ -350,6 +380,7 @@ export class AutomationRunner {
           return;
         }
         streamPersistence?.handleChatEvent(event);
+        if (event.type === "chat.interrupted") observer.abort(REMOTE_RUN_INTERRUPTED);
         const streamPosition = streamPersistence?.streamPosition;
         if (event.type === "chat.message") {
           automationEventEmitter.emit({
@@ -421,6 +452,10 @@ export class AutomationRunner {
       });
       currentRun = {
         ...currentRun,
+        ...(recoveredChat ? {
+          messages: chat.state.messages, logs: chat.state.logs, toolCalls: chat.state.toolCalls,
+          pendingPermissionRequests: chat.state.pendingPermissionRequests,
+        } : {}),
         chatId,
         status: "running",
         session: chat.state.session,
@@ -433,13 +468,15 @@ export class AutomationRunner {
       if (abortController.signal.aborted) {
         throw new Error("Automation run interrupted");
       }
-      automationEventEmitter.emit({
-        type: "automation.run.started",
-        automationId: automation.config.id,
-        automationRunId: currentRun.id,
-        run: currentRun,
-        timestamp: createTimestamp(),
-      });
+      if (!recoveredChat) {
+        automationEventEmitter.emit({
+          type: "automation.run.started",
+          automationId: automation.config.id,
+          automationRunId: currentRun.id,
+          run: currentRun,
+          timestamp: createTimestamp(),
+        });
+      }
       automationEventEmitter.emit({
         type: "automation.run.status",
         automationId: automation.config.id,
@@ -458,7 +495,7 @@ export class AutomationRunner {
           },
         })
         : undefined;
-      if (codeMode && output) {
+      if (!recoveredChat && codeMode && output) {
         if (abortController.signal.aborted) {
           throw new Error("Automation run interrupted");
         }
@@ -472,7 +509,7 @@ export class AutomationRunner {
           output,
         });
         currentRun = await output.flush();
-      } else {
+      } else if (!recoveredChat) {
         if (abortController.signal.aborted) {
           throw new Error("Automation run interrupted");
         }
@@ -481,9 +518,21 @@ export class AutomationRunner {
           attachments: currentRun.attachments,
         });
       }
-      const completedChat = await chatManager.waitForChatIdle(chatId);
+      const observingRemote = hasRemoteChatContinuity(await chatManager.getChatSummary(chatId) ?? chat);
+      const completedChat = await chatManager.waitForChatIdle(
+        chatId, observingRemote ? Number.POSITIVE_INFINITY : undefined, observingRemote ? observer.signal : undefined,
+      ).catch(async (error: unknown) => {
+        if (!observingRemote || observer.signal.reason !== REMOTE_RUN_INTERRUPTED) throw error;
+        const interrupted = await chatManager.getChat(chat.config.id);
+        if (!interrupted) throw new DomainError("automation_chat_not_found", "The interrupted automation conversation is unavailable.");
+        return interrupted;
+      });
+      const interrupted = abortController.signal.aborted || completedChat.state.error?.code === "interrupted"
+        || observingRemote && observer.signal.reason === REMOTE_RUN_INTERRUPTED;
+      if (!interrupted && recoveredChat && completedChat.state.harness?.inputs?.some((receipt) => receipt.admission.status === "unknown")) {
+        throw new DomainError("automation_input_unconfirmed", "The automation input has no authoritative delivery receipt and was not repeated.");
+      }
       const now = createTimestamp();
-      const interrupted = abortController.signal.aborted || completedChat.state.error?.code === "interrupted";
       const failed = !interrupted && (completedChat.state.status === "failed" || completedChat.state.error !== undefined);
       const completedRun: AutomationRun = {
         ...currentRun,
@@ -545,6 +594,10 @@ export class AutomationRunner {
       await this.clearAutomationRunning(automation.config.id, completedRun);
       return completedRun;
     } catch (error) {
+      if (observer.signal.reason === REMOTE_RUN_SUSPENDED) {
+        await streamPersistence?.persist();
+        return streamPersistence?.currentRun ?? currentRun;
+      }
       log.error("Automation run failed", {
         automationId: automation.config.id,
         runId: currentRun.id,

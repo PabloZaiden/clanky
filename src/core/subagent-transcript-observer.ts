@@ -12,6 +12,7 @@ import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import { StreamVersion } from "./stream-version";
 import { subagentEventEmitter } from "./event-emitter";
 import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
+import { reconcileHarnessDelta } from "./agent-event-transcript-interpreter";
 
 const log = createLogger("subagent-transcripts");
 const livePositions = new Map<string, StreamVersion>();
@@ -205,6 +206,9 @@ export class SubagentTranscriptObserver {
       const previous = store.getMessageForUser(child.record.id, userId, event.messageId);
       const pending = new Set(child.record.unfinishedMessageIds ?? []);
       if (event.type !== "message.complete" && previous && !pending.has(event.messageId)) return;
+      const delta = event.type === "message.delta"
+        ? reconcileHarnessDelta(event.content, previous?.content ?? "", event.delivery?.offset) : undefined;
+      if (delta === "") return;
       if (event.type === "message.start") {
         if (pending.size >= 1000) throw new HarnessError("harness_event_gap", "Too many unfinished child messages.");
         pending.add(event.messageId);
@@ -214,13 +218,15 @@ export class SubagentTranscriptObserver {
       const message: PersistedMessage = {
         id: event.messageId, role: "assistant", timestamp: previous?.timestamp ?? timestamp,
         content: event.type === "message.start" ? previous?.content ?? ""
-          : event.type === "message.delta" ? `${previous?.content ?? ""}${event.content}` : event.content,
+          : event.type === "message.delta"
+            ? `${previous?.content ?? ""}${delta}`
+            : event.content,
         attachments: event.type === "message.complete" ? event.attachments ?? previous?.attachments : previous?.attachments,
       };
       this.write(child, { id: message.id, kind: "message", timestamp: message.timestamp, payload: message },
         event.type === "message.delta" ? {
           type: "transcript.message.delta", messageId: message.id, role: "assistant",
-          delta: event.content, baseLength: previous?.content.length ?? 0, messageTimestamp: message.timestamp,
+          delta: delta!, baseLength: previous?.content.length ?? 0, messageTimestamp: message.timestamp,
         } : { type: "transcript.message", message });
     } else if (event.type === "user.message") {
       const id = event.messageId ?? event.scope.native?.messageId ?? event.sourceEventId;
@@ -236,7 +242,7 @@ export class SubagentTranscriptObserver {
       const oldText = previous?.details?.["responseContent"];
       const content = recovered || event.complete
         ? !event.complete && typeof oldText === "string" && oldText.startsWith(event.content) ? oldText : event.content
-        : `${typeof oldText === "string" ? oldText : ""}${event.content}`;
+        : `${typeof oldText === "string" ? oldText : ""}${reconcileHarnessDelta(event.content, typeof oldText === "string" ? oldText : "", event.delivery?.offset)}`;
       const entry: ConversationLogEntry = {
         id, level: "agent", message: "AI reasoning...", timestamp: previous?.timestamp ?? timestamp,
         details: { logKind: "reasoning", responseContent: content, complete: event.complete === true },
@@ -255,7 +261,9 @@ export class SubagentTranscriptObserver {
         { type: "transcript.tool", tool: createToolCallSummary(tool) });
     } else if (event.type === "error" || event.type === "request.error") {
       const entry: ConversationLogEntry = {
-        id: event.sourceEventId ?? crypto.randomUUID(), timestamp, level: "error", message: event.message,
+        id: event.sourceEventId ?? (event.delivery
+          ? `mesh-event:${event.delivery.executionId}:${event.delivery.sequence}` : crypto.randomUUID()),
+        timestamp, level: "error", message: event.message,
         details: { logKind: "subagent-error" },
       };
       this.write(child, { id: entry.id, kind: "log", timestamp, payload: entry }, { type: "transcript.log", log: entry });

@@ -10,6 +10,7 @@ import {
   meshJsonRequest,
   meshNodeDiagnostics,
   startMeshNode,
+  restartMeshNode,
   stopMeshNode,
   type ManagedMeshNode,
 } from "./support/mesh-cluster";
@@ -28,6 +29,8 @@ interface Chat {
     status: string;
     worktree?: { workingBranch: string };
     error?: { message: string };
+    connectionStatus?: string;
+    harness?: { questions?: Array<{ requestId: string; status: string }> };
   };
 }
 
@@ -192,7 +195,34 @@ test("users enroll a worker, iterate on a plan and implement it in one chat", as
     expect((await send("Why this approach?")).state.status).toBe("idle");
     expect((await send("[revise-plan] Include documentation.")).state.status).toBe("idle");
     expect((await document("plan")).content).toContain("Include documentation");
-    const implemented = await send("[provider-write] Implement the revised plan now.");
+    const implementation = await meshJsonRequest(controller, `${chatPath}/messages`, {
+      method: "POST", body: { message: "[confirm-implementation] [provider-write] Implement the revised plan now." },
+    });
+    expect(implementation.status, JSON.stringify(implementation.body)).toBe(200);
+    const waiting = await pollUntil(
+      async () => await meshJsonRequest<Chat>(controller, chatPath),
+      (response) => response.body.state.harness?.questions?.some((question) => question.status === "pending") === true,
+      { description: "native implementation confirmation", timeoutMs: 10_000 },
+    );
+    const question = waiting.body.state.harness!.questions!.find((question) => question.status === "pending")!;
+    await restartMeshNode(controller);
+    await pollUntil(
+      async () => await meshJsonRequest<Chat>(controller, chatPath),
+      (response) => response.body.state.status === "waiting"
+        && response.body.state.connectionStatus === "connected",
+      { description: "remote conversation reattachment after controller restart", timeoutMs: 10_000,
+        formatLastObserved: (response) => JSON.stringify(response.body.state) },
+    );
+    const answered = await meshJsonRequest(controller, `${chatPath}/questions/${encodeURIComponent(question.requestId)}`, {
+      method: "POST", body: { answers: [["Proceed"]] },
+    });
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    const completed = await pollUntil(
+      async () => await meshJsonRequest<Chat>(controller, chatPath),
+      (response) => ["idle", "failed"].includes(response.body.state.status),
+      { description: "implementation after restored native question", timeoutMs: 10_000 },
+    );
+    const implemented = completed.body;
     expect(implemented.state.status).toBe("idle");
     const changes = await meshJsonRequest<Array<{ path: string; patch?: string }>>(
       controller, `${chatPath}/diff`,

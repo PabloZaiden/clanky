@@ -332,12 +332,12 @@ export class ChatManager {
     return this.services.interaction.reconcileQueuedMessage(chatId, queuedMessageId);
   }
 
-  async waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat> {
-    return this.services.conversation.waitForChatIdle(chatId, timeoutMs);
+  async waitForChatIdle(chatId: string, timeoutMs?: number, signal?: AbortSignal): Promise<Chat> {
+    return this.services.conversation.waitForChatIdle(chatId, timeoutMs, signal);
   }
 
-  async interruptChat(chatId: string, reason?: string): Promise<Chat | null> {
-    return this.services.conversation.interruptChat(chatId, reason);
+  async interruptChat(chatId: string, reason?: string, signal?: AbortSignal): Promise<Chat | null> {
+    return this.services.conversation.interruptChat(chatId, reason, signal);
   }
 
   async replyToPermission(

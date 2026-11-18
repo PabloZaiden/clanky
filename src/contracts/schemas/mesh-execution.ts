@@ -11,6 +11,7 @@ import { MeshProtocolVersionSchema } from "./mesh-protocol";
 import { AgentProviderSchema } from "./workspace";
 import { GIT_COMMAND_SCOPES } from "@/shared/execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
+import { HarnessConversationBindingSchema } from "./harness";
 
 const MeshExecutionPathSchema = z.string().min(1).max(16_384);
 const MeshExecutionProtocolVersionSchema = MeshProtocolVersionSchema;
@@ -37,6 +38,11 @@ export const MeshExecutionSessionRequestSchema = z.object({
   ownerId: z.string().min(1).max(200).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   controlTools: z.literal(MESH_EXECUTION_CONTROL_VERSION).optional(),
+  continuity: z.object({
+    version: z.literal(1),
+    contextId: z.string().min(1).max(500),
+    binding: HarnessConversationBindingSchema.optional(),
+  }).strict().optional(),
   // v1 controllers only; retained by the isolated rollout adapter.
   controlCredential: z.string().min(1).max(4096).optional(),
   nonce: z.string().trim().min(1).max(200),
@@ -48,6 +54,15 @@ export const MeshExecutionSessionRequestSchema = z.object({
   }
   if ((value.controlTools !== undefined || value.controlCredential !== undefined) && value.channel !== MESH_HARNESS_CHANNEL) {
     ctx.addIssue({ code: "custom", path: ["controlTools"], message: "Execution control requires a native harness lease." });
+  }
+  if (value.continuity && (value.channel !== MESH_HARNESS_CHANNEL
+    || value.continuity.binding && (
+      value.continuity.binding.ownerId !== value.ownerId
+      || value.continuity.binding.contextId !== value.continuity.contextId
+      || value.continuity.binding.adapter !== value.adapter
+      || value.continuity.binding.directory !== value.directory
+    ))) {
+    ctx.addIssue({ code: "custom", path: ["continuity"], message: "Remote continuity requires a matching native execution owner." });
   }
   if (value.controlTools !== undefined && value.controlCredential !== undefined) {
     ctx.addIssue({ code: "custom", path: ["controlTools"], message: "An execution must select exactly one control protocol." });

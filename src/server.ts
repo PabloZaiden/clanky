@@ -22,6 +22,8 @@ import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { cleanupRetiredTaskResources } from "./core/retired-task-cleanup";
 import { chatManager } from "./core/chat-manager";
+import { remoteChatRecovery } from "./core/remote-chat-recovery";
+import { automationRunner } from "./core/automation-runner";
 import type {
   MacWorkerPermissionPreflightRequest,
   MacWorkerPermissionPreflightWorkerMessage,
@@ -717,6 +719,7 @@ export async function getWebAppServer(
             },
           );
           await workspaceConnections.start();
+          await remoteChatRecovery.start();
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
           await cleanupRetiredTaskResources();
         }
@@ -726,6 +729,7 @@ export async function getWebAppServer(
       },
       beforeStop: async () => {
         setActiveControllerTls(undefined);
+        await remoteChatRecovery.stop();
         chatManager.beginShutdown();
         const errors: unknown[] = [];
         const cleanup = async (operation: () => void | Promise<void>): Promise<void> => {
@@ -742,6 +746,7 @@ export async function getWebAppServer(
         await cleanup(stopWorkspaceDirect);
         workspaceClientController.stop();
         await cleanup(stopBackgroundWorkers);
+        await cleanup(() => automationRunner.suspendRemoteRuns());
         await cleanup(stopChatTrashMaintenance);
         await Promise.all([
           cleanup(() => previewSessionManager.closeAll()),
