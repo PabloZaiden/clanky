@@ -318,10 +318,11 @@ export class ChatSessionService implements ChatSessionPort {
           options.signal.throwIfAborted();
         }
       }
+      const retainedRemote = backend.harness.capabilities.remoteContinuity === 1;
       reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
-        ...current.state, status: "reconnecting", error: undefined, lastActivityAt: createTimestamp(),
-        ...(backend.harness.capabilities.remoteContinuity === 1 ? { connectionStatus: "connecting" as const } : {}),
-      }));
+        ...current.state, status: "reconnecting", error: undefined,
+        ...(retainedRemote ? { connectionStatus: "connecting" as const } : { lastActivityAt: createTimestamp() }),
+      }), { statusChangedAt: retainedRemote ? null : undefined });
       if (!reconnectingChat.state.session?.id) {
         reconnectingChat = await this.ensureSession(reconnectingChat, backend, {
           signal: options.signal,
@@ -376,7 +377,7 @@ export class ChatSessionService implements ChatSessionPort {
           "mesh_worker_connection_unavailable", "mesh_relay_unavailable", "mesh_execution_session_invalid"].includes(error.code)) {
         const disconnected = await this.state.mutateState(chat.config.id, (current) => ({
           ...current.state, status: "reconnecting", connectionStatus: "disconnected", startupStage: undefined,
-        }));
+        }), { statusChangedAt: null });
         this.state.emitChatUpdated(disconnected);
         throw error;
       }
@@ -637,6 +638,7 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   private async finishReconnect(chat: Chat): Promise<Chat> {
+    const retainedRemote = hasRemoteChatContinuity(chat);
     return this.state.mutateState(chat.config.id, (current) => {
       if (current.state.status !== "reconnecting") return undefined;
       const waiting = current.state.harness?.questions?.some((request) => request.blocking && isQuestionOpen(request));
@@ -649,9 +651,9 @@ export class ChatSessionService implements ChatSessionPort {
           ? "connected"
           : current.state.connectionStatus,
         startupStage: undefined,
-        lastActivityAt: createTimestamp(),
+        ...(retainedRemote ? {} : { lastActivityAt: createTimestamp() }),
       };
-    });
+    }, { statusChangedAt: retainedRemote ? null : undefined });
   }
 }
 

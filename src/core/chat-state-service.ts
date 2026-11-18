@@ -46,7 +46,7 @@ import { createTranscriptChangeSet } from "@/shared";
 import type { ChatSnapshot, ToolCallRecord } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
 import { createTimestamp } from "@/shared/events";
-import { ChatBusyError, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
+import { ChatBusyError, hasRemoteChatContinuity, isStandaloneChat, shouldIncludeConversationTranscriptLog } from "@/shared";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import type { ChatStatePort } from "./chat-service-contracts";
 import { closeOpenQuestions, formatHarnessQuestions, reconcileQuestionAnswerAdmissions } from "@/shared/harness-questions";
@@ -227,6 +227,7 @@ export class ChatStateService implements ChatStatePort {
       expectedStatus?: ChatStatus;
       streaming?: boolean;
       completedTurn?: boolean;
+      statusChangedAt?: string | null;
     } = {},
   ): Promise<Chat> {
     return this.mutations.run(chat.config.id, () => this.persistState(chat, state, options));
@@ -235,13 +236,14 @@ export class ChatStateService implements ChatStatePort {
   mutateState(
     chatId: string,
     update: (current: Chat) => ChatState | undefined,
+    options: { statusChangedAt?: string | null } = {},
   ): Promise<Chat> {
     return this.mutations.run(chatId, async () => {
       const current = await this.getChat(chatId);
       if (!current) throw new HarnessError("harness_session_not_found", "The chat is unavailable.");
       // Keep the mutation synchronous so provider I/O never holds the state queue.
       const state = update(current);
-      return state ? await this.persistState(current, state) : current;
+      return state ? await this.persistState(current, state, options) : current;
     });
   }
 
@@ -285,6 +287,7 @@ export class ChatStateService implements ChatStatePort {
       expectedStatus?: ChatStatus;
       streaming?: boolean;
       completedTurn?: boolean;
+      statusChangedAt?: string | null;
     } = {},
   ): Promise<Chat> {
     const preserveQueuedMessages = state.queuedMessages === chat.state.queuedMessages;
@@ -339,6 +342,7 @@ export class ChatStateService implements ChatStatePort {
         previousState: chat.state,
         transcriptChanges,
         expectedStatus: options.expectedStatus,
+        statusChangedAt: options.statusChangedAt,
       });
     if (!saved) {
       if (options.expectedStatus !== undefined) {
@@ -432,7 +436,7 @@ export class ChatStateService implements ChatStatePort {
     const updated = await this.updateState(current, {
       ...current.state,
       startupStage,
-      lastActivityAt: createTimestamp(),
+      lastActivityAt: hasRemoteChatContinuity(current) ? current.state.lastActivityAt : createTimestamp(),
     }, options);
     this.emitChatUpdated(updated);
     return updated;

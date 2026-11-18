@@ -365,6 +365,8 @@ on other workers. Controller shutdown cancels its pending reattachments without
 waiting for a remote response or terminating retained native execution.
 Interrupted history catch-up resumes on the next attachment even when native
 execution is already live.
+Transport-only reconnection does not refresh the conversation's activity age or
+Active work ordering; genuine interactions and work completed offline still do.
 
 Closing or releasing a controller attachment only detaches its transport lease;
 it does not terminate retained execution, regardless of observation-stream

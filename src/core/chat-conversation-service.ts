@@ -870,7 +870,7 @@ export class ChatConversationService implements ChatConversationPort {
       const updated = await this.state.mutateState(chatId, (current) => ({
         ...current.state, status: "reconnecting", connectionStatus: "disconnected",
         harness: { ...current.state.harness, activity: { observation: "unavailable", reason: "disconnected" } },
-      }));
+      }), { statusChangedAt: null });
       this.state.emitChatUpdated(updated);
       return;
     }
@@ -1030,6 +1030,9 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.chat = await this.updateState(streamState.chat, {
           ...streamState.chat.state, status: "streaming", startupStage: undefined,
           error: undefined, completedAt: undefined, lastActivityAt: createTimestamp(),
+        }, {
+          statusChangedAt: native.backend.isObservationRecovering?.(native.binding.nativeId)
+            ? event.timestamp ?? createTimestamp() : undefined,
         });
       }
     }
@@ -1268,6 +1271,8 @@ export class ChatConversationService implements ChatConversationPort {
         ? streamState.chat.state.status : native.executing ? "streaming" : "idle",
       startupStage: undefined, error: undefined, interruptRequested: false,
       harness: { ...streamState.chat.state.harness, nativeHistoryRecovery: undefined },
+    }, {
+      statusChangedAt: native.backend.harness.capabilities.remoteContinuity === 1 ? null : undefined,
     });
   }
 
@@ -1833,7 +1838,10 @@ export class ChatConversationService implements ChatConversationPort {
               activeTurnAttachmentBytes: 0,
             },
             lastActivityAt: createTimestamp(),
-          }, { completedTurn: true });
+          }, {
+            completedTurn: true,
+            statusChangedAt: backend.harness.capabilities.remoteContinuity === 1 ? event.timestamp ?? now : undefined,
+          });
         }
         streamState.interpreter.acknowledgeCheckpoint();
         if (!this.activeStreams.get(chatId)?.native) {
@@ -2577,6 +2585,7 @@ export class ChatConversationService implements ChatConversationPort {
       expectedStatus?: ChatStatus;
       streaming?: boolean;
       completedTurn?: boolean;
+      statusChangedAt?: string | null;
     },
   ): Promise<Chat> {
     const native = this.activeStreams.get(chat.config.id)?.native;
