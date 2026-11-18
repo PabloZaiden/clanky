@@ -359,6 +359,11 @@ reattaches using the original authenticated conversation binding, restores
 actual activity and pending interactions, and observes output produced while
 offline without resending the prompt.
 
+Reconnection and history catch-up belong to each conversation, not server
+readiness. An unavailable or recovering worker must not block the API or work
+on other workers. Controller shutdown cancels its pending reattachments without
+waiting for a remote response or terminating retained native execution.
+
 Closing or releasing a controller attachment only detaches its transport lease;
 it does not terminate retained execution, regardless of observation-stream
 cancellation order. Explicit execution release and authorization revocation

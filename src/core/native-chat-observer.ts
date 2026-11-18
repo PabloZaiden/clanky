@@ -3,6 +3,7 @@
  */
 
 import type { Backend } from "../backends/types";
+import { setImmediate } from "node:timers/promises";
 import type { HarnessEvent } from "@/shared/harness-events";
 import { HarnessError } from "../backends/harness-errors";
 import type { EventStream } from "../utils/event-stream";
@@ -66,12 +67,14 @@ export class NativeChatObserver {
     onEvent: (event: HarnessEvent) => Promise<void>;
     onFailure: (error: unknown) => Promise<void>;
   }): Promise<void> {
+    let processed = 0;
     try {
       while (!this.closed) {
         const event = await this.stream!.next();
         if (this.closed) break;
         if (!event) throw new HarnessError("harness_transport_closed", "Native conversation observation ended.");
         await this.serialize(() => options.onEvent(event));
+        if (++processed % 16 === 0) await setImmediate();
       }
     } catch (error) {
       if (!this.closed) {

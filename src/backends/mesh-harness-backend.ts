@@ -153,6 +153,7 @@ export class MeshHarnessBackend implements Backend {
   }
 
   private async rpc<T>(operation: MeshHarnessOperation, signal?: AbortSignal): Promise<T> {
+    if (this.controlFailure) throw this.controlFailure;
     const connection = this.connection();
     const requestId = crypto.randomUUID();
     const pending = operation.operation === "control.result" ? this.controlReplies : this.requests;
