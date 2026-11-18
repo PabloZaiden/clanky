@@ -120,7 +120,7 @@ export const meshExecutionRoutes = defineRoutes({
           parsed.data.sessionId,
           parsed.data.sessionToken,
         );
-        if (channel === MESH_HARNESS_CHANNEL) await meshHarnessGateway.close(parsed.data.sessionId);
+        if (channel === MESH_HARNESS_CHANNEL) await meshHarnessGateway.detach(parsed.data.sessionId);
         return Response.json({ success: true });
       } catch (error) {
         return internalMeshErrorResponse(error);

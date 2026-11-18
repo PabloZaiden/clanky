@@ -146,11 +146,14 @@ export interface ChatStatePort {
       expectedStatus?: ChatStatus;
       streaming?: boolean;
       completedTurn?: boolean;
+      /** null preserves work recency for transport-only status transitions. */
+      statusChangedAt?: string | null;
     },
   ): Promise<Chat>;
   mutateState(
     chatId: string,
     update: (current: Chat) => ChatState | undefined,
+    options?: { statusChangedAt?: string | null },
   ): Promise<Chat>;
   mutateMetadata(
     chatId: string,

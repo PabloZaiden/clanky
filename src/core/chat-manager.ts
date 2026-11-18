@@ -65,9 +65,9 @@ function createChatServices(emitter: SimpleEventEmitter<ChatEvent>): ChatService
     state,
     worktree,
     hasActiveStream: (chatId: string) => conversation?.hasActiveStream(chatId) ?? false,
-    onNativeSession: async (chat, backend, binding, recover) => {
+    onNativeSession: async (chat, backend, binding, recover, signal) => {
       if (!conversation) throw new Error("Chat conversation service is not initialized");
-      await conversation.observeNativeSession({ chat, backend, binding, recover });
+      await conversation.observeNativeSession({ chat, backend, binding, recover, signal });
     },
     onNativeDisconnect: async (chatId) => {
       await conversation?.stopNativeObservation(chatId);

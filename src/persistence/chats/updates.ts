@@ -23,6 +23,7 @@ export interface UpdateChatStateOptions {
   previousState?: ChatState;
   transcriptChanges?: TranscriptChangeSet;
   expectedStatus?: ChatStatus;
+  statusChangedAt?: string | null;
 }
 
 interface PersistedChatState {
@@ -119,17 +120,17 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     const write = chatStateToRow(nextState, options);
     const columns = Object.keys(write.row);
     validateChatColumnNames(columns);
-    const setClause = [
-      ...columns.map((column) => `${column} = ?`),
-      ...(write.fields.has("status")
-        ? ["last_status_changed_at = CASE WHEN status <> ? THEN ? ELSE last_status_changed_at END"]
-        : []),
-      "state_revision = state_revision + 1",
-    ].join(", ");
+    const assignments = columns.map((column) => `${column} = ?`);
     const values = Object.values(write.row);
-    if (write.fields.has("status")) {
+    if (typeof options.statusChangedAt === "string") {
+      assignments.push("last_status_changed_at = MAX(COALESCE(last_status_changed_at, ''), ?)");
+      values.push(new Date(options.statusChangedAt).toISOString());
+    } else if (options.statusChangedAt === undefined && write.fields.has("status")) {
+      assignments.push("last_status_changed_at = CASE WHEN status <> ? THEN ? ELSE last_status_changed_at END");
       values.push(nextState.status, new Date().toISOString());
     }
+    assignments.push("state_revision = state_revision + 1");
+    const setClause = assignments.join(", ");
     values.push(chatId, userId);
     const statusCondition = options.expectedStatus === undefined ? "" : " AND status = ?";
     if (options.expectedStatus !== undefined) {
