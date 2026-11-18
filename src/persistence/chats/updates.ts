@@ -124,7 +124,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
     const values = Object.values(write.row);
     if (typeof options.statusChangedAt === "string") {
       assignments.push("last_status_changed_at = MAX(COALESCE(last_status_changed_at, ''), ?)");
-      values.push(options.statusChangedAt);
+      values.push(new Date(options.statusChangedAt).toISOString());
     } else if (options.statusChangedAt === undefined && write.fields.has("status")) {
       assignments.push("last_status_changed_at = CASE WHEN status <> ? THEN ? ELSE last_status_changed_at END");
       values.push(nextState.status, new Date().toISOString());
