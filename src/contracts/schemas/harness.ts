@@ -124,6 +124,7 @@ export const HarnessConversationStateSchema = z.object({
     nativeId: z.string().min(1),
     messageIds: z.array(z.string().min(1)).min(1).max(1000),
   }).optional(),
+  nativeHistoryRecovery: HarnessConversationBindingSchema.optional(),
   historyRecovery: HarnessHistoryRecoverySchema.optional(),
   historyRecoveryCleanup: z.array(HarnessHistoryRecoverySchema).optional(),
   capabilities: z.object({
