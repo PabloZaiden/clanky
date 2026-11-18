@@ -2,6 +2,7 @@
  * Workspace adapter and host settings rows.
  */
 
+import type { ReactNode } from "react";
 import { FormGroup, Select, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import {
   executionHostRefsEqual, serializeExecutionHostRef,
@@ -10,6 +11,7 @@ import {
 import { HarnessRuntimeSelector } from "../harness-runtime-selector";
 
 interface RuntimeFieldsProps {
+  children?: ReactNode;
   adapter: HarnessAdapter;
   supportedAdapters: readonly HarnessAdapter[];
   adapterAvailabilityError?: ExecutionHostDescriptor["harnessAdapterError"];
@@ -26,7 +28,7 @@ interface RuntimeFieldsProps {
 }
 
 export function RuntimeFields({
-  adapter, supportedAdapters, adapterAvailabilityError, executionHost,
+  children, adapter, supportedAdapters, adapterAvailabilityError, executionHost,
   loading, selectableTargets, unavailableInitialTarget, initialExecutionHost,
   initialDedicatedWorker, dedicatedWorkerSelected, dedicatedWorkerActive,
   updateAdapter, updateExecutionHost,
@@ -39,10 +41,8 @@ export function RuntimeFields({
       ? "This adapter is unavailable on the selected execution host." : null);
   return (
     <FormGroup>
-      <HarnessRuntimeSelector layout="settings" adapter={adapter} supportedAdapters={supportedAdapters}
-        onAdapterChange={updateAdapter} />
-      {adapterError ? <p className="text-sm text-amber-600 dark:text-amber-400" role="alert">{adapterError}</p> : null}
       <SettingsFieldRow title="Execution host" labelFor="execution-host"
+        description="Server for files and agents."
         feedback={unavailable ? <span role="alert">Select a host that supports workspace operations.</span> : null}
         content={<Select id="execution-host" fieldWidth="normal" required
           value={executionHost ? serializeExecutionHostRef(executionHost) : dedicatedWorkerActive ? "workspace-worker" : ""}
@@ -53,6 +53,10 @@ export function RuntimeFields({
           {unavailableInitialTarget ? <option value={serializeExecutionHostRef(unavailableInitialTarget.ref)} disabled>{unavailableInitialTarget.name} - unavailable</option> : null}
           {selectableTargets.map((target) => <option key={serializeExecutionHostRef(target.ref)} value={serializeExecutionHostRef(target.ref)}>{target.name}</option>)}
         </Select>} />
+      {children}
+      <HarnessRuntimeSelector layout="settings" adapter={adapter} supportedAdapters={supportedAdapters}
+        onAdapterChange={updateAdapter} />
+      {adapterError ? <p className="text-sm text-amber-600 dark:text-amber-400" role="alert">{adapterError}</p> : null}
     </FormGroup>
   );
 }

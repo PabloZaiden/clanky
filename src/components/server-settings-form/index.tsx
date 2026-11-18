@@ -2,7 +2,7 @@
  * Shared workspace runtime form.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   getDefaultServerSettings,
   createAgentSettings,
@@ -23,6 +23,7 @@ import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-setti
 import { TestConnection } from "./test-connection";
 
 export interface ServerSettingsFormProps {
+  children?: ReactNode;
   controllerId?: string;
   workspaceId?: string;
   initialSettings?: ServerSettings;
@@ -43,6 +44,7 @@ export interface ServerSettingsFormProps {
 }
 
 export function ServerSettingsForm({
+  children,
   controllerId,
   workspaceId,
   initialSettings,
@@ -218,7 +220,9 @@ export function ServerSettingsForm({
         dedicatedWorkerActive={dedicatedWorkerActive}
         updateAdapter={updateAdapter}
         updateExecutionHost={updateExecutionHost}
-      />
+      >
+        {children}
+      </RuntimeFields>
 
       {onTest && (
         <TestConnection
