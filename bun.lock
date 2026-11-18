@@ -12,7 +12,7 @@
         "@modelcontextprotocol/server": "2.4.0",
         "@monaco-editor/react": "4.7.0",
         "@noble/hashes": "2.4.0",
-        "@opencode/client": "2.2.6",
+        "@opencode/client": "2.3.0",
         "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
         "@pablozaiden/webapp": "github:PabloZaiden/webapp#79199dc6fe0ec5729aae46d9370ea9c0901b9b1e",
         "@peculiar/x509": "2.2.0",
@@ -147,13 +147,13 @@
 
     "@microsoft/copilot-sdk-darwin-x64": ["@microsoft/copilot-sdk-darwin-x64@2.0.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-Ya5FMj455s0v05Qjxa7hBmJnrqoZv+gl4dkzlL8yTC1db3FboNBvOrhVOD+L4o9ytLoRj+USf9b7J9M8h/puJg=="],
 
-    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-FuJXpbdFjkmltdYvyGchCLM64bQ192QK7CW1HE36pPZz72Oji1hS19V802ZIS/YqbQKOMY+/+xZYD10F2zHDGw=="],
+    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-FuJXpbdFjkmltdYvyGchCLM64bQ192QK7CW1HE36pPZz72Oji1hS19V802ZIS/YqbQKOMY+/+xZYD10F2zHDGw=="],
 
-    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.0", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-JWE0zQwsZhYx4Xew+ak8xNEy6PWYDTgYy2we5nE9/DACXO4OTrRPwBK71iKZIOeI/Yb7SF2tnt1iIUYfKzRQ0g=="],
+    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-JWE0zQwsZhYx4Xew+ak8xNEy6PWYDTgYy2we5nE9/DACXO4OTrRPwBK71iKZIOeI/Yb7SF2tnt1iIUYfKzRQ0g=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "musl" }, "sha512-9//7vxTuk2Sx8iBjNs5dR++zJyv1ykcGli68PGHbHOev2y3rKfEn8g4d8c4IhNvWM5kZzA3YurqePFG4Z9qjQQ=="],
+    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-9//7vxTuk2Sx8iBjNs5dR++zJyv1ykcGli68PGHbHOev2y3rKfEn8g4d8c4IhNvWM5kZzA3YurqePFG4Z9qjQQ=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.0", "", { "os": "linux", "cpu": "x64", "libc": "musl" }, "sha512-IbeU/7Gi8wSj6BPVh65bidsdiAP0hkKJNhxoPBMZeG/KnTcW9OqhFs0UAbQMjOdt5wQkxl+0uw64smB2wPo8sA=="],
+    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-IbeU/7Gi8wSj6BPVh65bidsdiAP0hkKJNhxoPBMZeG/KnTcW9OqhFs0UAbQMjOdt5wQkxl+0uw64smB2wPo8sA=="],
 
     "@microsoft/copilot-sdk-win32-arm64": ["@microsoft/copilot-sdk-win32-arm64@2.0.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-R+MOMx/DOKhEuIlPzWvBwpmdx+8fNS5eWMqwfGIYQ5XtB5lNathqAaig1fEDC9T1ietwoC8uF5+wLuWBti4Paw=="],
 
@@ -171,11 +171,11 @@
 
     "@noble/hashes": ["@noble/hashes@2.4.0", "", {}, "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="],
 
-    "@opencode/client": ["@opencode/client@2.2.6", "", { "dependencies": { "@opencode/protocol": "2.2.6", "@opencode/schema": "2.2.6" }, "peerDependencies": { "effect": "4.1.0", "solid-js": ">=1.9.0" }, "optionalPeers": ["effect", "solid-js"] }, "sha512-o90b8Z6tk62U3MiRK1g6r7WmNWLzHzIHme75/MCWa9/XmOREMzY4W1N01wAuHwU3J6UH/PlUDNKvLkeX5qCyeA=="],
+    "@opencode/client": ["@opencode/client@2.3.0", "", { "dependencies": { "@opencode/protocol": "2.3.0", "@opencode/schema": "2.3.0" }, "peerDependencies": { "effect": "4.1.0", "solid-js": ">=1.9.0" }, "optionalPeers": ["effect", "solid-js"] }, "sha512-xu74XGiYIqLZ2FzIrtjaR5UNWWXY3fRln0WLgZoQTR/wWMgG+T9XGQQGCl8ry8jnCFsJVokiHemBqft9oMzC1A=="],
 
-    "@opencode/protocol": ["@opencode/protocol@2.2.6", "", { "dependencies": { "@opencode/schema": "2.2.6", "effect": "4.1.0" } }, "sha512-XBAgz2qnhFS/EI4P3pgC9A6HJTHnFiaQXkqux3liXwE7hZh5wEzRZ551nQZD95rkrH00EnryUSaKI2y/O2Bt6w=="],
+    "@opencode/protocol": ["@opencode/protocol@2.3.0", "", { "dependencies": { "@opencode/schema": "2.3.0", "effect": "4.1.0" } }, "sha512-V37zTGXVa1j9aXUvUY01YN1EtfMMSWoT5pSCc6M0UsGdTUZX6QL/vMgGVGzPvbt7+Z8Vo40/0DFRPyqT4sdvnw=="],
 
-    "@opencode/schema": ["@opencode/schema@2.2.6", "", { "dependencies": { "@standard-schema/spec": "1.1.0", "effect": "4.1.0" } }, "sha512-TaLr30ktFFVsuReorFNbqYvybTVxV/4M44qm5XzRjUqq6deR0jH4h4Wt1gB0NTkXDFL0LMH+Ul1oVBnp5w9TRg=="],
+    "@opencode/schema": ["@opencode/schema@2.3.0", "", { "dependencies": { "@standard-schema/spec": "1.1.0", "effect": "4.1.0" } }, "sha512-9CPS4+BXWUs3ELIWo68AA2q4XEPMkRYwpGYdqd/wNz3jRTOB8swef+2/z+igkCel+UtlX+dAlGTmSnid/JcoKw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.10.0", "", {}, "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ=="],
 
@@ -657,7 +657,7 @@
 
     "khroma": ["khroma@2.1.0", "", {}, "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw=="],
 
-    "koffi": ["koffi@3.3.6", "", { "optionalDependencies": { "@koromix/koffi-android-arm64": "3.3.6", "@koromix/koffi-android-x64": "3.3.6", "@koromix/koffi-darwin-arm64": "3.3.6", "@koromix/koffi-darwin-x64": "3.3.6", "@koromix/koffi-freebsd-arm64": "3.3.6", "@koromix/koffi-freebsd-ia32": "3.3.6", "@koromix/koffi-freebsd-x64": "3.3.6", "@koromix/koffi-linux-arm": "3.3.6", "@koromix/koffi-linux-arm64": "3.3.6", "@koromix/koffi-linux-ia32": "3.3.6", "@koromix/koffi-linux-loong64": "3.3.6", "@koromix/koffi-linux-ppc64": "3.3.6", "@koromix/koffi-linux-riscv64": "3.3.6", "@koromix/koffi-linux-x64": "3.3.6", "@koromix/koffi-openbsd-arm64": "3.3.6", "@koromix/koffi-openbsd-ia32": "3.3.6", "@koromix/koffi-openbsd-x64": "3.3.6", "@koromix/koffi-win32-arm64": "3.3.6", "@koromix/koffi-win32-ia32": "3.3.6", "@koromix/koffi-win32-x64": "3.3.6" }, "hasInstallScript": true }, "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g=="],
+    "koffi": ["koffi@3.3.6", "", { "optionalDependencies": { "@koromix/koffi-android-arm64": "3.3.6", "@koromix/koffi-android-x64": "3.3.6", "@koromix/koffi-darwin-arm64": "3.3.6", "@koromix/koffi-darwin-x64": "3.3.6", "@koromix/koffi-freebsd-arm64": "3.3.6", "@koromix/koffi-freebsd-ia32": "3.3.6", "@koromix/koffi-freebsd-x64": "3.3.6", "@koromix/koffi-linux-arm": "3.3.6", "@koromix/koffi-linux-arm64": "3.3.6", "@koromix/koffi-linux-ia32": "3.3.6", "@koromix/koffi-linux-loong64": "3.3.6", "@koromix/koffi-linux-ppc64": "3.3.6", "@koromix/koffi-linux-riscv64": "3.3.6", "@koromix/koffi-linux-x64": "3.3.6", "@koromix/koffi-openbsd-arm64": "3.3.6", "@koromix/koffi-openbsd-ia32": "3.3.6", "@koromix/koffi-openbsd-x64": "3.3.6", "@koromix/koffi-win32-arm64": "3.3.6", "@koromix/koffi-win32-ia32": "3.3.6", "@koromix/koffi-win32-x64": "3.3.6" } }, "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g=="],
 
     "layout-base": ["layout-base@1.0.2", "", {}, "sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg=="],
 
