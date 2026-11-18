@@ -1,4 +1,5 @@
 import { decodeWorkspaceInvitation } from "./proof";
+import { downloadGeneratedFile } from "@/platform/web/download-generated-file";
 
 const INVITATION_FILE_FORMAT = "clanky-workspace-invitation";
 const MAX_INVITATION_FILE_BYTES = 72 * 1_024;
@@ -32,17 +33,5 @@ export function downloadWorkspaceInvitationFile(invitation: string, name?: strin
     throw new Error("The invitation file exceeds the 72 KiB limit.");
   }
   const filename = name?.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "workspace";
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(file);
-  try {
-    link.href = url;
-    link.download = `${filename}.clanky-invite.json`;
-    link.rel = "noopener noreferrer";
-    link.referrerPolicy = "no-referrer";
-    document.body.appendChild(link);
-    link.click();
-  } finally {
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
+  downloadGeneratedFile(file, `${filename}.clanky-invite.json`);
 }

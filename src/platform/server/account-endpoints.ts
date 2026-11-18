@@ -73,6 +73,7 @@ import type { WebSocketData } from "@pablozaiden/webapp/server";
 import { scheduleProcessShutdown } from "@pablozaiden/webapp/server";
 import { defineRoutes, type RouteContext } from "./routes";
 import { createAccountRoutes } from "./account-routes";
+import { AppearancePreferenceSchema, DEFAULT_APPEARANCE } from "@/contracts/schemas/appearance";
 
 const MAX_API_KEY_AUTH_BODY_BYTES = 4 * 1024;
 const MAX_PASSWORD_AUTH_BODY_BYTES = 16 * 1024;
@@ -192,6 +193,23 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
         const body = await parseJson(req, themePreferenceRequestSchema);
         store.setThemePreference(body.theme, context.requireUser().id);
         return successResponse({ theme: body.theme });
+      },
+    },
+    "/api/preferences/appearance": {
+      auth: "user", sameOrigin: "mutations", tags: ["preferences"],
+      description: "Read or update the current user's visual theme and imported theme library.",
+      operations: {
+        GET: { automation: { policy: "read" } },
+        PUT: { requestSchema: AppearancePreferenceSchema, automation: { policy: "write" } },
+      },
+      GET: (_req, context) => {
+        const stored = store.getPreference("appearance", context.requireUser().id);
+        return jsonResponse(stored === undefined ? DEFAULT_APPEARANCE : AppearancePreferenceSchema.parse(JSON.parse(stored)));
+      },
+      async PUT(req, context) {
+        const appearance = await parseJson(req, AppearancePreferenceSchema);
+        store.setPreference("appearance", JSON.stringify(appearance), context.requireUser().id);
+        return successResponse(appearance);
       },
     },
     "/api/preferences/log-level": {
