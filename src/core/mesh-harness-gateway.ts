@@ -570,7 +570,8 @@ export class MeshHarnessGateway {
     if (failures.length) throw new AggregateError(failures.map((result) => result.reason), "Native Mesh runtime shutdown was incomplete.");
   }
 
-  private async detach(id: string): Promise<void> {
+  /** Attachment cleanup must not select terminal cleanup for retained execution. */
+  async detach(id: string): Promise<void> {
     const host = this.hosts.get(id);
     if (!host?.config.continuity) { await this.close(id); return; }
     if (host.detached) return;

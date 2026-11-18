@@ -265,6 +265,7 @@ async function readWorkerTlsCertificate(dataDir: string): Promise<string> {
 export async function startMeshNode(options: {
   role: "controller" | "worker";
   command: string[];
+  outboundOnly?: boolean;
   instanceName?: string;
   timeoutMs?: number;
   environment?: Record<string, string | undefined>;
@@ -276,7 +277,8 @@ export async function startMeshNode(options: {
   try {
     const port = await availablePort();
     const tls = await getMeshTestTls();
-    const baseUrl = `${role === "worker" ? "https" : "http"}://127.0.0.1:${String(port)}`;
+    const outboundOnly = role === "worker" && options.outboundOnly === true;
+    const baseUrl = `${role === "worker" && !outboundOnly ? "https" : "http"}://127.0.0.1:${String(port)}`;
     const environment: Record<string, string | undefined> = currentEnvironment({
       ...options.environment,
       CLANKY_DATA_DIR: dataDir,
@@ -300,12 +302,9 @@ export async function startMeshNode(options: {
         ...command,
         "worker",
         "bootstrap",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        String(port),
-        "--mesh-endpoint",
-        baseUrl,
+        ...(outboundOnly ? ["--outbound-only"] : [
+          "--host", "127.0.0.1", "--port", String(port), "--mesh-endpoint", baseUrl,
+        ]),
         "--worker-directory",
         dataDir,
         "--instance-name",
@@ -326,7 +325,7 @@ export async function startMeshNode(options: {
         throw new Error(`Worker bootstrap failed (pid=${String(bootstrap.pid)}, exitCode=${String(bootstrap.exitCode)}, signalCode=${String(bootstrap.signalCode)}, timedOut=${String(bootstrap.exitedDueToTimeout)}, maxBuffer=${String(bootstrap.exitedDueToMaxBuffer)}, elapsedMs=${String(Math.round(performance.now() - bootstrapStartedAt))}): ${output}`);
       }
       apiKey = parseBootstrapApiKey(bootstrap.stdout.toString());
-      tlsCertificate = await readWorkerTlsCertificate(dataDir);
+      if (!outboundOnly) tlsCertificate = await readWorkerTlsCertificate(dataDir);
     }
 
     const serveArguments = [
