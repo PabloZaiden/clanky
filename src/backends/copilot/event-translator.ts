@@ -2,7 +2,7 @@
  * Keeps model steps, assistant messages and child actors distinct.
  */
 
-import type { SessionEvent } from "@github/copilot-sdk";
+import type { SessionEvent } from "@microsoft/copilot-sdk";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
 import {

@@ -2,12 +2,12 @@
  * Owns native question callbacks until answer, cancellation or connection loss.
  */
 
-import type { SessionConfig } from "@github/copilot-sdk";
+import type { SessionInteractionOptions } from "@microsoft/copilot-sdk";
 import type { HarnessEventHub } from "../harness-event-hub";
 import { HarnessError } from "../harness-errors";
 import type { HarnessQuestionPolicy } from "@/shared/harness-control";
 
-type QuestionHandler = NonNullable<SessionConfig["onUserInputRequest"]>;
+type QuestionHandler = NonNullable<SessionInteractionOptions["onUserInputRequest"]>;
 type NativeAnswer = Awaited<ReturnType<QuestionHandler>>;
 
 export class CopilotQuestionCoordinator {

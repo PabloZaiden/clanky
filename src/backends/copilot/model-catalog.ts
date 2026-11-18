@@ -2,7 +2,7 @@
  * Native Copilot catalog and option validation without temporary conversations.
  */
 
-import type { ModelInfo as CopilotModelInfo } from "@github/copilot-sdk";
+import type { Model as CopilotModel } from "@microsoft/copilot-sdk";
 import type { ModelInfo } from "@/contracts";
 import { HarnessError } from "../harness-errors";
 import type { CopilotRuntime } from "./runtime";
@@ -27,8 +27,8 @@ export class CopilotModelCatalog {
     modelID: string,
     variant?: string,
   ): Promise<{
-    model: CopilotModelInfo;
-    reasoningEffort?: NonNullable<CopilotModelInfo["supportedReasoningEfforts"]>[number];
+    model: CopilotModel;
+    reasoningEffort?: NonNullable<CopilotModel["supportedReasoningEfforts"]>[number];
   }> {
     await this.runtime.client.ping();
     const model = (await this.runtime.client.listModels()).find((entry) => entry.id === modelID);

@@ -395,10 +395,10 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
   switch (frame.method) {
     case "connect":
     case "ping":
-      result = { protocolVersion: 3, version: "1.0.16", timestamp: Date.now() };
+      result = { protocolVersion: 4, version: "1.0.113", timestamp: Date.now() };
       break;
     case "status.get":
-      result = { version: "1.0.16", protocolVersion: 3 };
+      result = { version: "1.0.113", protocolVersion: 4 };
       break;
     case "auth.getStatus":
       result = { isAuthenticated: true, authType: "user", login: "e2e" };
@@ -410,10 +410,11 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       break;
     case "session.create": {
       const id = String(params["sessionId"] ?? crypto.randomUUID());
+      const tools = params["tools"] as { definitions?: Session["tools"] } | undefined;
       sessions.set(id, {
         id, directory: String(params["workingDirectory"] ?? process.cwd()),
         model: String(params["model"] ?? "e2e-copilot-model"),
-        tools: Array.isArray(params["tools"]) ? params["tools"] : [],
+        tools: tools?.definitions ?? [],
         metadata: {}, processing: false, prompt: "", events: [], usage: {},
       });
       event(sessions.get(id)!, "session.start", {});
@@ -421,11 +422,13 @@ async function dispatch(frame: JsonRpcMessage): Promise<void> {
       result = { sessionId: id, capabilities: {} };
       break;
     }
-    case "session.resume":
+    case "session.resume": {
       if (!session) throw new Error("Copilot session unavailable.");
-      session.tools = Array.isArray(params["tools"]) ? params["tools"] : session.tools;
+      const tools = params["tools"] as { definitions?: Session["tools"] } | undefined;
+      session.tools = tools?.definitions ?? session.tools;
       result = { sessionId: session.id, capabilities: {} };
       break;
+    }
     case "session.getMetadata":
       result = {
         session: session ? {

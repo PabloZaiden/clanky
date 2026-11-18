@@ -6,8 +6,11 @@ import {
   CopilotClient,
   RuntimeConnection,
   type GetStatusResponse,
-} from "@github/copilot-sdk";
+} from "@microsoft/copilot-sdk";
+import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "../harness-errors";
+
+const log = createLogger("backend:copilot:runtime");
 
 export interface CopilotRuntimeOptions {
   directory: string;
@@ -44,13 +47,14 @@ export class CopilotRuntime {
       if (value !== undefined) environment[key] = value;
     }
     const client = new CopilotClient({
-      connection: RuntimeConnection.forStdio({
+      mode: "coding-agent",
+      runtime: RuntimeConnection.forSpawnedStdio({
         path: executable,
         args: options.args,
         env: environment,
+        workingDirectory: options.directory,
       }),
-      workingDirectory: options.directory,
-      logLevel: "error",
+      observability: { logLevel: "error" },
     });
     const aborted = Promise.withResolvers<never>();
     const onAbort = (): void => {
@@ -75,6 +79,17 @@ export class CopilotRuntime {
       }
       return new CopilotRuntime(client, options.directory, status);
     } catch (error) {
+      // Only extract protocol metadata: other SDK errors can include child output.
+      const mismatch = error instanceof Error
+        ? /^SDK protocol version mismatch: SDK supports versions (\d{1,9})-(\d{1,9}), but server (?:reports version (\d{1,9})|does not report a protocol version)\./.exec(error.message)
+        : null;
+      if (mismatch) {
+        log.error("Copilot SDK and CLI protocols are incompatible; align Clanky and Copilot versions on the execution host", {
+          minimumProtocol: Number(mismatch[1]),
+          maximumProtocol: Number(mismatch[2]),
+          runtimeProtocol: mismatch[3] === undefined ? "unreported" : Number(mismatch[3]),
+        });
+      }
       let shutdownErrors: Error[];
       try {
         shutdownErrors = await client.stop();
