@@ -10,7 +10,7 @@ import type { HarnessEvent, ProviderImageFileReference } from "@/shared/harness-
 import type { HarnessSessionHistory } from "@/shared/harness-history";
 import type { ModelInfo } from "@/contracts";
 import type { MeshHarnessOperation, MeshHarnessControlEvent } from "@/contracts/schemas/mesh-harness";
-import { MeshHarnessEventSchema, MeshHarnessControlEventSchema, MeshHarnessSessionHistorySchema, MeshHarnessSubagentHistorySchema } from "@/contracts/schemas/mesh-harness";
+import { MeshHarnessEventSchema, MeshHarnessControlEventSchema, MeshHarnessSessionHistorySchema, MeshHarnessSubagentHistorySchema, MeshHarnessInteractionSnapshotSchema } from "@/contracts/schemas/mesh-harness";
 import type { ControlToolReply } from "@/contracts/schemas/control-tool-transport";
 import { requestControlTool, controlToolTransportFailure, type ControlToolConnection } from "../core/control-tool-transport";
 import { HarnessConversationBindingSchema, HarnessConversationStateSchema } from "@/contracts/schemas/harness";
@@ -56,6 +56,7 @@ const Models = z.array(z.object({
 })).max(10_000);
 const Session = z.object({
   id: z.string().min(1), binding: HarnessConversationBindingSchema,
+  continuity: z.enum(["live", "cold"]).optional(),
   title: z.string().optional(), createdAt: z.string(), model: z.string().optional(),
   configOptions: z.array(z.object({
     id: z.string(), name: z.string(), description: z.string().optional(), category: z.string().optional(),
@@ -64,6 +65,13 @@ const Session = z.object({
   })).optional(),
 });
 const OBSERVATION_PEER_PROBE_TIMEOUT_MS = 5_000;
+
+interface Acknowledgements {
+  executionId: string;
+  sequence: number;
+  pending: Map<number, number>;
+  flushing?: Promise<void>;
+}
 
 export class MeshHarnessBackend implements Backend {
   readonly name: string;
@@ -80,11 +88,19 @@ export class MeshHarnessBackend implements Backend {
   private readonly controlRequests = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   private controlObserver?: { controller: AbortController; promise: Promise<void> };
   private controlFailure?: Error;
+  private releasing = false;
   private readonly interactions = new Map<string, string>();
   private readonly restoredProviderImageWarnings = new Map<string, Set<string>>();
   private readonly sessions = new Map<string, AgentSession>();
   private readonly observationFailures = new Map<string, Error>();
   private readonly deleting = new Set<string>();
+  private readonly eventGates = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
+  private readonly recoveryWaiters = new Map<string, {
+    executionId: string; sequence: number; completion: ReturnType<typeof Promise.withResolvers<void>>;
+  }>();
+  private readonly recoveredInteractions = new Map<string, HarnessEvent[]>();
+  private readonly interactionFences = new Map<string, { executionId: string; sequence: number; pending: Set<string> }>();
+  private readonly acknowledgements = new Map<string, Acknowledgements>();
 
   constructor(private readonly options: { adapter: HarnessAdapter; workspaceId: string; executionNodeId: string }) {
     this.name = `${options.adapter}-mesh`;
@@ -114,6 +130,7 @@ export class MeshHarnessBackend implements Backend {
       localUserId: requireExecutionOwnerUserId(), channel: MESH_HARNESS_CHANNEL,
       managedEnvironment: config.managedEnvironment,
       controlTools: config.control !== undefined,
+      continuity: config.continuity,
     });
     this.client = client;
     try {
@@ -121,6 +138,7 @@ export class MeshHarnessBackend implements Backend {
       client.startSessionRenewal();
       if (config.control) await this.observeControl(config.control, signal);
       this.capabilities = Capabilities.parse(await this.rpc({ operation: "capabilities" }, signal));
+      if (client.supportsContinuity) this.capabilities = { ...this.capabilities, remoteContinuity: 1 };
       if (this.capabilities.adapter !== this.options.adapter) throw new HarnessError("harness_runtime_unavailable", "The worker returned a different native adapter.");
       if (this.controlFailure) throw this.controlFailure;
     } catch (error) {
@@ -221,6 +239,26 @@ export class MeshHarnessBackend implements Backend {
   private async adopt(session: AgentSession): Promise<AgentSession> {
     this.sessions.set(session.id, session);
     if (this.observers.has(session.id)) return session;
+    if (this.capabilities.remoteContinuity === 1) {
+      this.eventGates.set(session.id, Promise.withResolvers<void>());
+      const snapshot = MeshHarnessInteractionSnapshotSchema.parse(await this.rpc({ operation: "interactions", sessionId: session.id }));
+      this.acknowledgements.set(session.id, {
+        executionId: snapshot.executionId, sequence: snapshot.acknowledgedSequence, pending: new Map(),
+      });
+      session.pendingInteractions = { questions: [], permissions: [], resolvedQuestions: snapshot.resolvedQuestions };
+      for (const event of snapshot.pending) {
+        if (event.type !== "question.asked" && event.type !== "permission.asked") {
+          throw new HarnessError("harness_event_gap", "The remote pending interaction snapshot is invalid.");
+        }
+        this.interactions.set(event.requestId, session.id);
+        session.pendingInteractions[event.type === "question.asked" ? "questions" : "permissions"].push(event.requestId);
+      }
+      this.interactionFences.set(session.id, {
+        executionId: snapshot.executionId, sequence: snapshot.sequence,
+        pending: new Set([...session.pendingInteractions.questions, ...session.pendingInteractions.permissions]),
+      });
+      this.recoveredInteractions.set(session.id, snapshot.pending);
+    }
     const controller = new AbortController();
     let ready!: () => void;
     let reject!: (error: unknown) => void;
@@ -281,6 +319,12 @@ export class MeshHarnessBackend implements Backend {
     const promise = (async (): Promise<void> => {
       let reply: ControlToolReply;
       try {
+        if (this.client?.supportsContinuity) {
+          if (event.dispatched) {
+            throw new DomainError("control_outcome_unknown", "The controller restarted before an authoritative result was retained.");
+          }
+          await this.rpc({ operation: "control.dispatch", controlRequestId: event.requestId }, requestSignal);
+        }
         reply = { ok: true, result: await requestControlTool(connection, event.request, requestSignal, this.options.executionNodeId) };
       } catch (error) {
         reply = controlToolTransportFailure(error);
@@ -312,8 +356,10 @@ export class MeshHarnessBackend implements Backend {
   }
 
   private observationFailed(error: unknown): void {
+    if (this.releasing || this.controlFailure) return;
     const failure = error instanceof Error ? error : new HarnessError("harness_event_gap", "Native observation was lost.");
     this.controlFailure = failure;
+    for (const recovery of this.recoveryWaiters.values()) recovery.completion.reject(failure);
     log[failure instanceof DomainError && failure.code === "harness_transport_closed" ? "warn" : "error"]("Native Mesh execution observation failed", {
       adapter: this.options.adapter,
       workspaceId: this.options.workspaceId,
@@ -407,7 +453,25 @@ export class MeshHarnessBackend implements Backend {
           if (id === undefined && sequence === 1 && payload.type !== "ready") {
             throw createHarnessObservationError("event_frame_invalid", { sequence: sequence - 1 });
           }
-          if (payload.type === "ready" && sequence === 1) ready();
+          if (payload.type === "ready" && sequence === 1) {
+            ready();
+            if (id !== undefined) {
+              const gate = this.eventGates.get(id);
+              if (gate) {
+                let abort!: () => void;
+                try {
+                  await Promise.race([
+                    gate.promise,
+                    new Promise<never>((_resolve, reject) => {
+                      abort = () => reject(signal.reason);
+                      if (signal.aborted) abort();
+                      else signal.addEventListener("abort", abort, { once: true });
+                    }),
+                  ]);
+                } finally { signal.removeEventListener("abort", abort); }
+              }
+            }
+          }
           else if (payload.type === "heartbeat") { /* Lease-owned keepalive, not a retained event. */ }
           else if (payload.type === "control" && id === undefined && control) {
             const parsed = MeshHarnessControlEventSchema.safeParse("event" in payload ? payload.event : undefined);
@@ -417,6 +481,7 @@ export class MeshHarnessBackend implements Backend {
             const parsed = MeshHarnessEventSchema.safeParse("event" in payload ? payload.event : undefined);
             if (!parsed.success) throw createHarnessObservationError("event_schema_invalid", { sequence: sequence - 1 }, parsed.error);
             let event = parsed.data;
+            if (event.delivery && !this.client?.supportsContinuity) throw createHarnessObservationError("event_schema_invalid");
             if (event.type === "error" && event.scope.kind === "principal"
               && (event.code === "harness_event_gap" || event.code === "harness_transport_closed")) {
               const failure = getHarnessObservationFailure(new HarnessError(event.code, event.message, {
@@ -439,7 +504,10 @@ export class MeshHarnessBackend implements Backend {
                   }
                 } else {
                   event = message;
-                  if (message.content.length === 0) continue;
+                  if (message.content.length === 0) {
+                    await this.acknowledgeIgnoredEvent(id, event);
+                    continue;
+                  }
                 }
               }
             }
@@ -448,6 +516,15 @@ export class MeshHarnessBackend implements Backend {
               const pending = this.restoredProviderImageWarnings.get(id);
               if (typeof attachmentId === "string" && pending?.delete(attachmentId)) {
                 if (pending.size === 0) this.restoredProviderImageWarnings.delete(id);
+                await this.acknowledgeIgnoredEvent(id, event);
+                continue;
+              }
+            }
+            const fence = this.interactionFences.get(id);
+            if (fence && event.delivery?.executionId === fence.executionId) {
+              if (event.delivery.sequence > fence.sequence) this.interactionFences.delete(id);
+              else if ((event.type === "permission.asked" || event.type === "question.asked") && !fence.pending.has(event.requestId)) {
+                await this.acknowledgeIgnoredEvent(id, event);
                 continue;
               }
             }
@@ -652,6 +729,87 @@ export class MeshHarnessBackend implements Backend {
     if (!this.sessions.has(id)) throw new HarnessError("harness_event_gap", "Refresh or resume the owned conversation before observing it.");
     return this.hub.subscribe(id);
   }
+
+  isObservationRecovering(id: string): boolean {
+    return this.eventGates.has(id) || this.recoveryWaiters.has(id);
+  }
+
+  async startObservation(id: string, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const fence = this.interactionFences.get(id);
+    const acknowledged = this.acknowledgements.get(id);
+    if (fence && (!acknowledged || acknowledged.executionId !== fence.executionId)) {
+      throw new HarnessError("harness_event_gap", "The remote recovery cursor does not match its execution.");
+    }
+    const recovery = this.recoveryWaiters.get(id) ?? (fence && acknowledged && acknowledged.sequence < fence.sequence
+      ? { executionId: fence.executionId, sequence: fence.sequence, completion: Promise.withResolvers<void>() }
+      : undefined);
+    if (recovery) this.recoveryWaiters.set(id, recovery);
+    const abort = (): void => recovery?.completion.reject(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      for (const event of this.recoveredInteractions.get(id) ?? []) this.hub.publish(id, event);
+      this.recoveredInteractions.delete(id);
+      this.eventGates.get(id)?.resolve();
+      this.eventGates.delete(id);
+      await recovery?.completion.promise;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      if (this.recoveryWaiters.get(id) === recovery) this.recoveryWaiters.delete(id);
+    }
+  }
+
+  async releaseRemoteExecution(signal?: AbortSignal): Promise<void> {
+    if (this.capabilities.remoteContinuity !== 1) throw new HarnessError("harness_unsupported_feature", "Retained remote execution was not negotiated.");
+    this.releasing = true;
+    await this.rpc({ operation: "release" }, signal);
+  }
+
+  async acknowledgeEvent(id: string, event: HarnessEvent, consumer: "conversation" | "activity"): Promise<void> {
+    if (!event.delivery) return;
+    const failure = this.observationFailures.get(id);
+    if (failure) throw failure;
+    const state = this.acknowledgements.get(id);
+    if (!state || state.executionId !== event.delivery.executionId) throw new HarnessError("harness_event_gap", "The remote execution event identity changed.");
+    if (event.delivery.sequence <= state.sequence) return;
+    state.pending.set(event.delivery.sequence, (state.pending.get(event.delivery.sequence) ?? 0)
+      | (consumer === "conversation" ? 1 : 2));
+    this.flushAcknowledgements(id, state);
+  }
+
+  private flushAcknowledgements(id: string, state: Acknowledgements): void {
+    if (state.flushing) return;
+    const required = this.capabilities.activity === "unavailable" ? 1 : 3;
+    // Consumers record persistence without waiting for the cumulative network ACK.
+    state.flushing = Promise.resolve().then(async () => {
+      while (this.client && !this.controlFailure && this.acknowledgements.get(id) === state) {
+        let acknowledged = state.sequence;
+        while (((state.pending.get(acknowledged + 1) ?? 0) & required) === required) acknowledged++;
+        if (acknowledged === state.sequence) return;
+        await this.rpc({ operation: "ack", sessionId: id, executionId: state.executionId, sequence: acknowledged });
+        for (let cursor = state.sequence + 1; cursor <= acknowledged; cursor++) state.pending.delete(cursor);
+        state.sequence = acknowledged;
+        const recovery = this.recoveryWaiters.get(id);
+        if (recovery?.executionId === state.executionId && state.sequence >= recovery.sequence) {
+          recovery.completion.resolve();
+        }
+      }
+    }).catch((error: unknown) => {
+      if (this.client && this.acknowledgements.get(id) === state) this.observationFailed(error);
+    }).finally(() => {
+      state.flushing = undefined;
+      if (this.client && !this.controlFailure && this.acknowledgements.get(id) === state
+        && ((state.pending.get(state.sequence + 1) ?? 0) & required) === required) {
+        this.flushAcknowledgements(id, state);
+      }
+    });
+  }
+
+  private async acknowledgeIgnoredEvent(id: string, event: HarnessEvent): Promise<void> {
+    await this.acknowledgeEvent(id, event, "conversation");
+    await this.acknowledgeEvent(id, event, "activity");
+  }
+
   async replyToPermission(requestId: string, response: string): Promise<void> {
     await this.rpc({ operation: "permission", sessionId: this.interaction(requestId), requestId, response }); this.interactions.delete(requestId);
   }
@@ -684,14 +842,20 @@ export class MeshHarnessBackend implements Backend {
   async getModels(directory: string): Promise<ModelInfo[]> { return Models.parse(await this.rpc({ operation: "models", directory })); }
   async getModelVariants(directory: string, modelId: string): Promise<string[]> { return z.array(z.string()).max(1000).parse(await this.rpc({ operation: "variants", directory, modelId })); }
   isConnected(): boolean { try { this.connection(); return !this.controlFailure && this.observationFailures.size === 0; } catch { return false; } }
-  abortAllSubscriptions(reason?: Error): void { this.hub.closeAll(reason); }
+  abortAllSubscriptions(reason?: Error): void {
+    if (reason) this.observationFailed(reason);
+    for (const recovery of this.recoveryWaiters.values()) {
+      recovery.completion.reject(reason ?? new HarnessError("harness_transport_closed", "Native observation was closed during recovery."));
+    }
+    this.hub.closeAll(reason);
+  }
   getSdkClient(): unknown { return null; }
   getDirectory(): string { return this.directory; }
   getConnectionInfo(): ConnectionInfo | null { return null; }
   async disconnect(): Promise<void> {
     const client = this.client;
     this.client = null;
-    this.hub.closeAll();
+    this.abortAllSubscriptions();
     for (const controller of this.requests) controller.abort();
     for (const controller of this.controlReplies) controller.abort();
     for (const request of this.controlRequests.values()) request.controller.abort();
@@ -700,6 +864,7 @@ export class MeshHarnessBackend implements Backend {
     await Promise.all([
       ...[...this.observers.values()].map((observer) => observer.promise),
       ...[...this.controlRequests.values()].map((request) => request.promise),
+      ...[...this.acknowledgements.values()].flatMap((state) => state.flushing ? [state.flushing] : []),
       ...(this.controlObserver ? [this.controlObserver.promise] : []),
     ]);
     this.controlObserver = undefined;
@@ -708,6 +873,12 @@ export class MeshHarnessBackend implements Backend {
     this.controlCalls.clear();
     this.controlReplyWaiters.clear();
     this.observers.clear(); this.sessions.clear(); this.interactions.clear(); this.restoredProviderImageWarnings.clear(); this.observationFailures.clear(); this.deleting.clear();
+    for (const gate of this.eventGates.values()) gate.resolve();
+    this.eventGates.clear();
+    this.recoveredInteractions.clear();
+    this.interactionFences.clear();
+    this.acknowledgements.clear();
     await client?.releaseSession();
+    this.releasing = false;
   }
 }

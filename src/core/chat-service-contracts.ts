@@ -219,7 +219,7 @@ export interface ChatSessionPort {
   ): Promise<Chat>;
   configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void>;
   reconnectSession(chat: Chat, options?: ReconnectChatOptions): Promise<Chat>;
-  disconnectChat(chatId: string): Promise<boolean>;
+  disconnectChat(chatId: string, options?: { preserveRemote?: boolean; signal?: AbortSignal }): Promise<boolean>;
 }
 
 export interface ChatConversationPort {
@@ -243,8 +243,8 @@ export interface ChatConversationPort {
       clearQueuedMessageIds?: readonly string[];
     },
   ): Promise<Chat>;
-  interruptChat(chatId: string, reason?: string): Promise<Chat | null>;
-  waitForChatIdle(chatId: string, timeoutMs?: number): Promise<Chat>;
+  interruptChat(chatId: string, reason?: string, signal?: AbortSignal): Promise<Chat | null>;
+  waitForChatIdle(chatId: string, timeoutMs?: number, signal?: AbortSignal): Promise<Chat>;
   closeActiveStream(chatId: string): void;
   checkpointForDeletion(
     chatId: string,

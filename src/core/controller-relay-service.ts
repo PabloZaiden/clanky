@@ -27,7 +27,7 @@ import {
   getControllerRelayPairing,
   getPrimaryControllerRelayPairing,
   InconsistentMeshWorkerIdentityError,
-  listActiveControllerWorkerIdentities,
+  listControllerWorkerTransportIdentities,
   listControllerRelayPairings,
   restoreControllerRelayPairing,
   saveControllerRelayPairing,
@@ -896,7 +896,7 @@ export class ControllerRelayService {
     relayUrl: string;
     relayFingerprint: string;
   }): Promise<MeshRelayPeerIdentity[]> {
-    const workers = listActiveControllerWorkerIdentities(route);
+    const workers = listControllerWorkerTransportIdentities(route);
     await validateMeshRelayAuthorization(workers);
     return workers;
   }

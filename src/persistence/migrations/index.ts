@@ -1053,6 +1053,21 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 102,
+    name: "persist_pending_worker_revocations",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE mesh_worker_revocations (
+          id TEXT PRIMARY KEY,
+          local_user_id TEXT NOT NULL REFERENCES webapp_users(id) ON DELETE CASCADE,
+          worker_node_id TEXT NOT NULL,
+          registration_json TEXT NOT NULL,
+          UNIQUE(local_user_id, worker_node_id)
+        );
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

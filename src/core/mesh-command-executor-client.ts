@@ -92,6 +92,7 @@ export interface MeshCommandExecutorClientConfig {
   sessionTtlMs?: number;
   managedEnvironment?: Record<string, string>;
   controlTools?: boolean;
+  continuity?: { contextId: string; binding?: import("@/shared/harness-control").HarnessConversationBinding };
 }
 
 export interface MeshExecutionSessionConnection {
@@ -286,6 +287,8 @@ export class MeshCommandExecutorClient {
   private readonly sessionTtlMs: number;
   private readonly managedEnvironment?: Record<string, string>;
   private readonly controlTools: boolean;
+  private readonly continuity: MeshCommandExecutorClientConfig["continuity"];
+  supportsContinuity = false;
   private session: MeshExecutionSession | null = null;
   private route: MeshPeerRoute | null = null;
   private openingSession: Promise<void> | null = null;
@@ -316,6 +319,7 @@ export class MeshCommandExecutorClient {
         : MESH_EXECUTION_SESSION_REQUEST_TTL_MS);
     this.managedEnvironment = config.managedEnvironment;
     this.controlTools = config.controlTools === true;
+    this.continuity = config.continuity;
   }
 
   private requestAbortedError(signal?: AbortSignal): DomainError {
@@ -440,13 +444,14 @@ export class MeshCommandExecutorClient {
     throwIfMeshSessionOpeningAborted(signal);
     if (!registration || registration.grantStatus !== "active") {
       throw new DomainError(
-        "mesh_execution_endpoint_unavailable",
-        "The selected worker has no active registration or usable Mesh endpoint.",
+        "mesh_execution_registration_inactive",
+        "The selected worker no longer has an active Mesh registration.",
       );
     }
     const route = registration.route;
     const protocolVersion: MeshExecutionProtocolVersion = await discoverMeshWorkerGeneration(
       registration, signal, this.fetchImpl, this.controlTools,
+      this.continuity ? (supported) => { this.supportsContinuity = supported; } : undefined,
     );
     if (this.channel === MESH_HARNESS_CHANNEL) {
       if (!this.adapter) throw new DomainError("mesh_execution_protocol_mismatch", "A native Mesh lease requires an adapter.");
@@ -475,6 +480,8 @@ export class MeshCommandExecutorClient {
         ...(channel === MESH_HARNESS_CHANNEL ? { adapter: this.adapter, ownerId: localUserId } : {}),
         environment: this.managedEnvironment,
         ...(this.controlTools ? { controlTools: MESH_EXECUTION_CONTROL_VERSION } : {}),
+        ...(this.supportsContinuity && this.continuity
+          ? { continuity: { version: 1 as const, ...this.continuity } } : {}),
         nonce: crypto.randomUUID(),
         expiresAt: new Date(Date.now() + sessionTtlMs).toISOString(),
       };

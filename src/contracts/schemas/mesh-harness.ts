@@ -60,11 +60,13 @@ const ProviderImageFileReferenceSchema = z.object({
 
 export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("capabilities") }),
+  z.object({ operation: z.literal("release") }),
   z.object({
     operation: z.literal("control.result"),
     controlRequestId: z.string().uuid(),
     reply: ControlToolReplySchema,
   }).strict(),
+  z.object({ operation: z.literal("control.dispatch"), controlRequestId: z.string().uuid() }).strict(),
   z.object({ operation: z.literal("create"), options: z.object({
     directory: Path, title: z.string().max(1000).optional(), model: Id.optional(),
     ownership: HarnessConversationBindingSchema.omit({ adapter: true, nativeId: true, directory: true }),
@@ -75,6 +77,8 @@ export const MeshHarnessOperationSchema = z.discriminatedUnion("operation", [
   Session.extend({ operation: z.literal("prompt"), prompt: Prompt, synchronous: z.boolean().optional() }),
   Session.extend({ operation: z.literal("abort") }),
   Session.extend({ operation: z.literal("activity") }),
+  Session.extend({ operation: z.literal("ack"), executionId: z.string().uuid(), sequence: z.number().int().nonnegative() }),
+  Session.extend({ operation: z.literal("interactions") }),
   Session.extend({ operation: z.literal("usage") }),
   Session.extend({ operation: z.literal("history"), cursor: Id.optional() }),
   Session.extend({ operation: z.literal("subagent-history"), activityId: Id, cursor: Id.optional() }),
@@ -112,7 +116,7 @@ export const MeshHarnessEventsRequestSchema = z.union([
 ]);
 
 export const MeshHarnessControlEventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("request"), requestId: z.string().uuid(), request: ControlToolRequestSchema }).strict(),
+  z.object({ type: z.literal("request"), requestId: z.string().uuid(), request: ControlToolRequestSchema, dispatched: z.boolean().optional() }).strict(),
   z.object({ type: z.literal("cancel"), requestId: z.string().uuid() }).strict(),
 ]);
 export type MeshHarnessControlEvent = z.infer<typeof MeshHarnessControlEventSchema>;
@@ -149,7 +153,20 @@ export const MeshHarnessEventSchema = z.intersection(z.discriminatedUnion("type"
   scope: HarnessEventScopeSchema,
   timestamp: z.iso.datetime().optional(),
   sourceEventId: Id.optional(), sourceSequence: z.number().int().nonnegative().optional(),
+  delivery: z.object({
+    executionId: z.string().uuid(), sequence: z.number().int().positive(), offset: z.number().int().nonnegative().optional(),
+  }).optional(),
 }));
+
+export const MeshHarnessInteractionSnapshotSchema = z.object({
+  executionId: z.string().uuid(),
+  sequence: z.number().int().nonnegative(),
+  acknowledgedSequence: z.number().int().nonnegative(),
+  pending: z.array(MeshHarnessEventSchema),
+  resolvedQuestions: z.record(z.string(), z.enum(["answered", "cancelled", "expired"])),
+}).refine((snapshot) => snapshot.acknowledgedSequence <= snapshot.sequence, {
+  message: "Remote acknowledgement exceeds the snapshot sequence.",
+});
 
 export const MeshHarnessSessionHistorySchema = z.object({
   events: z.array(MeshHarnessEventSchema),

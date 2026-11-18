@@ -84,4 +84,5 @@ export type HarnessEvent = HarnessEventPayload & {
   timestamp?: string;
   sourceEventId?: string;
   sourceSequence?: number;
+  delivery?: { executionId: string; sequence: number; offset?: number };
 };

@@ -2,7 +2,7 @@ import { sign } from "node:crypto";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { isMeshOutboundRoute } from "@/shared/mesh";
 import { MESH_PROTOCOL_VERSION } from "@/shared/mesh-protocol";
-import { listActiveControllerWorkerIdentities } from "../persistence/controller-relay-pairing";
+import { listControllerWorkerTransportIdentities } from "../persistence/controller-relay-pairing";
 import { ensureLocalMeshNodeIdentity, getLocalMeshSigningKey } from "../persistence/mesh-node-identity";
 import { DomainError } from "../domain/domain-error";
 import { meshStateEventEmitter } from "./event-emitter";
@@ -99,7 +99,7 @@ class ControllerWorkerConnectionService {
     if (!manager || !fingerprint) return;
     this.authorizationUpdate = this.refresh.then(async () => {
       if (this.manager !== manager || manager.status !== "connected") return;
-      await manager.replaceAuthorization(listActiveControllerWorkerIdentities({
+      await manager.replaceAuthorization(listControllerWorkerTransportIdentities({
         relayUrl: LOCAL_BROKER_ORIGIN,
         relayFingerprint: fingerprint,
         directOutbound: true,

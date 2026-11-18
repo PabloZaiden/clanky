@@ -16,6 +16,15 @@ import {
   getAgentStreamTextByteLength,
 } from "./agent-stream-controller";
 
+export function reconcileHarnessDelta(content: string, previous: string, offset?: number): string {
+  if (offset === undefined) return content;
+  const overlap = Math.min(content.length, previous.length - offset);
+  if (overlap < 0 || previous.slice(offset, offset + overlap) !== content.slice(0, overlap)) {
+    throw new HarnessError("harness_event_gap", "A replayed native delta does not match the saved transcript.");
+  }
+  return content.slice(overlap);
+}
+
 export type AgentTranscriptBlockKind = "response" | "reasoning";
 
 export interface AgentEventTranscriptState {

@@ -17,6 +17,7 @@ import { MESH_EXECUTION_CONTROL_VERSION } from "@/shared/mesh-execution";
 export function meshWorkerGenerationSigningPayload(input: Omit<MeshWorkerProtocolDescriptor, "signature">): string {
   const payload: unknown[] = [`clanky-mesh-worker-generation-v${input.protocolVersion}`, input.nodeId, input.fingerprint, input.requestNonce, input.binaryVersion, input.supportedProtocolVersions, input.preferredProtocolVersion];
   if (input.controlTools !== undefined) payload.push(["control-tools", input.controlTools]);
+  if (input.continuity !== undefined) payload.push(["continuity", input.continuity]);
   return JSON.stringify(payload);
 }
 
@@ -25,6 +26,7 @@ export async function describeMeshWorkerGeneration(
   nonce: string | null,
   localVersions: readonly MeshProtocolVersion[] = MESH_SUPPORTED_PROTOCOL_VERSIONS,
   controlTools?: MeshWorkerProtocolDescriptor["controlTools"],
+  continuity?: 1,
 ): Promise<MeshWorkerProtocolDescriptor> {
   requireMeshRuntimeRole("worker");
   const selected = negotiateMeshProtocolVersion(
@@ -40,11 +42,12 @@ export async function describeMeshWorkerGeneration(
     nodeId: identity.nodeId, fingerprint: identity.fingerprint, requestNonce: nonce,
     binaryVersion: getLocalMeshProtocolMetadata().binaryVersion!,
     ...(controlTools ? { controlTools } : {}),
+    ...(continuity ? { continuity } : {}),
   };
   return { ...descriptor, signature: await signMeshPayload(meshWorkerGenerationSigningPayload(descriptor)) };
 }
 
-export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistration, signal?: AbortSignal, fetch?: typeof globalThis.fetch, controlTools = false): Promise<MeshProtocolVersion> {
+export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistration, signal?: AbortSignal, fetch?: typeof globalThis.fetch, controlTools = false, onContinuity?: (supported: boolean) => void): Promise<MeshProtocolVersion> {
   const versions = meshRouteSupportedProtocolVersions(worker.route);
   if (versions.length === 0) {
     throw new DomainError("mesh_execution_protocol_mismatch", "The Mesh route has no supported generation.");
@@ -60,6 +63,7 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
       headers: {
         [MESH_PROTOCOL_VERSIONS_HEADER]: serializeMeshProtocolVersions(versions), "x-clanky-mesh-request-id": nonce,
         ...(controlTools ? { "x-clanky-mesh-control-tools": String(MESH_EXECUTION_CONTROL_VERSION) } : {}),
+        ...(onContinuity ? { "x-clanky-mesh-continuity": "1" } : {}),
       },
     });
     if (response.status === 404) {
@@ -97,6 +101,7 @@ export async function discoverMeshWorkerGeneration(worker: MeshWorkerRegistratio
     if (controlTools && descriptor.controlTools !== MESH_EXECUTION_CONTROL_VERSION) {
       throw new DomainError("control_unavailable", "Update the Mesh peers to support lease-owned Clanky control.");
     }
+    onContinuity?.(descriptor.continuity === 1);
     await updateWorkerNegotiatedProtocolVersion({
       workerNodeId: worker.workerNodeId,
       localUserId: worker.localUserId,
