@@ -108,6 +108,7 @@ final class AppUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
 struct AppUpdateCommands: Commands {
     @ObservedObject var updater: AppUpdater
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .appInfo) {
@@ -115,6 +116,7 @@ struct AppUpdateCommands: Commands {
                 .disabled(!updater.enabled || !updater.canCheck)
             Button("Install and Restart") { updater.installAndRestart() }
                 .disabled(!updater.canInstall)
+            Button("Update Settings...") { openWindow(id: "update-settings") }
         }
     }
 }

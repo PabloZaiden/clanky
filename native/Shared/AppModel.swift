@@ -394,6 +394,24 @@ struct BrowserPopup: Identifiable {
     let webView: WKWebView
 }
 
+#if os(macOS)
+@MainActor
+final class BrowserWebView: WKWebView {
+    weak var settingsBrowser: BrowserModel?
+
+    @objc func openClankySettings(_ sender: Any?) {
+        guard let settingsBrowser else {
+            NSLog("Clanky Settings has no active browser.")
+            NSSound.beep()
+            return
+        }
+        settingsBrowser.openSettings()
+    }
+}
+#else
+typealias BrowserWebView = WKWebView
+#endif
+
 @MainActor
 final class BrowserModel: ObservableObject {
     private static let connectionKey = "lastConnectionMode"
@@ -402,7 +420,7 @@ final class BrowserModel: ObservableObject {
     #else
     private static let connectionModes = ["api", "collaboration"]
     #endif
-    let webView: WKWebView
+    let webView: BrowserWebView
     let origin: URL
     #if os(iOS)
     let nativeToolbar: NativeToolbar
@@ -435,6 +453,9 @@ final class BrowserModel: ObservableObject {
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
         webView = Self.makeWebView(origin: origin)
+        #if os(macOS)
+        webView.settingsBrowser = self
+        #endif
         connectNativeToolbar()
     }
 
@@ -443,13 +464,33 @@ final class BrowserModel: ObservableObject {
     }
 
     #if os(macOS)
+    func openSettings() {
+        guard let url = webView.url, url.scheme == origin.scheme,
+              url.host == origin.host, url.port == origin.port,
+              Self.connectionModes.contains(where: { url.path == "/\($0)" || url.path.hasPrefix("/\($0)/") }) else {
+            error = "Connect to a Clanky server before opening Settings."
+            return
+        }
+        webView.callAsyncJavaScript("""
+        if (typeof window.clankyOpenSettings !== "function") {
+          throw new Error("Clanky Settings is not available yet. Wait for the app to finish loading.");
+        }
+        window.clankyOpenSettings();
+        """, arguments: [:], in: nil, in: .page) { [weak self] result in
+            if case .failure(let failure) = result {
+                NSLog("Clanky could not open Settings: %@", failure.localizedDescription)
+                self?.error = "Unable to open Settings: \(failure.localizedDescription)"
+            }
+        }
+    }
+
     func localControllerChanged() {
         guard let path = webView.url?.path, path == "/local" || path.hasPrefix("/local/") else { return }
         withAssetsReady { $0.reloadFromOrigin() }
     }
     #endif
 
-    private static func makeWebView(origin: URL) -> WKWebView {
+    private static func makeWebView(origin: URL) -> BrowserWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         configuration.userContentController.addUserScript(WKUserScript(source: """
@@ -474,7 +515,7 @@ final class BrowserModel: ObservableObject {
                 NativeDiagnostics(origin: origin), contentWorld: .page, name: NativeDiagnostics.handlerName)
         }
         #endif
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = BrowserWebView(frame: .zero, configuration: configuration)
         NativeClientCredentialLock.install(in: webView, origin: origin)
         webView.allowsBackForwardNavigationGestures = true
         #if os(iOS)

@@ -18,6 +18,7 @@ import type { WebAppRootProps } from "./root-types";
 import { WebAppConfigProvider, useWebAppConfig } from "./webapp-config";
 import type { ThemePreference } from "../contracts";
 import { useSidebarPinProvider } from "@/hooks/useSidebarPinProvider";
+import { AppearanceProvider } from "./appearance-context";
 
 function pagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -73,7 +74,9 @@ function ClankyApplicationContent({ children }: { children: ReactNode }) {
     return <ThemeProvider adapter={theme}>{boundary}</ThemeProvider>;
   }
   const identity = config?.currentUser?.id ?? `${external?.scope ?? ""}:${external?.generation ?? 0}`;
-  return <Fragment key={identity}>{children}</Fragment>;
+  return <Fragment key={identity}>
+    <AppearanceProvider accountBacked={Boolean(config?.currentUser)}>{children}</AppearanceProvider>
+  </Fragment>;
 }
 
 export function ClankyApplication({ children }: { children: ReactNode }) {

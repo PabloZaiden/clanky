@@ -481,8 +481,11 @@ complete app, including its frontend and bundled controller. Install the first
 updater-enabled build manually; older app versions cannot acquire an updater
 through their web UI or CLI self-update.
 
-**Clanky > Check for Updates...** checks immediately. **Clanky > Settings...**
-shows the installed distribution version, source revision,
+**Clanky > Settings...** or **Command-comma** opens Clanky's in-app Settings
+in the focused connected window, preserving its remembered category.
+**Clanky > Check for Updates...** checks immediately.
+**Clanky > Update Settings...** opens a separate native window without a
+Command-comma shortcut. It shows the installed distribution version, source revision,
 update channel, and automatic-update preferences. The initial channel matches
 the downloaded app; a saved **Stable/Latest** selection overrides it. Stable
 checks every 24 hours and latest every hour. Automatic checks, downloads and

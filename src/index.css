@@ -10,6 +10,179 @@
   font-display: block;
 }
 
+:root[data-wapp-themed] {
+  --color-gray-50: var(--wapp-surface-inset);
+  --color-gray-100: var(--wapp-surface-muted);
+  --color-gray-200: var(--wapp-border-soft);
+  --color-gray-300: var(--wapp-border);
+  --color-gray-400: var(--wapp-muted-2);
+  --color-gray-500: var(--wapp-muted);
+  --color-gray-600: var(--wapp-muted);
+  --color-gray-700: var(--wapp-text);
+  --color-gray-800: var(--wapp-text);
+  --color-gray-900: var(--wapp-text);
+  --color-gray-950: var(--wapp-text);
+  --color-neutral-50: var(--color-gray-50);
+  --color-neutral-100: var(--color-gray-100);
+  --color-neutral-200: var(--color-gray-200);
+  --color-neutral-300: var(--color-gray-300);
+  --color-neutral-400: var(--color-gray-400);
+  --color-neutral-500: var(--color-gray-500);
+  --color-neutral-600: var(--color-gray-600);
+  --color-neutral-700: var(--color-gray-700);
+  --color-neutral-800: var(--color-gray-800);
+  --color-neutral-900: var(--color-gray-900);
+  --color-neutral-950: var(--color-gray-950);
+}
+
+:root.dark[data-wapp-themed] {
+  --color-gray-50: var(--wapp-text);
+  --color-gray-100: var(--wapp-text);
+  --color-gray-200: var(--wapp-text);
+  --color-gray-300: var(--wapp-text);
+  --color-gray-400: var(--wapp-muted);
+  --color-gray-500: var(--wapp-muted);
+  --color-gray-600: var(--wapp-muted-2);
+  --color-gray-700: var(--wapp-border);
+  --color-gray-800: var(--wapp-surface);
+  --color-gray-900: var(--wapp-surface-inset);
+  --color-gray-950: var(--wapp-content-bg);
+}
+
+:root[data-wapp-themed] .clanky-card {
+  background: var(--wapp-surface);
+  border-color: var(--wapp-border-soft);
+  border-radius: var(--wapp-panel-radius, 0.5rem);
+}
+
+.clanky-theme-picker {
+  container: clanky-themes / inline-size;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.clanky-theme-picker legend {
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.clanky-theme-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@container clanky-themes (max-width: 32rem) {
+  .clanky-theme-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container clanky-themes (max-width: 17rem) {
+  .clanky-theme-gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.clanky-theme-choice {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.5rem;
+  border: 1px solid var(--wapp-border-soft);
+  border-radius: var(--wapp-control-radius, 0.75rem);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.clanky-theme-choice:has(input:checked) {
+  border-color: var(--wapp-primary);
+  box-shadow: 0 0 0 1px var(--wapp-primary);
+}
+
+.clanky-theme-choice:has(input:focus-visible) {
+  outline: 2px solid var(--wapp-primary);
+  outline-offset: 3px;
+}
+
+.clanky-theme-choice:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.clanky-theme-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.clanky-theme-choice > span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.clanky-theme-preview {
+  display: flex;
+  height: 5.25rem;
+  overflow: hidden;
+  text-align: left;
+}
+
+.clanky-theme-preview-sidebar {
+  flex: 0 0 28%;
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.375rem;
+}
+
+.clanky-theme-preview i {
+  display: block;
+  height: 0.25rem;
+  border-radius: 2px;
+  opacity: 0.45;
+}
+
+.clanky-theme-preview-sidebar i:first-child {
+  width: 35%;
+  height: 0.375rem;
+  margin-bottom: 0.25rem;
+  opacity: 1;
+}
+
+.clanky-theme-preview-content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  padding: 0.75rem 0.625rem;
+}
+
+.clanky-theme-preview-content > i:first-child {
+  width: 55%;
+}
+
+.clanky-theme-preview-content > span {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem;
+}
+
+.clanky-theme-preview-content > span i:last-child {
+  width: 65%;
+}
+
+.clanky-theme-preview-content > i:last-child {
+  width: 30%;
+  opacity: 1;
+}
+
 @layer base {
   :root {
     --safe-area-inset-top: var(--wapp-safe-area-top);

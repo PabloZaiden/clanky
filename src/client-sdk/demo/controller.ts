@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AppearancePreferenceSchema, DEFAULT_APPEARANCE } from "@/contracts/schemas/appearance";
 import {
   realtimeClientMessageSchema, realtimeInterestMatches,
   type RealtimeInterest, type RealtimeServerMessage, type ResourceRealtimeEvent,
@@ -53,6 +54,7 @@ export class DemoController {
   private readonly urls = new Set<string>();
   private readonly preferences = new Map<string, unknown>([
     ["theme", { theme: "dark" }], ["markdown-rendering", { enabled: true }],
+    ["appearance", DEFAULT_APPEARANCE],
     ["file-explorer-full-tree", { enabled: true }],
     ["translation", { enabled: false, languages: [] }],
     ["quick-chat", { workspaceId: "demo-workspace", model: DEMO_MODEL, useWorktree: false }],
@@ -126,6 +128,7 @@ export class DemoController {
         let value: unknown;
         switch (preference) {
           case "theme": value = parse(z.object({ theme: z.enum(["dark", "light", "system"]) }).strict(), body); break;
+          case "appearance": value = parse(AppearancePreferenceSchema, body); break;
           case "markdown-rendering": value = parse(SetMarkdownRenderingRequestSchema, body); break;
           case "file-explorer-full-tree": value = parse(SetFileExplorerFullTreeRequestSchema, body); break;
           case "translation": value = parse(TranslationSettingsSchema, body); break;

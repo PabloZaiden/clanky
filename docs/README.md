@@ -10,6 +10,7 @@ Choose the guide that matches what you are trying to do:
 | Use, build or distribute the Mac, iPhone and iPad apps | [Apple apps](apple-apps.md) |
 | Connect a hosted browser frontend to an API or invited controller | [Static frontend and remote API](static-client.md) |
 | Choose repository or provider icons for workspaces | [Workspace and provider icons](workspace-icons.md) |
+| Choose, import or create a visual theme | [Themes](themes.md) |
 | Keep Markdown notes for a workspace | [Workspace Scratchpad](scratchpad.md) |
 | Send screenshots, documents and other files to conversations | [Conversation attachments](attachments.md) |
 | Restore deleted chats or permanently remove them | [Chat Trash](chat-trash.md) |
