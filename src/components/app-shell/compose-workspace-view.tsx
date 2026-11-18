@@ -38,107 +38,6 @@ interface ComposeWorkspaceViewProps {
 
 const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
 
-function DedicatedWorkerEnrollment({
-  enrollment,
-  loading,
-  route,
-  onRouteChange,
-  relayName,
-  onRelayNameChange,
-  relays,
-  primaryRelayName,
-  relayStatusLoading,
-  onStart,
-  onCancel,
-}: {
-  enrollment: UseWorkspaceCreateResult["workspaceWorkerEnrollment"];
-  loading: boolean;
-  route: UseWorkspaceCreateResult["dedicatedWorkerRoute"];
-  onRouteChange: UseWorkspaceCreateResult["setDedicatedWorkerRoute"];
-  relayName: string;
-  onRelayNameChange: (name: string) => void;
-  relays: UseWorkspaceCreateResult["relayOptions"];
-  primaryRelayName: string | null;
-  relayStatusLoading: boolean;
-  onStart: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">Dedicated worker</p>
-          <p className="text-xs text-gray-600 dark:text-gray-300">
-            Enroll one Mesh worker for this workspace only. It will not appear as a general server.
-          </p>
-        </div>
-        {enrollment ? (
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-            Cancel enrollment
-          </Button>
-        ) : (
-          <Button type="button" size="sm" variant="secondary" loading={loading} onClick={onStart}>
-            Enroll dedicated worker
-          </Button>
-        )}
-      </div>
-      {!enrollment ? (
-        <div className="mt-3 space-y-2">
-          <SelectField
-            id="dedicated-worker-route"
-            label="Worker route"
-            value={route}
-            onChange={(event) => onRouteChange(event.target.value as "direct" | "relay")}
-            disabled={loading || relayStatusLoading}
-          >
-            <option value="direct">Direct</option>
-            {relays.length > 0 ? <option value="relay">Relay</option> : null}
-          </SelectField>
-          {route === "relay" ? (
-            <SelectField
-              id="dedicated-worker-relay"
-              label="Relay"
-              value={relayName}
-              onChange={(event) => onRelayNameChange(event.target.value)}
-              disabled={loading || relayStatusLoading}
-            >
-              <option value="">
-                {primaryRelayName ? `Primary (${primaryRelayName})` : "Select a relay"}
-              </option>
-              {relayName && !relays.some((relay) => relay.name === relayName) ? (
-                <option value={relayName} disabled>{relayName} (no longer paired)</option>
-              ) : null}
-              {relays.map((relay) => (
-                <option key={relay.name} value={relay.name}>{relay.name}</option>
-              ))}
-            </SelectField>
-          ) : null}
-        </div>
-      ) : null}
-      {enrollment ? (
-        <div className="mt-3 space-y-2 text-xs">
-          <p>
-            Status: <span className="font-medium">{enrollment.enrollment.status}</span>
-          </p>
-          {enrollment.workerJoinCommand ? (
-            <>
-              <p>Run this command on the worker, then wait for it to connect:</p>
-              <code className="block overflow-x-auto rounded bg-gray-50 p-2 dark:bg-neutral-800">
-                {enrollment.workerJoinCommand}
-              </code>
-            </>
-          ) : null}
-          {enrollment.enrollment.status === "connected" ? (
-            <p className="text-green-700 dark:text-green-400">
-              Connected. This workspace can use the dedicated worker.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
     workspaceCreate,
@@ -167,12 +66,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceWorkerEnrollment,
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
-    workspaceWorkerEnrollmentLoading,
-    dedicatedWorkerRoute,
-    setDedicatedWorkerRoute,
-    dedicatedWorkerRelayName,
-    setDedicatedWorkerRelayName,
-    startWorkspaceWorkerEnrollment,
     cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
@@ -265,11 +158,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     (localAdministration || Boolean(workspaceControllerId)) &&
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
-    (workspaceExecutionHost !== null
-      || (
-        workspaceWorkerEnrollmentSelected
-        && workspaceWorkerEnrollment?.enrollment.status === "connected"
-      )) &&
+    workspaceExecutionHost !== null &&
     workspaceServerSettingsValid;
   const createActionLabel =
     workspaceCreateMode === "automatic" ? "Start provisioning" : "Create";
@@ -345,73 +234,55 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           />
 
           {workspaceCreateMode === "manual" ? (
-            <>
-              <TextField
-                id="workspace-directory"
-                label="Directory"
-                value={workspaceDirectory}
-                onChange={(event) => setWorkspaceDirectory(event.target.value)}
-                placeholder="/workspaces/project"
-                required
-              />
-              <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                <input
-                  type="checkbox"
-                  checked={workspaceType === "git"}
-                  onChange={(event) => setWorkspaceType(event.target.checked ? "git" : "directory")}
-                  className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="flex-1">
-                  <span className="block font-medium">Git repository</span>
-                </span>
-              </label>
-                  {localAdministration && !workspaceControllerId ? <DedicatedWorkerEnrollment
-                    enrollment={workspaceWorkerEnrollment}
-                    loading={workspaceWorkerEnrollmentLoading}
-                    route={dedicatedWorkerRoute}
-                    onRouteChange={setDedicatedWorkerRoute}
-                    relayName={dedicatedWorkerRelayName}
-                    onRelayNameChange={setDedicatedWorkerRelayName}
-                    relays={relayOptions}
-                    primaryRelayName={primaryRelayName}
-                    relayStatusLoading={automaticRelayStatusLoading}
-                    onStart={() => void startWorkspaceWorkerEnrollment()}
-                    onCancel={() => void cancelWorkspaceWorkerEnrollment()}
-                  /> : null}
-                  <ServerSettingsForm
-                key={workspaceControllerId}
-                controllerId={workspaceControllerId || undefined}
-                initialSettings={workspaceServerSettings}
-                initialExecutionHost={workspaceExecutionHost}
-                dedicatedWorkerSelected={
-                  workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment !== null
-                }
-                workspaceWorkerEnrollmentId={workspaceWorkerEnrollmentSelected
-                  && workspaceWorkerEnrollment?.enrollment.status === "connected"
-                  ? workspaceWorkerEnrollment.enrollment.id
-                  : undefined}
-                onChange={(
-                  settings: ServerSettings,
-                  isValid: boolean,
-                  executionHost: ExecutionHostRef | null,
-                ) => {
-                  setWorkspaceServerSettings((current: ServerSettings) => {
-                    return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
-                  });
-                  if (executionHost) {
-                    if (workspaceWorkerEnrollment) {
-                      void cancelWorkspaceWorkerEnrollment();
-                    }
-                    setWorkspaceWorkerEnrollmentSelected(false);
+            <ServerSettingsForm
+              key={workspaceControllerId}
+              controllerId={workspaceControllerId || undefined}
+              initialSettings={workspaceServerSettings}
+              initialExecutionHost={workspaceExecutionHost}
+              onChange={(
+                settings: ServerSettings,
+                isValid: boolean,
+                executionHost: ExecutionHostRef | null,
+              ) => {
+                setWorkspaceServerSettings((current: ServerSettings) => {
+                  return JSON.stringify(current) === JSON.stringify(settings) ? current : settings;
+                });
+                if (executionHost) {
+                  if (workspaceWorkerEnrollment) {
+                    void cancelWorkspaceWorkerEnrollment();
                   }
-                  setWorkspaceExecutionHost(executionHost);
-                  setWorkspaceServerSettingsValid(isValid);
-                }}
-                onTest={handleTestWorkspaceConnection}
-                testing={workspaceTesting}
-                remoteOnly={workspaceControllerId ? false : dashboardData.remoteOnly}
-              />
-            </>
+                  setWorkspaceWorkerEnrollmentSelected(false);
+                }
+                setWorkspaceExecutionHost(executionHost);
+                setWorkspaceServerSettingsValid(isValid);
+              }}
+              onTest={handleTestWorkspaceConnection}
+              testing={workspaceTesting}
+              remoteOnly={workspaceControllerId ? false : dashboardData.remoteOnly}
+            >
+              <div className="space-y-4">
+                <TextField
+                  id="workspace-directory"
+                  label="Directory"
+                  hint="Path on the selected execution host."
+                  value={workspaceDirectory}
+                  onChange={(event) => setWorkspaceDirectory(event.target.value)}
+                  placeholder="/workspaces/project"
+                  required
+                />
+                <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={workspaceType === "git"}
+                    onChange={(event) => setWorkspaceType(event.target.checked ? "git" : "directory")}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="flex-1">
+                    <span className="block font-medium">Git repository</span>
+                  </span>
+                </label>
+              </div>
+            </ServerSettingsForm>
           ) : (
             <div className="space-y-4">
               <SelectField

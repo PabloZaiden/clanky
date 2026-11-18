@@ -27,7 +27,6 @@ import {
 import type { UseGithubUsernameResult } from "../../hooks/useGithubUsername";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseMeshResult } from "../../hooks/useMesh";
-import type { MeshEnrollmentRoute } from "@/contracts/schemas/mesh";
 import { getRouteString } from "./route-fields";
 import { createRefreshCoordinator } from "../../lib/refresh-coordinator";
 import { isAbortError } from "../../lib/request-lifecycle";
@@ -55,12 +54,6 @@ export interface UseWorkspaceCreateResult {
   workspaceWorkerEnrollment: WorkspaceWorkerEnrollmentState | null;
   workspaceWorkerEnrollmentSelected: boolean;
   setWorkspaceWorkerEnrollmentSelected: (selected: boolean) => void;
-  workspaceWorkerEnrollmentLoading: boolean;
-  dedicatedWorkerRoute: MeshEnrollmentRoute;
-  setDedicatedWorkerRoute: (route: MeshEnrollmentRoute) => void;
-  dedicatedWorkerRelayName: string;
-  setDedicatedWorkerRelayName: (name: string) => void;
-  startWorkspaceWorkerEnrollment: () => Promise<void>;
   cancelWorkspaceWorkerEnrollment: () => Promise<void>;
   setWorkspaceServerSettings: (settings: ServerSettings | ((current: ServerSettings) => ServerSettings)) => void;
   workspaceServerSettingsValid: boolean;
@@ -187,9 +180,6 @@ export function useWorkspaceCreate({
   const [workspaceWorkerEnrollment, setWorkspaceWorkerEnrollment] =
     useState<WorkspaceWorkerEnrollmentState | null>(null);
   const [workspaceWorkerEnrollmentSelected, setWorkspaceWorkerEnrollmentSelected] = useState(false);
-  const [workspaceWorkerEnrollmentLoading, setWorkspaceWorkerEnrollmentLoading] = useState(false);
-  const [dedicatedWorkerRoute, setDedicatedWorkerRoute] = useState<MeshEnrollmentRoute>("direct");
-  const [dedicatedWorkerRelayName, setDedicatedWorkerRelayName] = useState("");
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [workspaceTesting, setWorkspaceTesting] = useState(false);
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
@@ -331,8 +321,6 @@ export function useWorkspaceCreate({
     setWorkspaceExecutionHost(null);
     setWorkspaceWorkerEnrollment(null);
     setWorkspaceWorkerEnrollmentSelected(false);
-    setDedicatedWorkerRoute("direct");
-    setDedicatedWorkerRelayName("");
     setWorkspaceServerSettingsValid(true);
     setWorkspaceTesting(false);
     setWorkspaceCreateSubmitting(false);
@@ -472,9 +460,6 @@ export function useWorkspaceCreate({
           settings,
           directory: trimmedDirectory,
           ...(executionHost ? { executionHost } : {}),
-          ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
-            ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
-            : {}),
         }),
         action: "Test server connection",
         fallbackMessage: "Failed to test server connection",
@@ -483,44 +468,6 @@ export function useWorkspaceCreate({
       return { success: false, error: String(error) };
     } finally {
       setWorkspaceTesting(false);
-    }
-  }
-
-  async function startWorkspaceWorkerEnrollment(): Promise<void> {
-    if (
-      dedicatedWorkerRoute === "relay"
-      && !hasPairedRelay(dedicatedWorkerRelayName, primaryRelayName, relayOptions)
-    ) {
-      toast.error("Select a paired relay before enrolling the worker.");
-      return;
-    }
-    setWorkspaceWorkerEnrollmentLoading(true);
-    try {
-      const created = await apiRequest<{
-        enrollment: WorkspaceWorkerEnrollmentState["enrollment"];
-        token: string;
-        workerJoinCommand: string;
-      }>("/api/workspace-worker-enrollments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: workspaceName.trim() || "Workspace worker",
-          route: dedicatedWorkerRoute,
-          ...(dedicatedWorkerRoute === "relay" && dedicatedWorkerRelayName
-            ? { relayName: dedicatedWorkerRelayName }
-            : {}),
-        }),
-        action: "Create dedicated worker enrollment",
-        fallbackMessage: "Failed to create dedicated worker enrollment",
-      });
-      setWorkspaceExecutionHost(null);
-      setAutomaticExecutionHost(null);
-      setWorkspaceWorkerEnrollmentSelected(true);
-      setWorkspaceWorkerEnrollment({ ...created, worker: null });
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      setWorkspaceWorkerEnrollmentLoading(false);
     }
   }
 
@@ -661,8 +608,7 @@ export function useWorkspaceCreate({
       if (
         !directory
         || !workspaceServerSettingsValid
-        || (!workspaceExecutionHost
-          && !(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment))
+        || !workspaceExecutionHost
       ) {
         toast.error("Directory and valid connection settings are required.");
         return;
@@ -675,10 +621,7 @@ export function useWorkspaceCreate({
           directory,
           workspaceType,
           serverSettings: workspaceServerSettings,
-          ...(workspaceExecutionHost ? { executionHost: workspaceExecutionHost } : {}),
-          ...(workspaceWorkerEnrollmentSelected && workspaceWorkerEnrollment
-            ? { workspaceWorkerEnrollmentId: workspaceWorkerEnrollment.enrollment.id }
-            : {}),
+          executionHost: workspaceExecutionHost,
         };
         const workspace = await createWorkspace(request, workspaceControllerId || undefined);
         if (!workspace) {
@@ -712,12 +655,6 @@ export function useWorkspaceCreate({
     workspaceWorkerEnrollment,
     workspaceWorkerEnrollmentSelected,
     setWorkspaceWorkerEnrollmentSelected,
-    workspaceWorkerEnrollmentLoading,
-    dedicatedWorkerRoute,
-    setDedicatedWorkerRoute,
-    dedicatedWorkerRelayName,
-    setDedicatedWorkerRelayName,
-    startWorkspaceWorkerEnrollment,
     cancelWorkspaceWorkerEnrollment,
     setWorkspaceServerSettings,
     workspaceServerSettingsValid,
