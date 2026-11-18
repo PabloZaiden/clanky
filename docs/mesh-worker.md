@@ -359,6 +359,11 @@ reattaches using the original authenticated conversation binding, restores
 actual activity and pending interactions, and observes output produced while
 offline without resending the prompt.
 
+Closing or releasing a controller attachment only detaches its transport lease;
+it does not terminate retained execution, regardless of observation-stream
+cancellation order. Explicit execution release and authorization revocation
+remain terminal, as does worker shutdown.
+
 Unacknowledged events stay ordered and in memory during healthy operation.
 Disconnection spills outstanding and subsequent events to a private temporary
 disk queue. That queue remains during catch-up; acknowledged prefixes are
