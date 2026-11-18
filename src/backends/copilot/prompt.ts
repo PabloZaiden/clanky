@@ -2,7 +2,7 @@
  * Inline SDK attachments preserve execution-host independence.
  */
 
-import type { MessageOptions } from "@github/copilot-sdk";
+import type { MessageOptions } from "@microsoft/copilot-sdk";
 import type { PromptInput } from "@/shared/harness-input";
 
 export function toCopilotMessage(input: PromptInput): MessageOptions {

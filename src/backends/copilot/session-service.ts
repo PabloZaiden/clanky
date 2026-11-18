@@ -2,7 +2,7 @@
  * Owns Clanky-created SDK conversations, native bindings and lifetime listeners.
  */
 
-import { approveAll, convertMcpCallToolResult, type CopilotSession, type Tool } from "@github/copilot-sdk";
+import { approveAll, convertMcpCallToolResult, type CopilotSession, type Tool } from "@microsoft/copilot-sdk";
 import type { AgentSession, CreateSessionOptions, ConfigOption, PromptInput } from "../types";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
 import type { ClankyControlContext } from "@/shared/clanky-control";
@@ -80,13 +80,17 @@ export class CopilotSessionService {
         content: buildAgentInstructions({ controlTools: options.ownership.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
       },
       model: choice?.model.id,
-      reasoningEffort: choice?.reasoningEffort,
-      streaming: true,
-      onPermissionRequest: approveAll,
-      excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
-      askUserVariant: "legacy",
-      onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
-      tools,
+      inference: { reasoningEffort: choice?.reasoningEffort },
+      events: { streaming: true },
+      permissions: { onRequest: approveAll },
+      tools: {
+        definitions: tools,
+        excludedTools: options.ownership.questionPolicy === "interactive" ? [] : ["ask_user"],
+      },
+      interaction: {
+        askUserVariant: "legacy",
+        onUserInputRequest: this.questions.handler(options.ownership.questionPolicy),
+      },
     });
     const binding: HarnessConversationBinding = {
       ...options.ownership,
@@ -137,13 +141,17 @@ export class CopilotSessionService {
         mode: "append",
         content: buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
       },
-      streaming: true,
+      events: { streaming: true },
       continuePendingWork: false,
-      onPermissionRequest: approveAll,
-      excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
-      askUserVariant: "legacy",
-      onUserInputRequest: this.questions.handler(binding.questionPolicy),
-      tools,
+      permissions: { onRequest: approveAll },
+      tools: {
+        definitions: tools,
+        excludedTools: binding.questionPolicy === "interactive" ? [] : ["ask_user"],
+      },
+      interaction: {
+        askUserVariant: "legacy",
+        onUserInputRequest: this.questions.handler(binding.questionPolicy),
+      },
     });
     try {
       const metadata = await session.rpc.metadata.getClientMetadata();

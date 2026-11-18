@@ -2,7 +2,7 @@
  * Controls only tasks registered under an owned native conversation.
  */
 
-import type { CopilotSession } from "@github/copilot-sdk";
+import type { CopilotSession } from "@microsoft/copilot-sdk";
 import type { HarnessActivityStopResult, HarnessCleanupResult } from "@/shared/harness-control";
 import { HarnessError } from "../harness-errors";
 

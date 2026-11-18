@@ -1,7 +1,7 @@
 /**
  * Streams durable principal content in native order without activating work.
  */
-import type { CopilotSession, SessionEvent } from "@github/copilot-sdk";
+import type { CopilotSession, SessionEvent } from "@microsoft/copilot-sdk";
 import { getBase64DecodedByteLength } from "@/shared/message-attachments";
 import type { HarnessHistoryEvent } from "@/shared/harness-history";
 import { HarnessError } from "../harness-errors";

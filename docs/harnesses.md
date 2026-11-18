@@ -9,7 +9,7 @@ harness subagents.
 
 | Adapter | `agent.adapter` | `agent.provider` | Runtime |
 | --- | --- | --- | --- |
-| GitHub Copilot | `copilot` | `copilot` | Installed and authenticated current Copilot CLI |
+| GitHub Copilot | `copilot` | `copilot` | Installed and authenticated Copilot CLI supporting protocol 4 |
 | Codex | `codex` | `codex` | Installed and authenticated current Codex CLI, using app-server |
 | OpenCode 2 | `opencode2` | `opencode` | Installed current `opencode2` runtime for generation 2 |
 | Claude Agent | `claude` | `claude` | Installed Claude Code CLI, controlled through the Claude Agent SDK |
@@ -80,6 +80,12 @@ Codex registers these tools only on newly created native threads. Existing
 threads resume with their previously registered catalog and history, without
 catalog-change refusal, replacement threads or an MCP fallback. Invoked actions
 still require current server authorization and valid common-control inputs.
+
+Copilot uses Microsoft Copilot SDK v2 with an explicitly spawned CLI process.
+CLI 1.0.113 supports the required SDK protocol 4; protocol-3 runtimes are
+incompatible. Upgrade the Clanky binary and Copilot CLI on each execution
+worker together; updating only the controller does not update a remote worker's
+SDK. Existing native session identities and authentication are preserved.
 
 Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
 the server or worker environment. Other environment variables and
