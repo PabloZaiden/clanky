@@ -363,6 +363,8 @@ Reconnection and history catch-up belong to each conversation, not server
 readiness. An unavailable or recovering worker must not block the API or work
 on other workers. Controller shutdown cancels its pending reattachments without
 waiting for a remote response or terminating retained native execution.
+Interrupted history catch-up resumes on the next attachment even when native
+execution is already live.
 
 Closing or releasing a controller attachment only detaches its transport lease;
 it does not terminate retained execution, regardless of observation-stream

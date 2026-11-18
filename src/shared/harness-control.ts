@@ -121,6 +121,7 @@ export interface HarnessConversationState {
   remoteExecutionLost?: true;
   activeTurnAttachmentBytes?: number;
   unfinishedMessages?: { nativeId: string; messageIds: string[]; completedTurnMessageIds?: string[] };
+  nativeHistoryRecovery?: HarnessConversationBinding;
   activity?: HarnessActivitySnapshot;
   cleanup?: HarnessCleanupResult;
   gitSafety?: HarnessGitSafety;

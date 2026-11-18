@@ -30,12 +30,26 @@ export class NativeHistoryReader<TEvent extends HarnessEvent = HarnessHistoryEve
 
   open(): void { this.closing = false; }
 
-  read(options: {
+  async read(options: {
     sessionId: string;
     cursor?: string;
     source: () => AsyncGenerator<TEvent[]>;
     processing: () => Promise<boolean>;
   }): Promise<HarnessSessionHistory<TEvent>> {
+    // A fresh scan replaces a paused cursor, never an in-flight page.
+    if (!options.cursor && !this.closing) {
+      const previous = this.sessions.get(options.sessionId);
+      if (previous?.cursor) {
+        this.cursors.delete(previous.cursor);
+        previous.cursor = undefined;
+        clearTimeout(previous.timer);
+        try {
+          await previous.source.return(undefined);
+        } finally {
+          if (this.sessions.get(options.sessionId) === previous) this.sessions.delete(options.sessionId);
+        }
+      }
+    }
     if (this.closing) throw new HarnessError("harness_transport_closed", "Native history recovery is closing.");
     let reader: HistoryReader<TEvent>;
     if (options.cursor) {

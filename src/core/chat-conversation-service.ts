@@ -795,6 +795,11 @@ export class ChatConversationService implements ChatConversationPort {
       await this.runStreamExecution(entry, () => observer.start({
         backend, sessionId: binding.nativeId,
         recover: () => this.runStreamExecution(entry, async () => {
+          const incomplete = chat.state.harness?.nativeHistoryRecovery;
+          if (incomplete?.nativeId === binding.nativeId) requireMatchingHarnessBindings(incomplete, binding);
+          if (recover === true || incomplete?.nativeId === binding.nativeId) {
+            await this.recoverNativeSession(chatId, entry, signal);
+          }
           if (recover === "live") {
             const activity = await backend.harness.getActivity(binding.nativeId);
             if (activity.observation !== "available") {
@@ -802,7 +807,7 @@ export class ChatConversationService implements ChatConversationPort {
                 "The retained native execution state is unavailable.");
             }
             entry.native!.executing = activity.principalProcessing;
-          } else if (recover) await this.recoverNativeSession(chatId, entry, signal);
+          }
         }),
         onEvent: (event) => this.runStreamExecution(entry, async () => {
           if (this.activeStreams.get(chatId) !== entry) return;
@@ -1204,6 +1209,15 @@ export class ChatConversationService implements ChatConversationPort {
   private async recoverNativeSession(chatId: string, entry: ActiveChatStream, signal?: AbortSignal): Promise<void> {
     const native = entry.native!;
     if (!native.backend.readSessionHistory) throw new HarnessError("harness_event_gap", "This execution host cannot recover native conversation history.");
+    if (native.backend.harness.capabilities.remoteContinuity === 1) {
+      const updated = await this.state.mutateMetadata(chatId, (current) => {
+        if (!current.state.session?.binding) throw new HarnessError("harness_session_not_found", "The native conversation is unavailable.");
+        requireMatchingHarnessBindings(native.binding, current.state.session.binding);
+        return { ...current.state, harness: { ...current.state.harness, nativeHistoryRecovery: native.binding } };
+      });
+      const streamState = entry.streamState!;
+      streamState.chat = { ...streamState.chat, state: { ...streamState.chat.state, harness: updated.state.harness } };
+    }
     let cursor: string | undefined;
     do {
       signal?.throwIfAborted();
@@ -1253,6 +1267,7 @@ export class ChatConversationService implements ChatConversationPort {
       status: streamState.chat.state.status === "starting" || streamState.chat.state.status === "reconnecting"
         ? streamState.chat.state.status : native.executing ? "streaming" : "idle",
       startupStage: undefined, error: undefined, interruptRequested: false,
+      harness: { ...streamState.chat.state.harness, nativeHistoryRecovery: undefined },
     });
   }
 
