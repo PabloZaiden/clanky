@@ -25,7 +25,7 @@
         "franc-min": "6.2.0",
         "highlight.js": "11.12.0",
         "ipaddr.js": "2.5.0",
-        "jose": "6.2.15",
+        "jose": "6.2.17",
         "mermaid": "12.3.0",
         "monaco-editor": "0.57.0",
         "parse5": "8.1.1",
@@ -147,13 +147,13 @@
 
     "@microsoft/copilot-sdk-darwin-x64": ["@microsoft/copilot-sdk-darwin-x64@2.0.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-Ya5FMj455s0v05Qjxa7hBmJnrqoZv+gl4dkzlL8yTC1db3FboNBvOrhVOD+L4o9ytLoRj+USf9b7J9M8h/puJg=="],
 
-    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-FuJXpbdFjkmltdYvyGchCLM64bQ192QK7CW1HE36pPZz72Oji1hS19V802ZIS/YqbQKOMY+/+xZYD10F2zHDGw=="],
+    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-FuJXpbdFjkmltdYvyGchCLM64bQ192QK7CW1HE36pPZz72Oji1hS19V802ZIS/YqbQKOMY+/+xZYD10F2zHDGw=="],
 
-    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.0", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-JWE0zQwsZhYx4Xew+ak8xNEy6PWYDTgYy2we5nE9/DACXO4OTrRPwBK71iKZIOeI/Yb7SF2tnt1iIUYfKzRQ0g=="],
+    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-JWE0zQwsZhYx4Xew+ak8xNEy6PWYDTgYy2we5nE9/DACXO4OTrRPwBK71iKZIOeI/Yb7SF2tnt1iIUYfKzRQ0g=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64", "libc": "musl" }, "sha512-9//7vxTuk2Sx8iBjNs5dR++zJyv1ykcGli68PGHbHOev2y3rKfEn8g4d8c4IhNvWM5kZzA3YurqePFG4Z9qjQQ=="],
+    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-9//7vxTuk2Sx8iBjNs5dR++zJyv1ykcGli68PGHbHOev2y3rKfEn8g4d8c4IhNvWM5kZzA3YurqePFG4Z9qjQQ=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.0", "", { "os": "linux", "cpu": "x64", "libc": "musl" }, "sha512-IbeU/7Gi8wSj6BPVh65bidsdiAP0hkKJNhxoPBMZeG/KnTcW9OqhFs0UAbQMjOdt5wQkxl+0uw64smB2wPo8sA=="],
+    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-IbeU/7Gi8wSj6BPVh65bidsdiAP0hkKJNhxoPBMZeG/KnTcW9OqhFs0UAbQMjOdt5wQkxl+0uw64smB2wPo8sA=="],
 
     "@microsoft/copilot-sdk-win32-arm64": ["@microsoft/copilot-sdk-win32-arm64@2.0.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-R+MOMx/DOKhEuIlPzWvBwpmdx+8fNS5eWMqwfGIYQ5XtB5lNathqAaig1fEDC9T1ietwoC8uF5+wLuWBti4Paw=="],
 
@@ -645,7 +645,7 @@
 
     "isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
-    "jose": ["jose@6.2.15", "", {}, "sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA=="],
+    "jose": ["jose@6.2.17", "", {}, "sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg=="],
 
     "json-schema-to-ts": ["json-schema-to-ts@3.1.1", "", { "dependencies": { "@babel/runtime": "^7.18.3", "ts-algebra": "^2.0.0" } }, "sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g=="],
 
@@ -657,7 +657,7 @@
 
     "khroma": ["khroma@2.1.0", "", {}, "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw=="],
 
-    "koffi": ["koffi@3.3.6", "", { "optionalDependencies": { "@koromix/koffi-android-arm64": "3.3.6", "@koromix/koffi-android-x64": "3.3.6", "@koromix/koffi-darwin-arm64": "3.3.6", "@koromix/koffi-darwin-x64": "3.3.6", "@koromix/koffi-freebsd-arm64": "3.3.6", "@koromix/koffi-freebsd-ia32": "3.3.6", "@koromix/koffi-freebsd-x64": "3.3.6", "@koromix/koffi-linux-arm": "3.3.6", "@koromix/koffi-linux-arm64": "3.3.6", "@koromix/koffi-linux-ia32": "3.3.6", "@koromix/koffi-linux-loong64": "3.3.6", "@koromix/koffi-linux-ppc64": "3.3.6", "@koromix/koffi-linux-riscv64": "3.3.6", "@koromix/koffi-linux-x64": "3.3.6", "@koromix/koffi-openbsd-arm64": "3.3.6", "@koromix/koffi-openbsd-ia32": "3.3.6", "@koromix/koffi-openbsd-x64": "3.3.6", "@koromix/koffi-win32-arm64": "3.3.6", "@koromix/koffi-win32-ia32": "3.3.6", "@koromix/koffi-win32-x64": "3.3.6" }, "hasInstallScript": true }, "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g=="],
+    "koffi": ["koffi@3.3.6", "", { "optionalDependencies": { "@koromix/koffi-android-arm64": "3.3.6", "@koromix/koffi-android-x64": "3.3.6", "@koromix/koffi-darwin-arm64": "3.3.6", "@koromix/koffi-darwin-x64": "3.3.6", "@koromix/koffi-freebsd-arm64": "3.3.6", "@koromix/koffi-freebsd-ia32": "3.3.6", "@koromix/koffi-freebsd-x64": "3.3.6", "@koromix/koffi-linux-arm": "3.3.6", "@koromix/koffi-linux-arm64": "3.3.6", "@koromix/koffi-linux-ia32": "3.3.6", "@koromix/koffi-linux-loong64": "3.3.6", "@koromix/koffi-linux-ppc64": "3.3.6", "@koromix/koffi-linux-riscv64": "3.3.6", "@koromix/koffi-linux-x64": "3.3.6", "@koromix/koffi-openbsd-arm64": "3.3.6", "@koromix/koffi-openbsd-ia32": "3.3.6", "@koromix/koffi-openbsd-x64": "3.3.6", "@koromix/koffi-win32-arm64": "3.3.6", "@koromix/koffi-win32-ia32": "3.3.6", "@koromix/koffi-win32-x64": "3.3.6" } }, "sha512-pPqCZg8o4laLvzxySGEju/T1Fd+eCJTVnJmcH6h1u98HFRoBQ9EokNuBSj3NxIQdzkEPRxPnHKjhBVkLeB+X0g=="],
 
     "layout-base": ["layout-base@1.0.2", "", {}, "sha512-8h2oVEZNktL4BH2JCOI90iD1yXwL6iNW7KcCKT2QZgQJR2vbqDsldCTPRU9NifTCqHZci57XvQQ15YTu+sTYPg=="],
 
@@ -960,6 +960,8 @@
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
+
+    "@pablozaiden/webapp/jose": ["jose@6.2.15", "", {}, "sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA=="],
 
     "@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
 
