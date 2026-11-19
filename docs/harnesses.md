@@ -80,6 +80,7 @@ Codex registers these tools only on newly created native threads. Existing
 threads resume with their previously registered catalog and history, without
 catalog-change refusal, replacement threads or an MCP fallback. Invoked actions
 still require current server authorization and valid common-control inputs.
+Codex context compaction alone does not require starting a new session.
 
 Copilot uses Microsoft Copilot SDK v2 with an explicitly spawned CLI process.
 CLI 1.0.113 supports the required SDK protocol 4; protocol-3 runtimes are

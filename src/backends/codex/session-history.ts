@@ -36,9 +36,8 @@ async function* projectTurn<TEvent extends HarnessEvent>(options: {
       const item = entry.item;
       if (seen.has(item.id)) throw new HarnessError("harness_event_gap", "Native item history pages overlap.");
       seen.add(item.id);
-      if (item.type === "contextCompaction") {
-        throw new HarnessError("harness_event_gap", "Compacted native history cannot prove complete recovery.");
-      }
+      // Context compaction is a native marker, not a missing transcript item.
+      if (item.type === "contextCompaction") continue;
       if ("status" in item && item.status === "inProgress") continue;
       if (turn.status === "inProgress" && item.type === "agentMessage" && entry.completedAtMs == null) {
         throw new HarnessError("harness_event_gap", "An active native message has no durable completion boundary.");
