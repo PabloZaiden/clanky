@@ -80,6 +80,9 @@ function imageResponse(
       "Content-Type": mimeType,
       "Cross-Origin-Resource-Policy": "same-origin",
       "X-Content-Type-Options": "nosniff",
+      ...(mimeType === "image/svg+xml" ? {
+        "Content-Security-Policy": "sandbox; script-src 'none'; frame-ancestors 'none'",
+      } : {}),
     },
   });
 }
