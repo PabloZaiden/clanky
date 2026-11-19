@@ -3,7 +3,7 @@
  */
 
 import { formatVersion, github, latestVersion, type Version } from "./release-version";
-import { appStoreWhatsNewSchema, formatAppStoreReleaseNotes } from "./app-store-release-notes";
+import { appStoreWhatsNewSchema, extractAppStoreReleaseNotes, formatAppStoreReleaseNotes } from "./app-store-release-notes";
 import { z } from "zod";
 
 type Bump = "major" | "minor" | "patch";
@@ -118,11 +118,38 @@ function chooseBump(): Bump | null {
   }
 }
 
-function chooseWhatsNew(): string | null {
+async function readPreviousWhatsNew(repository: string, tag: string): Promise<string | null> {
+  const body = await github(["release", "view", tag, "--repo", repository, "--json", "body", "--jq", '.body // ""']);
+  const previous = appStoreWhatsNewSchema.safeParse(extractAppStoreReleaseNotes(body));
+  if (previous.success) return previous.data;
+  console.warn(`No valid App Store What's New in ${tag}; append and reuse are unavailable.`);
+  return null;
+}
+
+function chooseWhatsNew(previousWhatsNew: string | null): string | null {
+  console.log("App Store What's New must be in English and cover only changes relevant to iOS app users.");
+  if (previousWhatsNew !== null) {
+    console.log(`Previous App Store What's New (keep only if still accurate for this iOS release):\n${previousWhatsNew}`);
+  }
+
   while (true) {
-    const answer = prompt("App Store What's New (English, 1-4000 characters; Enter to cancel):");
-    if (answer === null || answer.trim() === "") return null;
-    const result = appStoreWhatsNewSchema.safeParse(answer);
+    let prefix = "";
+    if (previousWhatsNew !== null) {
+      const mode = prompt("App Store What's New (append/reuse/new; Enter to cancel):")?.trim().toLowerCase();
+      if (!mode) return null;
+      if (mode === "reuse") return previousWhatsNew;
+      if (mode !== "append" && mode !== "new") {
+        console.error("Choose append, reuse, or new.");
+        continue;
+      }
+      if (mode === "append") prefix = `${previousWhatsNew}\n\n`;
+    }
+
+    const answer = prompt(prefix
+      ? "iOS app changes to append (4000 characters total; Enter to cancel):"
+      : "New App Store What's New (1-4000 characters; Enter to cancel):")?.trim();
+    if (!answer) return null;
+    const result = appStoreWhatsNewSchema.safeParse(prefix + answer);
     if (result.success) return result.data;
     console.error(result.error.issues.map(issue => issue.message).join("\n"));
   }
@@ -153,8 +180,9 @@ async function release(): Promise<void> {
     throw new Error("Could not resolve the remote default branch to a commit SHA.");
   }
 
+  const currentTag = formatVersion(version);
   console.log(`Repository: ${repository}`);
-  console.log(`Current stable release: ${formatVersion(version)}`);
+  console.log(`Current stable release: ${currentTag}`);
   const bump = chooseBump();
   if (bump === null) {
     console.log("Release cancelled.");
@@ -162,7 +190,7 @@ async function release(): Promise<void> {
   }
 
   const tag = formatVersion(bumpVersion(version, bump));
-  const whatsNew = chooseWhatsNew();
+  const whatsNew = chooseWhatsNew(await readPreviousWhatsNew(repository, currentTag));
   if (whatsNew === null) {
     console.log("Release cancelled.");
     return;
