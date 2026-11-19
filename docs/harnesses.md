@@ -212,6 +212,27 @@ it never replays the interrupted prompt or tool calls and never switches
 providers. If delivery becomes uncertain, check the chat before continuing
 manually. This feature does not retry scheduled Automation runs.
 
+## Diagnosing provider failures
+
+For a failed chat, read `state.harness.lastFailure` from its existing chat API
+response and search its diagnostic `id` in the controller logs. For Mesh,
+search the same ID in the execution worker's logs; nearby request and lease
+IDs connect it to transport records. Upgrade both controller and worker to
+capture the complete path. Old generic errors cannot be reconstructed.
+
+Diagnostics retain the operation, adapter, allowlisted native codes, available
+HTTP/RPC status and bounded cause/source locations. Arbitrary exception text,
+RPC data, HTTP bodies, headers, prompts and full filesystem paths are excluded
+from these structured records. Existing provider-facing messages are separate.
+When reporting a failure, include the diagnostic, build versions and relevant
+correlated log entries, not credentials or conversation payloads.
+
+`lastFailure` is the latest recorded failure, not proof that the chat is still
+failed; it remains available after recovery and controller restart. A diagnostic
+does not confirm input admission, authorize a retry or establish that a later
+disconnect caused the original failure. Check unresolved delivery before
+continuing an uncertain request.
+
 ## Continue from history
 
 When a chat is failed because its provider-native session cannot be resumed,

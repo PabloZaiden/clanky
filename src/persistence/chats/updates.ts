@@ -105,6 +105,7 @@ export async function updateChatState(chatId: string, state: ChatState, options:
         ...state,
         harness: {
           ...state.harness,
+          lastFailure: state.harness.lastFailure === options.previousState.harness?.lastFailure ? previousHarness?.lastFailure : state.harness.lastFailure,
           providerLimit: state.harness.providerLimit === options.previousState.harness?.providerLimit ? previousHarness?.providerLimit : state.harness.providerLimit,
           activity: state.harness.activity === options.previousState.harness?.activity ? previousHarness?.activity : state.harness.activity,
           cleanup: state.harness.cleanup === options.previousState.harness?.cleanup ? previousHarness?.cleanup : state.harness.cleanup,

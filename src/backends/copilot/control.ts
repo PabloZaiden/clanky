@@ -2,7 +2,7 @@
  * Native task control and admission recovery; ACKs never imply process settlement.
  */
 
-import { createLogger } from "@pablozaiden/webapp/server";
+import { logHarnessFailure } from "../harness-diagnostics";
 import type {
   HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities,
   HarnessCleanupResult, HarnessControl, HarnessInputAdmission,
@@ -13,8 +13,6 @@ import type { CopilotConnection } from "./connection";
 import { toCopilotMessage } from "./prompt";
 import { settleCopilotWork, stopCopilotActivity } from "./work-service";
 import { TOKEN_USAGE_FIELDS, type HarnessUsageSnapshot, type TokenCounts } from "@/shared/harness-usage";
-
-const log = createLogger("copilot-control");
 
 export class CopilotControl implements HarnessControl {
   constructor(private readonly connection: CopilotConnection) {}
@@ -97,9 +95,9 @@ export class CopilotControl implements HarnessControl {
     try {
       const nativeMessageId = await session.send({ ...toCopilotMessage(request.prompt), mode: "immediate" });
       return { status: "accepted", inputId: request.inputId, nativeMessageId };
-    } catch {
+    } catch (error) {
       // A failed admission RPC may have reached the runtime. Never retry it blindly.
-      log.warn("Native steering admission is unknown", { inputId: request.inputId });
+      logHarnessFailure(error, { adapter: "copilot", operation: "steer", conversationId: sessionId, inputId: request.inputId }, "warn");
       return { status: "unknown", inputId: request.inputId };
     }
   }

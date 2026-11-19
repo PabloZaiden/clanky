@@ -2,7 +2,7 @@
  * Native session and shell controls with lineage and session metadata ownership.
  */
 
-import { createLogger } from "@pablozaiden/webapp/server";
+import { logHarnessFailure } from "../harness-diagnostics";
 import type { OpenCodeClient } from "@opencode/client";
 import type {
   HarnessActivity, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities, HarnessCleanupResult,
@@ -13,8 +13,6 @@ import type { OpenCodeSessionService } from "./session-service";
 import { toOpenCodePrompt } from "./prompt";
 import type { OpenCodeControlTools } from "./control-tools";
 import type { HarnessUsageSnapshot } from "@/shared/harness-usage";
-
-const log = createLogger("opencode2-control");
 
 export class OpenCodeControl implements HarnessControl {
   readonly capabilities: HarnessCapabilities = {
@@ -134,8 +132,8 @@ export class OpenCodeControl implements HarnessControl {
     try {
       const admitted = await client.session.prompt({ sessionID: rootId, delivery: "steer", ...toOpenCodePrompt(request.prompt) });
       return { status: "accepted", inputId: request.inputId, nativeMessageId: admitted.id };
-    } catch {
-      log.warn("Native steering admission is unknown", { inputId: request.inputId });
+    } catch (error) {
+      logHarnessFailure(error, { adapter: "opencode2", operation: "steer", conversationId: rootId, inputId: request.inputId }, "warn");
       return { status: "unknown", inputId: request.inputId };
     }
   }

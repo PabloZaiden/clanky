@@ -12,6 +12,7 @@ import type { Workspace } from "@/shared/workspace";
 import { workspaceManager } from "../core/workspace-manager";
 import { isDomainError } from "../domain/domain-error";
 import { assertGitBackedWorkspace } from "../core/workspace-capabilities";
+import { HarnessDiagnosticSchema } from "@/contracts/schemas/harness-diagnostics";
 import {
   getSafeDomainErrorMessage,
   getUnknownDomainErrorStatus,
@@ -58,6 +59,9 @@ export function domainErrorResponse(
   error: unknown,
   options: DomainErrorResponseOptions,
 ): Response {
+  const diagnostic = isDomainError(error)
+    ? HarnessDiagnosticSchema.safeParse(error.details["diagnostic"]) : undefined;
+  const extra = diagnostic?.success ? { diagnostic: diagnostic.data } : {};
   const mapping = resolveDomainErrorHttpMapping(error, {
     fallback: options.fallback,
     mappings: options.mappings,
@@ -72,7 +76,7 @@ export function domainErrorResponse(
         options.policy,
       ),
       mapping.status,
-      mapping.extra,
+      { ...mapping.extra, ...extra },
     );
     for (const [name, value] of Object.entries(mapping.headers ?? {})) {
       response.headers.set(name, value);
@@ -87,6 +91,7 @@ export function domainErrorResponse(
       fallbackStatus: options.fallback.status ?? 500,
       policy: options.policy,
     }),
+    extra,
   );
 }
 

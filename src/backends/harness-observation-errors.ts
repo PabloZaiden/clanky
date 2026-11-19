@@ -1,6 +1,8 @@
 import { DomainError } from "../domain/domain-error";
 import { EventStreamOverflowError } from "../utils/event-stream";
 import { HarnessError } from "./harness-errors";
+import { readHarnessDiagnostic } from "./harness-diagnostics";
+import type { HarnessDiagnostic } from "@/shared/harness-diagnostics";
 
 const messages = {
   event_queue_overflow: "The native event queue overflowed.",
@@ -33,6 +35,7 @@ type ObservationReason = keyof typeof messages;
 type ErrorType = typeof errorTypes[number];
 type NumericDetails = Partial<Record<typeof numericFields[number], number>>;
 export type HarnessObservationDetails = NumericDetails & {
+  diagnostic?: HarnessDiagnostic;
   reason: ObservationReason;
   streamId?: string;
   causeTypes: ErrorType[];
@@ -50,6 +53,8 @@ function errorType(error: unknown): ErrorType {
 export function readHarnessObservationDetails(value: unknown): HarnessObservationDetails {
   const result: HarnessObservationDetails = { reason: "unknown", causeTypes: [] };
   if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  const diagnostic = readHarnessDiagnostic(value);
+  if (diagnostic) result.diagnostic = diagnostic;
   if ("reason" in value && isReason(value.reason)) result.reason = value.reason;
   for (const key of numericFields) {
     if (key in value) {

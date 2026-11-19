@@ -16,6 +16,7 @@ import { parseAndValidate } from "../validation";
 import { assertMeshExecutionTransport, internalMeshErrorResponse, validateMeshSessionHeaders } from "./shared";
 import { createHarnessEventStream } from "./harness-events";
 import { errorResponse } from "../helpers";
+import { logHarnessFailure, withHarnessDiagnostic } from "../../backends/harness-diagnostics";
 
 export const meshHarnessRoutes = defineRoutes({
   "/api/mesh/internal/harness/rpc": {
@@ -46,7 +47,14 @@ export const meshHarnessRoutes = defineRoutes({
           protocolVersion: envelope.protocolVersion, requestId: envelope.requestId,
           payload: result,
         });
-      } catch (error) { return internalMeshErrorResponse(error); }
+      } catch (error) {
+        const failure = withHarnessDiagnostic(error, {
+          operation: envelope.payload.operation, requestId: envelope.requestId,
+          leaseSessionId: envelope.sessionId,
+          ...("sessionId" in envelope.payload ? { conversationId: envelope.payload.sessionId } : {}),
+        });
+        return internalMeshErrorResponse(release ? failure : error);
+      }
       finally { release?.(); }
     },
   },
@@ -86,7 +94,13 @@ export const meshHarnessRoutes = defineRoutes({
           },
         });
         return new Response(stream, { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } });
-      } catch (error) { return internalMeshErrorResponse(error); }
+      } catch (error) {
+        logHarnessFailure(error, {
+          operation: "observe", requestId: envelope.requestId, leaseSessionId: envelope.sessionId,
+          ...("conversationId" in envelope ? { conversationId: envelope.conversationId } : {}),
+        });
+        return internalMeshErrorResponse(error);
+      }
     },
   },
   "/api/mesh/internal/harness/renew": {
@@ -105,7 +119,10 @@ export const meshHarnessRoutes = defineRoutes({
         const protocolVersion = meshExecutionGateway.getSessionProtocolVersion(id, token);
         const expiresAt = await meshExecutionGateway.renewSession(id, token, { expectedChannel: MESH_HARNESS_CHANNEL });
         return Response.json({ protocolVersion, sessionId: id, expiresAt: new Date(expiresAt).toISOString() });
-      } catch (error) { return internalMeshErrorResponse(error); }
+      } catch (error) {
+        logHarnessFailure(error, { operation: "renew", leaseSessionId: id });
+        return internalMeshErrorResponse(error);
+      }
     },
   },
 });

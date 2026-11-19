@@ -27,6 +27,7 @@ import { buildAgentInstructions } from "@/shared/agent-instructions";
 import { controlResultContent } from "@/shared/control-tool-result";
 import { RequestSecretSchema } from "@/contracts/schemas/harness-secret";
 import { HarnessError } from "../harness-errors";
+import { logHarnessFailure } from "../harness-diagnostics";
 import { HarnessEventHub } from "../harness-event-hub";
 import { requireMatchingHarnessBinding } from "../harness-binding";
 import { consumeHarnessPrompt } from "../harness-prompt";
@@ -635,7 +636,7 @@ export class ClaudeBackend implements Backend {
       await conversation.native.send(input);
       return { status: "accepted", inputId: request.inputId, nativeMessageId: uuid, nativeClientInputId: uuid };
     } catch (error) {
-      log.warn("Claude steering admission is unknown", { inputId: request.inputId, errorType: error instanceof Error ? error.name : typeof error });
+      logHarnessFailure(error, { adapter: "claude", operation: "steer", conversationId: id, inputId: request.inputId }, "warn");
       return { status: "unknown", inputId: request.inputId };
     }
   }

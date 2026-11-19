@@ -122,7 +122,9 @@ export class OpenCodeEventTranslator {
     }
   }
 
-  private translateFailure(error: { type: string; status?: number; response?: { body: string }; retryAfterMs?: number }): ReturnType<typeof providerFailure> {
+  private translateFailure(error: { type: string; status?: number; response?: { body: string }; retryAfterMs?: number }): {
+    code: string; details: Record<string, unknown>;
+  } {
     let code = error.type;
     if (error.response?.body.trimStart().startsWith("{")) {
       try {
@@ -137,11 +139,12 @@ export class OpenCodeEventTranslator {
     const kind = ["insufficient_quota", "billing_error", "credit_balance_exhausted"].includes(code) ? "billing"
       : ["usage_limit_exceeded", "quota_exceeded"].includes(code) ? "quota"
         : error.status === 429 || ["rate_limit_exceeded", "rate_limit_error"].includes(code) ? "rate_limit" : undefined;
-    return providerFailure(kind ? {
+    const failure = providerFailure(kind ? {
       kind,
       retryAt: providerRetryAt(error.retryAfterMs !== undefined && error.retryAfterMs >= 0
         ? Date.now() + error.retryAfterMs : undefined),
     } : undefined);
+    return { ...failure, details: { ...failure.details, nativeCode: code, status: error.status } };
   }
 
   private startMessage(id: string): HarnessEventPayload[] {

@@ -56,6 +56,7 @@ import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { agentNotificationService } from "./agent-notification-service";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { MAX_PROVIDER_CONTINUATION_ATTEMPTS, nextProviderContinuationAt, readProviderLimit } from "@/shared/provider-limit";
+import { readHarnessDiagnostic } from "../backends/harness-diagnostics";
 
 const CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE = 4;
 
@@ -461,6 +462,7 @@ export class ChatStateService implements ChatStatePort {
       completedAt: now,
       harness: {
         ...chat.state.harness,
+        lastFailure: readHarnessDiagnostic(details) ?? chat.state.harness?.lastFailure,
         providerLimit: limit ? {
           ...limit,
           id: continuation ? previous!.id : crypto.randomUUID(),
