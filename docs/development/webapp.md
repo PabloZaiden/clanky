@@ -144,6 +144,10 @@ for the selected local or Mesh server, without requiring or creating a workspace
 This is a menu-only action, not a standalone page button. It is disabled when
 the server does not accept execution or lacks the required file-operation capability.
 
+Find completed workspace and direct-host chats under **Done** in the sidebar's
+**Active** tab. The section appears below **Active work** only when there are
+completed chats.
+
 In the sidebar's **Workspaces** tab, each workspace directly lists chats
 and terminals together, including completed chats.
 **Automations** is a peer section containing automations from all

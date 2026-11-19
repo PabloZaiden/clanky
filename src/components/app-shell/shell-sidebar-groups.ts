@@ -7,12 +7,15 @@ import type {
 } from "@/shared";
 import {
   buildActiveWorkSidebarItems,
+  buildChatHistorySidebarItems,
   getActiveWorkItemTimestamp,
+  type SidebarChatHistoryItem,
   type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
 import {
   renderActiveWorkSidebarItem,
+  sortSidebarNodesByActivity,
 } from "./shell-sidebar-utils";
 import {
   createWorkspaceSidebarNode,
@@ -69,24 +72,23 @@ export function buildSidebarDomainNodes({
   contexts,
 }: BuildSidebarDomainNodesOptions): SidebarNode[] {
   const capabilities = getClankyClientCapabilities();
+  const createWorkChatNode = (item: SidebarChatHistoryItem): SidebarNode => {
+    const workspace = item.kind === "chat" ? item.workspace : undefined;
+    return createChatSidebarNode({
+      chatNode: item.chatNode,
+      idPrefix: "chat",
+      id: item.key,
+      pinId: item.key,
+      ancestors: item.kind === "chat" ? [item.workspace] : [item.host],
+      subtitle: item.kind === "chat" ? item.workspaceName : item.host.name,
+      badgeAppearance: "text",
+      itemLayout: "subtitle-above-title",
+      render: renderActiveWorkSidebarItem("Chat", getActiveWorkItemTimestamp(item), workspace),
+    }, contexts.chat);
+  };
   const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { executionHostNodes }).map((item): SidebarNode => {
     if (item.kind === "chat" || item.kind === "execution-host-chat") {
-      const ancestors = item.kind === "chat" ? [item.workspace] : [item.host];
-      return createChatSidebarNode({
-        chatNode: item.chatNode,
-        idPrefix: "chat",
-        id: item.key,
-        pinId: item.key,
-        ancestors,
-        subtitle: item.kind === "chat" ? item.workspaceName : item.host.name,
-        badgeAppearance: "text",
-        itemLayout: "subtitle-above-title",
-        render: renderActiveWorkSidebarItem(
-          "Chat",
-          getActiveWorkItemTimestamp(item),
-          item.kind === "chat" ? item.workspace : undefined,
-        ),
-      }, contexts.chat);
+      return createWorkChatNode(item);
     }
     if (item.kind === "terminal-session") {
       const terminalId = item.sessionNode.session.config.id;
@@ -132,6 +134,12 @@ export function buildSidebarDomainNodes({
       render: renderActiveWorkSidebarItem("Terminal", getActiveWorkItemTimestamp(item)),
     }, contexts.terminal);
   });
+  const done = sortSidebarNodesByActivity(
+    buildChatHistorySidebarItems(sidebarWorkspaceGroups, { executionHostNodes }).map((item) => ({
+      node: createWorkChatNode(item),
+      lastActivityAt: getActiveWorkItemTimestamp(item),
+    })),
+  );
 
   const automationNodes = buildAutomationSidebarNodes(
     automations,
@@ -160,6 +168,9 @@ export function buildSidebarDomainNodes({
   return [
     ...(activeWork.length > 0
       ? [{ type: "section" as const, id: "active-work", title: "Active work", children: activeWork }]
+      : []),
+    ...(done.length > 0
+      ? [{ type: "section" as const, id: "done", title: "Done", children: done }]
       : []),
     {
       type: "section" as const,
