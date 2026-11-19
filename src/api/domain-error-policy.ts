@@ -1603,7 +1603,7 @@ const POLICY_PROFILES = {
       },
       workspace_icon_too_large: {
         status: 413,
-        message: "Workspace icons must be 1 MB or smaller and within image dimension limits.",
+        message: "Workspace icons must be 4 MB or smaller and within image dimension limits.",
       },
       workspace_icon_url_blocked: {
         status: 400,

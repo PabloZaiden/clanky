@@ -80,6 +80,9 @@ function imageResponse(
       "Content-Type": mimeType,
       "Cross-Origin-Resource-Policy": "same-origin",
       "X-Content-Type-Options": "nosniff",
+      ...(mimeType === "image/svg+xml" ? {
+        "Content-Security-Policy": "sandbox; script-src 'none'; frame-ancestors 'none'",
+      } : {}),
     },
   });
 }
@@ -117,7 +120,7 @@ async function readRequestBodyWithLimit(
         });
         throw new DomainError(
           "workspace_icon_too_large",
-          "Workspace icons must be 1 MB or smaller.",
+          "Workspace icons must be 4 MB or smaller.",
         );
       }
       chunks.push(value);
