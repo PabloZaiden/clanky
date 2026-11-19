@@ -74,10 +74,10 @@ import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
-import { logHarnessFailure, runHarnessOperation } from "../backends/harness-diagnostics";
+import { logHarnessFailure, readHarnessDiagnostic, runHarnessOperation } from "../backends/harness-diagnostics";
 import type { HarnessDiagnostic } from "@/shared/harness-diagnostics";
 import { harnessActivityService } from "./harness-activity-service";
-import { isDomainError } from "../domain/domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
@@ -869,6 +869,7 @@ export class ChatConversationService implements ChatConversationPort {
       });
       failure = new HarnessError("harness_request_failed", "Unable to checkpoint the native conversation.", {
         cause: new AggregateError([error, checkpointError], "Native observation and checkpoint failed."),
+        details: { diagnostic: isDomainError(error) ? readHarnessDiagnostic(error.details) : undefined },
       });
     }
     const latest = await this.state.getChatSummary(chatId);
@@ -1871,10 +1872,11 @@ export class ChatConversationService implements ChatConversationPort {
         break;
       }
 
-      case "request.error":
-        log.warn("Native request failed while the chat execution remains open", {
-          chatId, code: event.code, error: event.message,
-        });
+      case "request.error": {
+        const diagnostic = logHarnessFailure(new DomainError(event.code, event.message, { details: event.details }), {
+          adapter: event.scope.native?.adapter, operation: "observe", chatId,
+          conversationId: event.scope.native?.conversationId,
+        }, "warn");
         streamState.chat = await this.emitChatLog(
           streamState.chat, "warn", event.message,
           { code: event.code, ...event.details },
@@ -1883,9 +1885,11 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.chat = await this.updateState(streamState.chat, {
           ...streamState.chat.state,
           error: { message: event.message, code: event.code, timestamp: now },
+          harness: { ...streamState.chat.state.harness, lastFailure: diagnostic },
           lastActivityAt: now,
         });
         break;
+      }
 
       case "error":
         if (this.shouldSuppressStreamError(chatId, generation)) {
