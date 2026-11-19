@@ -448,10 +448,10 @@ and upstream HTTP or HTTPS. The development server must already be running.
 Update both the native app and its controller; native preview WebSockets require
 the controller's upstream-handshake acknowledgement.
 The native proxy opens an HTTP `localhost` URL on your device, preferring the
-remote port and choosing a free local port if that port is unavailable. It
-listens only on IPv4 and IPv6 loopback (IPv4 only if IPv6 is unavailable);
-the URL is not usable from another device. HTTPS upstream certificates are
-accepted, including self-signed certificates, as with the CLI.
+remote port and choosing a free local port if that port is unavailable or
+blocked by browsers. It listens only on IPv4 and IPv6 loopback (IPv4 only if
+IPv6 is unavailable); the URL is not usable from another device. HTTPS upstream
+certificates are accepted, including self-signed certificates, as with the CLI.
 
 iPhone/iPad opens native Safari inside Clanky, keeping the app foregrounded.
 After switching to another app, preview activity continues only for whatever

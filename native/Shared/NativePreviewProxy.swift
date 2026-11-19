@@ -24,7 +24,7 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
     private let changed: @MainActor () -> Void
     private var listener: NWListener?
     private var ipv6Listener: NWListener?
-    private var usingPreferredPort = true
+    private var availablePortAttempts = 0
     private var session: URLSession?
     private var socket: URLSessionWebSocketTask?
     private var reader: Task<Void, Never>?
@@ -34,6 +34,15 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
     private var pending: [(String, CheckedContinuation<Void, Error>)] = []
     private var pendingBytes = 0
     private var sending = false
+    // HTTP(S) bad ports: https://fetch.spec.whatwg.org/#port-blocking
+    private static let browserBlockedPorts: Set<UInt16> = [
+        0, 1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53,
+        69, 77, 79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117,
+        119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514,
+        515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989,
+        990, 993, 995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061,
+        6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
+    ]
 
     init(page: String, target: [String: String], port: Int, path: String, upstreamProtocol: String,
          socketURL: URL, origin: URL,
@@ -73,10 +82,15 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
                 self?.stop("Preview startup timed out.")
             }
-            do {
-                try startListener(port: NWEndpoint.Port(rawValue: UInt16(remotePort))!, ipv6: false)
-            } catch {
-                listenerFailed(error, ipv6: false)
+            if Self.browserBlockedPorts.contains(UInt16(remotePort)) {
+                NSLog("Clanky preview remote port %d is blocked by browsers; selecting a different local port.", remotePort)
+                startAvailablePort()
+            } else {
+                do {
+                    try startListener(port: NWEndpoint.Port(rawValue: UInt16(remotePort))!, ipv6: false)
+                } catch {
+                    listenerFailed(error, ipv6: false)
+                }
             }
         }
     }
@@ -98,8 +112,16 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
                     if ipv6 {
                         self.connect()
                     } else {
-                        guard let port = listener.port,
-                              let url = URL(string: "http://localhost:\(port.rawValue)\(self.initialPath)"),
+                        guard let port = listener.port else {
+                            self.stop("The preview listener did not provide a local port.")
+                            return
+                        }
+                        guard !Self.browserBlockedPorts.contains(port.rawValue) else {
+                            NSLog("Selected local port %d is blocked by browsers.", port.rawValue)
+                            self.startAvailablePort()
+                            return
+                        }
+                        guard let url = URL(string: "http://localhost:\(port.rawValue)\(self.initialPath)"),
                               url.host == "localhost", url.port == Int(port.rawValue) else {
                             self.stop("The preview listener did not provide a valid local URL.")
                             return
@@ -141,18 +163,26 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
                 connect()
                 return
             }
-            if usingPreferredPort, [.EADDRINUSE, .EACCES, .EPERM].contains(code) {
-                NSLog("Clanky preview local port %d is unavailable (%@); using an available local port.",
-                      remotePort, failure.localizedDescription)
-                usingPreferredPort = false
-                stopListeners()
-                localURL = nil
-                do { try startListener(port: .any, ipv6: false) }
-                catch { stop("Unable to start preview: \(error.localizedDescription)") }
+            if [.EADDRINUSE, .EACCES, .EPERM].contains(code) {
+                NSLog("Clanky preview local port is unavailable: %@", failure.localizedDescription)
+                startAvailablePort()
                 return
             }
         }
         stop("Preview listener failed: \(failure.localizedDescription)")
+    }
+
+    private func startAvailablePort() {
+        guard availablePortAttempts < 8 else {
+            stop("Unable to select a browser-usable local preview port.")
+            return
+        }
+        availablePortAttempts += 1
+        NSLog("Using an available local preview port (attempt %d).", availablePortAttempts)
+        stopListeners()
+        localURL = nil
+        do { try startListener(port: .any, ipv6: false) }
+        catch { listenerFailed(error, ipv6: false) }
     }
 
     private func cancelListener(_ listener: NWListener?) {
