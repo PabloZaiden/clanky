@@ -6,6 +6,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  SelectField,
   TextField,
   useToast,
   type ActionMenuItem,
@@ -15,6 +16,14 @@ import {
   type PreviewSessionScope,
 } from "../../hooks";
 import { writeTextToClipboard } from "../../utils";
+import { getExecutionHostSourceId } from "@/shared";
+import { appResourceUrl } from "../../lib/public-path";
+import { getClientSession, getClientStorageScope } from "../../platform/web/client-session";
+import {
+  nativePreviewAction,
+  nativePreviewSchema,
+} from "../../platform/web/native-previews";
+import { useNativePreviews } from "../../hooks/useNativePreviews";
 
 function formatDateTime(value?: string): string {
   if (!value) {
@@ -33,10 +42,72 @@ export function PreviewSessionsView({
   buildCommand,
 }: PreviewSessionsViewProps) {
   const [port, setPort] = useState("3000");
-  const [pendingClosePreviewId, setPendingClosePreviewId] = useState<string | null>(null);
+  const [path, setPath] = useState("/");
+  const [protocol, setProtocol] = useState("http");
+  const [starting, setStarting] = useState(false);
+  const [pendingClose, setPendingClose] = useState<{ kind: "native" | "remote"; id: string } | null>(null);
   const toast = useToast();
   const { previews, loading, error, closePreview } = usePreviewSessions(scope);
   const command = useMemo(() => buildCommand(port), [buildCommand, port]);
+  const native = useNativePreviews();
+  const nativeAvailable = native.platform !== undefined && !getClientSession().demo;
+  const target = scope.kind === "workspace"
+    ? { kind: "workspace" as const, reference: scope.workspaceId }
+    : { kind: "server" as const, reference: getExecutionHostSourceId(scope.executionHost) };
+  const localPreviews = native.previews.filter(
+    (preview) => preview.target.kind === target.kind && preview.target.reference === target.reference,
+  );
+  const otherPreviews = nativeAvailable
+    ? previews.filter((preview) => !native.previews.some((local) => local.previewId === preview.config.id))
+    : previews;
+
+  async function localAction(type: "open" | "close", id: string) {
+    try {
+      await nativePreviewAction(type, id);
+    } catch (error) {
+      toast.error(`Unable to ${type} preview: ${String(error)}`);
+    }
+  }
+
+  async function startPreview() {
+    const bridge = window.clankyPreviews;
+    if (starting) return;
+    if (!bridge) {
+      toast.error("Update the native app to start previews on this device.");
+      return;
+    }
+    setStarting(true);
+    const owner = getClientStorageScope();
+    try {
+      const remotePort = Number(port);
+      const initialPath = path.trim() || "/";
+      if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65535) {
+        throw new Error("Remote port must be between 1 and 65535.");
+      }
+      if (!initialPath.startsWith("/") || initialPath.startsWith("//")
+        || /[\\\u0000-\u001f\u007f]/.test(initialPath)) {
+        throw new Error("Initial path must be a local path beginning with /.");
+      }
+      if (protocol !== "http" && protocol !== "https") throw new Error("Choose HTTP or HTTPS.");
+      const resource = await appResourceUrl("/api/previews/bridge", "websocket");
+      try {
+        if (getClientStorageScope() !== owner || !getClientSession().authenticated) {
+          throw new Error("The server session changed before the preview could start.");
+        }
+        const preview = nativePreviewSchema.parse(await bridge.postMessage({
+          type: "start", target, port: remotePort, path: initialPath,
+          protocol, socketUrl: resource.url,
+        }));
+        await localAction("open", preview.id);
+      } finally {
+        resource.dispose?.();
+      }
+    } catch (error) {
+      toast.error(`Unable to start preview: ${String(error)}`);
+    } finally {
+      setStarting(false);
+    }
+  }
 
   async function copyCommand() {
     try {
@@ -57,15 +128,76 @@ export function PreviewSessionsView({
   }
 
   async function confirmClosePreview() {
-    const previewId = pendingClosePreviewId;
-    setPendingClosePreviewId(null);
-    if (previewId) {
-      await closePreview(previewId);
+    const preview = pendingClose;
+    setPendingClose(null);
+    if (preview?.kind === "native") {
+      await localAction("close", preview.id);
+    } else if (preview) {
+      await closePreview(preview.id);
     }
   }
 
   return (
     <div className="min-w-0 space-y-6">
+      {nativeAvailable ? (
+        <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
+          <div>
+            <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Preview on this device</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Connect to an already-running dev server. The proxy listens only on this device.
+            </p>
+          </div>
+          <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
+            event.preventDefault();
+            void startPreview();
+          }}>
+            <TextField label="Remote port" type="number" min={1} max={65535} required
+              value={port} onChange={(event) => setPort(event.target.value)} className="w-28" />
+            <TextField label="Initial path" required value={path}
+              onChange={(event) => setPath(event.target.value)} className="min-w-0 flex-1" />
+            <SelectField label="Upstream" value={protocol}
+              onChange={(event) => setProtocol(event.target.value)}>
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+            </SelectField>
+            <Button type="submit" size="sm" disabled={starting}>
+              {starting ? "Starting..." : "Start preview"}
+            </Button>
+          </form>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {native.platform === "ios"
+              ? "Opens in Safari inside Clanky. Background activity is best effort; iOS can interrupt it. Restart interrupted previews here."
+              : "Opens in your system browser. Keep Clanky running while using the preview."}
+            {" "}Local URLs use HTTP. HTTPS upstream certificates are accepted, including self-signed certificates.
+          </p>
+          {native.error ? <ErrorState title="Unable to read local previews" description={native.error} /> : null}
+          {localPreviews.map((preview) => (
+            <div key={preview.id} className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge variant={preview.status === "active" ? "success" : "default"}>
+                      {preview.status}
+                    </StatusBadge>
+                    <span className="font-mono text-sm">{preview.protocol}://localhost:{preview.port}</span>
+                  </div>
+                  {preview.url ? <div className="break-all font-mono text-xs text-gray-500 dark:text-gray-400">{preview.url}</div> : null}
+                  {preview.error ? <p className="break-words text-sm text-red-600 dark:text-red-400">{preview.error}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={preview.status !== "active"} onClick={() => void localAction("open", preview.id)}>Open</Button>
+                  <ActionMenu ariaLabel="Local preview actions" triggerVariant="ghost" triggerSize="compact" items={[
+                    ...(preview.status === "active" && preview.url ? [{
+                      id: "copy", label: "Copy URL", onAction: () => void copyUrl(preview.url!),
+                    }] : []),
+                    { id: "close", label: "Close", destructive: true, onAction: () => setPendingClose({ kind: "native", id: preview.id }) },
+                  ] satisfies ActionMenuItem[]} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </section>
+      ) : null}
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
         <div>
           <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Start from the CLI</h2>
@@ -97,18 +229,18 @@ export function PreviewSessionsView({
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Active previews</h2>
-        {loading && previews.length === 0 ? (
+        {loading && otherPreviews.length === 0 ? (
           <LoadingState title="Refreshing previews" />
         ) : error ? (
           <ErrorState title="Unable to load previews" description={error} />
-        ) : previews.length === 0 ? (
+        ) : otherPreviews.length === 0 ? (
           <EmptyState
-            title="No active previews"
-            description="Previews only exist while the CLI command is connected."
+            title={nativeAvailable ? "No other active previews" : "No active previews"}
+            description="Previews only exist while their CLI or native app proxy is connected."
           />
         ) : (
           <div className="space-y-3">
-            {previews.map((preview) => (
+            {otherPreviews.map((preview) => (
               <div
                 key={preview.config.id}
                 className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-neutral-900"
@@ -136,9 +268,13 @@ export function PreviewSessionsView({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" onClick={() => window.open(preview.config.localUrl, "_blank", "noopener,noreferrer")}>
-                      Open
-                    </Button>
+                    {nativeAvailable ? (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Started in another window or device</span>
+                    ) : (
+                      <Button size="sm" onClick={() => window.open(preview.config.localUrl, "_blank", "noopener,noreferrer")}>
+                        Open
+                      </Button>
+                    )}
                     <ActionMenu
                       ariaLabel="Preview actions"
                       triggerVariant="ghost"
@@ -153,7 +289,7 @@ export function PreviewSessionsView({
                           id: "close",
                           label: "Close",
                           destructive: true,
-                          onAction: () => setPendingClosePreviewId(preview.config.id),
+                          onAction: () => setPendingClose({ kind: "remote", id: preview.config.id }),
                         },
                       ] satisfies ActionMenuItem[]}
                     />
@@ -165,12 +301,12 @@ export function PreviewSessionsView({
         )}
       </section>
       <ConfirmDialog
-        open={pendingClosePreviewId !== null}
+        open={pendingClose !== null}
         title="Close preview?"
         message="This disconnects the active preview session."
         confirmLabel="Close preview"
         danger
-        onCancel={() => setPendingClosePreviewId(null)}
+        onCancel={() => setPendingClose(null)}
         onConfirm={() => void confirmClosePreview()}
       />
     </div>

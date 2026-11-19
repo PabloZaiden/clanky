@@ -422,6 +422,7 @@ final class BrowserModel: ObservableObject {
     #endif
     let webView: BrowserWebView
     let origin: URL
+    let previews: NativePreviews
     #if os(iOS)
     let nativeToolbar: NativeToolbar
     #endif
@@ -449,10 +450,12 @@ final class BrowserModel: ObservableObject {
         self.initialURL = initialURL
         self.ensureAssets = ensureAssets
         self.controllerTrust = controllerTrust
+        previews = NativePreviews(origin: origin, trust: { controllerTrust?($0) })
         #if os(iOS)
         nativeToolbar = NativeToolbar(origin: origin)
         #endif
         webView = Self.makeWebView(origin: origin)
+        previews.install(in: webView)
         #if os(macOS)
         webView.settingsBrowser = self
         #endif
@@ -549,6 +552,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func setScenePhase(_ phase: ScenePhase) {
+        previews.setScenePhase(phase)
         active = phase == .active
         if active {
             if let pendingAssetAction, assetLoad == nil {
@@ -567,6 +571,7 @@ final class BrowserModel: ObservableObject {
 
     func contentProcessTerminated() {
         NSLog("Clanky web content process terminated.")
+        previews.documentClosed("The owning Clanky page was interrupted.")
         NativeClientCredentialLock.contentProcessTerminated(in: webView)
         NativeDiagnostics.record("web-content-terminated")
         closePopup()
