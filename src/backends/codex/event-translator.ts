@@ -21,7 +21,7 @@ function asyncQuestionContent(item: AgentMessage): string {
   const questions = item.questions?.map(({ title }) => ({ question: title, header: "", options: [] })) ?? [];
   const formatted = formatHarnessQuestions(questions);
   const text = item.text.trim();
-  if (text === formatted) return formatted;
+  if (text === formatted || text.endsWith(`\n${formatted}`)) return text;
   // Codex can include a structured title verbatim as the last sentence of its message.
   const titles = questions.map(({ question }) => question.trim()).filter(Boolean);
   let context = text;

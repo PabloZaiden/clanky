@@ -31,5 +31,8 @@ export function projectTranscriptAttachments(transcript: ChatTranscript, baseUrl
   return {
     ...transcript,
     messages: transcript.messages.map((message) => projectTranscriptMessage(message, baseUrl)),
+    ...(transcript.openQuestionMessages?.length ? {
+      openQuestionMessages: transcript.openQuestionMessages.map((message) => projectTranscriptMessage(message, baseUrl)),
+    } : {}),
   };
 }

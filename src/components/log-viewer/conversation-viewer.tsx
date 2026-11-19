@@ -1,6 +1,7 @@
 import { useCallback, useMemo, memo } from "react";
 import { Button, useToast } from "@pablozaiden/webapp/web";
 import type { VoiceTranslationResponse } from "@/contracts/schemas";
+import type { TranscriptMessage } from "@/shared";
 import { VOICE_TRANSLATION_LANGUAGE_NAMES, type VoiceTranslationLanguage } from "@/shared";
 import { hasToolCallImagePreview } from "@/shared/tool-call";
 import { useForegroundPresentation } from "../../hooks/useForegroundPresentation";
@@ -232,6 +233,26 @@ const ConversationPresentation = memo(function ConversationPresentation({
     </div>
   );
 
+  function renderMessage(message: TranscriptMessage, showTimestamp = false, showDate = false, spacingClass = "") {
+    const isPlaying = playingReadAloudKey === message.id;
+    return <MessageEntry
+      key={`msg-${message.id}`}
+      data={message}
+      showTimestamp={showTimestamp}
+      showDate={showDate}
+      spacingClass={spacingClass}
+      markdownEnabled={markdownEnabled}
+      fileLinkContext={resolvedFileLinkContext}
+      onTranslate={translateMessage}
+      translationLanguages={translationSettings.data?.enabled ? translationSettings.data.languages : EMPTY_TRANSLATION_LANGUAGES}
+      onTranslationError={handleTranslationError}
+      onReadAloud={onReadAloud}
+      playingReadAloudKey={isPlaying ? message.id : null}
+      readAloudStatus={isPlaying ? readAloudStatus : null}
+      onBeforeExpand={releaseBottomPin}
+    />;
+  }
+
   return (
     <>
       <div
@@ -255,7 +276,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                 "No messages yet"
               )}
             </div>
-            {scrollContentFooter}
+            {scrollContentFooter?.(renderMessage)}
           </div>
         ) : (
           <div ref={contentRef} className="mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7" data-testid="conversation-transcript">
@@ -263,27 +284,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
             {visibleEntries.map((entry, index) => {
               const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
               if (entry.type === "message") {
-                const messageReadAloudKey = playingReadAloudKey === entry.data.id
-                  ? entry.data.id
-                  : null;
-                return (
-                  <MessageEntry
-                    key={`msg-${entry.data.id}`}
-                    data={entry.data}
-                    showTimestamp={entry.showTimestamp}
-                    showDate={entry.showDate}
-                    spacingClass={spacingClass}
-                    markdownEnabled={markdownEnabled}
-                    fileLinkContext={resolvedFileLinkContext}
-                    onTranslate={translateMessage}
-                    translationLanguages={translationSettings.data?.enabled ? translationSettings.data.languages : EMPTY_TRANSLATION_LANGUAGES}
-                    onTranslationError={handleTranslationError}
-                    onReadAloud={onReadAloud}
-                    playingReadAloudKey={messageReadAloudKey}
-                    readAloudStatus={messageReadAloudKey ? readAloudStatus : null}
-                    onBeforeExpand={releaseBottomPin}
-                  />
-                );
+                return renderMessage(entry.data, entry.showTimestamp, entry.showDate, spacingClass);
               } else if (entry.type === "tool-image") {
                 return (
                   <ToolImageEntry
@@ -365,7 +366,7 @@ const ConversationPresentation = memo(function ConversationPresentation({
                 <span>Thinking…</span>
               </ActivityIndicator>
             )}
-            {scrollContentFooter}
+            {scrollContentFooter?.(renderMessage)}
           </div>
         )}
       </div>

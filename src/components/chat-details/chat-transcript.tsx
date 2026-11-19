@@ -132,17 +132,17 @@ export function ChatTranscript({
 
   const activity = chat.state.harness?.activity;
   const questions = chat.state.harness?.questions;
-  const { visibleTranscript, questionContent } = useMemo(() => {
+  const { visibleTranscript, questionMessages } = useMemo(() => {
     const pendingIds = new Set(questions?.flatMap((request) =>
       isQuestionOpen(request) && request.transcript ? [request.transcript.questionMessageId] : []));
-    const questionContent = new Map<string, string>();
-    if (!pendingIds.size) return { visibleTranscript: transcript, questionContent };
+    const questionMessages = new Map(transcript.openQuestionMessages?.map((message) => [message.id, message]));
+    if (!pendingIds.size) return { visibleTranscript: transcript, questionMessages };
     const messages = transcript.messages.filter((message) => {
       if (!pendingIds.has(message.id)) return true;
-      questionContent.set(message.id, message.content);
+      questionMessages.set(message.id, message);
       return false;
     });
-    return { visibleTranscript: { ...transcript, messages }, questionContent };
+    return { visibleTranscript: { ...transcript, messages }, questionMessages };
   }, [questions, transcript]);
   const blockingQuestions = (questions ?? [])
     .filter((request) => request.blocking && isQuestionOpen(request));
@@ -197,16 +197,17 @@ export function ChatTranscript({
         onReadAloud={readAloudAvailable ? onReadAloud : undefined}
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
-        scrollContentFooter={
-          <fieldset disabled={readOnly} className="min-w-0"><ChatQuestions
+        scrollContentFooter={(renderMessage) => (
+          <ChatQuestions
             chatId={chat.config.id}
             requests={questions ?? []}
-            questionContent={questionContent}
-            fileLinkContext={fileLinkContext}
+            questionMessages={questionMessages}
+            renderMessage={renderMessage}
+            readOnly={readOnly}
             onChatSnapshot={onChatSnapshot}
             onAnswerInputFocusChange={onQuestionAnswerFocusChange}
-          /></fieldset>
-        }
+          />
+        )}
       />
     </div>
   );
