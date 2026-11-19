@@ -49,7 +49,12 @@ final class NativePreviews: NSObject, WKScriptMessageHandlerWithReply {
           const page = crypto.randomUUID();
           const postMessage = body => window.webkit.messageHandlers.clankyPreviews.postMessage({ ...body, page });
           window.clankyPreviews = { platform: "\(platform)", postMessage };
-          postMessage({ type: "attach" }).catch(error => console.error("Unable to initialize local previews.", error));
+          const attach = () => postMessage({ type: "attach" })
+            .catch(error => console.error("Unable to initialize local previews.", error));
+          attach();
+          window.addEventListener("pageshow", event => {
+            if (event.persisted) attach();
+          });
           window.addEventListener("pagehide", () => {
             postMessage({ type: "reset" }).catch(error => console.error("Unable to close local previews.", error));
           });

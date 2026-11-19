@@ -11,6 +11,7 @@ import {
   type PreviewBridgeWebSocketCloseMessage,
   type PreviewBridgeWebSocketMessage,
   type PreviewBridgeWebSocketOpenMessage,
+  type PreviewBridgeWebSocketReadyMessage,
   type PreviewSession,
   type PreviewTarget,
   type RegisterCliPreviewOptions,
@@ -1088,6 +1089,13 @@ export class PreviewSessionManager {
 
       upstream.addEventListener("open", () => {
         if (!isActive()) return;
+        if (message.acknowledgeOpen === true) {
+          ws.send(JSON.stringify({
+            type: "websocket.ready",
+            streamId: message.streamId,
+            protocol: upstream.protocol,
+          } satisfies PreviewBridgeWebSocketReadyMessage));
+        }
         for (const queuedMessage of upstreamState.queuedMessages.splice(0)) {
           upstream.send(queuedMessage);
         }

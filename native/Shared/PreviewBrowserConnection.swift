@@ -20,6 +20,8 @@ final class PreviewBrowserConnection {
     private var responseStarted = false
     private var responseHasBody = true
     private var webSocket = false
+    private var webSocketHandshake: String?
+    private var webSocketProtocols: [String] = []
     private var fragment = Data()
     private var fragmentOpcode: UInt8?
     private var closed = false
@@ -106,7 +108,10 @@ final class PreviewBrowserConnection {
             try parseHeaders(text)
             guard !closed, !ending else { return }
             if webSocket {
-                try await proxy?.send(["type": "websocket.open", "streamId": id, "path": path, "headers": headers])
+                try await proxy?.send([
+                    "type": "websocket.open", "streamId": id, "path": path,
+                    "headers": headers, "acknowledgeOpen": true,
+                ])
                 try await parseWebSocket()
                 return
             }
@@ -153,9 +158,10 @@ final class PreviewBrowserConnection {
             }
             headers.append([name, value])
         }
+        let navigation = method == "GET" && values("sec-fetch-mode") == ["navigate"]
         guard let proxy, values("host") == ["127.0.0.1:\(proxy.localURL?.port ?? 0)"],
               values("origin").allSatisfy({ $0 == proxy.localOrigin }),
-              !values("sec-fetch-site").contains("cross-site") else {
+              !values("sec-fetch-site").contains("cross-site") || navigation else {
             fail(403, "The preview requires its own local origin.")
             return
         }
@@ -192,17 +198,17 @@ final class PreviewBrowserConnection {
             }
             let accept = Data(Insecure.SHA1.hash(data: Data(
                 "\(key)258EAFA5-E914-47DA-95CA-C5AB0DC85B11".utf8))).base64EncodedString()
-            var response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n"
-            if let protocols = values("sec-websocket-protocol").first,
-               let first = protocols.split(separator: ",").first?.trimmingCharacters(in: .whitespaces) {
-                guard Self.token(first) else { throw NativePreviewFailure(message: "Invalid WebSocket subprotocol.") }
-                response += "Sec-WebSocket-Protocol: \(first)\r\n"
+            webSocketProtocols = values("sec-websocket-protocol").flatMap {
+                $0.split(separator: ",", omittingEmptySubsequences: false)
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
             }
-            enqueue(Data("\(response)\r\n".utf8))
+            guard webSocketProtocols.allSatisfy(Self.token),
+                  Set(webSocketProtocols).count == webSocketProtocols.count else {
+                throw NativePreviewFailure(message: "Invalid WebSocket subprotocol.")
+            }
+            webSocketHandshake = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n"
             webSocket = true
             submitted = true
-            timeout?.cancel()
-            timeout = nil
         }
         if let expectation = values("expect").first {
             guard expectation.lowercased() == "100-continue" else {
@@ -254,7 +260,7 @@ final class PreviewBrowserConnection {
     }
 
     func receive(_ message: [String: Any]) throws {
-        guard !closed, let type = message["type"] as? String else { return }
+        guard !closed, !ending, let type = message["type"] as? String else { return }
         switch type {
         case "response.start":
             guard !webSocket, !responseStarted, let status = message["status"] as? Int,
@@ -288,8 +294,19 @@ final class PreviewBrowserConnection {
         case "response.end":
             guard responseStarted, !webSocket else { throw NativePreviewFailure(message: "Unexpected preview response end.") }
             enqueue(responseHasBody ? Data("0\r\n\r\n".utf8) : Data(), end: true)
+        case "websocket.ready":
+            guard webSocket, var response = webSocketHandshake,
+                  let selected = message["protocol"] as? String,
+                  selected.isEmpty || webSocketProtocols.contains(selected) else {
+                throw NativePreviewFailure(message: "Invalid preview WebSocket negotiation.")
+            }
+            if !selected.isEmpty { response += "Sec-WebSocket-Protocol: \(selected)\r\n" }
+            enqueue(Data("\(response)\r\n".utf8))
+            webSocketHandshake = nil
+            timeout?.cancel()
+            timeout = nil
         case "websocket.message":
-            guard webSocket, let encoded = message["body"] as? String,
+            guard webSocket, webSocketHandshake == nil, let encoded = message["body"] as? String,
                   let bytes = Data(base64Encoded: encoded), bytes.count <= Self.bodyLimit,
                   let binary = message["binary"] as? Bool else {
                 throw NativePreviewFailure(message: "Invalid preview WebSocket message.")
@@ -297,6 +314,10 @@ final class PreviewBrowserConnection {
             enqueue(Self.frame(bytes, opcode: binary ? 2 : 1))
         case "websocket.close":
             guard webSocket else { throw NativePreviewFailure(message: "Unexpected preview WebSocket close.") }
+            guard webSocketHandshake == nil else {
+                fail(502, "The preview upstream WebSocket closed before opening.")
+                return
+            }
             let code = Self.closeCode(message["code"] as? Int ?? 1000)
             enqueue(Self.frame(Data([UInt8(code >> 8), UInt8(code & 255)]), opcode: 8), end: true)
         case "stream.error":
@@ -307,6 +328,12 @@ final class PreviewBrowserConnection {
     }
 
     private func parseWebSocket() async throws {
+        guard webSocketHandshake == nil else {
+            guard buffer.isEmpty else {
+                throw NativePreviewFailure(message: "WebSocket data arrived before the handshake completed.")
+            }
+            return
+        }
         while buffer.count >= 2 {
             let first = buffer[0]
             let second = buffer[1]
@@ -411,7 +438,7 @@ final class PreviewBrowserConnection {
         timeout?.cancel()
         timeout = nil
         NSLog("Clanky preview request failed: %@", message)
-        if webSocket {
+        if webSocket && webSocketHandshake == nil {
             enqueue(Self.frame(Data([0x03, 0xf3]), opcode: 8), end: true)
         } else if responseStarted {
             close()

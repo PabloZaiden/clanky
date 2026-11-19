@@ -192,7 +192,7 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
         guard status == "starting" || status == "active", socket != nil else {
             throw NativePreviewFailure(message: error ?? "The preview connection is closed.")
         }
-        let data = try JSONSerialization.data(withJSONObject: message)
+        let data = try JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes])
         guard pendingBytes + data.count <= 16 * 1024 * 1024 else {
             throw NativePreviewFailure(message: "Preview transport buffer limit exceeded.")
         }

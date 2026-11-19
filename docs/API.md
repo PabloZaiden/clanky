@@ -445,6 +445,8 @@ Example CLI output:
 In an updated iPhone/iPad or Mac app, open a workspace or server's **Previews**
 page and use **Start preview**. Choose the remote dev-server port, initial path
 and upstream HTTP or HTTPS. The development server must already be running.
+Update both the native app and its controller; native preview WebSockets require
+the controller's upstream-handshake acknowledgement.
 The native proxy listens on a separate HTTP loopback port on your device;
 the URL is not usable from another device. HTTPS upstream certificates are
 accepted, including self-signed certificates, as with the CLI.
