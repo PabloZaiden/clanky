@@ -2,12 +2,16 @@ import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk"
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import type { HarnessActivity } from "@/shared/harness-control";
 import { projectProviderImageOutput, redactProviderImagePayloads } from "../provider-image-output";
+import type { ProviderLimit } from "@/shared/provider-limit";
+import { providerFailure, providerRetryAt } from "../provider-limit";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export class ClaudeEventTranslator {
+  private rateLimit?: ProviderLimit;
+  private readonly requestLimits = new Map<string, ProviderLimit>();
   readonly activities = new Map<string, HarnessActivity>();
   private readonly tools = new Map<string, { name: string; input: unknown }>();
   private readonly streamed = new Map<string, string>();
@@ -31,6 +35,15 @@ export class ClaudeEventTranslator {
       sourceEventId: `${message.uuid}:${this.sequence}`,
       timestamp: "timestamp" in message && typeof message.timestamp === "string" ? message.timestamp : undefined,
     });
+    if (message.type === "rate_limit_event") {
+      const info = message.rate_limit_info;
+      if (scope.kind !== "principal") return [];
+      this.rateLimit = info.status === "rejected" ? {
+        kind: info.errorCode === "credits_required" ? "billing" : info.rateLimitType ? "quota" : "rate_limit",
+        retryAt: providerRetryAt(info.resetsAt === undefined ? undefined : info.resetsAt * 1000),
+      } : undefined;
+      return [];
+    }
     if (message.type === "stream_event") {
       const event = message.event;
       const key = this.scopeKey(scope);
@@ -68,7 +81,17 @@ export class ClaudeEventTranslator {
       return [];
     }
     if (message.type === "assistant") {
-      if (message.error) return [wrap({ type: "request.error", code: "harness_request_failed", message: `Claude inference failed: ${message.error}.` })];
+      if (message.error) {
+        const limit: ProviderLimit | undefined = message.error === "rate_limit" ? (scope.kind === "principal" ? this.rateLimit : undefined) ?? { kind: "rate_limit" }
+          : message.error === "billing_error" ? { kind: "billing" } : undefined;
+        const key = this.scopeKey(scope);
+        if (limit) this.requestLimits.set(key, limit);
+        else this.requestLimits.delete(key);
+        const text = message.message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+        return [wrap({ type: "request.error", ...providerFailure(limit),
+          message: text || `Claude inference failed: ${message.error}.` })];
+      }
+      this.requestLimits.delete(this.scopeKey(scope));
       return this.content(message.message.content, message.message.id, scope, wrap);
     }
     if (message.type === "user") {
@@ -76,13 +99,18 @@ export class ClaudeEventTranslator {
     }
     if (message.type === "result") {
       this.processing = (message.queued_turn_count ?? 0) > 0;
+      if (scope.kind === "principal") this.rateLimit = undefined;
       if (message.is_error) {
         if (this.interrupted) {
           this.interrupted = false;
           return [wrap({ type: "prompt.complete", outcome: "interrupted" })];
         }
-        return [wrap({ type: "error", code: "harness_request_failed", message: message.subtype === "success" ? message.result : message.errors.join("\n") })];
+        const key = this.scopeKey(scope);
+        const failure = providerFailure(this.requestLimits.get(key));
+        this.requestLimits.delete(key);
+        return [wrap({ type: "error", ...failure, message: message.subtype === "success" ? message.result : message.errors.join("\n") })];
       }
+      this.requestLimits.delete(this.scopeKey(scope));
       const interrupted = this.interrupted;
       this.interrupted = false;
       return [wrap({ type: "prompt.complete", outcome: interrupted ? "interrupted" : "completed" })];

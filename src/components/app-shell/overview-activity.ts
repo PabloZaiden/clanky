@@ -1,4 +1,5 @@
 import { isQuestionOpen } from "@/shared/harness-questions";
+import { providerLimitLabel } from "@/shared/provider-limit";
 import type { BadgeVariant } from "../common";
 import { getActiveWorkItemTimestamp, type SidebarActiveWorkItem } from "./shell-types";
 
@@ -24,6 +25,10 @@ export function getOverviewAttention(item: SidebarActiveWorkItem): OverviewAtten
   if (hasQuestion) return ATTENTION.question;
   if (item.chatNode.chat.state.pendingPermissionRequests?.some((request) => request.status === "pending")) {
     return ATTENTION.permission;
+  }
+  if (state.status === "blocked") {
+    const limit = state.harness?.providerLimit;
+    return { label: limit ? providerLimitLabel(limit) : "Blocked", variant: "warning" };
   }
   if (state.status === "failed" || state.error) return ATTENTION.error;
   return null;

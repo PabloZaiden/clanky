@@ -320,7 +320,7 @@ export class ChatSessionService implements ChatSessionPort {
       }
       const retainedRemote = backend.harness.capabilities.remoteContinuity === 1;
       reconnectingChat = await this.state.mutateState(chat.config.id, (current) => ({
-        ...current.state, status: "reconnecting", error: undefined,
+        ...current.state, status: "reconnecting", error: current.state.harness?.providerLimit ? current.state.error : undefined,
         ...(retainedRemote ? { connectionStatus: "connecting" as const } : { lastActivityAt: createTimestamp() }),
       }), { statusChangedAt: retainedRemote ? null : undefined });
       if (!reconnectingChat.state.session?.id) {
@@ -625,7 +625,7 @@ export class ChatSessionService implements ChatSessionPort {
     const message = error instanceof Error ? error.message : String(error);
     const errorCode = isDomainError(error) ? error.code : undefined;
     log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    return this.state.markChatError(chat, message, errorCode);
+    return this.state.markChatError(chat, message, errorCode, isDomainError(error) ? error.details : undefined);
   }
 
   private async continuityConfig(chat: Chat, releaseOnly = false) {
@@ -642,11 +642,12 @@ export class ChatSessionService implements ChatSessionPort {
     return this.state.mutateState(chat.config.id, (current) => {
       if (current.state.status !== "reconnecting") return undefined;
       const waiting = current.state.harness?.questions?.some((request) => request.blocking && isQuestionOpen(request));
-      const status = waiting ? "waiting" : this.hasActiveStream(chat.config.id) ? "streaming" : "idle";
+      const status = waiting ? "waiting" : this.hasActiveStream(chat.config.id) ? "streaming"
+        : current.state.harness?.providerLimit ? "blocked" : "idle";
       return {
         ...current.state,
         status,
-        error: undefined,
+        error: status === "blocked" ? current.state.error : undefined,
         connectionStatus: isExecutionHostChat(current) || hasRemoteChatContinuity(current)
           ? "connected"
           : current.state.connectionStatus,

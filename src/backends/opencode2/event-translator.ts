@@ -5,6 +5,9 @@
 import type { OpenCodeEvent, SessionEventDurable } from "@opencode/client";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
+import { providerFailure, providerRetryAt } from "../provider-limit";
+import { isReadRecord } from "@/shared/record";
+import { createLogger } from "@pablozaiden/webapp/server";
 import {
   projectProviderImageOutput,
   redactProviderImagePayloads,
@@ -56,7 +59,7 @@ export class OpenCodeEventTranslator {
       case "session.execution.interrupted":
         return [wrap({ type: "prompt.complete", outcome: "interrupted" }), wrap({ type: "activity.changed" })];
       case "session.execution.failed":
-        return [wrap({ type: "error", code: "harness_request_failed", message: event.data.error.message }), wrap({ type: "activity.changed" })];
+        return [wrap({ type: "error", ...this.translateFailure(event.data.error), message: event.data.error.message }), wrap({ type: "activity.changed" })];
       case "session.step.started":
         return this.startMessage(event.data.assistantMessageID).map(wrap);
       case "session.text.delta":
@@ -70,6 +73,7 @@ export class OpenCodeEventTranslator {
         parts.set(event.data.ordinal, event.data.text);
         return events;
       }
+
       case "session.step.ended": {
         const parts = this.messages.get(event.data.assistantMessageID);
         if (!parts) throw new HarnessError("harness_event_gap", "A native step completed without its observed start.");
@@ -116,6 +120,28 @@ export class OpenCodeEventTranslator {
       default:
         return [];
     }
+  }
+
+  private translateFailure(error: { type: string; status?: number; response?: { body: string }; retryAfterMs?: number }): ReturnType<typeof providerFailure> {
+    let code = error.type;
+    if (error.response?.body.trimStart().startsWith("{")) {
+      try {
+        const body: unknown = JSON.parse(error.response.body);
+        const detail = isReadRecord(body) ? body["error"] : undefined;
+        if (isReadRecord(detail) && typeof detail["code"] === "string") code = detail["code"];
+      } catch (cause) {
+        if (!(cause instanceof SyntaxError)) throw cause;
+        createLogger("backends:opencode2").warn("Provider error response contains invalid JSON.");
+      }
+    }
+    const kind = ["insufficient_quota", "billing_error", "credit_balance_exhausted"].includes(code) ? "billing"
+      : ["usage_limit_exceeded", "quota_exceeded"].includes(code) ? "quota"
+        : error.status === 429 || ["rate_limit_exceeded", "rate_limit_error"].includes(code) ? "rate_limit" : undefined;
+    return providerFailure(kind ? {
+      kind,
+      retryAt: providerRetryAt(error.retryAfterMs !== undefined && error.retryAfterMs >= 0
+        ? Date.now() + error.retryAfterMs : undefined),
+    } : undefined);
   }
 
   private startMessage(id: string): HarnessEventPayload[] {

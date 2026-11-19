@@ -43,7 +43,7 @@ class RemoteChatRecovery {
 
   private eligible(chat: ChatMetadata): boolean {
     return hasRemoteChatContinuity(chat) && chat.state.connectionStatus !== "connected"
-      && (chat.state.interruptRequested || !["done", "stopped", "failed", "interrupting"].includes(chat.state.status));
+      && (chat.state.interruptRequested || !["done", "stopped", "blocked", "failed", "interrupting"].includes(chat.state.status));
   }
 
   recover(chat: ChatMetadata): void {

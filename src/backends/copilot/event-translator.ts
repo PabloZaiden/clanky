@@ -5,6 +5,8 @@
 import type { SessionEvent } from "@microsoft/copilot-sdk";
 import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/shared/harness-events";
 import { HarnessError } from "../harness-errors";
+import { providerFailure, providerRetryAt } from "../provider-limit";
+import type { ProviderLimit } from "@/shared/provider-limit";
 import {
   projectProviderImageOutput,
   redactProviderImagePayloads,
@@ -15,6 +17,7 @@ export class CopilotEventTranslator {
   private readonly tools = new Map<string, string>();
   private queryError?: Extract<HarnessEventPayload, { type: "request.error" }>;
   private principalPromptActive = false;
+  private quotaRetryAt?: string;
   interrupted = false;
 
   constructor(private readonly sessionId: string) {}
@@ -22,6 +25,7 @@ export class CopilotEventTranslator {
   beginPrompt(): void {
     this.principalPromptActive = true;
     this.queryError = undefined;
+    this.quotaRetryAt = undefined;
     this.interrupted = false;
   }
 
@@ -40,6 +44,16 @@ export class CopilotEventTranslator {
       timestamp: event.timestamp,
     });
     switch (event.type) {
+      case "session.quota_observation": {
+        if (scope.kind !== "principal") return [];
+        const observation = event.data.observation;
+        const budget = observation.budgetMetadata;
+        this.quotaRetryAt = observation.capacityState === "exhausted"
+          && observation.acquisitionStatus !== "failed" && observation.acquisitionStatus !== "unavailable"
+          && budget && !budget.unlimited && !budget.overageAllowedWhenExhausted && budget.resetEstimated !== true
+          ? providerRetryAt(budget.resetAtEpochMs) : undefined;
+        return [];
+      }
       case "assistant.message_start":
         return this.startMessage(scope, event.data.messageId).map(wrap);
       case "assistant.message_delta": {
@@ -140,12 +154,21 @@ export class CopilotEventTranslator {
   }
 
   private translateFailure(event: Extract<SessionEvent, { type: "session.error" }>, principal: boolean): HarnessEventPayload {
+    const { errorType, errorCode } = event.data;
+    const kind: ProviderLimit["kind"] | undefined = errorCode === "billing_not_configured" ? "billing"
+      : errorType === "quota" || errorCode === "quota_exceeded" || errorCode === "session_quota_exceeded"
+        || errorCode === "user_weekly_rate_limited" ? "quota"
+        : errorType === "rate_limit" ? "rate_limit" : undefined;
+    const classified = providerFailure(kind ? { kind, ...(kind === "quota" ? { retryAt: this.quotaRetryAt } : {}) } : undefined);
     const failure = {
-      code: "harness_request_failed",
+      code: classified.code,
       message: event.data.message,
-      details: { errorType: event.data.errorType, ...(event.data.errorCode ? { errorCode: event.data.errorCode } : {}) },
+      details: { ...classified.details, errorType, ...(errorCode ? { errorCode } : {}) },
     };
-    if (!principal || event.data.errorType !== "query") return { type: "error", ...failure };
+    if (!principal || event.data.errorType !== "query") {
+      if (principal) this.principalPromptActive = false;
+      return { type: "error", ...failure };
+    }
     // Query failure can precede a native background continuation, including after steering.
     this.queryError = { type: "request.error", ...failure };
     return this.queryError;

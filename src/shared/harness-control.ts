@@ -7,6 +7,7 @@ import type { PromptInput } from "./harness-input";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessQuestionRequest } from "./harness-questions";
 import type { HarnessUsageSnapshot } from "./harness-usage";
+import type { ChatProviderLimit } from "./provider-limit";
 
 export type HarnessQuestionPolicy = "interactive" | "unattended";
 
@@ -117,6 +118,7 @@ export interface HarnessInputReceipt {
 }
 
 export interface HarnessConversationState {
+  providerLimit?: ChatProviderLimit;
   capabilities?: HarnessCapabilities;
   remoteExecutionLost?: true;
   activeTurnAttachmentBytes?: number;

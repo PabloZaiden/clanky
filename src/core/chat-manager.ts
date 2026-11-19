@@ -201,6 +201,14 @@ export class ChatManager {
     return this.services.state.getChat(chatId);
   }
 
+  recoverProviderLimit(chatId: string, action: "continue" | "schedule" | "cancel"): Promise<Chat> {
+    return this.services.interaction.recoverProviderLimit(chatId, action);
+  }
+
+  attemptProviderContinuation(chatId: string, interruptionId: string, recovering = false): Promise<Chat | null> {
+    return this.services.interaction.attemptProviderContinuation(chatId, interruptionId, recovering);
+  }
+
   async getAssistantMessage(chatId: string, messageId: string) {
     return this.services.conversation.getAssistantMessage(chatId, messageId);
   }

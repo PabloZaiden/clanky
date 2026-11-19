@@ -6,6 +6,8 @@ import type { HarnessEvent, HarnessEventPayload, HarnessEventScope } from "@/sha
 import type { CodexNotification } from "./protocol";
 import type { ThreadItem } from "./generated/v2/ThreadItem";
 import { HarnessError } from "../harness-errors";
+import { providerFailure } from "../provider-limit";
+import type { TurnError } from "./generated/v2/TurnError";
 import { formatHarnessQuestions } from "@/shared/harness-questions";
 import {
   projectProviderImageOutput,
@@ -14,6 +16,7 @@ import {
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
+  private failedTurnId?: string;
 
   constructor(private readonly options: { includeProviderImageFileReference?: boolean } = {}) {}
 
@@ -35,12 +38,17 @@ export class CodexEventTranslator {
     });
     switch (event.method) {
       case "turn/started":
+        this.failedTurnId = undefined;
         return [wrap({ type: "session.status", sessionId: event.params.threadId, status: "busy" })];
       case "turn/completed":
-        if (event.params.turn.status === "failed") return [wrap({
-          type: "error", code: "harness_request_failed",
-          message: event.params.turn.error?.message ?? "The native Codex turn failed.",
-        }), wrap({ type: "activity.changed" })];
+        if (event.params.turn.status === "failed") {
+          if (this.failedTurnId === event.params.turn.id) return [wrap({ type: "activity.changed" })];
+          this.failedTurnId = event.params.turn.id;
+          return [wrap({
+            type: "error", ...codexFailure(event.params.turn.error),
+            message: event.params.turn.error?.message ?? "The native Codex turn failed.",
+          }), wrap({ type: "activity.changed" })];
+        }
         return [wrap({
           type: "prompt.complete",
           outcome: event.params.turn.status === "interrupted" ? "interrupted" : "completed",
@@ -85,11 +93,19 @@ export class CodexEventTranslator {
       case "item/commandExecution/outputDelta":
         return [wrap({ type: "activity.changed" })];
       case "error":
-        return event.params.willRetry ? [] : [wrap({
-          type: "error", code: "harness_request_failed", message: event.params.error.message,
+        if (event.params.willRetry || this.failedTurnId === event.params.turnId) return [];
+        this.failedTurnId = event.params.turnId;
+        return [wrap({
+          type: "error", ...codexFailure(event.params.error), message: event.params.error.message,
         })];
       default:
         return [];
+    }
+
+    function codexFailure(error: TurnError | null | undefined): ReturnType<typeof providerFailure> {
+      const info = error?.codexErrorInfo;
+      return providerFailure(info === "usageLimitExceeded" ? { kind: "quota" }
+        : info === "rateLimitExceeded" ? { kind: "rate_limit" } : undefined);
     }
   }
 

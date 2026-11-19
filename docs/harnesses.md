@@ -183,6 +183,35 @@ neither revokes the credential nor guarantees forensic erasure.
 Codex registers the tool only on new native threads; resuming an old thread
 does not replace its tool catalog or start another conversation.
 
+## Provider limits and continuation
+
+Recognized provider quota exhaustion and terminal rate limits show a blocked
+chat instead of a generic runtime failure. The original diagnostic stays
+visible. Codex, Copilot, Claude Agent and OpenCode 2 use their native structured
+error signals; available retry times come from Copilot quota observations,
+Claude quota events and OpenCode error metadata. An unknown reset time is not
+presented as a countdown.
+Provider-owned retries remain in charge while their native turn is running.
+Older generic failures are not retroactively reclassified or automatically
+scheduled.
+
+Use **Continue now** to continue the same native conversation after resolving
+the limit. **Continue automatically when available** authorizes continuation
+only for the current interruption, including project actions while the browser
+is closed. The schedule survives controller restarts. Uncheck the option to
+cancel pending continuation; Stop, Done, Trash and a new manual message also
+cancel it. Stopping an execution that has already started still uses Stop.
+
+Automatic continuation honors the provider's retry time. Without one, attempts
+are spaced 1, 5, 15 and then 30 minutes apart, stopping after 12 attempts.
+Billing issues requiring intervention cannot enable automatic continuation.
+Changed account access, host, adapter or model, missing sessions, unresolved
+inputs, and execution that cannot be confirmed inactive stop continuation
+visibly. Continuation submits a new instruction to inspect current progress;
+it never replays the interrupted prompt or tool calls and never switches
+providers. If delivery becomes uncertain, check the chat before continuing
+manually. This feature does not retry scheduled Automation runs.
+
 ## Continue from history
 
 When a chat is failed because its provider-native session cannot be resumed,

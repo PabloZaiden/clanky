@@ -13,6 +13,7 @@ const VOICE_STATUS_PROPERTY_BYTES = readBytes({ voiceStatus: "active" }) + 1;
 
 const CHAT_VOICE_STATUS: Record<ChatStatus, VoiceStatusCategory> = {
   idle: "idle",
+  blocked: "idle",
   starting: "error",
   streaming: "active",
   waiting: "active",

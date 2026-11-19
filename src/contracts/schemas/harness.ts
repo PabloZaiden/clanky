@@ -7,6 +7,9 @@ import { ExecutionHostBindingSchema } from "./execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { getMessageAttachmentKind, MESSAGE_ATTACHMENT_LIMIT, MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
 import { MessageAttachmentsSchema } from "./conversation";
+import { MAX_PROVIDER_CONTINUATION_ATTEMPTS } from "@/shared/provider-limit";
+import { CollaborationActorSchema } from "./collaboration";
+import { ModelConfigSchema } from "./model";
 
 export const HarnessConversationBindingSchema = z.object({
   adapter: z.enum(HARNESS_ADAPTER_IDS),
@@ -118,6 +121,20 @@ const HarnessHistoryRecoverySchema = z.object({
 });
 
 export const HarnessConversationStateSchema = z.object({
+  providerLimit: z.object({
+    id: z.string().uuid(),
+    kind: z.enum(["quota", "rate_limit", "billing"]),
+    retryAt: z.iso.datetime().optional(),
+    continuation: z.object({
+      status: z.enum(["scheduled", "attempting", "paused"]),
+      attempts: z.number().int().min(0).max(MAX_PROVIDER_CONTINUATION_ATTEMPTS),
+      nextAttemptAt: z.iso.datetime().optional(),
+      reason: z.string().optional(),
+      conversation: HarnessConversationBindingSchema,
+      model: ModelConfigSchema,
+      actor: CollaborationActorSchema,
+    }).optional(),
+  }).optional(),
   remoteExecutionLost: z.literal(true).optional(),
   activeTurnAttachmentBytes: z.number().int().nonnegative().max(MESSAGE_ATTACHMENT_MAX_TURN_BYTES).optional(),
   unfinishedMessages: z.object({

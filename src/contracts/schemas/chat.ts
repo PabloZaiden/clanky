@@ -97,6 +97,10 @@ export const ReplyToChatPermissionRequestSchema = z.object({
 
 export const ReconnectChatRequestSchema = z.object({}).strict().default({});
 
+export const RecoverChatProviderLimitRequestSchema = z.object({
+  action: z.enum(["continue", "schedule", "cancel"]),
+}).strict();
+
 export const DiscoverExecutionHostProvidersRequestSchema = z.object({}).strict();
 
 export const DiscoverExecutionHostModelsRequestSchema = z.object({

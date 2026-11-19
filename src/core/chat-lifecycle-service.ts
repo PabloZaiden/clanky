@@ -356,6 +356,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       state.harness = {
         ...chat.state.harness,
         activeTurnAttachmentBytes: 0,
+        providerLimit: undefined,
       };
     }
 
@@ -388,6 +389,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         interruptRequested: false,
         harness: {
           ...chat.state.harness,
+          providerLimit: undefined,
           activeTurnAttachmentBytes: 0,
         },
         lastActivityAt: now,
