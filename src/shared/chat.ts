@@ -133,6 +133,7 @@ export type ChatStatus =
   | "interrupting"
   | "reconnecting"
   | "stopped"
+  | "blocked"
   | "failed"
   | "done";
 
@@ -227,7 +228,7 @@ export function isChatBusyStatus(status: ChatStatus): boolean {
 }
 
 export function isChatTerminalStatus(status: ChatStatus): boolean {
-  return status === "idle" || status === "stopped" || status === "failed" || status === "done";
+  return status === "idle" || status === "stopped" || status === "blocked" || status === "failed" || status === "done";
 }
 
 export function isAutomationChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {

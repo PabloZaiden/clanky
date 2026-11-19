@@ -16,6 +16,7 @@ export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
       return "info";
     case "interrupting":
     case "waiting":
+    case "blocked":
       return "warning";
     case "failed":
       return "error";

@@ -55,6 +55,7 @@ import { HarnessError } from "../backends/harness-errors";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { agentNotificationService } from "./agent-notification-service";
 import { isQuestionOpen } from "@/shared/harness-questions";
+import { MAX_PROVIDER_CONTINUATION_ATTEMPTS, nextProviderContinuationAt, readProviderLimit } from "@/shared/provider-limit";
 
 const CHAT_TRANSCRIPT_EXPORT_PAGE_SIZE = 4;
 
@@ -442,11 +443,16 @@ export class ChatStateService implements ChatStatePort {
     return updated;
   }
 
-  async markChatError(chat: Chat, message: string, code?: string): Promise<Chat> {
+  async markChatError(chat: Chat, message: string, code?: string, details?: Readonly<Record<string, unknown>>): Promise<Chat> {
     const now = createTimestamp();
+    const limit = readProviderLimit(code, details);
+    const previous = chat.state.harness?.providerLimit;
+    const continuation = previous?.continuation?.status === "attempting" ? previous.continuation : undefined;
+    const retry = limit && limit.kind !== "billing" && continuation
+      && continuation.attempts < MAX_PROVIDER_CONTINUATION_ATTEMPTS;
     const updated = await this.updateState(chat, {
       ...chat.state,
-      status: "failed",
+      status: limit && isStandaloneChat(chat) ? "blocked" : "failed",
       error: {
         message,
         timestamp: now,
@@ -455,6 +461,18 @@ export class ChatStateService implements ChatStatePort {
       completedAt: now,
       harness: {
         ...chat.state.harness,
+        providerLimit: limit ? {
+          ...limit,
+          id: continuation ? previous!.id : crypto.randomUUID(),
+          continuation: continuation ? {
+            ...continuation,
+            status: retry ? "scheduled" : "paused",
+            nextAttemptAt: retry ? nextProviderContinuationAt(limit, continuation.attempts) : undefined,
+            reason: retry ? undefined : limit.kind === "billing"
+              ? "Billing requires your attention."
+              : "Automatic continuation stopped after 12 attempts.",
+          } : undefined,
+        } : undefined,
         activeTurnAttachmentBytes: 0,
         questions: closeOpenQuestions(chat.state.harness?.questions, "expired"),
       },
@@ -481,6 +499,7 @@ export class ChatStateService implements ChatStatePort {
       ...(code ? { code } : {}),
       timestamp: now,
     });
+    this.emitChatUpdated(updated);
     return updated;
   }
 

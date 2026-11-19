@@ -1,4 +1,5 @@
 import { getChatWorkspaceId, isStandaloneChat, isWorkspaceChat } from "@/shared/chat";
+import { providerLimitLabel } from "@/shared/provider-limit";
 import {
   executionHostRefsEqual,
   type Automation,
@@ -220,7 +221,8 @@ export function buildWorkspaceSidebarGroups({
     const chatNodes = workspaceChats.map((chat) => ({
       chat,
       title: chat.config.name,
-      badge: formatStatusLabel(chat.state.status),
+      badge: chat.state.status === "blocked" && chat.state.harness?.providerLimit
+        ? providerLimitLabel(chat.state.harness.providerLimit) : formatStatusLabel(chat.state.status),
       badgeVariant: getChatStatusBadgeVariant(chat.state.status),
     }));
     const activeChatNodes = chatNodes.filter((chatNode) => chatNode.chat.state.status !== "done");
@@ -410,7 +412,8 @@ export function buildExecutionHostSidebarNodes({
         .map((chat) => ({
           chat,
           title: chat.config.name,
-          badge: formatStatusLabel(chat.state.status),
+          badge: chat.state.status === "blocked" && chat.state.harness?.providerLimit
+            ? providerLimitLabel(chat.state.harness.providerLimit) : formatStatusLabel(chat.state.status),
           badgeVariant: getChatStatusBadgeVariant(chat.state.status),
         })),
       historyChats: sortByDesc(hostChats, (chat) => chat.config.updatedAt)
@@ -418,7 +421,8 @@ export function buildExecutionHostSidebarNodes({
         .map((chat) => ({
           chat,
           title: chat.config.name,
-          badge: formatStatusLabel(chat.state.status),
+          badge: chat.state.status === "blocked" && chat.state.harness?.providerLimit
+            ? providerLimitLabel(chat.state.harness.providerLimit) : formatStatusLabel(chat.state.status),
           badgeVariant: getChatStatusBadgeVariant(chat.state.status),
         })),
     };

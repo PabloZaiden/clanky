@@ -86,6 +86,7 @@ import { captureWorkspaceExecutionContext, requireExecutionOwnerUser, runWithExe
 import { ChatDirectoryService } from "./chat-directory-service";
 import { INITIAL_PLANNING_GUIDANCE } from "@/shared/prompt-templates";
 import { backendManager } from "./backend";
+import { readProviderLimit } from "@/shared/provider-limit";
 
 const log = createLogger("chat-conversation-service");
 const DEFAULT_CHAT_IDLE_WAIT_TIMEOUT_MS = 15 * 60 * 1000;
@@ -533,7 +534,7 @@ export class ChatConversationService implements ChatConversationPort {
         throw new Error(`Chat not found: ${chatId}`);
       }
       const reconnecting = hasRemoteChatContinuity(summary) && summary.state.connectionStatus !== "connected"
-        && !["done", "stopped", "failed"].includes(summary.state.status);
+        && !["done", "stopped", "blocked", "failed"].includes(summary.state.status);
       if (!this.hasActiveStream(chatId) && !isChatBusyStatus(summary.state.status) && !reconnecting) {
         return await this.state.getChat(chatId) ?? summary;
       }
@@ -553,7 +554,7 @@ export class ChatConversationService implements ChatConversationPort {
 
     const startupOperation = this.startupOperations.get(chatId);
     const activeStream = this.activeStreams.get(chatId);
-    if (!chat.state.session?.id && !startupOperation && !activeStream) {
+    if (!chat.state.session?.id && !startupOperation && !activeStream && !chat.state.harness?.providerLimit) {
       return chat;
     }
 
@@ -569,6 +570,7 @@ export class ChatConversationService implements ChatConversationPort {
         interruptRequested: true,
         harness: {
           ...candidate.state.harness,
+          providerLimit: undefined,
           questions: closeOpenQuestions(candidate.state.harness?.questions, "cancelled"),
         },
         lastActivityAt: createTimestamp(),
@@ -868,7 +870,7 @@ export class ChatConversationService implements ChatConversationPort {
     const transportLost = isDomainError(failure) && failure.code === "harness_transport_closed";
     if (transportLost && entry.native!.backend.harness.capabilities.remoteContinuity === 1) {
       const updated = await this.state.mutateState(chatId, (current) => ({
-        ...current.state, status: "reconnecting", connectionStatus: "disconnected",
+        ...current.state, status: current.state.status === "blocked" ? "blocked" : "reconnecting", connectionStatus: "disconnected",
         harness: { ...current.state.harness, activity: { observation: "unavailable", reason: "disconnected" } },
       }), { statusChangedAt: null });
       this.state.emitChatUpdated(updated);
@@ -1835,6 +1837,7 @@ export class ChatConversationService implements ChatConversationPort {
             interruptRequested: false,
             harness: {
               ...streamState.chat.state.harness,
+              providerLimit: undefined,
               activeTurnAttachmentBytes: 0,
             },
             lastActivityAt: createTimestamp(),
@@ -1909,6 +1912,7 @@ export class ChatConversationService implements ChatConversationPort {
           streamState.chat,
           event.message,
           event.code,
+          event.details,
         );
         streamState.interpreter.acknowledgeCheckpoint();
         if (!this.activeStreams.get(chatId)?.native) {
@@ -2435,6 +2439,7 @@ export class ChatConversationService implements ChatConversationPort {
     chat: Chat,
     error: unknown,
     code?: string,
+    details?: Readonly<Record<string, unknown>>,
   ): Promise<Chat> {
     const message = error instanceof Error ? error.message : String(error);
     const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
@@ -2448,8 +2453,10 @@ export class ChatConversationService implements ChatConversationPort {
       log.warn("Native conversation disconnected during admission", { chatId: chat.config.id });
       return this.persistDisconnectedChat(chat.config.id, isChatBusyStatus(chat.state.status));
     }
-    log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    return this.state.markChatError(chat, message, errorCode);
+    const errorDetails = details ?? (isDomainError(error) ? error.details : undefined);
+    if (readProviderLimit(errorCode, errorDetails)) log.warn("Chat blocked by provider limit", { chatId: chat.config.id, code: errorCode });
+    else log.error("Chat runtime error", { chatId: chat.config.id, error: message });
+    return this.state.markChatError(chat, message, errorCode, errorDetails);
   }
 
   private async completeInterruptedChat(
@@ -2482,6 +2489,7 @@ export class ChatConversationService implements ChatConversationPort {
       }),
       harness: {
         ...chat.state.harness,
+        providerLimit: undefined,
         activeTurnAttachmentBytes: 0,
         questions: closeOpenQuestions(chat.state.harness?.questions, "cancelled"),
       },
@@ -2590,7 +2598,7 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const native = this.activeStreams.get(chat.config.id)?.native;
     if (chat.state.connectionStatus === "connecting" && native?.backend.isObservationRecovering?.(native.binding.nativeId)
-      && !["done", "stopped", "failed", "interrupting"].includes(state.status)) {
+      && !["done", "stopped", "blocked", "failed", "interrupting"].includes(state.status)) {
       state = { ...state, status: "reconnecting" };
     }
     return this.state.updateState(chat, state, options);

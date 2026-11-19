@@ -39,6 +39,16 @@ export class ChatTrashService {
       if (loadTrashedChat(chatId)) return;
       const chat = await this.state.getChatSummary(chatId);
       if (!chat || !isStandaloneChat(chat)) throw this.notFound();
+      if (chat.state.harness?.providerLimit?.continuation) {
+        await this.state.mutateMetadata(chatId, (current) => ({
+          ...current.state,
+          harness: {
+            ...current.state.harness,
+            providerLimit: current.state.harness?.providerLimit
+              ? { ...current.state.harness.providerLimit, continuation: undefined } : undefined,
+          },
+        }));
+      }
       if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
       const trashed = this.conversation.checkpointForDeletion(chatId, markChatTrashed);
       if (!trashed) throw this.notFound();

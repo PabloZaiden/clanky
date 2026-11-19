@@ -22,6 +22,7 @@ import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
 import { cleanupRetiredTaskResources } from "./core/retired-task-cleanup";
 import { chatManager } from "./core/chat-manager";
+import { chatProviderRecovery } from "./core/chat-provider-recovery";
 import { remoteChatRecovery } from "./core/remote-chat-recovery";
 import { automationRunner } from "./core/automation-runner";
 import type {
@@ -725,6 +726,7 @@ export async function getWebAppServer(
           );
           await workspaceConnections.start();
           await remoteChatRecovery.start();
+          await chatProviderRecovery.start();
           meshHealthService.scheduleRefreshAllWorkers("controller startup");
           await cleanupRetiredTaskResources();
         }
@@ -744,6 +746,7 @@ export async function getWebAppServer(
             errors.push(error);
           }
         };
+        await cleanup(() => chatProviderRecovery.stop());
         await cleanup(() => workspaceConnections.stop());
         await cleanup(closeSshAgentSockets);
         await cleanup(() => workspaceRealtimeSources.stop());

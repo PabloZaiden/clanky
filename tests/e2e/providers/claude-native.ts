@@ -107,6 +107,22 @@ async function execute(frame: Record<string, unknown>): Promise<void> {
   await event({ type: "system", subtype: "init", model }, false);
   await event({ type: "system", subtype: "background_tasks_changed", tasks: [] }, false);
   await event({ type: "user", message, uuid: frame["uuid"] }, true);
+  if (prompt.startsWith("Wait for my plan quota to reset at ")) {
+    const reset = Date.parse(prompt.slice("Wait for my plan quota to reset at ".length));
+    if (!Number.isFinite(reset)) throw new Error("A quota reset timestamp is required.");
+    const explanation = "Your plan usage limit has been reached.";
+    await event({ type: "rate_limit_event", rate_limit_info: {
+      status: "rejected", rateLimitType: "five_hour", resetsAt: reset / 1000,
+    } });
+    await event({ type: "assistant", error: "rate_limit", message: {
+      id: crypto.randomUUID(), role: "assistant", model, content: [{ type: "text", text: explanation }],
+    } }, true);
+    processing = false;
+    await event({ type: "result", subtype: "error_during_execution", is_error: true,
+      errors: [explanation], queued_turn_count: 0, modelUsage: {} });
+    await event({ type: "system", subtype: "session_state_changed", state: "idle", sdk_host_only: true });
+    return;
+  }
   let answer: string;
   const secret = secretRequest(prompt);
   if (secret) answer = await consumeSecretFile(await call(SECRET_TOOL, secret));

@@ -42,6 +42,7 @@ import type {
   NormalizedChatMessageInput,
 } from "./chat-service-contracts";
 import type { ReplyToChatQuestionRequest } from "@/contracts/api";
+import { ChatProviderLimitService } from "./chat-provider-limit-service";
 
 const log = createLogger("chat-interaction-service");
 
@@ -103,6 +104,7 @@ export class ChatInteractionService implements ChatInteractionPort {
   private readonly conversation: ChatConversationPort;
   private readonly session: ChatSessionPort;
   private readonly attachments: ChatAttachmentService;
+  private readonly providerLimits: ChatProviderLimitService;
 
   constructor(dependencies: {
     state: ChatStatePort;
@@ -116,6 +118,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     this.session = dependencies.session;
     this.questions = dependencies.questions;
     this.attachments = dependencies.attachments;
+    this.providerLimits = new ChatProviderLimitService(dependencies);
   }
   private readonly questions?: Pick<ChatQuestionService, "reply" | "replySecret">;
 
@@ -137,6 +140,14 @@ export class ChatInteractionService implements ChatInteractionPort {
     return this.serializeInput(chatId, () => this.sendMessageUnlocked(chatId, options));
   }
 
+  recoverProviderLimit(chatId: string, action: "continue" | "schedule" | "cancel"): Promise<Chat> {
+    return this.serializeInput(chatId, () => this.providerLimits.recover(chatId, action));
+  }
+
+  attemptProviderContinuation(chatId: string, interruptionId: string, recovering = false): Promise<Chat | null> {
+    return this.serializeInput(chatId, () => this.providerLimits.attempt(chatId, interruptionId, recovering));
+  }
+
   private async sendMessageUnlocked(chatId: string, options: ChatMessageOptions): Promise<Chat> {
     const chat = await this.state.getChat(chatId);
     if (!chat) {
@@ -146,7 +157,12 @@ export class ChatInteractionService implements ChatInteractionPort {
 
     const input = this.normalizeMessageInput(options);
     assertChatAttachmentBudget(getMessageAttachmentByteLength(input.attachments));
-    const activeChat = await this.reactivateDoneChat(chat);
+    const cancelled = chat.state.harness?.providerLimit
+      ? await this.state.mutateState(chatId, (current) => ({
+          ...current.state, harness: { ...current.state.harness, providerLimit: undefined },
+        }))
+      : chat;
+    const activeChat = await this.reactivateDoneChat(cancelled);
     if (this.shouldQueueMessage(activeChat)) {
       return this.enqueueMessage(activeChat, input);
     }
@@ -602,7 +618,7 @@ export class ChatInteractionService implements ChatInteractionPort {
     }
 
     const chat = await this.state.getChat(chatId);
-    if (!chat || this.shouldQueueMessage(chat)) {
+    if (!chat || chat.state.status === "blocked" || this.shouldQueueMessage(chat)) {
       return;
     }
 

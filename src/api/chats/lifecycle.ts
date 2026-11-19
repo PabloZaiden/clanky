@@ -10,10 +10,41 @@ import {
 import { errorResponse, internalErrorResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { chatActionErrorResponse, toLightweightChat } from "./helpers";
+import { RecoverChatProviderLimitRequestSchema } from "@/contracts/schemas/chat";
 
 const log = createLogger("api:chats");
 
 export const chatsLifecycleRoutes = defineRoutes({
+  "/api/chats/:id/provider-recovery": {
+    delegation: workspaceOperation("chat"),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Continue a provider-blocked chat, schedule one-interruption automatic continuation, or cancel it.",
+    operations: {
+      POST: {
+        requestSchema: RecoverChatProviderLimitRequestSchema,
+        querySchema: undefined,
+        automation: { policy: "excluded", reason: "Automatic continuation requires explicit user authorization; executions cannot enable it." },
+      },
+    },
+    async POST(req: Request, ctx): Promise<Response> {
+      const chatId = ctx.params["id"]!;
+      if (!await chatManager.getChatSummary(chatId)) return errorResponse("not_found", "Chat not found", 404);
+      const validation = await parseAndValidate(RecoverChatProviderLimitRequestSchema, req);
+      if (!validation.success) return validation.response;
+      try {
+        const updated = await chatManager.recoverProviderLimit(chatId, validation.data.action);
+        return Response.json(await toLightweightChat(updated));
+      } catch (error) {
+        const known = chatActionErrorResponse(error);
+        if (known) return known;
+        log.error("Failed to recover provider-blocked chat", { chatId, error: String(error) });
+        return internalErrorResponse(error, {
+          error: "provider_recovery_failed", message: "Failed to recover provider-blocked chat", status: 500,
+        }, undefined, "chats");
+      }
+    },
+  },
   "/api/chats/:id/done": {
     delegation: workspaceOperation("chat"),
     auth: "user",

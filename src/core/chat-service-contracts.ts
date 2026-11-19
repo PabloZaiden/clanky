@@ -164,7 +164,7 @@ export interface ChatStatePort {
     startupStage: ChatStartupStage | undefined,
     options?: { expectedStatus?: ChatStatus },
   ): Promise<Chat>;
-  markChatError(chat: Chat, message: string, code?: string): Promise<Chat>;
+  markChatError(chat: Chat, message: string, code?: string, details?: Readonly<Record<string, unknown>>): Promise<Chat>;
   deletePersistedChat(chatId: string): Promise<boolean>;
   emitChatCreated(chat: Chat, timestamp: string): void;
   emitChatUpdated(chat: ChatMetadata, timestamp?: string): void;
@@ -264,6 +264,8 @@ export interface ChatConversationPort {
 }
 
 export interface ChatInteractionPort {
+  recoverProviderLimit(chatId: string, action: "continue" | "schedule" | "cancel"): Promise<Chat>;
+  attemptProviderContinuation(chatId: string, interruptionId: string, recovering?: boolean): Promise<Chat | null>;
   beginShutdown(): void;
   shutdown(): Promise<void>;
   replyToQuestion(chatId: string, requestId: string, reply: ReplyToChatQuestionRequest): Promise<Chat>;

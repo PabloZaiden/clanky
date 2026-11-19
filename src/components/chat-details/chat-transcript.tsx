@@ -6,6 +6,7 @@ import type { ChatTranscriptProps } from "./types";
 import { ChatQuestions } from "./chat-questions";
 import { LiveVoiceContext } from "../../hooks/useLiveVoice";
 import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
+import { ChatProviderLimitPanel } from "./chat-provider-limit-panel";
 
 const VOICE_TRIPLE_TAP_WINDOW_MS = 750;
 const VOICE_TAP_MOVE_THRESHOLD_PX = 10;
@@ -162,7 +163,9 @@ export function ChatTranscript({
           {lifecycleError}
         </div>
       )}
-      {chat.state.error && (
+      <ChatProviderLimitPanel chat={chat} onChatSnapshot={onChatSnapshot} />
+      {chat.state.error && (!chat.state.harness?.providerLimit
+        || chat.state.status !== "blocked" && chat.state.harness.providerLimit.continuation?.status !== "paused") && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {chat.state.error.message}
         </div>
