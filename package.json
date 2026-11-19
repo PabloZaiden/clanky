@@ -44,7 +44,7 @@
     "@noble/hashes": "2.4.0",
     "@opencode/client": "2.3.0",
     "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
-    "@pablozaiden/webapp": "github:PabloZaiden/webapp#3f64f1d2ae58074827aff6edb87df0857c85930c",
+    "@pablozaiden/webapp": "github:PabloZaiden/webapp#ce17d978b8f66b8177db496fb581487d29dd1bd0",
     "@peculiar/x509": "2.2.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
