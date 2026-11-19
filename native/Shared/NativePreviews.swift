@@ -10,6 +10,7 @@ import UIKit
 
 @MainActor
 final class NativePreviews: NSObject, WKScriptMessageHandlerWithReply {
+    private static let localProxies = NSHashTable<NativePreviewProxy>.weakObjects()
     private let origin: URL
     private weak var webView: WKWebView?
     private let trust: @MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?
@@ -190,11 +191,18 @@ final class NativePreviews: NSObject, WKScriptMessageHandlerWithReply {
                           let socketURL = url.url else {
                         throw NativePreviewFailure(message: "Invalid preview options or local preview capacity reached.")
                     }
+                    let remotePort = number.intValue
+                    guard !Self.localProxies.allObjects.contains(where: {
+                        $0.remotePort == remotePort && ($0.status == "starting" || $0.status == "active")
+                    }) else {
+                        throw NativePreviewFailure(message: "A local preview is already using remote port \(remotePort). Close it before starting another.")
+                    }
                     let preview = NativePreviewProxy(
-                        page: page, target: target, port: number.intValue, path: initialPath,
+                        page: page, target: target, port: remotePort, path: initialPath,
                         upstreamProtocol: upstreamProtocol, socketURL: socketURL, origin: origin,
                         trust: trust, changed: { [weak self] in self?.changed() })
                     previews[preview.id] = preview
+                    Self.localProxies.add(preview)
                     changed()
                     try await preview.start()
                     guard activePage == page, previews[preview.id] === preview else {

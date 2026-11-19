@@ -32,6 +32,25 @@ function formatDateTime(value?: string): string {
   return new Date(value).toLocaleString();
 }
 
+function RemotePortField({ value, onChange, required }: {
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <div className="w-24 max-w-full">
+      <TextField
+        label="Remote port"
+        inputMode="numeric"
+        maxLength={5}
+        required={required}
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
+      />
+    </div>
+  );
+}
+
 export interface PreviewSessionsViewProps {
   scope: PreviewSessionScope;
   buildCommand: (port: string) => string;
@@ -146,8 +165,7 @@ export function PreviewSessionsView({
             event.preventDefault();
             void startPreview();
           }}>
-            <TextField label="Remote port" type="number" min={1} max={65535} required
-              value={port} onChange={(event) => setPort(event.target.value)} className="w-28" />
+            <RemotePortField value={port} onChange={setPort} required />
             <TextField label="Initial path" required value={path}
               onChange={(event) => setPath(event.target.value)} className="min-w-0 flex-1" />
             <SelectField label="Upstream" value={protocol}
@@ -194,22 +212,16 @@ export function PreviewSessionsView({
             Run this command locally. The port must match your app&apos;s dev server on the preview target.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <TextField
-            label="Remote port"
-            type="number"
-            min={1}
-            max={65535}
-            value={port}
-            onChange={(event) => setPort(event.target.value)}
-            className="w-28"
-          />
-          <code className="min-w-0 basis-full flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-sm text-gray-900 sm:basis-0 dark:bg-neutral-900 dark:text-gray-100">
-            {command}
-          </code>
-          <Button type="button" size="sm" onClick={() => void copyCommand()}>
-            Copy
-          </Button>
+        <div className="mt-3 space-y-3">
+          <RemotePortField value={port} onChange={setPort} />
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+            <code className="wrap-anywhere py-2 font-mono text-sm text-gray-900 dark:text-gray-100">
+              {command}
+            </code>
+            <Button type="button" size="sm" onClick={() => void copyCommand()}>
+              Copy
+            </Button>
+          </div>
         </div>
         <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
           Add <code>--host 0.0.0.0</code> for LAN/mobile testing. The CLI will print a network exposure warning.
