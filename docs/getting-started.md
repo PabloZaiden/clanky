@@ -155,8 +155,9 @@ completed blocks remain copyable. A clipped Mermaid block stays as code until
 expanded.
 
 Chat ages and recency ordering use the newer of the last user message and the
-last status change, falling back to chat creation. Streaming text and tool
-activity do not reset that age.
+last status change, falling back to chat creation. Marking a chat as Done moves
+it out of Active Work without changing its age or making it newer in Done.
+Streaming text and tool activity do not reset that age.
 
 Dashboard **History** uses the same detailed rows as **Active Work**: workspace
 identity or server name, status, time since the last interaction, and item type.

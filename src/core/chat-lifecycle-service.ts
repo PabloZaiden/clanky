@@ -395,7 +395,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         },
         lastActivityAt: now,
       },
-      { expectedStatus: chat.state.status },
+      { expectedStatus: chat.state.status, statusChangedAt: null },
     );
   }
 
