@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type TranscriptFileLinkContext, type TranscriptFileLinkTarget } from "./log-viewer";
-import { getChatWorkspaceId, getExecutionHostSourceId } from "@/shared";
+import { getChatWorkspaceId, getExecutionHostSourceId, isWorkspaceChat } from "@/shared";
 import { appAbsoluteUrl } from "../lib/public-path";
 import { replaceWebAppRoute, routeToHash, useHeaderActions, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { useChatLifecycle } from "./chat-details/chat-lifecycle";
@@ -89,16 +89,22 @@ export function ChatDetails({
     setContentView(view);
     if (view !== "conversation") setVisitedViews((current) => ({ ...current, [view]: true }));
   }, [onCloseActivity]);
+  const workspaceId = chat && isWorkspaceChat(chat) ? getChatWorkspaceId(chat) : undefined;
   const inspectionActions = useMemo(() => isVisible ? [
     { id: "chat-plan", label: "Plan", onAction: () => showInspection("plan") },
     { id: "chat-diff", label: "Diff", onAction: () => showInspection("diff") },
+    ...(workspaceId ? [{
+      id: "go-to-workspace",
+      label: "Go to workspace",
+      onAction: () => replaceWebAppRoute({ view: "workspace", workspaceId }),
+    }] : []),
     ...(isEmbedded ? harnessActivityActions({
       route: { view: "chat", chatId },
       capabilities: chat?.state.harness?.capabilities,
       onOpenActivity: openActivity,
       embeddedChat: true,
     }) : []),
-  ] : [], [isVisible, isEmbedded, chatId, chat?.state.harness?.capabilities, openActivity, showInspection]);
+  ] : [], [isVisible, isEmbedded, chatId, chat?.state.harness?.capabilities, workspaceId, openActivity, showInspection]);
   useHeaderActions({
     overflow: inspectionActions,
   });
