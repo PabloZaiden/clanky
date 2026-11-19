@@ -1,5 +1,5 @@
 /**
- * Restores answer originals before projecting metadata-only question updates.
+ * Restores existing message bodies and answer originals before metadata-only updates.
  */
 
 import type { PersistedMessage } from "@/shared/conversation";
@@ -15,6 +15,14 @@ export async function projectChatQuestionMessages({ messages, requests = [], get
   const existing = new Map(messages.map((message) => [message.id, message]));
   const restored = new Map<string, PersistedMessage>();
   for (const request of requests) {
+    const questionId = request.responseMode === "message" ? request.transcript?.questionMessageId : undefined;
+    if (questionId && !existing.get(questionId)?.content.trim()) {
+      const message = await getMessage(questionId);
+      if (message?.content.trim()) {
+        existing.set(questionId, message);
+        restored.set(questionId, message);
+      }
+    }
     const id = request.transcript?.answerMessageId;
     const imageIds = request.attachmentIds?.flat() ?? [];
     if (!id || !imageIds.length) continue;

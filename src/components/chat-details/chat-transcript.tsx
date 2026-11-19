@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useMemo, useRef } from "react";
 import type { PointerEvent } from "react";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { ConversationTranscript } from "../conversation-transcript";
@@ -131,7 +131,20 @@ export function ChatTranscript({
   }, [liveVoice?.available, liveVoice?.busy]);
 
   const activity = chat.state.harness?.activity;
-  const blockingQuestions = (chat.state.harness?.questions ?? [])
+  const questions = chat.state.harness?.questions;
+  const { visibleTranscript, questionContent } = useMemo(() => {
+    const pendingIds = new Set(questions?.flatMap((request) =>
+      isQuestionOpen(request) && request.transcript ? [request.transcript.questionMessageId] : []));
+    const questionContent = new Map<string, string>();
+    if (!pendingIds.size) return { visibleTranscript: transcript, questionContent };
+    const messages = transcript.messages.filter((message) => {
+      if (!pendingIds.has(message.id)) return true;
+      questionContent.set(message.id, message.content);
+      return false;
+    });
+    return { visibleTranscript: { ...transcript, messages }, questionContent };
+  }, [questions, transcript]);
+  const blockingQuestions = (questions ?? [])
     .filter((request) => request.blocking && isQuestionOpen(request));
   const blocksPrincipal = blockingQuestions.some((request) => request.scope.kind !== "child");
   const hasConfirmedHarnessWork = activity?.observation === "available"
@@ -172,7 +185,7 @@ export function ChatTranscript({
       )}
       <ConversationTranscript
         id="chat-transcript"
-        transcript={transcript}
+        transcript={visibleTranscript}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         isWorking={isWorking}
@@ -187,7 +200,9 @@ export function ChatTranscript({
         scrollContentFooter={
           <fieldset disabled={readOnly} className="min-w-0"><ChatQuestions
             chatId={chat.config.id}
-            requests={chat.state.harness?.questions ?? []}
+            requests={questions ?? []}
+            questionContent={questionContent}
+            fileLinkContext={fileLinkContext}
             onChatSnapshot={onChatSnapshot}
             onAnswerInputFocusChange={onQuestionAnswerFocusChange}
           /></fieldset>

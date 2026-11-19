@@ -21,7 +21,7 @@ export function projectQuestionMessages(
       ...previous,
       id: transcript.questionMessageId,
       role: "assistant",
-      content: request.responseMode === "message" && previous
+      content: request.responseMode === "message" && previous?.content.trim()
         ? previous.content
         : formatHarnessQuestions(request.questions),
       timestamp: previous?.timestamp ?? request.createdAt,

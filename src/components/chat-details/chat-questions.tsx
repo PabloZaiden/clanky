@@ -3,12 +3,15 @@ import { ErrorState } from "@pablozaiden/webapp/web";
 import type { Chat } from "@/shared";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
-import { isQuestionOpen } from "@/shared/harness-questions";
+import { formatHarnessQuestions, isQuestionOpen } from "@/shared/harness-questions";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
 import type { ComposerAttachment } from "@/shared/message-attachments";
 import { toMessageAttachments } from "../../lib/image-attachments";
 import { ImageAttachmentControl, type ImageAttachmentControlHandle } from "../ImageAttachmentControl";
+import { MarkdownRenderer } from "../MarkdownRenderer";
+import type { TranscriptFileLinkContext } from "../log-viewer";
+import { useMarkdownPreference } from "../../hooks/useMarkdownPreference";
 
 const actionClass = "py-1 text-xs text-gray-500 underline decoration-dotted underline-offset-2 hover:text-gray-900 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100";
 
@@ -146,12 +149,17 @@ function QuestionField({ question, index, requestId, values, custom, attachments
 function QuestionForm({
   chatId,
   request,
+  content,
+  fileLinkContext,
   onChatSnapshot,
 }: {
   chatId: string;
   request: HarnessQuestionRequest;
+  content?: string;
+  fileLinkContext?: TranscriptFileLinkContext;
   onChatSnapshot: (chat: Chat) => void;
 }) {
+  const { enabled: markdownEnabled } = useMarkdownPreference();
   const [values, setValues] = useState<string[][]>(() => request.questions.map(() => []));
   const [custom, setCustom] = useState<string[]>(() => request.questions.map(() => ""));
   const [attachments, setAttachments] = useState<ComposerAttachment[][]>(() => request.questions.map(() => []));
@@ -218,6 +226,12 @@ function QuestionForm({
         {request.blocking ? "Waiting for your answer" : "Question"}
         {request.scope.kind === "child" ? " · Subagent" : ""}
       </div>
+      <MarkdownRenderer
+        content={content?.trim() ? content : formatHarnessQuestions(request.questions)}
+        textSize="body"
+        rawMode={!markdownEnabled}
+        fileLinkContext={fileLinkContext}
+      />
       {request.questions.map((question, index) => (
         <QuestionField key={index} question={question} index={index} requestId={request.requestId}
           numbered={request.questions.length > 1}
@@ -245,11 +259,15 @@ function QuestionForm({
 export function ChatQuestions({
   chatId,
   requests,
+  questionContent,
+  fileLinkContext,
   onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
+  questionContent: ReadonlyMap<string, string>;
+  fileLinkContext?: TranscriptFileLinkContext;
   onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
@@ -276,7 +294,9 @@ export function ChatQuestions({
     >
       {visible.map((request) => request.secretIdentifier !== undefined
         ? <SecretForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />
-        : <QuestionForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />)}
+        : <QuestionForm key={request.requestId} chatId={chatId} request={request}
+          content={request.transcript && questionContent.get(request.transcript.questionMessageId)}
+          fileLinkContext={fileLinkContext} onChatSnapshot={onChatSnapshot} />)}
     </div>
   );
 }
