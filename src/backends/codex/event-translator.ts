@@ -9,10 +9,33 @@ import { HarnessError } from "../harness-errors";
 import { providerFailure } from "../provider-limit";
 import type { TurnError } from "./generated/v2/TurnError";
 import { formatHarnessQuestions } from "@/shared/harness-questions";
+import { SECRET_TOOL_NAME } from "@/shared/harness-secrets";
 import {
   projectProviderImageOutput,
   redactProviderImagePayloads,
 } from "../provider-image-output";
+
+type AgentMessage = Extract<ThreadItem, { type: "agentMessage" }>;
+
+function asyncQuestionContent(item: AgentMessage): string {
+  const questions = item.questions?.map(({ title }) => ({ question: title, header: "", options: [] })) ?? [];
+  const formatted = formatHarnessQuestions(questions);
+  const text = item.text.trim();
+  if (text === formatted || text.endsWith(`\n${formatted}`)) return text;
+  // Codex can include a structured title verbatim as the last sentence of its message.
+  const titles = questions.map(({ question }) => question.trim()).filter(Boolean);
+  let context = text;
+  for (;;) {
+    const title = titles.find((candidate) => {
+      if (!context.endsWith(candidate)) return false;
+      const before = context.slice(0, -candidate.length);
+      return !before || /\n[ \t]*$|[.!?:][ \t]+$/.test(before);
+    });
+    if (!title) break;
+    context = context.slice(0, -title.length).trimEnd();
+  }
+  return formatHarnessQuestions(questions, context);
+}
 
 export class CodexEventTranslator {
   private readonly messages = new Set<string>();
@@ -157,9 +180,7 @@ export class CodexEventTranslator {
           type: "message.complete",
           messageId: item.id,
           content: item.delivery === "async" && item.questions?.length
-            ? formatHarnessQuestions(item.questions.map((question) => ({
-                question: question.title, header: "", options: [],
-              })), item.text)
+            ? asyncQuestionContent(item)
             : item.text,
         });
         this.messages.delete(item.id);
@@ -171,6 +192,7 @@ export class CodexEventTranslator {
       messageId: item.id,
       content: item.content.filter((part) => part.type === "text").map((part) => part.text).join("\n"),
     }] : [];
+    if (item.type === "dynamicToolCall" && item.namespace === null && item.tool === SECRET_TOOL_NAME) return [];
     const toolName = item.type === "commandExecution" ? "bash"
       : item.type === "fileChange" ? "apply_patch"
         : item.type === "mcpToolCall" ? `${item.server}/${item.tool}`

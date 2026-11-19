@@ -13,6 +13,7 @@ import type {
 } from "@/shared";
 import { shouldIncludeConversationTranscriptLog } from "@/shared";
 import type { ChatEvent } from "@/shared/events";
+import { isQuestionOpen } from "@/shared/harness-questions";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { ChatStateService } from "./chat-state-service";
 import { ChatLifecycleService } from "./chat-lifecycle-service";
@@ -272,14 +273,23 @@ export class ChatManager {
   ): Promise<ChatSnapshot | null> {
     const snapshot = await this.services.state.getChatSnapshot(chatId, options);
     if (!snapshot) return null;
-    return {
-      ...snapshot,
-      transcript: includeLiveTranscript(
-        snapshot.transcript,
-        this.services.conversation.getLiveTranscript(chatId),
-        { window: options ?? {}, shouldIncludeLog: shouldIncludeConversationTranscriptLog },
-      ),
-    };
+    const live = this.services.conversation.getLiveTranscript(chatId);
+    const transcript = includeLiveTranscript(snapshot.transcript, live,
+      { window: options ?? {}, shouldIncludeLog: shouldIncludeConversationTranscriptLog });
+    if (!options?.before && transcript.isPartial) {
+      const loaded = new Set(transcript.messages.map((message) => message.id));
+      const pending = new Set(snapshot.state.harness?.questions?.flatMap((request) =>
+        isQuestionOpen(request) && request.transcript && request.secretIdentifier === undefined
+          ? [request.transcript.questionMessageId] : []));
+      const outsideWindow = [...pending].filter((id) => !loaded.has(id));
+      if (outsideWindow.length) {
+        const messages = await Promise.all(outsideWindow.map((id) =>
+          live?.messages.find((message) => message.id === id) ?? this.services.state.getChatMessage(chatId, id)));
+        const openQuestionMessages = messages.filter((message) => message !== null);
+        if (openQuestionMessages.length) return { ...snapshot, transcript: { ...transcript, openQuestionMessages } };
+      }
+    }
+    return { ...snapshot, transcript };
   }
 
   async getChatToolCall(chatId: string, toolCallId: string): Promise<ToolCallRecord | null> {

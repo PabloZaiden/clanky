@@ -78,7 +78,7 @@ import { logHarnessFailure, readHarnessDiagnostic, runHarnessOperation } from ".
 import type { HarnessDiagnostic } from "@/shared/harness-diagnostics";
 import { harnessActivityService } from "./harness-activity-service";
 import { DomainError, isDomainError } from "../domain/domain-error";
-import { closeOpenQuestions, updateQuestionAnswerStatus } from "@/shared/harness-questions";
+import { closeOpenQuestions, formatHarnessQuestions, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
 import type { HarnessConversationBinding } from "@/shared/harness-control";
@@ -1962,16 +1962,21 @@ export class ChatConversationService implements ChatConversationPort {
         break;
 
       case "question.asked":
-      case "question.resolved":
+      case "question.resolved": {
         await this.flushChatStreamBlocks(streamState, transcriptResult.flushedBlocks, now);
         if (!this.questionHandler) throw new HarnessError("harness_unsupported_feature", "Chat question handling is unavailable.");
-        await this.questionHandler(streamState.chat, event,
-          event.type === "question.asked" && event.responseMode === "message"
-            && streamState.completedResponse?.nativeMessageId === event.scope.native?.messageId
-            ? streamState.completedResponse?.transcriptMessageId : undefined);
+        const previous = streamState.completedResponse;
+        const reuseMessage = previous && event.type === "question.asked" && (
+          event.responseMode === "message" && previous.nativeMessageId === event.scope.native?.messageId
+          || event.responseMode === "callback" && event.scope.kind === "principal" && event.scope.native?.adapter === "codex"
+            && streamState.transcriptMemory.messages.get(previous.transcriptMessageId)?.content.trim()
+              === formatHarnessQuestions(event.questions).trim()
+        );
+        await this.questionHandler(streamState.chat, event, reuseMessage ? previous.transcriptMessageId : undefined);
         streamState.completedResponse = undefined;
         await this.reloadChatStreamMetadata(chatId, streamState);
         break;
+      }
     }
 
     if (transcriptResult.checkpointRequested) {

@@ -178,16 +178,25 @@ export class CodexSessionService {
     return this.attach(result.thread, binding);
   }
 
-  private async instructions(binding: Pick<HarnessConversationBinding, "controlTools" | "htmlArtifacts">): Promise<string | undefined> {
-    const guidance = buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: binding.htmlArtifacts === 1 });
-    if (!guidance) return undefined;
+  private async instructions(binding: Pick<HarnessConversationBinding, "controlTools" | "htmlArtifacts" | "questionPolicy" | "secretFiles">): Promise<string | undefined> {
+    const guidance = [
+      buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: binding.htmlArtifacts === 1 }),
+      binding.questionPolicy === "interactive" ? [
+        "## Questions in Clanky",
+        "When you need a decision or clarification, call request_user_input and wait for the answer. Put the question only in the tool arguments, not in an assistant message before or after the call. Use request_user_input_async only when the user explicitly asks you to continue while waiting for the answer.",
+        ...(binding.secretFiles === 1 ? [
+          "For credentials, call clanky_request_secret directly. It shows a private form and waits; do not precede it with a question or a request for the value in chat.",
+        ] : []),
+      ].join("\n\n") : undefined,
+    ].filter(Boolean);
+    if (!guidance.length) return undefined;
     const { config } = await this.dependencies.runtime.rpc.request("config/read", {
       cwd: this.dependencies.runtime.directory, includeLayers: false,
     });
     if (config.developer_instructions != null && typeof config.developer_instructions !== "string") {
       throw new HarnessError("harness_runtime_unavailable", "Codex returned invalid configured developer instructions.");
     }
-    return [config.developer_instructions, guidance].filter(Boolean).join("\n\n");
+    return [config.developer_instructions, ...guidance].filter(Boolean).join("\n\n");
   }
 
   get(id: string): Conversation {

@@ -74,9 +74,9 @@ export class ChatQuestionService {
         responseMode: event.responseMode,
         secretIdentifier: event.secretIdentifier,
         status: "pending", createdAt: event.timestamp ?? new Date().toISOString(),
-        transcript: {
-          questionMessageId: event.responseMode === "message" && event.scope.native?.messageId
-            ? questionMessageId ?? event.scope.native.messageId : `${id}-question`,
+        transcript: event.secretIdentifier !== undefined ? undefined : {
+          questionMessageId: questionMessageId ?? (event.responseMode === "message" && event.scope.native?.messageId
+            ? event.scope.native.messageId : `${id}-question`),
           answerMessageId: `${id}-answer`,
         },
       }], undefined, statusChangedAt);

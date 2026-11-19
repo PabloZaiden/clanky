@@ -544,10 +544,10 @@ reconnects and loading older history, and are included in Markdown/HTML exports.
 Existing tool details remain available. Earlier question history is not
 converted.
 
-Question text belongs only in the transcript. Answer controls contain the
-choices and permitted custom-answer fields, not another copy of the question,
-visible or hidden. Requests with several fields number their answer groups to
-match the transcript.
+While a question is open, its transcript text appears once next to its choices
+and permitted custom-answer fields, even if the original position is outside
+the loaded history. Requests with several fields number their answer groups
+to match their questions. Private secret requests use only their private form.
 
 Helper sessions and autonomous scheduled runs
 use unattended policy. Copilot excludes `ask_user`; OpenCode denies `question`;
@@ -560,9 +560,10 @@ and leaving unrelated sessions untouched.
 Native Mesh workers must advertise session question-policy support; update a
 worker that reports this capability as unsupported.
 
-Codex can advertise `request_user_input_async` independently of the ordinary
-tool gate. In interactive chats its question is nonblocking and its answer is
-a normal conversation input, not a callback. **Send answer** automatically
+Codex uses blocking clarification questions by default. It can advertise
+`request_user_input_async` independently of the ordinary tool gate; use it
+when explicitly asking Codex to continue while it waits for an answer. Its
+answer is a normal conversation input, not a callback. **Send answer** automatically
 steers that reply into the active native turn; it does not wait for that turn
 to finish or require a separate **Steer** action. Ordinary composer messages
 continue to queue normally. If the turn has finished, the answer starts a new

@@ -76,6 +76,7 @@ export interface ChatTranscriptStorageEntry {
 
 export interface ChatTranscript {
   messages: TranscriptMessage[];
+  openQuestionMessages?: TranscriptMessage[];
   logs: ConversationLogEntry[];
   toolCalls: ToolCallDisplayData[];
   revision: string;
@@ -151,9 +152,11 @@ export function mergeTranscriptSnapshot(
   const totalResponses = olderPage ? current.totalResponses : incoming.totalResponses;
   const isPartial = loadedResponses < totalResponses;
   const nextCursor = isPartial ? incoming.nextCursor : undefined;
+  const openQuestionMessages = (olderPage ? current : incoming).openQuestionMessages;
 
   return {
     messages,
+    ...(openQuestionMessages?.length ? { openQuestionMessages } : {}),
     logs,
     toolCalls,
     revision: olderPage ? current.revision : incoming.revision,

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useMemo, useRef } from "react";
 import type { PointerEvent } from "react";
 import { isQuestionOpen } from "@/shared/harness-questions";
 import { ConversationTranscript } from "../conversation-transcript";
@@ -131,7 +131,20 @@ export function ChatTranscript({
   }, [liveVoice?.available, liveVoice?.busy]);
 
   const activity = chat.state.harness?.activity;
-  const blockingQuestions = (chat.state.harness?.questions ?? [])
+  const questions = chat.state.harness?.questions;
+  const { visibleTranscript, questionMessages } = useMemo(() => {
+    const pendingIds = new Set(questions?.flatMap((request) =>
+      isQuestionOpen(request) && request.transcript ? [request.transcript.questionMessageId] : []));
+    const questionMessages = new Map(transcript.openQuestionMessages?.map((message) => [message.id, message]));
+    if (!pendingIds.size) return { visibleTranscript: transcript, questionMessages };
+    const messages = transcript.messages.filter((message) => {
+      if (!pendingIds.has(message.id)) return true;
+      questionMessages.set(message.id, message);
+      return false;
+    });
+    return { visibleTranscript: { ...transcript, messages }, questionMessages };
+  }, [questions, transcript]);
+  const blockingQuestions = (questions ?? [])
     .filter((request) => request.blocking && isQuestionOpen(request));
   const blocksPrincipal = blockingQuestions.some((request) => request.scope.kind !== "child");
   const hasConfirmedHarnessWork = activity?.observation === "available"
@@ -172,7 +185,7 @@ export function ChatTranscript({
       )}
       <ConversationTranscript
         id="chat-transcript"
-        transcript={transcript}
+        transcript={visibleTranscript}
         onLoadToolDetails={onLoadToolDetails}
         isActive={isActive}
         isWorking={isWorking}
@@ -184,14 +197,17 @@ export function ChatTranscript({
         onReadAloud={readAloudAvailable ? onReadAloud : undefined}
         playingReadAloudKey={playingReadAloudKey}
         readAloudStatus={readAloudStatus}
-        scrollContentFooter={
-          <fieldset disabled={readOnly} className="min-w-0"><ChatQuestions
+        scrollContentFooter={(renderMessage) => (
+          <ChatQuestions
             chatId={chat.config.id}
-            requests={chat.state.harness?.questions ?? []}
+            requests={questions ?? []}
+            questionMessages={questionMessages}
+            renderMessage={renderMessage}
+            readOnly={readOnly}
             onChatSnapshot={onChatSnapshot}
             onAnswerInputFocusChange={onQuestionAnswerFocusChange}
-          /></fieldset>
-        }
+          />
+        )}
       />
     </div>
   );

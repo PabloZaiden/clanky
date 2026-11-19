@@ -12,9 +12,9 @@ import type { HarnessEventScope } from "@/shared/harness-events";
 const QuestionRequestSchema = z.object({
   threadId: z.string(), turnId: z.string(), itemId: z.string(),
   questions: z.array(z.object({
-    id: z.string(), header: z.string(), question: z.string(), isOther: z.boolean(),
+    id: z.string(), header: z.string(), question: z.string(), isOther: z.boolean(), isSecret: z.boolean().optional(),
     options: z.array(z.object({ label: z.string(), description: z.string() })).nullable(),
-  })).max(100),
+  })).min(1).max(100),
   isBlocking: z.boolean().optional(),
 });
 
@@ -48,8 +48,20 @@ export class CodexQuestionCoordinator {
     const tracked = this.dependencies.sessions.getThread(params.threadId);
     const scope = this.dependencies.sessions.getScope(params.threadId);
     if (!tracked || !scope) throw new HarnessError("harness_session_not_owned", "The native question has no owned conversation.");
-    if (this.dependencies.sessions.get(tracked.rootId).info.binding?.questionPolicy !== "interactive") {
+    const binding = this.dependencies.sessions.get(tracked.rootId).info.binding;
+    if (binding?.questionPolicy !== "interactive") {
       throw new HarnessError("harness_unsupported_feature", "Human input is disabled for this autonomous execution.");
+    }
+    if (params.questions.some((question) => question.isSecret)) {
+      throw new HarnessError("harness_unsupported_feature", binding.secretFiles === 1 && tracked.rootId === params.threadId
+        ? "Use clanky_request_secret for private input, not request_user_input."
+        : "Private input is unavailable in this conversation.");
+    }
+    const questions = params.questions.map(({ header, question, isOther, options }) => ({
+      header, question: question.trim() ? question : header.trim(), custom: isOther, options: options ?? [],
+    }));
+    if (questions.some(({ question }) => !question)) {
+      throw new HarnessError("harness_question_invalid", "Every question needs a nonempty prompt.");
     }
     if (this.pending.size >= 256) throw new HarnessError("harness_request_failed", "Native question capacity reached.");
     const requestId = crypto.randomUUID();
@@ -69,9 +81,7 @@ export class CodexQuestionCoordinator {
         // Native default mode reports isBlocking=false, but the tool still
         // awaits this server callback. Only async agent-message questions do not.
         blocking: true, responseMode: "callback",
-        questions: params.questions.map((question) => ({
-          header: question.header, question: question.question, custom: question.isOther, options: question.options ?? [],
-        })),
+        questions,
       });
       return await response.promise;
     } finally {

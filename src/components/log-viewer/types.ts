@@ -48,7 +48,7 @@ export interface ConversationViewerProps {
   /** Whether active-work indicators should be shown. Defaults to isActive. */
   isWorking?: boolean;
   /** Optional content rendered after transcript entries inside the main scroll container. */
-  scrollContentFooter?: ReactNode;
+  scrollContentFooter?: (renderMessage: (message: TranscriptMessage) => ReactNode) => ReactNode;
   /** ID for the root element (for accessibility) */
   id?: string;
   /** Root directory used to display tool file paths relative to the conversation. */

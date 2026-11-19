@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { ErrorState } from "@pablozaiden/webapp/web";
-import type { Chat } from "@/shared";
+import type { Chat, TranscriptMessage } from "@/shared";
 import type { HarnessQuestionRequest } from "@/shared/harness-questions";
 import type { QuestionInfo } from "@/shared/harness-events";
-import { isQuestionOpen } from "@/shared/harness-questions";
+import { formatHarnessQuestions, isQuestionOpen } from "@/shared/harness-questions";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
 import type { ComposerAttachment } from "@/shared/message-attachments";
@@ -17,9 +18,10 @@ function isQuestionAnswerInput(target: EventTarget | null): target is HTMLInputE
     && (target.type === "text" || target.type === "number");
 }
 
-function SecretForm({ chatId, request, onChatSnapshot }: {
+function SecretForm({ chatId, request, readOnly, onChatSnapshot }: {
   chatId: string;
   request: HarnessQuestionRequest;
+  readOnly: boolean;
   onChatSnapshot: (chat: Chat) => void;
 }) {
   const [value, setValue] = useState("");
@@ -28,7 +30,7 @@ function SecretForm({ chatId, request, onChatSnapshot }: {
   const [error, setError] = useState<string>();
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
-  const disabled = submitting || request.status !== "pending";
+  const disabled = readOnly || submitting || request.status !== "pending";
 
   async function submit(declined: boolean): Promise<void> {
     if (disabled || !declined && !value.length) return;
@@ -146,10 +148,14 @@ function QuestionField({ question, index, requestId, values, custom, attachments
 function QuestionForm({
   chatId,
   request,
+  prompt,
+  readOnly,
   onChatSnapshot,
 }: {
   chatId: string;
   request: HarnessQuestionRequest;
+  prompt: ReactNode;
+  readOnly: boolean;
   onChatSnapshot: (chat: Chat) => void;
 }) {
   const [values, setValues] = useState<string[][]>(() => request.questions.map(() => []));
@@ -161,7 +167,7 @@ function QuestionForm({
   const [error, setError] = useState<string>();
   const operation = useRef<AbortController | null>(null);
   useEffect(() => () => operation.current?.abort(), []);
-  const disabled = submitting || stopping || request.status !== "pending";
+  const disabled = readOnly || submitting || stopping || request.status !== "pending";
   const answers = values.map((selection, index) => custom[index]?.trim() ? [...selection, custom[index]!.trim()] : selection);
 
   async function submit(): Promise<void> {
@@ -194,7 +200,7 @@ function QuestionForm({
   }
 
   async function stopSubagent(): Promise<void> {
-    if (stopping || request.scope.kind !== "child") return;
+    if (readOnly || stopping || request.scope.kind !== "child") return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -216,8 +222,8 @@ function QuestionForm({
     <div className="space-y-3 border-t border-gray-200 px-4 py-3 text-gray-900 dark:border-gray-700 dark:text-gray-100">
       <div className="text-xs text-gray-500 dark:text-gray-400">
         {request.blocking ? "Waiting for your answer" : "Question"}
-        {request.scope.kind === "child" ? " · Subagent" : ""}
       </div>
+      {prompt}
       {request.questions.map((question, index) => (
         <QuestionField key={index} question={question} index={index} requestId={request.requestId}
           numbered={request.questions.length > 1}
@@ -234,7 +240,7 @@ function QuestionForm({
           : request.status === "queued" ? "Answer queued" : request.status === "unconfirmed" ? "Delivery unconfirmed" : "Send answer"}
       </button>
       {request.scope.kind === "child" && (
-        <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={stopping} onClick={() => void stopSubagent()}>
+        <button type="button" className={`${actionClass} ml-3 hover:text-red-600`} disabled={readOnly || stopping} onClick={() => void stopSubagent()}>
           {stopping ? "Stopping Subagent" : "Stop Subagent"}
         </button>
       )}
@@ -245,11 +251,17 @@ function QuestionForm({
 export function ChatQuestions({
   chatId,
   requests,
+  questionMessages,
+  renderMessage,
+  readOnly,
   onChatSnapshot,
   onAnswerInputFocusChange,
 }: {
   chatId: string;
   requests: HarnessQuestionRequest[];
+  questionMessages: ReadonlyMap<string, TranscriptMessage>;
+  renderMessage: (message: TranscriptMessage) => ReactNode;
+  readOnly: boolean;
   onChatSnapshot: (chat: Chat) => void;
   onAnswerInputFocusChange: (focused: boolean) => void;
 }) {
@@ -274,9 +286,23 @@ export function ChatQuestions({
         }
       }}
     >
-      {visible.map((request) => request.secretIdentifier !== undefined
-        ? <SecretForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />
-        : <QuestionForm key={request.requestId} chatId={chatId} request={request} onChatSnapshot={onChatSnapshot} />)}
+      {visible.map((request) => {
+        if (request.secretIdentifier !== undefined) {
+          return <SecretForm key={request.requestId} chatId={chatId} request={request} readOnly={readOnly} onChatSnapshot={onChatSnapshot} />;
+        }
+        const messageId = request.transcript?.questionMessageId;
+        const message = messageId ? questionMessages.get(messageId) : undefined;
+        const prompt = renderMessage({
+          ...message,
+          id: messageId ?? request.requestId,
+          role: "assistant",
+          timestamp: message?.timestamp ?? request.createdAt,
+          content: message?.content.trim() ? message.content : formatHarnessQuestions(request.questions),
+          question: { requestId: request.requestId, scope: request.scope, status: request.status },
+        });
+        return <QuestionForm key={request.requestId} chatId={chatId} request={request}
+          prompt={prompt} readOnly={readOnly} onChatSnapshot={onChatSnapshot} />;
+      })}
     </div>
   );
 }
