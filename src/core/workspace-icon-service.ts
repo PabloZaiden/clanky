@@ -2,10 +2,7 @@
  * Workspace icon discovery, validation, and private persistence.
  */
 
-// The CommonJS entry lets Bun embed the grammar JSON in standalone binaries.
-import cssTree = require("css-tree");
 import ipaddr = require("ipaddr.js");
-import { SaxesParser, type SaxesTagPlain } from "saxes";
 import { Buffer } from "node:buffer";
 import type { LookupAddress } from "node:dns";
 import { lookup as dnsLookup } from "node:dns/promises";
@@ -20,6 +17,7 @@ import type {
 } from "@/shared/workspace";
 import type { WorkspaceIconCandidate } from "@/contracts/schemas";
 import { isPublicIpAddress } from "@/shared/ip-address";
+import { detectBrowserImageMimeType } from "@/utils/workspace-file-images";
 import { DomainError } from "../domain/domain-error";
 import { deleteWorkspaceIcon, getWorkspaceIcon, saveWorkspaceIcon } from "../persistence/workspaces";
 import { backendManager } from "./backend-manager";
@@ -41,7 +39,7 @@ export interface WorkspaceIconCandidateList {
   truncated: boolean;
 }
 
-export const WORKSPACE_ICON_MAX_BYTES = 1024 * 1024;
+export const WORKSPACE_ICON_MAX_BYTES = 4 * 1024 * 1024;
 
 const MAX_CANDIDATES = 200;
 const MAX_CANDIDATE_LIST_BYTES = 2 * 1024 * 1024;
@@ -50,114 +48,9 @@ const MAX_PNG_PIXELS = 4_194_304;
 const PNG_ICON_CANVAS_SIZE = 256;
 const WORKSPACE_ICON_URL_TIMEOUT_MS = 5_000;
 const WORKSPACE_ICON_URL_MAX_REDIRECTS = 3;
-const MAX_SVG_STYLE_TOKENS = 10_000;
-const MAX_SVG_STYLE_WORK = 1_000_000;
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 export const WORKSPACE_ICON_MULTIPART_BODY_LIMIT = WORKSPACE_ICON_MAX_BYTES + 32 * 1024;
 
-const SAFE_SVG_ELEMENTS = new Set([
-  "svg",
-  "g",
-  "path",
-  "rect",
-  "circle",
-  "ellipse",
-  "line",
-  "polyline",
-  "polygon",
-  "defs",
-  "linearGradient",
-  "radialGradient",
-  "stop",
-  "clipPath",
-  "mask",
-  "pattern",
-  "symbol",
-  "use",
-  "title",
-  "desc",
-]);
-
-const OMITTED_SVG_ELEMENTS = new Set(["metadata", "sodipodi:namedview"]);
-
-const SAFE_SVG_PRESENTATION_ATTRIBUTES = new Set([
-  "color",
-  "display",
-  "visibility",
-  "fill",
-  "fill-rule",
-  "fill-opacity",
-  "stroke",
-  "stroke-width",
-  "stroke-linecap",
-  "stroke-linejoin",
-  "stroke-opacity",
-  "stroke-miterlimit",
-  "stroke-dasharray",
-  "stroke-dashoffset",
-  "opacity",
-  "stop-color",
-  "stop-opacity",
-  "clip-rule",
-]);
-
-const SAFE_SVG_ATTRIBUTES = new Set([
-  "id",
-  "viewBox",
-  "width",
-  "height",
-  "x",
-  "y",
-  "cx",
-  "cy",
-  "r",
-  "rx",
-  "ry",
-  "x1",
-  "y1",
-  "x2",
-  "y2",
-  "d",
-  "points",
-  ...SAFE_SVG_PRESENTATION_ATTRIBUTES,
-  "transform",
-  "preserveAspectRatio",
-  "offset",
-  "gradientUnits",
-  "gradientTransform",
-  "spreadMethod",
-  "clipPathUnits",
-  "maskUnits",
-  "maskContentUnits",
-  "patternUnits",
-  "patternContentUnits",
-  "patternTransform",
-  "href",
-]);
-
-const LOCAL_SVG_URL = /^url\s*\(\s*(["']?)#[A-Za-z_][\w.-]*\1\s*\)$/i;
-const INVALID_ICON_MESSAGE = "The selected file is not a safe, valid SVG, PNG, or ICO image.";
-
-interface SvgStyleDeclaration {
-  name: string;
-  value: string;
-  important: boolean;
-}
-
-interface SvgStyleSelector {
-  type: "TypeSelector" | "ClassSelector" | "IdSelector";
-  name: string;
-}
-
-interface SvgStyleRule {
-  selectors: SvgStyleSelector[];
-  declarations: SvgStyleDeclaration[];
-}
-
-interface SvgStylesheet {
-  rules: SvgStyleRule[];
-  tokenCount: number;
-}
+const INVALID_ICON_MESSAGE = "The selected file is not a valid SVG, PNG, or ICO image.";
 
 function invalidIcon(cause?: unknown): DomainError {
   return new DomainError(
@@ -165,335 +58,6 @@ function invalidIcon(cause?: unknown): DomainError {
     INVALID_ICON_MESSAGE,
     cause === undefined ? {} : { cause },
   );
-}
-
-function escapeXmlText(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-function escapeXmlAttribute(value: string): string {
-  return escapeXmlText(value)
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-function isSafeSvgStyleValue(value: string): boolean {
-  return /^[a-z\d\s#.,%+-]+$/i.test(value)
-    || /^(?:rgb|rgba|hsl|hsla)\([a-z\d\s.,%+/-]+\)$/i.test(value)
-    || LOCAL_SVG_URL.test(value);
-}
-
-function svgStyleDeclaration(
-  name: string,
-  value: string,
-  important: boolean,
-): SvgStyleDeclaration | null {
-  if (!isSafeSvgStyleValue(value)) {
-    throw new Error("SVG contains an unsupported presentation style.");
-  }
-  if (!cssTree.lexer.matchProperty(name, value).matched) {
-    return null;
-  }
-  return { name, value, important };
-}
-
-function svgStyleDeclarations(style: string): SvgStyleDeclaration[] {
-  const declarations: SvgStyleDeclaration[] = [];
-  for (const declaration of style.split(";")) {
-    const separator = declaration.indexOf(":");
-    const name = declaration.slice(0, separator).trim().toLowerCase();
-    if (separator < 0 || !SAFE_SVG_PRESENTATION_ATTRIBUTES.has(name)) {
-      continue;
-    }
-    const rawValue = declaration.slice(separator + 1).trim();
-    const important = /\s*!important$/i.test(rawValue);
-    const value = rawValue.replace(/\s*!important$/i, "").trim();
-    if (!value) {
-      continue;
-    }
-    const parsed = svgStyleDeclaration(name, value, important);
-    if (parsed) {
-      declarations.push(parsed);
-    }
-  }
-  return declarations;
-}
-
-function addSvgStylesheet(style: string, stylesheet: SvgStylesheet): void {
-  const parsed = cssTree.parse(style, {
-    onParseError(error) {
-      throw error;
-    },
-    onToken() {
-      if (++stylesheet.tokenCount > MAX_SVG_STYLE_TOKENS) {
-        throw new Error("SVG contains excessive stylesheet complexity.");
-      }
-    },
-  });
-  if (parsed.type !== "StyleSheet") {
-    throw new Error("SVG stylesheet is invalid.");
-  }
-  for (const rule of parsed.children) {
-    if (rule.type !== "Rule" || rule.prelude?.type !== "SelectorList") {
-      throw new Error("SVG contains an unsupported stylesheet rule.");
-    }
-    const selectors: SvgStyleSelector[] = [];
-    for (const selector of rule.prelude.children) {
-      if (selector.type !== "Selector" || selector.children.size !== 1) {
-        throw new Error("SVG contains an unsupported stylesheet selector.");
-      }
-      const simple = selector.children.first;
-      if (
-        !simple
-        || (simple.type !== "TypeSelector" && simple.type !== "ClassSelector" && simple.type !== "IdSelector")
-        || simple.name.includes("\\")
-        || (simple.type === "TypeSelector" && !SAFE_SVG_ELEMENTS.has(simple.name))
-      ) {
-        throw new Error("SVG contains an unsupported stylesheet selector.");
-      }
-      selectors.push({ type: simple.type, name: simple.name });
-    }
-
-    const declarations: SvgStyleDeclaration[] = [];
-    for (const declaration of rule.block.children) {
-      if (
-        declaration.type !== "Declaration"
-        || declaration.value.type !== "Value"
-        || typeof declaration.important !== "boolean"
-        || !SAFE_SVG_PRESENTATION_ATTRIBUTES.has(declaration.property.toLowerCase())
-      ) {
-        throw new Error("SVG contains an unsupported stylesheet declaration.");
-      }
-      const value = svgStyleDeclaration(
-        declaration.property.toLowerCase(),
-        cssTree.generate(declaration.value),
-        declaration.important,
-      );
-      if (!value) {
-        throw new Error("SVG stylesheet contains an invalid presentation value.");
-      }
-      declarations.push(value);
-    }
-    stylesheet.rules.push({ selectors, declarations });
-  }
-}
-
-function svgAttributes(tag: SaxesTagPlain, rules: SvgStyleRule[]): string[] {
-  const attributes = new Map<string, string>();
-  for (const [name, value] of Object.entries(tag.attributes)) {
-    if (name === "xmlns") {
-      if (tag.name !== "svg" || value !== SVG_NAMESPACE) {
-        throw new Error("SVG namespace is unsupported.");
-      }
-    } else if (SAFE_SVG_ATTRIBUTES.has(name)) {
-      attributes.set(name, value);
-    }
-  }
-  const styles = new Map<string, SvgStyleDeclaration & { specificity: number }>();
-  const apply = (declarations: SvgStyleDeclaration[], specificity: number): void => {
-    for (const declaration of declarations) {
-      const previous = styles.get(declaration.name);
-      if (
-        previous
-        && (previous.important !== declaration.important
-          ? previous.important
-          : previous.specificity > specificity)
-      ) {
-        continue;
-      }
-      styles.set(declaration.name, { ...declaration, specificity });
-    }
-  };
-  const classes = new Set((tag.attributes["class"] ?? "").split(/[\t\n\f\r ]+/));
-  for (const rule of rules) {
-    let specificity = 0;
-    for (const selector of rule.selectors) {
-      if (selector.type === "IdSelector" && tag.attributes["id"] === selector.name) {
-        specificity = 3;
-      } else if (selector.type === "ClassSelector" && classes.has(selector.name)) {
-        specificity = Math.max(specificity, 2);
-      } else if (selector.type === "TypeSelector" && tag.name === selector.name) {
-        specificity = Math.max(specificity, 1);
-      }
-    }
-    if (specificity > 0) {
-      apply(rule.declarations, specificity);
-    }
-  }
-  apply(svgStyleDeclarations(tag.attributes["style"] ?? ""), 4);
-  for (const [name, { value }] of styles) {
-    attributes.set(name, value);
-  }
-
-  const serialized: string[] = [];
-  for (const [name, value] of attributes) {
-    if (
-      /(?:javascript|vbscript|data):/i.test(value)
-      || [...value.matchAll(/url\s*\([^)]*\)?/gi)].some(
-        ([reference]) => !LOCAL_SVG_URL.test(reference),
-      )
-    ) {
-      throw new Error("SVG contains an external or active reference.");
-    }
-    if (name === "href" && !/^#[A-Za-z_][\w.-]*$/.test(value)) {
-      throw new Error("SVG references must be local.");
-    }
-    if (name === "id" && !/^[A-Za-z_][\w.-]*$/.test(value)) {
-      throw new Error("SVG id is invalid.");
-    }
-    serialized.push(`${name}="${escapeXmlAttribute(value)}"`);
-  }
-  if (tag.name === "svg") {
-    serialized.unshift(`xmlns="${SVG_NAMESPACE}"`);
-  }
-  return serialized;
-}
-
-function sanitizeSvg(content: Uint8Array): Uint8Array {
-  let source: string;
-  try {
-    source = new TextDecoder("utf-8", { fatal: true }).decode(content);
-  } catch (error) {
-    throw invalidIcon(error);
-  }
-  if (/<!DOCTYPE\b|<!ENTITY\b/i.test(source)) {
-    throw invalidIcon();
-  }
-
-  const parser = new SaxesParser();
-  const parts: Array<string | SaxesTagPlain> = [];
-  const stylesheet: SvgStylesheet = { rules: [], tokenCount: 0 };
-  const stack: string[] = [];
-  let styleSource = "";
-  let elementCount = 0;
-  let omittedDepth = 0;
-  let rootSeen = false;
-  let nodeCount = 0;
-  let parseError: unknown;
-
-  parser.on("error", (error) => {
-    parseError ??= error;
-  });
-  parser.on("doctype", () => {
-    parseError ??= new Error("SVG documents must not declare a document type.");
-  });
-  parser.on("opentag", (tag) => {
-    if (parseError) {
-      return;
-    }
-    nodeCount++;
-    if (nodeCount > 10_000 || stack.length >= 32) {
-      parseError = new Error("SVG contains unsupported or excessive markup.");
-      return;
-    }
-    if (stack.length === 0) {
-      if (rootSeen || tag.name !== "svg") {
-        parseError = new Error("SVG must have one root svg element.");
-        return;
-      }
-      rootSeen = true;
-    }
-    if (omittedDepth === 0 && stack.at(-1) === "style") {
-      parseError = new Error("SVG stylesheets must contain only CSS text.");
-      return;
-    }
-
-    // Omitted editor subtrees still count toward the depth and element limits.
-    if (omittedDepth > 0 || OMITTED_SVG_ELEMENTS.has(tag.name)) {
-      omittedDepth++;
-      stack.push(tag.name);
-      return;
-    }
-    if (
-      (tag.name !== "style" && !SAFE_SVG_ELEMENTS.has(tag.name))
-      || tag.name.includes(":")
-    ) {
-      parseError = new Error("SVG contains unsupported markup.");
-      return;
-    }
-    if (tag.name === "style") {
-      const type = tag.attributes["type"]?.trim().toLowerCase();
-      const media = tag.attributes["media"]?.trim().toLowerCase();
-      const title = tag.attributes["title"];
-      if ((type && type !== "text/css") || (media && media !== "all") || title) {
-        throw new Error("SVG contains an unsupported or conditional stylesheet.");
-      }
-      svgAttributes(tag, []);
-      styleSource = "";
-    } else {
-      parts.push(tag);
-      elementCount++;
-    }
-    stack.push(tag.name);
-  });
-  const appendText = (text: string): void => {
-    const parent = stack.at(-1);
-    if (omittedDepth === 0) {
-      if (parent === "style") {
-        styleSource += text;
-      } else if (parent === "title" || parent === "desc") {
-        parts.push(escapeXmlText(text));
-      }
-    }
-  };
-  parser.on("text", appendText);
-  parser.on("cdata", appendText);
-  parser.on("closetag", (tag) => {
-    if (parseError) {
-      return;
-    }
-    if (stack.pop() !== tag.name) {
-      parseError = new Error("SVG element nesting is invalid.");
-      return;
-    }
-    if (omittedDepth > 0) {
-      omittedDepth--;
-      return;
-    }
-    if (tag.name === "style") {
-      addSvgStylesheet(styleSource, stylesheet);
-      styleSource = "";
-    } else {
-      parts.push(`</${tag.name}>`);
-    }
-  });
-
-  try {
-    parser.write(source).close();
-    if (parseError || !rootSeen || stack.length !== 0) {
-      throw parseError ?? new Error("SVG document is incomplete.");
-    }
-    const styleWork = stylesheet.rules.reduce(
-      (total, rule) => total + rule.selectors.length + rule.declarations.length,
-      0,
-    );
-    if (styleWork * elementCount > MAX_SVG_STYLE_WORK) {
-      throw new Error("SVG contains excessive stylesheet complexity.");
-    }
-    const output: string[] = [];
-    let outputBytes = 0;
-    for (const part of parts) {
-      let serialized: string;
-      if (typeof part === "string") {
-        serialized = part;
-      } else {
-        const attributes = svgAttributes(part, stylesheet.rules);
-        serialized = `<${part.name}${attributes.length ? ` ${attributes.join(" ")}` : ""}>`;
-      }
-      // Inlining shared declarations can expand a small source substantially.
-      outputBytes += Buffer.byteLength(serialized, "utf8");
-      if (outputBytes > WORKSPACE_ICON_MAX_BYTES) {
-        throw new Error("Sanitized SVG exceeds the workspace icon size limit.");
-      }
-      output.push(serialized);
-    }
-    return new TextEncoder().encode(output.join(""));
-  } catch (error) {
-    throw invalidIcon(parseError ?? error);
-  }
 }
 
 function validateIco(content: Uint8Array): Uint8Array {
@@ -569,19 +133,23 @@ function validateIconContent(
   if (content.byteLength === 0 || content.byteLength > WORKSPACE_ICON_MAX_BYTES) {
     throw new DomainError(
       "workspace_icon_too_large",
-      "Workspace icons must be 1 MB or smaller.",
+      "Workspace icons must be 4 MB or smaller.",
     );
   }
-  return mimeType === "image/svg+xml"
-    ? sanitizeSvg(content)
-    : validateIco(content);
+  if (mimeType === "image/svg+xml") {
+    if (detectBrowserImageMimeType(content) !== mimeType) {
+      throw invalidIcon();
+    }
+    return new Uint8Array(content);
+  }
+  return validateIco(content);
 }
 
 function decodePng(content: Uint8Array): PNGWithMetadata {
   if (content.byteLength === 0 || content.byteLength > WORKSPACE_ICON_MAX_BYTES) {
     throw new DomainError(
       "workspace_icon_too_large",
-      "Workspace icons must be 1 MB or smaller.",
+      "Workspace icons must be 4 MB or smaller.",
     );
   }
   if (content.byteLength < 33) {
@@ -792,7 +360,7 @@ async function readBoundedStream(
         });
         throw new DomainError(
           "workspace_icon_too_large",
-          "Workspace icons must be 1 MB or smaller.",
+          "Workspace icons must be 4 MB or smaller.",
         );
       }
       chunks.push(value);
@@ -1066,10 +634,7 @@ function getWorkspaceIconUrlMimeType(
   if (content[0] === 0 && content[1] === 0 && content[2] === 1 && content[3] === 0) {
     return "image/x-icon";
   }
-  const prefix = new TextDecoder().decode(content.subarray(0, 4_096)).replace(/^\uFEFF/, "");
-  if (
-    /^(?:\s*<\?xml[^?]*\?>)?\s*(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>)/i.test(prefix)
-  ) {
+  if (detectBrowserImageMimeType(content) === "image/svg+xml") {
     return "image/svg+xml";
   }
   throw invalidIcon();
@@ -1094,7 +659,7 @@ async function readWorkspaceIconUrlResponse(
       response.destroy();
       throw new DomainError(
         "workspace_icon_too_large",
-        "Workspace icons must be 1 MB or smaller.",
+        "Workspace icons must be 4 MB or smaller.",
       );
     }
   }
@@ -1111,7 +676,7 @@ async function readWorkspaceIconUrlResponse(
       response.destroy();
       throw new DomainError(
         "workspace_icon_too_large",
-        "Workspace icons must be 1 MB or smaller.",
+        "Workspace icons must be 4 MB or smaller.",
       );
     }
     chunks.push(bytes);
@@ -1398,11 +963,11 @@ export async function uploadWorkspaceIcon(
   ) {
     throw invalidIcon();
   }
-  const safeContent = mimeType === "image/png"
+  const iconContent = mimeType === "image/png"
     ? await normalizePngToIco(content)
     : validateIconContent(content, mimeType);
   const savedMimeType = mimeType === "image/png" ? "image/x-icon" : mimeType;
-  return await saveWorkspaceIcon(workspace.id, savedMimeType, safeContent);
+  return await saveWorkspaceIcon(workspace.id, savedMimeType, iconContent);
 }
 
 export async function getWorkspaceIconContent(

@@ -117,7 +117,7 @@ async function readRequestBodyWithLimit(
         });
         throw new DomainError(
           "workspace_icon_too_large",
-          "Workspace icons must be 1 MB or smaller.",
+          "Workspace icons must be 4 MB or smaller.",
         );
       }
       chunks.push(value);

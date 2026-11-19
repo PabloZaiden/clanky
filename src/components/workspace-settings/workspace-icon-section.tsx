@@ -175,7 +175,7 @@ export function WorkspaceIconSection({ workspace, icon, change, onChange, onLoad
 
   return (
     <>
-      <SettingsFieldRow title="Icon" description="SVG, PNG, or ICO, up to 1 MB."
+      <SettingsFieldRow title="Icon" description="SVG, PNG, or ICO, up to 4 MB."
         content={<>
           {preview ? <ResourceImage className="h-8 w-8 shrink-0 rounded object-contain"
             src={preview} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" /> : "Default"}

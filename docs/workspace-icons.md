@@ -11,7 +11,7 @@ Open the workspace settings and use the **Icon** row in **General**. You can:
 - Choose **Search** to look for repository icons, then preview and select a
   candidate. Clanky does not search until you request it; choose **Search
   again** to refresh the candidates.
-- Upload an SVG, PNG, or ICO file from your computer, up to 1 MB. PNG files are
+- Upload an SVG, PNG, or ICO file from your computer, up to 4 MB. PNG files are
   converted to ICO when saved.
 - Import an SVG, PNG, or ICO from a public HTTP(S) URL. Clanky validates and
   copies the image for preview; it does not hotlink the remote file.
@@ -32,7 +32,7 @@ candidates are shown, with an indicator when there are more. Repository
 discovery is not available for directory-only workspaces; local upload and URL
 import remain available.
 
-Selecting a repository candidate captures its sanitized contents for the
+Selecting a repository candidate captures its image contents for the
 preview and pending change. Saving keeps that same image even if you also
 change the execution host or the source file changes before you save.
 Icon-only saves do not require an available execution host for uploads or
@@ -41,46 +41,22 @@ removal.
 URL imports are limited to public HTTP(S) URLs without embedded credentials.
 Local, private, link-local, and metadata-service destinations are rejected,
 including redirect targets. Imports have a 5-second timeout, allow at most
-three redirects, and are limited to 1 MB. Clanky validates the image contents
+three redirects, and are limited to 4 MB. Clanky checks the image format
 before showing the preview; PNG is converted to ICO when saved.
 
 Saved icons are copied into private Clanky storage. The workspace does not
 depend on the source file remaining in the repository or the remote URL
 remaining available, and later changes to either source do not change the
-saved icon. Select or import it again to refresh the copy. SVG uploads,
-candidates, and URL imports are sanitized before storage. The saved image is
-available only to users authorized for that workspace.
+saved icon. Select or import it again to refresh the copy. SVG content is
+preserved unchanged, using the same image recognition as Code Explorer.
+Rendering follows the browser's SVG image support. The saved image is available
+only to users authorized for that workspace.
 
 Temporary icon-loading failures are retried without restarting the app or
 reselecting the image. Failed images get one automatic retry while the app is
 visible and online, then another opportunity when it returns to the foreground,
 regains focus, or comes online. Recovery renews the image resource when needed;
 it does not change the stored icon or extend its authorization.
-
-Clanky discards SVG metadata and Inkscape named-view settings while preserving
-the drawing. Simple inline presentation styles and embedded `<style>` rules,
-including fill and stroke colors, opacity, and stroke widths, are converted
-to sanitized SVG attributes. Stylesheets can use simple element, class, or ID
-selectors, including comma-separated lists such as `.light, .dark`.
-Specificity, declaration order, inline styles, and `!important` determine the
-result; stylesheet rules also apply to elements appearing before the stylesheet.
-The saved SVG does not retain stylesheets or classes.
-
-Unsupported inline style properties are discarded. Inline declarations with
-invalid values for a supported property are ignored, so they cannot replace
-valid colors or override valid declarations through `!important`. Stylesheet
-rules with unsupported properties, invalid values, or unsupported selectors are
-rejected instead. For broader CSS features, export an SVG with presentation
-attributes or use PNG.
-
-SVG icons must remain static and self-contained. Scripts, embedded HTML,
-document types, external references, CSS at-rules such as `@import`, conditional
-stylesheets, stylesheets with a nonempty `title` attribute, compound selectors,
-combinators, and pseudo-selectors are not supported.
-Gradient and other image references must point to IDs inside the same SVG.
-Supported style values include colors, numeric values with units,
-keywords, and local `url(#id)` references; CSS variables, escapes, and other
-complex CSS expressions are not supported.
 
 ## Provider icons
 
