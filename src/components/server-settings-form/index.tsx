@@ -24,6 +24,7 @@ import { TestConnection } from "./test-connection";
 
 export interface ServerSettingsFormProps {
   children?: ReactNode;
+  layout?: "fields" | "settings";
   controllerId?: string;
   workspaceId?: string;
   initialSettings?: ServerSettings;
@@ -45,6 +46,7 @@ export interface ServerSettingsFormProps {
 
 export function ServerSettingsForm({
   children,
+  layout = "settings",
   controllerId,
   workspaceId,
   initialSettings,
@@ -207,6 +209,7 @@ export function ServerSettingsForm({
   return (
     <div className="space-y-6">
       <RuntimeFields
+        layout={layout}
         adapter={adapter}
         supportedAdapters={supportedAdapters}
         adapterAvailabilityError={getTarget(executionHost)?.harnessAdapterError}
@@ -226,6 +229,7 @@ export function ServerSettingsForm({
 
       {onTest && (
         <TestConnection
+          layout={layout}
           onTest={handleTest}
           testing={testing}
           disabled={!isValid}
