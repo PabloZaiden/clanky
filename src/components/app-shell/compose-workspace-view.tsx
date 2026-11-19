@@ -236,6 +236,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           {workspaceCreateMode === "manual" ? (
             <ServerSettingsForm
               key={workspaceControllerId}
+              layout="fields"
               controllerId={workspaceControllerId || undefined}
               initialSettings={workspaceServerSettings}
               initialExecutionHost={workspaceExecutionHost}
