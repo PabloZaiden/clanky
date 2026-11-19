@@ -440,6 +440,34 @@ Example CLI output:
 }
 ```
 
+## Live previews in Apple apps
+
+In an updated iPhone/iPad or Mac app, open a workspace or server's **Previews**
+page and use **Start preview**. Choose the remote dev-server port, initial path
+and upstream HTTP or HTTPS. The development server must already be running.
+The native proxy listens on a separate HTTP loopback port on your device;
+the URL is not usable from another device. HTTPS upstream certificates are
+accepted, including self-signed certificates, as with the CLI.
+
+iPhone/iPad opens native Safari inside Clanky, keeping the app foregrounded.
+After switching to another app, preview activity continues only for whatever
+finite background allowance iOS grants. It may stop at any time; return to
+Clanky and start an interrupted preview again. Mac opens the system browser
+and keeps proxying while Clanky is running.
+
+Use the local preview's **Open**, **Copy URL** or **Close** controls to manage
+it. Closing its app window, signing out, changing servers, reloading the owning
+page or quitting Clanky ends the local proxy. Previews started elsewhere are
+listed separately; their loopback URLs do not refer to this window's proxy.
+The ordinary browser client, older native apps and browser-only collaboration
+keep their existing CLI-based workflow. Shared workspaces reached through an
+API controller use its existing delegated preview transport.
+
+Native preview request bodies and WebSocket messages are limited to 8 MiB;
+HTTP responses stream without that body-size limit. Browser-facing native
+HTTPS certificates and LAN listeners are not configured by these controls.
+Use the CLI below when those listener options are needed.
+
 ## Live previews from the CLI
 
 ```bash

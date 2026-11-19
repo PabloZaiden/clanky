@@ -3,6 +3,7 @@ import {
   appPath,
   appWebSocketUrl,
   configureWebAppClient,
+  createLogger,
   fetchAppRequest,
   getWebAppClientMode,
   nativeWebAppDuplex,
@@ -15,11 +16,13 @@ import {
   configureExternalClientStorageScope,
   configureRemoteClient,
   getClientSession,
+  getClientStorageScope,
   subscribeClientSession,
   type WebAppRemoteClientOptions,
 } from "./client-session";
 import { clankyClientRuntime } from "./runtime";
 import { getDemoController } from "@/client-sdk/demo/controller";
+import { resetNativePreviews } from "./native-previews";
 
 export {
   appAbsoluteUrl,
@@ -173,7 +176,16 @@ export function configureClankyClient(
   });
 }
 
+let previewSessionScope: string | undefined;
 subscribeClientSession(() => {
+  const session = getClientSession();
+  const scope = session.authenticated && !session.demo ? getClientStorageScope() : undefined;
+  if (scope !== previewSessionScope) {
+    previewSessionScope = scope;
+    void resetNativePreviews().catch(error => {
+      createLogger("nativePreviews").error("Unable to close previews after a client session change", { error: String(error) });
+    });
+  }
   if (getClientSession().demo) configureWebAppClient({
     apiBaseUrl: getClientSession().endpoint,
     realtimePath: "/api/realtime",
