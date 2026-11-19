@@ -143,7 +143,7 @@ function selectSidebarTabNodes(nodes: SidebarNode[], activeTab: string | undefin
       return nodes.filter((node) => node.id === "execution-hosts");
     case "active":
     default:
-      return nodes.filter((node) => node.id === "active-work");
+      return nodes.filter((node) => node.id === "active-work" || node.id === "done");
   }
 }
 
