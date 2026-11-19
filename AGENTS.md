@@ -52,6 +52,11 @@ the relevant guide before changing its area, not every guide for unrelated work.
 - Before declaring completion, check the plan against observable results,
   resolve required validation failures, and update Todos and status. Do not
   claim completion while a goal or required check remains unmet.
+- For UI work, apply the [product presentation policy](docs/development/webapp.md#product-presentation)
+  before writing copy. Before finishing, inspect the rendered changes and
+  justify every added subtitle, paragraph and hint against that policy;
+  remove text that does not qualify instead of shortening or hiding it.
+  Treat this inspection as a completion requirement, not an optional polish pass.
 
 ## Pull requests and documentation
 

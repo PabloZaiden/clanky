@@ -199,12 +199,17 @@ not Clanky overrides or a device-specific breakpoint.
 
 ## Product presentation
 
-Operational screens show labels, values, actions, status, errors, and actionable
-warnings, not paragraphs about mechanics/navigation/persistence. Add helper
-text only for valid/safe input or irreversible consequences.
+Default to no explanatory UI copy. Operational screens show labels, values,
+actions and current state, not paragraphs about mechanics, navigation,
+persistence or hypothetical caveats. Show actionable errors and warnings when
+their condition actually occurs, not permanently "just in case". Add helper
+text only when necessary to enter valid/safe input or understand irreversible
+consequences.
 Do not use setting subtitles or hints as feature documentation. Behavior,
 authorization and storage explanations belong in the relevant guides, not
 repeated underneath controls. Keep useful input constraints and counters.
+Remove unnecessary text rather than shortening it or moving it into tooltips
+or collapsed help. Existing explanatory clutter is not precedent for new copy.
 
 Do not show internal IDs as names or default detail fields. Use workspace/host
 names rather than directory paths as identity. Preserve IDs in protocols,
