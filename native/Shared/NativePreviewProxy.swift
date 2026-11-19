@@ -23,6 +23,8 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
     private let trust: @MainActor (URLAuthenticationChallenge) -> (URLSession.AuthChallengeDisposition, URLCredential?)?
     private let changed: @MainActor () -> Void
     private var listener: NWListener?
+    private var ipv6Listener: NWListener?
+    private var usingPreferredPort = true
     private var session: URLSession?
     private var socket: URLSessionWebSocketTask?
     private var reader: Task<Void, Never>?
@@ -60,7 +62,8 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
     }
 
     var localOrigin: String {
-        "http://127.0.0.1:\(localURL?.port ?? 0)"
+        let port = localURL?.port ?? 0
+        return port == 80 ? "http://localhost" : "http://localhost:\(port)"
     }
 
     func start() async throws {
@@ -71,47 +74,98 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
                 self?.stop("Preview startup timed out.")
             }
             do {
-                let parameters = NWParameters.tcp
-                parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
-                let listener = try NWListener(using: parameters)
-                self.listener = listener
-                listener.stateUpdateHandler = { [weak self] state in
-                    Task { @MainActor in
-                        guard let self, self.status == "starting" || self.status == "active" else { return }
-                        switch state {
-                        case .ready:
-                            guard let port = listener.port,
-                                  let url = URL(string: "http://127.0.0.1:\(port.rawValue)\(self.initialPath)"),
-                                  url.host == "127.0.0.1", url.port == Int(port.rawValue) else {
-                                self.stop("The preview listener did not provide a valid local URL.")
-                                return
-                            }
-                            self.localURL = url
-                            self.connect()
-                        case .failed(let failure), .waiting(let failure):
-                            self.stop("Preview listener failed: \(failure.localizedDescription)")
-                        case .cancelled:
-                            self.stop("The preview listener stopped.")
-                        default: break
-                        }
-                    }
-                }
-                listener.newConnectionHandler = { [weak self] connection in
-                    Task { @MainActor in
-                        guard let self, self.status == "active", self.connections.count < 64 else {
-                            connection.cancel()
-                            return
-                        }
-                        let browser = PreviewBrowserConnection(connection: connection, proxy: self)
-                        self.connections[browser.id] = browser
-                        browser.start()
-                    }
-                }
-                listener.start(queue: .main)
+                try startListener(port: NWEndpoint.Port(rawValue: UInt16(remotePort))!, ipv6: false)
             } catch {
-                stop("Unable to start preview: \(error.localizedDescription)")
+                listenerFailed(error, ipv6: false)
             }
         }
+    }
+
+    private func startListener(port: NWEndpoint.Port, ipv6: Bool) throws {
+        let parameters = NWParameters.tcp
+        // Allow the IPv6 listener to reserve this port too, not the same address.
+        parameters.allowLocalEndpointReuse = !ipv6
+        parameters.requiredLocalEndpoint = .hostPort(
+            host: ipv6 ? .ipv6(.loopback) : .ipv4(.loopback), port: port)
+        let listener = try NWListener(using: parameters)
+        if ipv6 { ipv6Listener = listener } else { self.listener = listener }
+        listener.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor in
+                guard let self, (self.status == "starting" || self.status == "active"),
+                      (ipv6 ? self.ipv6Listener : self.listener) === listener else { return }
+                switch state {
+                case .ready:
+                    if ipv6 {
+                        self.connect()
+                    } else {
+                        guard let port = listener.port,
+                              let url = URL(string: "http://localhost:\(port.rawValue)\(self.initialPath)"),
+                              url.host == "localhost", url.port == Int(port.rawValue) else {
+                            self.stop("The preview listener did not provide a valid local URL.")
+                            return
+                        }
+                        self.localURL = url
+                        do { try self.startListener(port: port, ipv6: true) }
+                        catch { self.listenerFailed(error, ipv6: true) }
+                    }
+                case .failed(let failure), .waiting(let failure):
+                    self.listenerFailed(failure, ipv6: ipv6)
+                case .cancelled:
+                    self.stop("The preview listener stopped.")
+                default: break
+                }
+            }
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            Task { @MainActor in
+                guard let self, self.status == "active", self.connections.count < 64,
+                      (ipv6 ? self.ipv6Listener : self.listener) === listener else {
+                    connection.cancel()
+                    return
+                }
+                let browser = PreviewBrowserConnection(connection: connection, proxy: self)
+                self.connections[browser.id] = browser
+                browser.start()
+            }
+        }
+        listener.start(queue: .main)
+    }
+
+    private func listenerFailed(_ failure: Error, ipv6: Bool) {
+        if status == "starting", socket == nil, let networkError = failure as? NWError,
+           case .posix(let code) = networkError {
+            if ipv6, [.EAFNOSUPPORT, .EADDRNOTAVAIL, .EPROTONOSUPPORT].contains(code) {
+                NSLog("Clanky preview IPv6 loopback is unavailable; listening on IPv4 only: %@", failure.localizedDescription)
+                cancelListener(ipv6Listener)
+                ipv6Listener = nil
+                connect()
+                return
+            }
+            if usingPreferredPort, [.EADDRINUSE, .EACCES, .EPERM].contains(code) {
+                NSLog("Clanky preview local port %d is unavailable (%@); using an available local port.",
+                      remotePort, failure.localizedDescription)
+                usingPreferredPort = false
+                stopListeners()
+                localURL = nil
+                do { try startListener(port: .any, ipv6: false) }
+                catch { stop("Unable to start preview: \(error.localizedDescription)") }
+                return
+            }
+        }
+        stop("Preview listener failed: \(failure.localizedDescription)")
+    }
+
+    private func cancelListener(_ listener: NWListener?) {
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+    }
+
+    private func stopListeners() {
+        cancelListener(listener)
+        cancelListener(ipv6Listener)
+        listener = nil
+        ipv6Listener = nil
     }
 
     private func connect() {
@@ -150,7 +204,7 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
             guard let self, let localURL else { return }
             await forward([
                 "type": "hello", "target": target, "remoteHost": "localhost", "remotePort": remotePort,
-                "localHost": "127.0.0.1", "localPort": localURL.port!, "localUrl": localURL.absoluteString,
+                "localHost": "localhost", "localPort": localURL.port!, "localUrl": localURL.absoluteString,
                 "initialPath": initialPath, "protocol": upstreamProtocol,
                 "cliClientId": id, "cliHostname": ProcessInfo.processInfo.hostName,
             ])
@@ -250,10 +304,7 @@ final class NativePreviewProxy: NSObject, URLSessionTaskDelegate {
         let continuation = startup
         startup = nil
         continuation?.resume(throwing: NativePreviewFailure(message: reason))
-        listener?.stateUpdateHandler = nil
-        listener?.newConnectionHandler = nil
-        listener?.cancel()
-        listener = nil
+        stopListeners()
         reader?.cancel()
         reader = nil
         socket?.cancel(with: .goingAway, reason: nil)

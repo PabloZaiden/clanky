@@ -141,12 +141,7 @@ export function PreviewSessionsView({
     <div className="min-w-0 space-y-6">
       {nativeAvailable ? (
         <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-neutral-900">
-          <div>
-            <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Preview on this device</h2>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Connect to an already-running dev server. The proxy listens only on this device.
-            </p>
-          </div>
+          <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Preview on this device</h2>
           <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => {
             event.preventDefault();
             void startPreview();
@@ -164,12 +159,6 @@ export function PreviewSessionsView({
               {starting ? "Starting..." : "Start preview"}
             </Button>
           </form>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {native.platform === "ios"
-              ? "Opens in Safari inside Clanky. Background activity is best effort; iOS can interrupt it. Restart interrupted previews here."
-              : "Opens in your system browser. Keep Clanky running while using the preview."}
-            {" "}Local URLs use HTTP. HTTPS upstream certificates are accepted, including self-signed certificates.
-          </p>
           {native.error ? <ErrorState title="Unable to read local previews" description={native.error} /> : null}
           {localPreviews.map((preview) => (
             <div key={preview.id} className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">

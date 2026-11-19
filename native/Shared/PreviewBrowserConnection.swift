@@ -159,7 +159,9 @@ final class PreviewBrowserConnection {
             headers.append([name, value])
         }
         let navigation = method == "GET" && values("sec-fetch-mode") == ["navigate"]
-        guard let proxy, values("host") == ["127.0.0.1:\(proxy.localURL?.port ?? 0)"],
+        guard let proxy, let localURL = proxy.localURL, let host = localURL.host,
+              values("host") == ["\(host):\(localURL.port ?? 0)"] ||
+                (localURL.port == 80 && values("host") == [host]),
               values("origin").allSatisfy({ $0 == proxy.localOrigin }),
               !values("sec-fetch-site").contains("cross-site") || navigation else {
             fail(403, "The preview requires its own local origin.")
