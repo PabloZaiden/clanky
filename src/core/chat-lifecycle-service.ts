@@ -17,6 +17,7 @@ import {
 } from "@/shared/chat";
 import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
+import { logHarnessFailure } from "../backends/harness-diagnostics";
 import { buildGeneratedChatName } from "./chat-name";
 import { managedContextIdentityResolver } from "./managed-context-identity";
 import { managedCredentialService } from "./managed-credential-service";
@@ -463,11 +464,12 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         await this.session.configureSessionModel(backend, updatedChat.state.session.id, updatedChat.config.model.modelID);
         updatedChat = await this.state.getChat(chatId) ?? updatedChat;
       } catch (error) {
-        log.warn("Failed to reconfigure active chat session after model update", {
-          chatId,
-          model: updatedChat.config.model.modelID,
-          error: String(error),
-        });
+        const diagnostic = logHarnessFailure(error, {
+          adapter: updatedChat.state.session?.binding?.adapter, operation: "configure", chatId,
+        }, "warn");
+        updatedChat = await this.state.mutateState(chatId, (current) => ({
+          ...current.state, harness: { ...current.state.harness, lastFailure: diagnostic },
+        }));
       }
     }
 

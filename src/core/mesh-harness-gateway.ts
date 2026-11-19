@@ -23,6 +23,7 @@ import { legacyMeshControlConnection } from "./mesh-control-v1-adapter";
 import type { MeshHarnessControlEvent } from "@/contracts/schemas/mesh-harness";
 import { MeshHarnessBacklog } from "./mesh-harness-backlog";
 import { createHash } from "node:crypto";
+import { withHarnessDiagnostic } from "../backends/harness-diagnostics";
 
 const log = createLogger("core:mesh-harness-gateway");
 const MAX_HOSTS = 64;
@@ -148,8 +149,13 @@ export class MeshHarnessGateway {
         if (config.continuity) this.retained.set(key, host);
         return host;
       } catch (error) {
-        await backend.disconnect();
-        throw error;
+        const failure = withHarnessDiagnostic(error, {
+          adapter: config.adapter, operation: "connect", leaseSessionId: id, executionNodeId: config.executionNodeId,
+        });
+        try { await backend.disconnect(); } catch (cleanupError) {
+          withHarnessDiagnostic(cleanupError, { adapter: config.adapter, operation: "disconnect" });
+        }
+        throw failure;
       } finally {
         signal?.removeEventListener("abort", abort);
         this.opening.delete(id);
@@ -281,7 +287,13 @@ export class MeshHarnessGateway {
     const host = await this.host(id, token, signal);
     if (host.inFlight >= 8) throw new DomainError("harness_input_capacity", "The native request capacity was reached.");
     host.inFlight++;
-    try { return await this.executeHost(host, operation); } finally {
+    try { return await this.executeHost(host, operation); } catch (error) {
+      throw withHarnessDiagnostic(error, {
+        adapter: host.config.adapter, operation: operation.operation,
+        leaseSessionId: id, executionNodeId: host.config.executionNodeId,
+        ...("sessionId" in operation ? { conversationId: operation.sessionId } : {}),
+      });
+    } finally {
       host.inFlight--;
       if (host.detached && !host.inFlight) {
         host.detached = false;
@@ -493,14 +505,21 @@ export class MeshHarnessGateway {
     const host = await this.host(id, token);
     const conversation = host.conversations.get(conversationId);
     if (!conversation) throw new DomainError("harness_session_not_owned", "The conversation is not owned by this Mesh lease.");
-    if (conversation.observationFailed) throw new DomainError("harness_event_gap", "Refresh the owned native conversation after an observation gap.");
-    if (conversation.backlog) return conversation.backlog.subscribe();
-    if (conversation.subscribers.size >= MAX_SUBSCRIBERS) throw new DomainError("harness_input_capacity", "The native observation subscriber limit was reached.");
-    const producer = createEventStream<HarnessEvent>({ overflow: "fail" });
-    conversation.subscribers.add(producer);
-    return { next: () => producer.stream.next(), close: () => {
-      producer.stream.close(); conversation.subscribers.delete(producer);
-    } };
+    try {
+      if (conversation.observationFailed) throw new DomainError("harness_event_gap", "Refresh the owned native conversation after an observation gap.");
+      if (conversation.backlog) return conversation.backlog.subscribe();
+      if (conversation.subscribers.size >= MAX_SUBSCRIBERS) throw new DomainError("harness_input_capacity", "The native observation subscriber limit was reached.");
+      const producer = createEventStream<HarnessEvent>({ overflow: "fail" });
+      conversation.subscribers.add(producer);
+      return { next: () => producer.stream.next(), close: () => {
+        producer.stream.close(); conversation.subscribers.delete(producer);
+      } };
+    } catch (error) {
+      throw withHarnessDiagnostic(error, {
+        adapter: host.config.adapter, operation: "observe", conversationId,
+        leaseSessionId: id, executionNodeId: host.config.executionNodeId,
+      });
+    }
   }
 
   async subscribeControl(id: string, token: string): Promise<EventStream<MeshHarnessControlEvent>> {

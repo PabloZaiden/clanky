@@ -4,6 +4,8 @@
 
 import type { HarnessEvent } from "@/shared/harness-events";
 import { createEventStream, type EventStream } from "../utils/event-stream";
+import { logHarnessFailure, withHarnessDiagnostic } from "./harness-diagnostics";
+import { DomainError } from "../domain/domain-error";
 
 export class HarnessEventHub {
   private readonly subscribers = new Map<string, Set<ReturnType<typeof createEventStream<HarnessEvent>>>>();
@@ -24,6 +26,12 @@ export class HarnessEventHub {
   }
 
   publish(sessionId: string, event: HarnessEvent): void {
+    if (event.type === "error" || event.type === "request.error") {
+      const diagnostic = logHarnessFailure(new DomainError(event.code ?? "harness_request_failed", event.message, { details: event.details }), {
+        adapter: event.scope.native?.adapter, operation: "observe", conversationId: sessionId, details: event.details,
+      }, event.type === "request.error" ? "warn" : "error");
+      event = { ...event, details: { ...event.details, diagnostic } };
+    }
     const timestamped = { ...event, timestamp: event.timestamp ?? new Date().toISOString() };
     for (const producer of this.subscribers.get(sessionId) ?? []) producer.push(timestamped);
   }
@@ -34,7 +42,8 @@ export class HarnessEventHub {
   }
 
   failSession(sessionId: string, error: Error): void {
-    for (const producer of this.subscribers.get(sessionId) ?? []) producer.fail(error);
+    const failure = withHarnessDiagnostic(error, { operation: "observe", conversationId: sessionId });
+    for (const producer of this.subscribers.get(sessionId) ?? []) producer.fail(failure);
     this.subscribers.delete(sessionId);
   }
 

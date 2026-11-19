@@ -441,6 +441,11 @@ request ID when it is a UUID, bridging native and relay correlation. Search
 these IDs across controller, worker and relay logs rather than treating a later
 disconnect as proof of the initiating failure.
 
+Native RPC/SDK rejections and provider error events also carry a bounded
+diagnostic reference. Follow the
+[provider failure diagnosis workflow](harnesses.md#diagnosing-provider-failures)
+to correlate it between worker, controller and persisted chat metadata.
+
 Upgrade both worker and controller for the complete diagnostic propagation,
 and the relay for its new failure metrics. This uses existing optional error
 details and requires no wire-generation change. Diagnostics alone do not enable

@@ -102,10 +102,15 @@ export class CodexEventTranslator {
         return [];
     }
 
-    function codexFailure(error: TurnError | null | undefined): ReturnType<typeof providerFailure> {
+    function codexFailure(error: TurnError | null | undefined): { code: string; details: Record<string, unknown> } {
       const info = error?.codexErrorInfo;
-      return providerFailure(info === "usageLimitExceeded" ? { kind: "quota" }
+      const failure = providerFailure(info === "usageLimitExceeded" ? { kind: "quota" }
         : info === "rateLimitExceeded" ? { kind: "rate_limit" } : undefined);
+      const nativeDetails = info && typeof info === "object" ? Object.values(info)[0] : undefined;
+      return { ...failure, details: {
+        ...failure.details, nativeCode: typeof info === "string" ? info : info ? Object.keys(info)[0] : undefined,
+        status: nativeDetails && "httpStatusCode" in nativeDetails ? nativeDetails.httpStatusCode : undefined,
+      } };
     }
   }
 

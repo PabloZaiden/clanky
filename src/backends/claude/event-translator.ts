@@ -88,7 +88,8 @@ export class ClaudeEventTranslator {
         if (limit) this.requestLimits.set(key, limit);
         else this.requestLimits.delete(key);
         const text = message.message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n");
-        return [wrap({ type: "request.error", ...providerFailure(limit),
+        const failure = providerFailure(limit);
+        return [wrap({ type: "request.error", ...failure, details: { ...failure.details, nativeCode: message.error },
           message: text || `Claude inference failed: ${message.error}.` })];
       }
       this.requestLimits.delete(this.scopeKey(scope));
@@ -108,7 +109,8 @@ export class ClaudeEventTranslator {
         const key = this.scopeKey(scope);
         const failure = providerFailure(this.requestLimits.get(key));
         this.requestLimits.delete(key);
-        return [wrap({ type: "error", ...failure, message: message.subtype === "success" ? message.result : message.errors.join("\n") })];
+        return [wrap({ type: "error", ...failure, details: { ...failure.details, nativeCode: message.subtype },
+          message: message.subtype === "success" ? message.result : message.errors.join("\n") })];
       }
       this.requestLimits.delete(this.scopeKey(scope));
       const interrupted = this.interrupted;

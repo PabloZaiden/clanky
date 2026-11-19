@@ -3,6 +3,7 @@
  */
 
 import { z } from "zod";
+import { HarnessDiagnosticSchema } from "./harness-diagnostics";
 import { ExecutionHostBindingSchema } from "./execution-host";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { getMessageAttachmentKind, MESSAGE_ATTACHMENT_LIMIT, MESSAGE_ATTACHMENT_MAX_TURN_BYTES } from "@/shared/message-attachments";
@@ -121,6 +122,7 @@ const HarnessHistoryRecoverySchema = z.object({
 });
 
 export const HarnessConversationStateSchema = z.object({
+  lastFailure: HarnessDiagnosticSchema.optional(),
   providerLimit: z.object({
     id: z.string().uuid(),
     kind: z.enum(["quota", "rate_limit", "billing"]),

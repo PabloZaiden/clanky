@@ -74,8 +74,10 @@ import type { HarnessInputAdmission } from "@/shared/harness-control";
 import { isHarnessInputValidationError, retainHarnessInputReceipt } from "./harness-input-ledger";
 import { createTransientHarnessSession, cleanupTransientHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
+import { logHarnessFailure, readHarnessDiagnostic, runHarnessOperation } from "../backends/harness-diagnostics";
+import type { HarnessDiagnostic } from "@/shared/harness-diagnostics";
 import { harnessActivityService } from "./harness-activity-service";
-import { isDomainError } from "../domain/domain-error";
+import { DomainError, isDomainError } from "../domain/domain-error";
 import { closeOpenQuestions, updateQuestionAnswerStatus } from "@/shared/harness-questions";
 import { projectChatQuestionMessages } from "./chat-question-transcript";
 import { NativeChatObserver } from "./native-chat-observer";
@@ -861,17 +863,27 @@ export class ChatConversationService implements ChatConversationPort {
     try {
       await this.checkpointNativeMessages(chatId, entry);
     } catch (checkpointError) {
-      log.error("Failed to checkpoint native conversation after observation failure", { chatId, error: String(checkpointError) });
-      failure = new HarnessError("harness_request_failed", "Unable to checkpoint the native conversation.", { cause: checkpointError });
+      logHarnessFailure(checkpointError, {
+        adapter: entry.native!.binding.adapter, operation: "checkpoint", chatId,
+        conversationId: entry.native!.binding.nativeId,
+      });
+      failure = new HarnessError("harness_request_failed", "Unable to checkpoint the native conversation.", {
+        cause: new AggregateError([error, checkpointError], "Native observation and checkpoint failed."),
+        details: { diagnostic: isDomainError(error) ? readHarnessDiagnostic(error.details) : undefined },
+      });
     }
     const latest = await this.state.getChatSummary(chatId);
     if (!latest || this.activeStreams.get(chatId) !== entry
       || latest.state.session?.binding?.nativeId !== entry.native!.binding.nativeId) return;
+    const diagnostic = logHarnessFailure(failure, {
+      adapter: entry.native!.binding.adapter, operation: "observe", chatId,
+      conversationId: entry.native!.binding.nativeId,
+    });
     const transportLost = isDomainError(failure) && failure.code === "harness_transport_closed";
     if (transportLost && entry.native!.backend.harness.capabilities.remoteContinuity === 1) {
       const updated = await this.state.mutateState(chatId, (current) => ({
         ...current.state, status: current.state.status === "blocked" ? "blocked" : "reconnecting", connectionStatus: "disconnected",
-        harness: { ...current.state.harness, activity: { observation: "unavailable", reason: "disconnected" } },
+        harness: { ...current.state.harness, lastFailure: diagnostic, activity: { observation: "unavailable", reason: "disconnected" } },
       }), { statusChangedAt: null });
       this.state.emitChatUpdated(updated);
       return;
@@ -880,14 +892,15 @@ export class ChatConversationService implements ChatConversationPort {
       || entry.native!.pendingMessages.size > 0;
     if (!transportLost || interrupted) await this.cancelUnobservedNativeExecution(chatId, entry);
     if (!transportLost) {
-      await this.emitChatError(latest, failure);
+      await this.emitChatError(latest, failure, undefined, {
+        ...(isDomainError(failure) ? failure.details : {}), diagnostic,
+      });
       return;
     }
-    log.warn("Native conversation disconnected", { chatId, interrupted, error: String(error) });
-    await this.persistDisconnectedChat(chatId, interrupted);
+    await this.persistDisconnectedChat(chatId, interrupted, diagnostic);
   }
 
-  private async persistDisconnectedChat(chatId: string, interrupted: boolean): Promise<Chat> {
+  private async persistDisconnectedChat(chatId: string, interrupted: boolean, diagnostic?: HarnessDiagnostic): Promise<Chat> {
     // Idle describes the principal, not whether background work survived.
     // Preserve its result while making the loss of observation explicit.
     const updated = await this.state.mutateState(chatId, (current) => ({
@@ -901,11 +914,12 @@ export class ChatConversationService implements ChatConversationPort {
         error: { message: "The connection was lost. Reconnect to recover the conversation.", code: "harness_transport_closed", timestamp: createTimestamp() },
         harness: {
           ...current.state.harness,
+          lastFailure: diagnostic ?? current.state.harness?.lastFailure,
           questions: closeOpenQuestions(current.state.harness?.questions, "expired"),
           activity: { observation: "unavailable" as const, reason: "disconnected" as const },
         },
       } : {
-        harness: { ...current.state.harness, activity: { observation: "unavailable" as const, reason: "disconnected" as const } },
+        harness: { ...current.state.harness, lastFailure: diagnostic ?? current.state.harness?.lastFailure, activity: { observation: "unavailable" as const, reason: "disconnected" as const } },
       }),
       connectionStatus: "disconnected",
     }));
@@ -1394,7 +1408,9 @@ export class ChatConversationService implements ChatConversationPort {
       const admission = { chatId: chat.config.id, binding: entry.native!.binding, inputIds };
       await this.recordNativePromptAdmission({ ...admission, status: "unknown" });
       try {
-        await backend.sendPromptAsync(sessionId, prompt);
+        await runHarnessOperation({
+          adapter: backend.harness.capabilities.adapter, operation: "prompt", conversationId: sessionId,
+        }, () => backend.sendPromptAsync(sessionId, prompt));
       } catch (error) {
         if (isHarnessInputValidationError(error) || (isDomainError(error) && error.code === "harness_session_busy")) {
           await this.recordNativePromptAdmission({ ...admission, status: null });
@@ -1856,10 +1872,11 @@ export class ChatConversationService implements ChatConversationPort {
         break;
       }
 
-      case "request.error":
-        log.warn("Native request failed while the chat execution remains open", {
-          chatId, code: event.code, error: event.message,
-        });
+      case "request.error": {
+        const diagnostic = logHarnessFailure(new DomainError(event.code, event.message, { details: event.details }), {
+          adapter: event.scope.native?.adapter, operation: "observe", chatId,
+          conversationId: event.scope.native?.conversationId,
+        }, "warn");
         streamState.chat = await this.emitChatLog(
           streamState.chat, "warn", event.message,
           { code: event.code, ...event.details },
@@ -1868,9 +1885,11 @@ export class ChatConversationService implements ChatConversationPort {
         streamState.chat = await this.updateState(streamState.chat, {
           ...streamState.chat.state,
           error: { message: event.message, code: event.code, timestamp: now },
+          harness: { ...streamState.chat.state.harness, lastFailure: diagnostic },
           lastActivityAt: now,
         });
         break;
+      }
 
       case "error":
         if (this.shouldSuppressStreamError(chatId, generation)) {
@@ -2445,20 +2464,24 @@ export class ChatConversationService implements ChatConversationPort {
   ): Promise<Chat> {
     const message = error instanceof Error ? error.message : String(error);
     const errorCode = code ?? (isDomainError(error) ? error.code : undefined);
+    const errorDetails = details ?? (isDomainError(error) ? error.details : undefined);
+    const diagnostic = logHarnessFailure(error, {
+      adapter: chat.state.session?.binding?.adapter, operation: chat.state.startupStage ?? "prompt",
+      chatId: chat.config.id, details: errorDetails,
+    }, readProviderLimit(errorCode, errorDetails) ? "warn" : "error");
     if (errorCode === "harness_transport_closed" && chat.state.session?.binding) {
       const entry = this.activeStreams.get(chat.config.id);
       if (entry?.native) {
-        await this.handleNativeObservationFailure(chat.config.id, entry, new HarnessError("harness_transport_closed", message));
+        await this.handleNativeObservationFailure(chat.config.id, entry, new HarnessError("harness_transport_closed", message, {
+          cause: error, details: { ...errorDetails, diagnostic },
+        }));
         entry.native.observer.close();
         return await this.state.getChat(chat.config.id) ?? chat;
       }
       log.warn("Native conversation disconnected during admission", { chatId: chat.config.id });
-      return this.persistDisconnectedChat(chat.config.id, isChatBusyStatus(chat.state.status));
+      return this.persistDisconnectedChat(chat.config.id, isChatBusyStatus(chat.state.status), diagnostic);
     }
-    const errorDetails = details ?? (isDomainError(error) ? error.details : undefined);
-    if (readProviderLimit(errorCode, errorDetails)) log.warn("Chat blocked by provider limit", { chatId: chat.config.id, code: errorCode });
-    else log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    return this.state.markChatError(chat, message, errorCode, errorDetails);
+    return this.state.markChatError(chat, message, errorCode, { ...errorDetails, diagnostic });
   }
 
   private async completeInterruptedChat(

@@ -22,6 +22,7 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import { createOwnedHarnessSession, resumeOwnedHarnessSession } from "./harness-session";
 import { HarnessError } from "../backends/harness-errors";
+import { logHarnessFailure, runHarnessOperation } from "../backends/harness-diagnostics";
 import { harnessActivityService } from "./harness-activity-service";
 import { DomainError, isDomainError } from "../domain/domain-error";
 import type { HarnessCapabilities, HarnessConversationBinding } from "@/shared/harness-control";
@@ -165,7 +166,7 @@ export class ChatSessionService implements ChatSessionPort {
       const control = controlTools ? await createExecutionControlConnection(
         await managedContextIdentityResolver.forChat(stagedWorking.chat.config.id, workspaceId),
       ) : undefined;
-      await backend.connect({
+      await runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "connect", chatId: chat.config.id }, async () => backend.connect({
         ...buildConnectionConfig(
           await this.backendManager.getWorkspaceSettings(workspaceId),
           stagedWorking.directory,
@@ -174,7 +175,7 @@ export class ChatSessionService implements ChatSessionPort {
         control,
         controlTools,
         continuity: await this.continuityConfig(chat, options.releaseOnly),
-      }, options.signal);
+      }, options.signal));
       this.connectedControlStates.set(backend, controlTools);
     }
 
@@ -195,7 +196,8 @@ export class ChatSessionService implements ChatSessionPort {
       try {
         const context = await this.sessionContext(chat, backend);
         existing = await raceWithAbort(
-          resumeOwnedHarnessSession(backend, chat.state.session, context),
+          runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "resume", chatId: chat.config.id },
+            () => resumeOwnedHarnessSession(backend, chat.state.session!, context)),
           options?.signal,
         );
         throwIfAborted(options?.signal);
@@ -248,11 +250,11 @@ export class ChatSessionService implements ChatSessionPort {
     };
     throwIfAborted(options.signal);
     const context = await this.sessionContext(stagedWorking.chat, backend);
-    const sessionPromise = createOwnedHarnessSession(backend, {
+    const sessionPromise = runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "create", chatId: chat.config.id }, () => createOwnedHarnessSession(backend, {
       title: `Clanky Chat: ${stagedWorking.chat.config.name}`,
       directory: stagedWorking.directory,
       model: stagedWorking.chat.config.model.modelID,
-    }, context);
+    }, context));
     let session: Awaited<typeof sessionPromise>;
     try {
       session = await raceWithAbort(sessionPromise, options.signal);
@@ -331,11 +333,12 @@ export class ChatSessionService implements ChatSessionPort {
       }
 
       const context = await this.sessionContext(reconnectingChat, backend);
-      const existing = await resumeOwnedHarnessSession(
+      const savedSession = reconnectingChat.state.session;
+      const existing = await runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "resume", chatId: chat.config.id }, () => resumeOwnedHarnessSession(
         backend,
-        reconnectingChat.state.session,
+        savedSession,
         context,
-      );
+      ));
       if (!existing) {
         throw new HarnessError("harness_session_not_found", "The saved harness session is unavailable.");
       }
@@ -578,7 +581,8 @@ export class ChatSessionService implements ChatSessionPort {
   }
 
   async configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void> {
-    await backend.setSessionModel(sessionId, desiredModel);
+    await runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "configure", conversationId: sessionId },
+      () => backend.setSessionModel(sessionId, desiredModel));
   }
 
   private async ensureExecutionHostBackendConnected(
@@ -608,12 +612,12 @@ export class ChatSessionService implements ChatSessionPort {
       provider,
     );
     this.directChatBackends.set(chat.config.id, backend);
-    await backend.connect({
+    await runHarnessOperation({ adapter: backend.harness.capabilities.adapter, operation: "connect", chatId: chat.config.id }, async () => backend.connect({
       ...buildConnectionConfig(settings, directory,
         await sshKeyAccessService.environment(requireExecutionOwnerUserId(), { kind: "host", host: source.executionHost.host }),
       ),
       continuity: await this.continuityConfig(chat, options.releaseOnly),
-    }, options.signal);
+    }, options.signal));
     return backend;
   }
 
@@ -624,8 +628,11 @@ export class ChatSessionService implements ChatSessionPort {
   private async failChat(chat: Chat, error: unknown): Promise<Chat> {
     const message = error instanceof Error ? error.message : String(error);
     const errorCode = isDomainError(error) ? error.code : undefined;
-    log.error("Chat runtime error", { chatId: chat.config.id, error: message });
-    return this.state.markChatError(chat, message, errorCode, isDomainError(error) ? error.details : undefined);
+    const details = isDomainError(error) ? error.details : undefined;
+    const diagnostic = logHarnessFailure(error, {
+      adapter: chat.state.session?.binding?.adapter, operation: "resume", chatId: chat.config.id, details,
+    });
+    return this.state.markChatError(chat, message, errorCode, { ...details, diagnostic });
   }
 
   private async continuityConfig(chat: Chat, releaseOnly = false) {

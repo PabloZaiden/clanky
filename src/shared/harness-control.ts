@@ -8,6 +8,7 @@ import type { ExecutionHostBinding } from "./execution-host";
 import type { HarnessQuestionRequest } from "./harness-questions";
 import type { HarnessUsageSnapshot } from "./harness-usage";
 import type { ChatProviderLimit } from "./provider-limit";
+import type { HarnessDiagnostic } from "./harness-diagnostics";
 
 export type HarnessQuestionPolicy = "interactive" | "unattended";
 
@@ -118,6 +119,7 @@ export interface HarnessInputReceipt {
 }
 
 export interface HarnessConversationState {
+  lastFailure?: HarnessDiagnostic;
   providerLimit?: ChatProviderLimit;
   capabilities?: HarnessCapabilities;
   remoteExecutionLost?: true;

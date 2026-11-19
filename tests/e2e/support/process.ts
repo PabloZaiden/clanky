@@ -126,9 +126,9 @@ export async function waitForExit(child: Bun.Subprocess, timeoutMs: number): Pro
   }
 }
 
-function signalManagedProcess(process: ManagedProcess, signal: NodeJS.Signals): void {
+function signalManagedProcess(process: ManagedProcess, signal: NodeJS.Signals, group = true): void {
   try {
-    if (process.processGroupId !== null) {
+    if (group && process.processGroupId !== null) {
       globalThis.process.kill(-process.processGroupId, signal);
     } else {
       process.child.kill(signal);
@@ -144,8 +144,10 @@ export async function stopManagedProcess(process: ManagedProcess, options: { for
   if (process.child.exitCode !== null) {
     return;
   }
-  signalManagedProcess(process, options.force ? "SIGKILL" : "SIGTERM");
+  // Let the application own provider teardown before cleaning up its process group.
+  signalManagedProcess(process, options.force ? "SIGKILL" : "SIGTERM", options.force === true);
   if (await waitForExit(process.child, SHUTDOWN_TIMEOUT_MS)) {
+    signalManagedProcess(process, "SIGKILL");
     return;
   }
   signalManagedProcess(process, "SIGKILL");

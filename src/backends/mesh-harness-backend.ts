@@ -25,6 +25,7 @@ import { readMeshPayload, type MeshPayloadFields } from "../core/mesh-payload";
 import { MESH_HARNESS_CHANNEL, MESH_CONTROL_MAX_IN_FLIGHT_REQUESTS } from "@/shared/mesh-execution";
 import { HarnessEventHub } from "./harness-event-hub";
 import { HarnessError } from "./harness-errors";
+import { readHarnessDiagnostic, withHarnessDiagnostic } from "./harness-diagnostics";
 import {
   createHarnessObservationError,
   getHarnessObservationDetails,
@@ -179,8 +180,13 @@ export class MeshHarnessBackend implements Backend {
       if (body.protocolVersion !== connection.protocolVersion || body.requestId !== requestId) throw new HarnessError("harness_request_failed", "The native Mesh response does not match its request.");
       return readMeshPayload(body) as T;
     } catch (error) {
-      if (error instanceof DomainError) throw error;
-      throw new HarnessError("harness_transport_closed", "The native Mesh request could not be completed.", { cause: error });
+      const failure = error instanceof DomainError ? error
+        : new HarnessError("harness_transport_closed", "The native Mesh request could not be completed.", { cause: error });
+      throw withHarnessDiagnostic(failure, {
+        adapter: this.options.adapter, operation: operation.operation, requestId,
+        leaseSessionId: connection.sessionId,
+        ...("sessionId" in operation ? { conversationId: operation.sessionId } : {}),
+      });
     } finally {
       clearTimeout(timer); pending.delete(controller); signal?.removeEventListener("abort", abort);
       if (operation.operation === "control.result") {
@@ -191,12 +197,13 @@ export class MeshHarnessBackend implements Backend {
 
   private async assertResponse(response: Response): Promise<void> {
     if (response.ok) return;
-    const body = await readMeshControlResponseJson(response, { maxBytes: 16_384 }) as { error?: unknown; message?: unknown };
+    const body = await readMeshControlResponseJson(response, { maxBytes: 16_384 }) as { error?: unknown; message?: unknown; diagnostic?: unknown };
     const error = typeof body.error === "string" ? body.error : "harness_request_failed";
     const message = typeof body.message === "string" && body.message.length <= 2_000
       ? body.message
       : "The native Mesh host rejected the request.";
-    throw new DomainError(error, message, { details: { status: response.status } });
+    const diagnostic = readHarnessDiagnostic(body);
+    throw new DomainError(error, message, { details: { status: response.status, ...(diagnostic ? { diagnostic } : {}) } });
   }
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {

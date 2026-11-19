@@ -3,10 +3,9 @@
  */
 
 import type { AgentResponse, Backend, PromptInput } from "./types";
-import { createLogger } from "@pablozaiden/webapp/server";
 import { HarnessError } from "./harness-errors";
-
-const log = createLogger("harness-prompt");
+import { logHarnessFailure } from "./harness-diagnostics";
+import { DomainError } from "../domain/domain-error";
 
 export async function consumeHarnessPrompt(
   backend: Pick<Backend, "subscribeToEvents" | "sendPromptAsync">,
@@ -27,8 +26,10 @@ export async function consumeHarnessPrompt(
       if (event.scope.kind !== "principal") continue;
       if (event.type === "message.start") messageId = event.messageId;
       if (event.type === "message.complete") content = event.content;
-      if (event.type === "request.error") log.warn("Native request failed before execution completion", { code: event.code, error: event.message });
-      if (event.type === "error") throw new HarnessError("harness_request_failed", event.message);
+      if (event.type === "request.error") logHarnessFailure(new DomainError(event.code, event.message, { details: event.details }), {
+        adapter: event.scope.native?.adapter, operation: "prompt", conversationId: id,
+      }, "warn");
+      if (event.type === "error") throw new DomainError(event.code ?? "harness_request_failed", event.message, { details: event.details });
       if (event.type === "prompt.complete") {
         if (event.outcome !== "completed") throw new HarnessError("harness_request_failed", "The native prompt was interrupted.");
         return { id: messageId, content, parts: [{ type: "text", text: content }] };

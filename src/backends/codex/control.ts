@@ -2,7 +2,7 @@
  * Scoped descendant and terminal control; turn interruption alone is insufficient.
  */
 
-import { createLogger } from "@pablozaiden/webapp/server";
+import { logHarnessFailure } from "../harness-diagnostics";
 import type {
   HarnessActivity, HarnessActivitySnapshot, HarnessActivityStopResult, HarnessCapabilities,
   HarnessCleanupResult, HarnessControl, HarnessInputAdmission, HarnessInputRecoveryRequest, HarnessSteerRequest,
@@ -13,8 +13,6 @@ import type { CodexRuntime } from "./runtime";
 import type { CodexSessionService } from "./session-service";
 import { toCodexInput } from "./prompt";
 import type { HarnessUsageSnapshot } from "@/shared/harness-usage";
-
-const log = createLogger("codex-control");
 
 export class CodexControl implements HarnessControl {
   readonly capabilities: HarnessCapabilities = {
@@ -134,7 +132,7 @@ export class CodexControl implements HarnessControl {
       if (error instanceof CodexRpcError && error.rpcCode === -32600) {
         return { status: "rejected", inputId: request.inputId, code: "turn-changed" };
       }
-      log.warn("Native steering admission is unknown", { inputId: request.inputId });
+      logHarnessFailure(error, { adapter: "codex", operation: "steer", conversationId: rootId, inputId: request.inputId }, "warn");
       return { status: "unknown", inputId: request.inputId };
     }
   }
