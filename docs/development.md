@@ -178,13 +178,16 @@ release as its baseline, ignoring drafts, prereleases, and other tag formats.
 An existing stable release is required; local tags and the development version
 in `package.json` are not used.
 
-Enter an intentional, customer-facing App Store **What's New** in English
-(1-4000 characters). The script previews it with the proposed tag/title and
-remote default branch commit before confirmation. It stores the text in a
-dedicated App Store section alongside GitHub-generated release notes, so the
-separate iOS publication workflow can use it without copying the developer
-changelog or stale notes from an earlier version. Preserve that section's
-markers if editing the GitHub release notes later.
+For the App Store **What's New**, choose whether to append to the notes from
+the stable release used as the version baseline, reuse them unchanged if
+they still apply, or write new ones. If that release has no valid dedicated
+App Store notes, write new ones; the GitHub changelog is not a fallback. The
+final text must be in English (1-4000 characters) and cover only changes
+relevant to iOS app users. The script previews the exact text with the proposed
+tag/title and remote default branch commit before confirmation. It stores the
+text in a dedicated section alongside GitHub-generated release notes for the
+separate iOS publication workflow. Preserve the section's markers if editing
+the GitHub release notes later.
 
 The script releases that exact remote commit, regardless of the local branch
 or unpushed changes. Do not publish merely to validate the script.

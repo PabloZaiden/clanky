@@ -13,12 +13,20 @@ export function formatAppStoreReleaseNotes(whatsNew: string): string {
   return `## App Store What's New\n\n${start}\n${appStoreWhatsNewSchema.parse(whatsNew)}\n${end}\n\n`;
 }
 
-export function readAppStoreReleaseNotes(body: string): string {
+export function extractAppStoreReleaseNotes(body: string): string | null {
   const first = body.indexOf(start);
   const last = body.indexOf(end);
   if (first < 0 || last < first || body.indexOf(start, first + start.length) !== -1
     || body.indexOf(end, last + end.length) !== -1) {
+    return null;
+  }
+  return body.slice(first + start.length, last);
+}
+
+export function readAppStoreReleaseNotes(body: string): string {
+  const whatsNew = extractAppStoreReleaseNotes(body);
+  if (whatsNew === null) {
     throw new Error("Missing or ambiguous App Store What's New section. Prepare it with bun run release or complete the draft's release notes in App Store Connect.");
   }
-  return appStoreWhatsNewSchema.parse(body.slice(first + start.length, last));
+  return appStoreWhatsNewSchema.parse(whatsNew);
 }
