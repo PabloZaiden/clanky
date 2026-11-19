@@ -45,6 +45,7 @@ struct ClankyApp: App {
         .commands {
             ControllerCommands(controller: model.controller)
             ClankySettingsCommands()
+            CommandLineToolCommands()
             AppUpdateCommands(updater: updater)
         }
         #endif
