@@ -152,6 +152,13 @@ export interface PreviewBridgeWebSocketOpenMessage {
   streamId: string;
   path: string;
   headers: Array<[string, string]>;
+  acknowledgeOpen?: boolean;
+}
+
+export interface PreviewBridgeWebSocketReadyMessage {
+  type: "websocket.ready";
+  streamId: string;
+  protocol: string;
 }
 
 export type PreviewBridgePath = string & {
@@ -227,6 +234,7 @@ export type PreviewBridgeServerMessage =
   | PreviewBridgeBodyMessage
   | PreviewBridgeEndMessage
   | PreviewBridgeErrorMessage
+  | PreviewBridgeWebSocketReadyMessage
   | PreviewBridgeWebSocketMessage
   | PreviewBridgeWebSocketCloseMessage
   | { type: "bridge.ping" };

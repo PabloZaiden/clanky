@@ -175,6 +175,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
 
     func stop() {
         stopped = true
+        browser.previews.documentClosed("The owning Clanky window closed.")
         webView.stopLoading()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -385,6 +386,7 @@ final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegate, WKDow
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         guard !stopped, webView === browser.webView else { return }
+        browser.previews.documentClosed("The owning Clanky document navigated.")
         #if os(iOS)
         browser.nativeToolbar.clear()
         #endif

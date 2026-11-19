@@ -1458,11 +1458,38 @@ roots can raise an Objective-C exception rather than a catchable Swift error.
 The invited client's **Ready to export** still means browser storage, not a
 confirmed save to Files/Downloads. Platform storage/export limits still apply.
 
-There is no background execution, background transfer or offline synchronization.
+There is no general background transfer or offline synchronization.
 On iPhone/iPad, keep the app in the foreground for active transfers; suspension
 may interrupt connections. If WebKit terminates the main page, the shell
 reloads the same WebView automatically after confirming the local server, or on
 the next activation if the app is inactive. The WebView is never replaced.
+
+### Native application previews
+
+Updated Apple apps can start device-local proxies from a workspace or server's
+**Previews** page without manually running a CLI. The dev server must already
+be running. See [Apple app previews](API.md#live-previews-in-apple-apps) for
+the controls and listener limits. This requires an updated native binary, not
+just a downloaded frontend.
+
+Preview listeners use their own HTTP loopback origins, separate from the
+bundled frontend. Their native WebSocket connections reuse the web client's
+short-lived one-use tickets and existing controller trust policy; refresh
+credentials remain with the web client. Preview content cannot invoke Clanky's
+main-frame native bridge.
+
+On iPhone/iPad, previews open in a visibly presented native Safari controller
+inside Clanky. Unrelated external links and authorization popups retain their
+existing system-browser behavior. Opening a preview in external Safari or
+switching to another app leaves only a finite best-effort UIKit background
+execution allowance. iOS determines its availability and duration. Denial or
+expiration closes the proxy and marks it interrupted; restarting is explicit.
+The app does not chain background tasks or request VPN, audio or location modes
+to keep a preview alive. Force-quitting still ends all preview activity.
+
+On Mac, previews open in the external system browser and their native proxies
+continue while Clanky runs. On both platforms, closing the owning window,
+document or signed-in session also closes its previews.
 
 ### Frontend updates on iPhone and iPad
 
