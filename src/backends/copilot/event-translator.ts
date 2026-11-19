@@ -165,7 +165,10 @@ export class CopilotEventTranslator {
       message: event.data.message,
       details: { ...classified.details, errorType, ...(errorCode ? { errorCode } : {}) },
     };
-    if (!principal || event.data.errorType !== "query") return { type: "error", ...failure };
+    if (!principal || event.data.errorType !== "query") {
+      if (principal) this.principalPromptActive = false;
+      return { type: "error", ...failure };
+    }
     // Query failure can precede a native background continuation, including after steering.
     this.queryError = { type: "request.error", ...failure };
     return this.queryError;

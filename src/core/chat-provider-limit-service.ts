@@ -94,7 +94,8 @@ export class ChatProviderLimitService {
       throw new HarnessError("harness_session_not_found", "The saved native conversation is unavailable.");
     }
     if (chat.state.harness.integrity === "invalid"
-      || chat.state.harness.inputs?.some((receipt) => receipt.admission.status === "unknown")
+      || chat.state.harness.inputs?.some((receipt) =>
+        receipt.admission.status === "unknown" || receipt.admission.status === "accepted")
       || chat.state.queuedMessages?.length
       || chat.state.harness.questions?.some(isQuestionOpen)
       || chat.state.pendingPermissionRequests?.some((request) => request.status === "pending")
@@ -134,7 +135,7 @@ export class ChatProviderLimitService {
     requireMatchingHarnessBindings(current.state.session!.binding!, originalBinding);
     if (authorization) await this.assertTarget(current, authorization);
     const activity = await this.dependencies.session.getActivity(chat.config.id);
-    if (activity.observation !== "available" || activity.principalProcessing
+    if (activity.observation !== "available" || activity.coverage !== "native" || activity.principalProcessing
       || activity.activities.some((item) => !["completed", "failed", "stopped", "idle"].includes(item.status))) {
       throw new HarnessError("harness_session_busy", "Native execution is active or cannot be confirmed inactive. Continue manually after checking Activity.");
     }

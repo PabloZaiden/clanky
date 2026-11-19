@@ -1271,7 +1271,9 @@ export class ChatConversationService implements ChatConversationPort {
       ...streamState.chat.state,
       status: streamState.chat.state.status === "starting" || streamState.chat.state.status === "reconnecting"
         ? streamState.chat.state.status : native.executing ? "streaming" : "idle",
-      startupStage: undefined, error: undefined, interruptRequested: false,
+      startupStage: undefined,
+      error: streamState.chat.state.harness?.providerLimit ? streamState.chat.state.error : undefined,
+      interruptRequested: false,
       harness: { ...streamState.chat.state.harness, nativeHistoryRecovery: undefined },
     }, {
       statusChangedAt: native.backend.harness.capabilities.remoteContinuity === 1 ? null : undefined,
