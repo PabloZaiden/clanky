@@ -33,16 +33,19 @@ export function getAutomationSidebarActions(
       {
         id: "edit-automation",
         label: "Edit",
+        systemImage: "pencil",
         onClick: () => context.setEditingAutomationId(automation.config.id),
       },
       {
         id: "export-automation",
         label: "Export",
+        systemImage: "square.and.arrow.up",
         onClick: () => void context.exportAutomation(automation),
       },
       {
         id: "toggle-automation-paused",
         label: automation.config.enabled ? "Pause" : "Resume",
+        systemImage: automation.config.enabled ? "pause" : "play",
         onClick: () => {
           const request = automation.config.enabled
             ? context.automations.pauseAutomation(automation.config.id)
@@ -58,22 +61,26 @@ export function getAutomationSidebarActions(
         ? {
             id: "interrupt-automation",
             label: "Interrupt",
+            systemImage: "stop.circle",
             onClick: () => void context.automations.interruptAutomation(automation.config.id),
           }
         : {
             id: "run-automation",
             label: "Run now",
+            systemImage: "play",
             onClick: () => void context.automations.runAutomation(automation.config.id),
           },
       {
         id: "purge-automation-runs",
         label: "Purge runs",
+        systemImage: "clock.arrow.circlepath",
         destructive: true,
         onClick: () => context.setPurgeAutomationTarget(automation),
       },
       {
         id: "delete-automation",
         label: "Delete",
+        systemImage: "trash",
         destructive: true,
         onClick: () => context.setDeleteAutomationTarget(automation),
       },

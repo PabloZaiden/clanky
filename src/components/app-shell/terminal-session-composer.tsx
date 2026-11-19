@@ -50,6 +50,7 @@ export function TerminalSessionComposer({
     primary: [{
       id: "create-terminal",
       label: "Create",
+      systemImage: "terminal",
       form: formId,
       loading: submitting,
       disabled: !selectedWorkspace,

@@ -28,20 +28,14 @@ import { WorkspaceIdentity } from "../common";
 import type { SearchableSidebarNode, SidebarAction } from "./shell-sidebar-types";
 
 export function sidebarActionItems(
-  items: Array<{
-    id?: string;
-    label: string;
-    disabled?: boolean;
-    destructive?: boolean;
+  items: Array<Omit<ActionMenuItem, "onAction" | "form"> & {
+    systemImage: string;
     onClick: SidebarAction;
   }>,
 ): ActionMenuItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    label: item.label,
-    disabled: item.disabled,
-    destructive: item.destructive,
-    onAction: () => void item.onClick(),
+  return items.map(({ onClick, ...item }) => ({
+    ...item,
+    onAction: () => void onClick(),
   }));
 }
 
@@ -55,6 +49,7 @@ export function withPrivateToggleAction(
     {
       id: entity.isPrivate ? "unmark-private" : "mark-private",
       label: entity.isPrivate ? "Unmark private" : "Mark as private",
+      systemImage: entity.isPrivate ? "lock.open" : "lock",
       onAction: onToggle,
     },
   ];

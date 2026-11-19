@@ -63,23 +63,27 @@ function buildChatActionItems({
     {
       id: "new-chat-current-directory",
       label: sameDirectoryChatPending ? "Creating chat..." : "New Chat here",
+      systemImage: "plus.bubble",
       onAction: onCreateSameDirectoryChat,
       disabled: sameDirectoryChatPending || !canCreateSameDirectoryChat,
     },
     {
       id: "code-explorer",
       label: "Code explorer",
+      systemImage: "folder",
       onAction: onOpenCodeExplorer,
       disabled: !hasCodeExplorerAction,
     },
     {
       id: "rename",
       label: "Rename",
+      systemImage: "pencil",
       onAction: onRename,
     },
     {
       id: "transcript",
       label: "Transcript",
+      systemImage: "text.bubble",
       onAction: onTranscript,
       disabled: !hasTranscript,
     },
@@ -202,12 +206,14 @@ export function useChatActions({
     ...(isStandaloneChat(target) && target.state.status !== "done" ? [{
       id: "mark-done",
       label: isMarkDonePending ? "Marking as Done..." : "Mark as Done",
+      systemImage: "checkmark.circle",
       onAction: () => void markChatDone(target),
       disabled: isChatBusyStatus(target.state.status) || target.state.status === "reconnecting" || isMarkDonePending,
     }] : []),
     {
       id: "delete",
       label: "Delete",
+      systemImage: "trash",
       onAction: () => {
         if (!deletePendingRef.current) setDeleteTarget(target);
       },

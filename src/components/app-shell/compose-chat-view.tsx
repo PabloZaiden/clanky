@@ -356,6 +356,7 @@ export function ComposeChatView({
   const headerActions = useMemo(() => [{
     id: "create-chat",
     label: "Create",
+    systemImage: "plus.bubble",
     onAction: () => void handleSubmit(),
     disabled: !canSubmit,
     loading: isSubmitting,

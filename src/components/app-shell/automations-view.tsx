@@ -175,6 +175,7 @@ function AutomationForm({
     {
       id: "save-automation",
       label: mode === "edit" ? "Save" : "Create",
+      systemImage: mode === "edit" ? "checkmark" : "plus",
       onAction: handleSubmit,
       disabled: !canSubmit,
       loading: form.isSubmitting,
@@ -182,6 +183,7 @@ function AutomationForm({
     ...(mode === "create" && onImportAutomation ? [{
       id: "import-automation",
       label: "Import Automation",
+      systemImage: "square.and.arrow.down",
       onAction: () => {
         if (form.selectedWorkspace) onImportAutomation(form.selectedWorkspace.id);
       },
@@ -196,24 +198,28 @@ function AutomationForm({
     {
       id: "generate-code",
       label: generation.isGeneratingCode ? "Generating..." : "Generate",
+      systemImage: "sparkles",
       disabled: !canGenerateCode || form.isSubmitting,
       onAction: () => void generation.generateCode(),
     },
     ...(generation.isGeneratingCode ? [{
       id: "cancel-generation",
       label: "Cancel generation",
+      systemImage: "stop.circle",
       destructive: true,
       onAction: generation.cancelGeneration,
     }] : []),
     {
       id: "test-code",
       label: testing.isTestingCode ? "Testing..." : "Test",
+      systemImage: "testtube.2",
       disabled: !canTestCode || form.isSubmitting,
       onAction: () => void testing.testCode(),
     },
     ...(testing.isTestingCode ? [{
       id: "cancel-test",
       label: "Cancel test",
+      systemImage: "stop.circle",
       destructive: true,
       onAction: testing.cancelTest,
     }] : []),

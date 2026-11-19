@@ -70,11 +70,11 @@ export function useChatTrashActions(
   }
 
   const items = useCallback((chat: TrashedChat): ActionMenuItem[] => !canModify(chat) ? [] : [
-    { id: "restore", label: "Restore", disabled: pending, onAction: () => void restore(chat) },
-    { id: "delete-permanently", label: "Delete permanently", destructive: true, disabled: pending, onAction: () => setTarget(chat) },
+    { id: "restore", label: "Restore", systemImage: "arrow.uturn.backward", disabled: pending, onAction: () => void restore(chat) },
+    { id: "delete-permanently", label: "Delete permanently", systemImage: "trash", destructive: true, disabled: pending, onAction: () => setTarget(chat) },
   ], [pending, restore, canModify]);
   const emptyActions = useMemo<ActionMenuItem[]>(() => [{
-    id: "empty-trash", label: "Empty local Trash", destructive: true, disabled: pending,
+    id: "empty-trash", label: "Empty local Trash", systemImage: "trash", destructive: true, disabled: pending,
     onAction: () => setTarget("all"),
   }], [pending]);
 

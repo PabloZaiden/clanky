@@ -265,17 +265,11 @@ struct NativeToolbarContent: View {
                             .sharedBackgroundVisibility(.hidden)
                         }
                         ForEach(
-                            snapshot.primary.map { (id: snapshot.scope + ":" + $0.id, item: $0) },
+                            (snapshot.primary + snapshot.menu).map { (id: snapshot.scope + ":" + $0.id, item: $0) },
                             id: \.id
                         ) { entry in
                             ToolbarItem(id: entry.id, placement: .bottomBar) {
                                 NativeToolbarButton(toolbar: toolbar, id: entry.item.id, scope: snapshot.scope)
-                            }
-                            .sharedBackgroundVisibility(.hidden)
-                        }
-                        ForEach(snapshot.menu.isEmpty ? [] : [snapshot.scope], id: \.self) { scope in
-                            ToolbarItem(id: scope + ":menu", placement: .bottomBar) {
-                                NativeToolbarPageMenu(toolbar: toolbar, scope: scope)
                             }
                             .sharedBackgroundVisibility(.hidden)
                         }
@@ -308,7 +302,7 @@ private struct NativeToolbarButton: View {
                         .scaledToFit()
                         .frame(width: 28, height: 28)
                 } else if let symbol = item.systemImage {
-                    Label(item.label, systemImage: symbol).labelStyle(.iconOnly)
+                    Label(item.label, systemImage: symbol)
                 } else {
                     Label(item.label, systemImage: "checkmark")
                 }
@@ -318,29 +312,6 @@ private struct NativeToolbarButton: View {
             .help(item.label)
             .disabled(item.disabled || item.busy)
             .tint(item.destructive ? .red : item.active ? .accentColor : .primary)
-        }
-    }
-}
-
-@available(iOS 27.1, *)
-private struct NativeToolbarPageMenu: View {
-    @ObservedObject var toolbar: NativeToolbar
-    let scope: String
-
-    var body: some View {
-        if let snapshot = toolbar.snapshot, snapshot.scope == scope, !snapshot.menu.isEmpty {
-            Menu {
-                ForEach(snapshot.menu) { item in
-                    Button(item.label, role: item.destructive ? .destructive : nil) {
-                        toolbar.activate(item.id, scope: scope)
-                    }
-                    .disabled(item.disabled || item.busy)
-                }
-            } label: {
-                Label("More", systemImage: "list.bullet")
-            }
-            .accessibilityLabel("More")
-            .disabled(snapshot.menu.allSatisfy { $0.disabled || $0.busy })
         }
     }
 }

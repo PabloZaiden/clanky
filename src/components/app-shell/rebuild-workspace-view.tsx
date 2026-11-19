@@ -61,6 +61,7 @@ export function RebuildWorkspaceView({
   const headerActions = [{
     id: "start-workspace-action",
     label: actionLabel,
+    systemImage: mode === "restart" ? "arrow.clockwise" : "wrench.and.screwdriver",
     form: formId,
     loading: provisioning.starting,
   }];

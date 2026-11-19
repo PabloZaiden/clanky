@@ -49,6 +49,7 @@ export function getChatSidebarActions(
         {
           id: "open-code-explorer",
           label: "Code Explorer",
+          systemImage: "folder",
           onClick: () => context.navigateWithinShell({
             view: "code-explorer",
             contentType: "chat",
