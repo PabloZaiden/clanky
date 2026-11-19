@@ -54,17 +54,13 @@ bottom-anchored placement and native interactions.
 Show/Hide sidebar and Settings have higher native visibility priority than the
 other toolbar controls, without changing their order or system-managed spacing.
 Pages without actions leave no empty toolbar group reserving space.
-Declare each primary action and the page menu as explicit toolbar items so
-actions published after navigation participate in native layout and overflow.
-Scope each entry's collection identity to its route; do not hide changing
-toolbar structure inside an ordinary nested view or a route-level collection.
-Actions without a supplied symbol use an adaptive checkmark label, preserving
-their full accessible and overflow titles. Plain text controls can create a
-separate bottom bar instead of joining the system side bar.
-The shared page-actions menu is labeled **More** and uses the `list.bullet`
-symbol on every page. Its semantic icon-and-text label keeps the name visible
-when the system moves it into overflow, including with the keyboard open.
-They invoke the same web callbacks; Swift does not implement their
+Declare each primary and page-menu action as its own toolbar item with an
+appropriate SF Symbol. iOS handles overflow directly, with no additional
+**More** submenu. Keep each action's semantic icon-and-text label so it has a
+name in overflow; plain text controls can create a separate bottom bar.
+Scope each entry's identity to its route; do not hide changing toolbar
+structure inside an ordinary nested view or a route-level collection.
+Actions invoke the same web callbacks; Swift does not implement their
 business logic. Native actions use the current published state, so changing a
 label or active state does not invalidate a visible control. Native button and
 menu views observe the published state directly, so loading indicators and

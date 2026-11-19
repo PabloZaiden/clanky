@@ -86,24 +86,28 @@ export function getExecutionHostSidebarActions(
     {
       id: "new-workspace",
       label: "New Workspace",
+      systemImage: "folder.badge.plus",
       disabled: !usable || !host.capabilities.provisioning,
       onClick: () => createExecutionHostWorkspace(host, context),
     },
     {
       id: "new-terminal",
       label: "New Terminal",
+      systemImage: "terminal",
       disabled: !usable || !host.capabilities.interactiveTerminal || !getClankyClientCapabilities().terminalManagement,
       onClick: () => createExecutionHostTerminal(host, context),
     },
     {
       id: "new-chat",
       label: "New Chat",
+      systemImage: "plus.bubble",
       disabled: !usable || !host.capabilities.commandExecution,
       onClick: () => createExecutionHostChat(host, context),
     },
     {
       id: "open-code-explorer",
       label: "Code Explorer",
+      systemImage: "folder",
       disabled: !usable || !supportsExecutionHostCapability(host.capabilities, "fileOperations"),
       onClick: () => context.navigateWithinShell({
         view: "code-explorer",

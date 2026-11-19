@@ -41,7 +41,7 @@ export function WorkspaceSettingsForm({
 
   useHeaderActions({
     primary: [
-      { id: "save-workspace", label: "Save", form: formId, loading: busy, disabled: !model.dirty || busy },
+      { id: "save-workspace", label: "Save", systemImage: "checkmark", form: formId, loading: busy, disabled: !model.dirty || busy },
     ],
   });
 

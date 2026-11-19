@@ -46,11 +46,13 @@ export function getTerminalSessionSidebarActions(
     {
       id: "rename-terminal-session",
       label: "Rename",
+      systemImage: "pencil",
       onClick: () => context.openRenameTerminalSession(target),
     },
     {
       id: "delete-terminal-session",
       label: "Delete Session",
+      systemImage: "trash",
       destructive: true,
       onClick: () => context.openDeleteTerminalSession(target),
     },

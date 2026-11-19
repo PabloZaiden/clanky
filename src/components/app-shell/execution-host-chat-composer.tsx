@@ -188,6 +188,7 @@ export function ExecutionHostChatComposer({
   const headerActions = useMemo(() => [{
     id: "create-host-chat",
     label: "Create",
+    systemImage: "plus.bubble",
     onAction: () => void handleSubmit(),
     disabled: !canSubmit,
     loading: submitting,

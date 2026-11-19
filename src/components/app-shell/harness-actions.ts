@@ -15,6 +15,7 @@ export function harnessActivityActions({
   return capabilities && capabilities.activity !== "unavailable" ? [{
     id: embeddedChat ? "chat-harness-activity" : "harness-activity",
     label: embeddedChat ? "Chat activity" : "Activity",
+    systemImage: "waveform.path.ecg",
     onAction: () => onOpenActivity(route),
   }] : [];
 }

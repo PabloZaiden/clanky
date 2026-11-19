@@ -116,6 +116,7 @@ export function ExecutionHostView({
     {
       id: "run-arise",
       label: "Run Arise",
+      systemImage: "play",
       disabled: !hostUsable
         || !host.capabilities.provisioning
         || !host.capabilities.environmentLifecycle

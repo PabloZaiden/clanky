@@ -194,6 +194,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const headerActions = useMemo(() => [{
     id: "create-workspace",
     label: createActionLabel,
+    systemImage: "folder.badge.plus",
     form: workspaceCreateFormId,
     loading: createActionLoading,
     disabled: createActionDisabled,

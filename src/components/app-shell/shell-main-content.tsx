@@ -218,6 +218,7 @@ function ProvisioningJobRouteView({
       ...(!isTerminal ? [{
         id: "cancel",
         label: "Cancel",
+        systemImage: "xmark.circle",
         destructive: true,
         disabled: provisioning.loading,
         onAction: () => void provisioning.cancelJob(),
@@ -225,6 +226,7 @@ function ProvisioningJobRouteView({
       ...(status === "completed" && snapshot.job.state.workspaceId ? [{
         id: "open-workspace",
         label: "Open workspace",
+        systemImage: "folder",
         onAction: () => navigateWithinShell({
           view: "workspace",
           workspaceId: snapshot.job.state.workspaceId!,
@@ -234,6 +236,7 @@ function ProvisioningJobRouteView({
         && snapshot.job.config.mode === "arise" ? [{
           id: "open-server",
           label: "Open server",
+          systemImage: "server.rack",
           onAction: () => navigateWithinShell({
             view: "execution-host",
             hostKind: snapshot.job.config.executionHostBinding.host.kind,
@@ -243,6 +246,7 @@ function ProvisioningJobRouteView({
       ...(canRetryProvisioningJob(snapshot.job) ? [{
           id: "retry",
           label: "Retry",
+          systemImage: "arrow.clockwise",
           onAction: () => navigateWithinShell({
             view: "compose",
             kind: "workspace",
@@ -252,6 +256,7 @@ function ProvisioningJobRouteView({
       ...(isTerminal ? [{
         id: "dismiss",
         label: "Dismiss",
+        systemImage: "xmark",
         destructive: true,
         disabled: dismissing,
         onAction: () => setDismissConfirmOpen(true),
@@ -373,6 +378,7 @@ function WorkerUpdateJobRouteContent({
     return [{
       id: "dismiss",
       label: "Dismiss",
+      systemImage: "xmark",
       destructive: true,
       disabled: dismissing,
       onAction: () => setDismissConfirmOpen(true),

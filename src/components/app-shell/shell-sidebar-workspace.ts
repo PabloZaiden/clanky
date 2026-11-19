@@ -49,6 +49,7 @@ function getWorkspaceSidebarActions(
       {
         id: "new-chat",
         label: "New Chat",
+        systemImage: "plus.bubble",
         onClick: () => context.navigateWithinShell({
           view: "compose",
           kind: "chat",
@@ -58,6 +59,7 @@ function getWorkspaceSidebarActions(
       {
         id: "new-terminal-session",
         label: "New Terminal",
+        systemImage: "terminal",
         disabled: !capabilities.terminalManagement,
         onClick: () => context.navigateWithinShell({
           view: "compose",
@@ -68,6 +70,7 @@ function getWorkspaceSidebarActions(
       {
         id: "new-automation",
         label: "New Automation",
+        systemImage: "bolt",
         onClick: () => context.navigateWithinShell({
           view: "compose",
           kind: "automation",
@@ -77,6 +80,7 @@ function getWorkspaceSidebarActions(
       {
         id: "open-code-explorer",
         label: "Code Explorer",
+        systemImage: "folder",
         onClick: () => context.navigateWithinShell({
           view: "code-explorer",
           contentType: "workspace",
@@ -86,6 +90,7 @@ function getWorkspaceSidebarActions(
       ...(capabilities.webPreviews ? [{
         id: "workspace-previews",
         label: "Previews",
+        systemImage: "eye",
         onClick: () => context.navigateWithinShell({
           view: "workspace-previews",
           workspaceId,
@@ -95,6 +100,7 @@ function getWorkspaceSidebarActions(
         {
           id: "restart-workspace",
           label: "Restart",
+          systemImage: "arrow.clockwise",
           onClick: () => context.navigateWithinShell({
             view: "restart-workspace",
             workspaceId,
@@ -103,6 +109,7 @@ function getWorkspaceSidebarActions(
         {
           id: "rebuild-workspace",
           label: "Rebuild",
+          systemImage: "wrench.and.screwdriver",
           onClick: () => context.navigateWithinShell({
             view: "rebuild-workspace",
             workspaceId,
@@ -112,6 +119,7 @@ function getWorkspaceSidebarActions(
       {
         id: "workspace-settings",
         label: "Workspace Settings",
+        systemImage: "gearshape",
         onClick: () => context.navigateWithinShell({
           view: "workspace-settings",
           workspaceId,

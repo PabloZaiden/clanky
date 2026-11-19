@@ -91,11 +91,12 @@ export function ChatDetails({
   }, [onCloseActivity]);
   const workspaceId = chat && isWorkspaceChat(chat) ? getChatWorkspaceId(chat) : undefined;
   const inspectionActions = useMemo(() => isVisible ? [
-    { id: "chat-plan", label: "Plan", onAction: () => showInspection("plan") },
-    { id: "chat-diff", label: "Diff", onAction: () => showInspection("diff") },
+    { id: "chat-plan", label: "Plan", systemImage: "list.bullet.clipboard", onAction: () => showInspection("plan") },
+    { id: "chat-diff", label: "Diff", systemImage: "plus.forwardslash.minus", onAction: () => showInspection("diff") },
     ...(workspaceId ? [{
       id: "go-to-workspace",
       label: "Go to workspace",
+      systemImage: "arrow.right",
       onAction: () => replaceWebAppRoute({ view: "workspace", workspaceId }),
     }] : []),
     ...(isEmbedded ? harnessActivityActions({
