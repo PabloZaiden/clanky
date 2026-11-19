@@ -34,7 +34,8 @@ for development servers and manual experiments as well as tests; a disposable
 Keep personal, environment-specific, or otherwise non-shareable local guidance
 in `$HOME/.clanky-personal-guidance.md`, outside repository checkouts. Read it
 when present at the start of work and before environment-specific actions,
-using only the notes relevant to the current repository and execution host.
+using only the notes relevant to the current repository and task, including
+configured remote development hosts.
 
 Create or update that file when recording verified local facts, preserving
 unrelated notes. Keep it private to the user and identify which repository or

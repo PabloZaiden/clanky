@@ -26,6 +26,20 @@ unzip it, move `Clanky.app` to Applications and open it.
 The app remembers this setup and starts your controller the next time you open
 Clanky. Keep the app running while you use it from another device.
 
+To also use the bundled CLI from Terminal, choose **Clanky > Install Command
+Line Tool...**. If `clanky` is already available in your shell's PATH, nothing
+changes. Otherwise, confirm to create `~/.local/bin/clanky` as a link to the
+app's CLI, without administrator privileges. The app adds that directory to
+your zsh or bash startup file only if needed; other shells receive manual
+PATH instructions. Existing files or installations are not overwritten.
+Open a new Terminal session afterward and run `clanky version`.
+
+Keep the app in its current location: moving or deleting it breaks the link.
+Update this CLI by updating the app, not with CLI self-update. Terminal commands
+use the regular CLI configuration and data, not the app-owned controller's
+private configuration; installing the command does not connect it to that
+controller.
+
 ### From Terminal
 
 Install Clanky:

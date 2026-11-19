@@ -33,6 +33,14 @@ the relevant guide before changing its area, not every guide for unrelated work.
   duplicating them.
 - Follow [local-only information](docs/development.md#local-only-information)
   for private environment guidance and reusable processes.
+- Use development hosts recorded in private local guidance for ordinary
+  task-scoped development, investigation, builds, tests, and native UI
+  validation, not only iOS work, signing, or deployment. Existing approval,
+  isolation, credential, and publication requirements still apply.
+- Before declaring platform work blocked by the current execution host, check
+  the relevant configured development host and its availability. Running on
+  Linux alone is not a reason to leave native Mac validation pending when a
+  development Mac is configured and available.
 
 ## Validate and finish
 
