@@ -17,7 +17,7 @@ struct CommandLineToolInstaller {
 
     func inspectShell() async throws -> ShellEnvironment {
         // Login/interactive startup files, not the GUI environment, own Terminal's PATH.
-        let script = #"/usr/bin/printf '\000CLANKY_PATH\000'; /usr/bin/printenv PATH; /usr/bin/printf '\000'; /usr/bin/printenv ZDOTDIR; /usr/bin/printf '\000'"#
+        let script = #"/usr/bin/printf '\000CLANKY_PATH\000'; /usr/bin/printenv PATH; /usr/bin/printf '\000'; /usr/bin/printf '%s\n' "${ZDOTDIR-}"; /usr/bin/printf '\000'"#
         let data = try await runNativeCommand(
             shell, arguments: ["-lic", script], environment: ProcessInfo.processInfo.environment)
         guard let marker = data.range(of: Data("\0CLANKY_PATH\0".utf8)) else {
