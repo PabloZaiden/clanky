@@ -45,8 +45,7 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   const [saved, setSaved] = useState(false);
   const [themeSaved, setThemeSaved] = useState(false);
   const appearance = useAppearance();
-  const { saved: savedAppearance, preview, save: saveAppearance, pending } = appearance;
-  const [draft, setDraft] = useState(savedAppearance);
+  const { saved: savedAppearance, draft, preview, save: saveAppearance, pending } = appearance;
   const [removeOpen, setRemoveOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const themeGroupId = useId();
@@ -54,13 +53,11 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedAppearance);
   const disabled = pending || saving || importing.pending || Boolean(appearance.error);
 
-  useEffect(() => { setDraft(savedAppearance); }, [savedAppearance]);
   useEffect(() => () => preview(undefined), [preview]);
 
   function previewAppearance(value: AppearancePreference) {
     setError(undefined);
     const next = AppearancePreferenceSchema.parse(value);
-    setDraft(next);
     preview(next);
     setThemeSaved(false);
   }
@@ -150,7 +147,7 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
       content={<small role="status">Unsaved preview</small>}
       actions={<>
         <Button type="button" disabled={disabled} loading={pending} onClick={() => void applyAppearance()}>Apply theme</Button>
-        <Button type="button" disabled={disabled} onClick={() => { setDraft(savedAppearance); preview(undefined); setError(undefined); }}>Cancel preview</Button>
+        <Button type="button" disabled={disabled} onClick={() => { preview(undefined); setError(undefined); }}>Cancel preview</Button>
       </>}
     /> : null}
     <SettingsFieldRow

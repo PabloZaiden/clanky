@@ -9,6 +9,8 @@ also cancels an unapplied preview. **Reset to Clanky** previews the original
 appearance without deleting imported themes; apply it to keep the reset.
 
 Theme selections and imported themes are saved to your Clanky account.
+Saved theme and color-mode changes update open clients without reloading;
+an unapplied preview is preserved.
 Workspace-invitation browser clients without a Clanky account save them only
 in that client profile.
 

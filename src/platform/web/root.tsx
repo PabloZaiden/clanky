@@ -1,4 +1,4 @@
-import { Fragment, forwardRef, useEffect, useMemo, type ReactNode } from "react";
+import { Fragment, forwardRef, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Button,
   Panel,
@@ -7,6 +7,7 @@ import {
   replaceWebAppRoute,
   isThemePreference,
   setLogLevel,
+  useRealtimeRefresh,
   type WebAppRootController,
 } from "@pablozaiden/webapp/web";
 import { appJson, appPagePath, getWebAppClientVersion } from "./api-client";
@@ -19,6 +20,7 @@ import { WebAppConfigProvider, useWebAppConfig } from "./webapp-config";
 import type { ThemePreference } from "../contracts";
 import { useSidebarPinProvider } from "@/hooks/useSidebarPinProvider";
 import { AppearanceProvider } from "./appearance-context";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 
 function pagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -26,6 +28,14 @@ function pagePath(path: string): string {
 
 function useAccountTheme() {
   const { config } = useWebAppConfig();
+  const [revision, setRevision] = useState(0);
+  useRealtimeRefresh({
+    enabled: Boolean(config?.currentUser),
+    resources: [CLANKY_REALTIME_RESOURCES.theme],
+    refresh: () => { setRevision(current => current + 1); },
+    deps: [config?.currentUser?.id],
+  });
+  // Replacing the adapter makes ThemeProvider reload without remounting the shell.
   return useMemo(() => config?.currentUser ? {
     async load() {
       const response = await appJson<{ theme: unknown }>("/api/preferences/theme");
@@ -35,7 +45,7 @@ function useAccountTheme() {
     async save(preference: ThemePreference) {
       await appJson("/api/preferences/theme", { method: "PUT", body: JSON.stringify({ theme: preference }) });
     },
-  } : undefined, [config?.currentUser?.id]);
+  } : undefined, [config?.currentUser?.id, revision]);
 }
 
 function ClankyApplicationContent({ children }: { children: ReactNode }) {

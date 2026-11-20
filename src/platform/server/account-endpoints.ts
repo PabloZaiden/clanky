@@ -74,6 +74,7 @@ import { scheduleProcessShutdown } from "@pablozaiden/webapp/server";
 import { defineRoutes, type RouteContext } from "./routes";
 import { createAccountRoutes } from "./account-routes";
 import { AppearancePreferenceSchema, DEFAULT_APPEARANCE } from "@/contracts/schemas/appearance";
+import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 
 const MAX_API_KEY_AUTH_BODY_BYTES = 4 * 1024;
 const MAX_PASSWORD_AUTH_BODY_BYTES = 16 * 1024;
@@ -192,6 +193,7 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
       async PUT(req, context) {
         const body = await parseJson(req, themePreferenceRequestSchema);
         store.setThemePreference(body.theme, context.requireUser().id);
+        context.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.theme);
         return successResponse({ theme: body.theme });
       },
     },
@@ -209,6 +211,7 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
       async PUT(req, context) {
         const appearance = await parseJson(req, AppearancePreferenceSchema);
         store.setPreference("appearance", JSON.stringify(appearance), context.requireUser().id);
+        context.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.appearance);
         return successResponse(appearance);
       },
     },
