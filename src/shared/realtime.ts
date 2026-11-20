@@ -34,6 +34,8 @@ export const CLANKY_REALTIME_RESOURCES = {
   translationSettings: "translation-settings",
   promptTemplates: PROMPT_TEMPLATES_REALTIME_RESOURCE,
   sidebarPins: "sidebar-pins",
+  theme: "theme",
+  appearance: "appearance",
 } as const;
 
 export type ClankyRealtimeResource = typeof CLANKY_REALTIME_RESOURCES[keyof typeof CLANKY_REALTIME_RESOURCES];
