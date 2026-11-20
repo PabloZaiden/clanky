@@ -1,4 +1,4 @@
-import { Fragment, forwardRef, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, forwardRef, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Button,
   Panel,
@@ -29,10 +29,14 @@ function pagePath(path: string): string {
 function useAccountTheme() {
   const { config } = useWebAppConfig();
   const [revision, setRevision] = useState(0);
+  const saveRequest = useRef<Promise<void> | undefined>(undefined);
   useRealtimeRefresh({
     enabled: Boolean(config?.currentUser),
     resources: [CLANKY_REALTIME_RESOURCES.theme],
-    refresh: () => { setRevision(current => current + 1); },
+    refresh: async (_event, signal) => {
+      if (saveRequest.current) await Promise.allSettled([saveRequest.current]);
+      if (!signal?.aborted) setRevision(current => current + 1);
+    },
     deps: [config?.currentUser?.id],
   });
   // Replacing the adapter makes ThemeProvider reload without remounting the shell.
@@ -42,8 +46,11 @@ function useAccountTheme() {
       if (!isThemePreference(response.theme)) throw new Error("Theme preference response was invalid.");
       return response.theme;
     },
-    async save(preference: ThemePreference) {
-      await appJson("/api/preferences/theme", { method: "PUT", body: JSON.stringify({ theme: preference }) });
+    save(preference: ThemePreference) {
+      const request = appJson("/api/preferences/theme", { method: "PUT", body: JSON.stringify({ theme: preference }) }).then(() => undefined);
+      // ThemeProvider awaits this same promise, committing before refresh resumes.
+      saveRequest.current = request;
+      return request;
     },
   } : undefined, [config?.currentUser?.id, revision]);
 }

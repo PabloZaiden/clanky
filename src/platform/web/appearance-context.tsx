@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ThemeStyles, useAsyncOperation, useRealtimeRefresh } from "@pablozaiden/webapp/web";
 import { AppearancePreferenceSchema, DEFAULT_APPEARANCE, type AppearancePreference } from "@/contracts/schemas/appearance";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
@@ -23,6 +23,7 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
   const [saved, setSaved] = useState(DEFAULT_APPEARANCE);
   const [preview, setPreview] = useState<AppearancePreference>();
   const [error, setError] = useState<Error>();
+  const saveRequest = useRef<Promise<unknown> | undefined>(undefined);
   const { pending, start, finish, isCurrent } = useAsyncOperation({ initialPending: true });
   const key = clientScopedStorageKey("clanky.appearance");
 
@@ -54,13 +55,17 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
   useRealtimeRefresh({
     enabled: accountBacked,
     resources: [CLANKY_REALTIME_RESOURCES.appearance],
-    refresh: (_event, signal) => retry(signal),
+    refresh: async (_event, signal) => {
+      // The save caller reports failures; wait for its reconciliation before reading.
+      if (saveRequest.current) await Promise.allSettled([saveRequest.current]);
+      if (!signal?.aborted) await retry(signal);
+    },
     onError: setError,
     deps: [accountBacked, key],
   });
   useEffect(() => {
-    setPreview(current => current && JSON.stringify(current) === JSON.stringify(saved) ? undefined : current);
-  }, [saved]);
+    if (preview && JSON.stringify(preview) === JSON.stringify(saved)) setPreview(undefined);
+  }, [saved, preview]);
 
   const save = useCallback(async (value: AppearancePreference) => {
     if (error) throw error;
@@ -70,7 +75,9 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
     setError(undefined);
     try {
       if (accountBacked) {
-        await appJson("/api/preferences/appearance", { method: "PUT", body: JSON.stringify(next) });
+        const request = appJson("/api/preferences/appearance", { method: "PUT", body: JSON.stringify(next) });
+        saveRequest.current = request;
+        await request;
       } else {
         const result = writeStorage(key, JSON.stringify(next));
         if (!result.ok) throw result.error;
