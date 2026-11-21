@@ -1,34 +1,66 @@
-import { themeStyleSchema, type ThemeStyle, type ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
+import { generate, parse, tokenize, tokenTypes } from "css-tree";
+import { THEME_STYLE_TOKENS, themeStyleSchema, type ThemeStyle, type ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
 import { CustomThemeSchema, type CustomTheme } from "@/contracts/schemas/appearance";
 import type { AppearanceTheme } from "./appearance-themes";
 
-const themeNameComment = /\/\*\s*Clanky (?:CSS )?theme:\s*([^\r\n]*?)\s*\*\//i;
+const themeNameComment = /^Clanky (CSS )?theme:/i;
 
-function readLegacyExport(css: string): ThemeStyle | undefined {
-  // The old exporter used :root for light-only overrides. Recognize its format
-  // so partial palettes retain that behavior without interpreting arbitrary CSS.
-  const match = /^\/\* Clanky theme: [^\r\n]* \*\/\n\n:root \{\n([\s\S]*?)\n\}\n\n:root\.dark \{\n([\s\S]*?)\n\}\n?$/.exec(css.replaceAll("\r\n", "\n"));
-  if (!match) return;
-  function tokens(block: string): Record<string, string> | undefined {
-    const values: Record<string, string> = {};
-    for (const line of block ? block.split("\n") : []) {
-      const entry = /^ {2}(--[\w-]+): ([^;]+);$/.exec(line);
-      if (!entry) return;
-      values[entry[1]!] = entry[2]!;
+function inspectThemeSource(css: string) {
+  let name: string | undefined;
+  let standardCss = false;
+  let blocks = 0;
+  let nestedSyntax = false;
+  tokenize(css, (type, start, end) => {
+    if (type === tokenTypes.LeftCurlyBracket) blocks++;
+    if (type === tokenTypes.Function || type === tokenTypes.LeftParenthesis || type === tokenTypes.LeftSquareBracket) {
+      nestedSyntax = true;
     }
-    return values;
+    if (type !== tokenTypes.Comment || standardCss || css.slice(end - 2, end) !== "*/") return;
+    const comment = css.slice(start + 2, end - 2).trim();
+    const match = themeNameComment.exec(comment);
+    if (!match) return;
+    const title = comment.slice(match[0].length).trim();
+    if (/[\r\n]/.test(title)) return;
+    standardCss = Boolean(match[1]);
+    if (name === undefined || standardCss) name = title;
+  });
+  return { name, possibleLegacy: !standardCss && blocks === 2 && !nestedSyntax };
+}
+
+function readLegacyPalette(css: string): ThemeStyle | undefined {
+  let parseError = false;
+  const stylesheet = parse(css, {
+    parseCustomProperty: true,
+    onParseError() { parseError = true; },
+  });
+  if (parseError || stylesheet.type !== "StyleSheet") return;
+  const palettes = new Map<string, ThemeStyleTokens>();
+  for (const rule of stylesheet.children) {
+    if (rule.type !== "Rule" || !rule.prelude) return;
+    const selector = generate(rule.prelude);
+    if ((selector !== ":root" && selector !== ":root.dark") || palettes.has(selector)) return;
+    const tokens: ThemeStyleTokens = {};
+    for (const declaration of rule.block.children) {
+      if (declaration.type !== "Declaration" || declaration.important) return;
+      const name = THEME_STYLE_TOKENS.find(token => token === declaration.property);
+      if (!name || Object.hasOwn(tokens, name)) return;
+      tokens[name] = generate(declaration.value).trim();
+    }
+    palettes.set(selector, tokens);
   }
-  const style = themeStyleSchema.safeParse({ light: tokens(match[1]!), dark: tokens(match[2]!) });
+  const style = themeStyleSchema.safeParse({ light: palettes.get(":root"), dark: palettes.get(":root.dark") });
   return style.success ? style.data : undefined;
 }
 
 export async function readThemeFile(file: File): Promise<CustomTheme> {
   const css = await file.text();
-  const name = css.match(themeNameComment)?.[1]
-    ?? file.name.replace(/(?:\.clanky-theme)?\.css$/i, "");
-  const style = readLegacyExport(css);
+  const { name, possibleLegacy } = inspectThemeSource(css);
+  // Only past palette files need parsing; every other stylesheet goes straight to the browser.
+  const style = possibleLegacy ? readLegacyPalette(css) : undefined;
   const result = CustomThemeSchema.safeParse({
-    id: crypto.randomUUID(), name, ...(style ? { style } : { css }),
+    id: crypto.randomUUID(),
+    name: name ?? file.name.replace(/(?:\.clanky-theme)?\.css$/i, ""),
+    ...(style ? { style } : { css }),
   });
   if (!result.success) throw new Error(result.error.issues.map((issue) => issue.message).join(" "));
   return result.data;
@@ -36,7 +68,7 @@ export async function readThemeFile(file: File): Promise<CustomTheme> {
 
 export function themeFileContents(theme: AppearanceTheme): string {
   if (theme.css !== undefined) {
-    return themeNameComment.test(theme.css) ? theme.css : `/* Clanky CSS theme: ${theme.name} */\n\n${theme.css}`;
+    return inspectThemeSource(theme.css).name !== undefined ? theme.css : `/* Clanky CSS theme: ${theme.name} */\n\n${theme.css}`;
   }
   const style: ThemeStyle = themeStyleSchema.parse(theme.style ?? { light: {}, dark: {} });
   const block = (selector: string, tokens: ThemeStyleTokens) =>

@@ -100,14 +100,19 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
   const css = theme?.css;
   useLayoutEffect(() => {
     if (!css) return;
+    const root = document.documentElement;
     const sheet = document.createElement("style");
     sheet.textContent = css;
     document.head.append(sheet);
-    return () => sheet.remove();
+    root.setAttribute("data-wapp-themed", "");
+    return () => {
+      sheet.remove();
+      root.removeAttribute("data-wapp-themed");
+    };
   }, [css]);
 
   return <AppearanceContext.Provider value={state}>
-    <ThemeStyles theme={theme?.style} />
+    {css === undefined ? <ThemeStyles theme={theme?.style} /> : null}
     {children}
   </AppearanceContext.Provider>;
 }

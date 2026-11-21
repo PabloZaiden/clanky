@@ -28,6 +28,11 @@ web interface, including the web content in the Apple apps, but not native
 controls or the contents of sandboxed chat artifacts. Themes are CSS, not
 JavaScript, and the browser applies its ordinary resource policies.
 
+Older token-only palettes retain their light and dark behavior. If a
+stylesheet containing only `:root` and `:root.dark` token declarations should
+use normal CSS cascade rules instead, add the `Clanky CSS theme:` comment shown
+below.
+
 For example:
 
 ```css
