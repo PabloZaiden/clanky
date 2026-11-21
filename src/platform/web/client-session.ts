@@ -5,6 +5,7 @@ import {
 } from "./client-credentials";
 import { readStorage, writeStorage } from "./storage";
 import { recordClientSessionDiagnostic, startClientSessionDiagnostics } from "./client-session-diagnostics";
+import { beginPerformanceSpan, performanceFailure } from "./performance-stats";
 import { DEMO_CONTROLLER_ENDPOINT, isDemoControllerEndpoint, startDemoStorage } from "@/client-sdk/demo/storage";
 import { startDemoController, stopDemoController } from "@/client-sdk/demo/controller";
 
@@ -135,17 +136,20 @@ export async function initializeClientSession(): Promise<void> {
   hydration ??= (async () => {
     const endpoint = state.endpoint;
     const generation = state.generation;
+    const end = beginPerformanceSpan("session-restore");
     try {
       const saved = endpoint
         ? await (window.clankyClientCredentialLock && store === browserClientCredentialStore
           ? withClientCredentialLock(endpoint, () => readClientCredentials(store, endpoint), undefined, store)
           : readClientCredentials(store, endpoint))
         : undefined;
+      end?.(state.generation === generation ? "ok" : "aborted");
       if (state.generation !== generation) return;
       credentials = saved;
       recordClientSessionDiagnostic(saved ? "restored" : "credentials-missing");
       update({ ready: true, authenticated: saved !== undefined, error: undefined });
     } catch (error) {
+      end?.(performanceFailure(error));
       recordClientSessionDiagnostic("restore-failed", { reason: "storage-error" });
       if (state.generation === generation) update({
         ready: true, error: error instanceof Error ? error : new Error(String(error)),
@@ -277,6 +281,7 @@ export async function clientAccessToken(rejectedToken?: string): Promise<string>
 
 async function refreshSession(previous: WebAppClientCredentials): Promise<string> {
   recordClientSessionDiagnostic("refresh-started");
+  const end = beginPerformanceSpan("token-refresh");
   const generation = state.generation;
   const renew = async () => {
     const saved = await readClientCredentials(store, previous.baseUrl);
@@ -298,8 +303,11 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
     return next.accessToken;
   };
   try {
-    return await withClientCredentialLock(previous.baseUrl, renew, undefined, store);
+    const token = await withClientCredentialLock(previous.baseUrl, renew, undefined, store);
+    end?.("ok");
+    return token;
   } catch (error) {
+    end?.(performanceFailure(error), error instanceof ClientAuthorizationError ? error.status : undefined);
     const diagnostic = error instanceof ClientAuthorizationError
       ? error.code === "session_changed"
         ? { reason: "session-changed" as const }

@@ -8,6 +8,7 @@ import {
   createLogger,
   getWebAppClientBootstrap,
   getWebAppClientMode,
+  getWebAppClientVersion,
   initializeWebAppTheme,
 } from "@pablozaiden/webapp/web";
 import { getClientSession, getClientStorageScope, subscribeClientSession } from "@/platform/web/client-session";
@@ -15,6 +16,7 @@ import { getDemoStorage } from "./demo/storage";
 import { DomainError } from "../domain/domain-error";
 import { BrowserCollaborationClient } from "./collaboration/browser";
 import { configureClientRuntime } from "./public-path";
+import { initializePerformanceStats } from "@/platform/web/performance-stats";
 
 const log = createLogger("browser-runtime");
 let client: BrowserCollaborationClient | undefined;
@@ -31,6 +33,7 @@ export function getBrowserCollaborationClient(): BrowserCollaborationClient | un
 
 export async function initializeClankyClient(): Promise<void> {
   configureClientRuntime(getWebAppClientBootstrap());
+  initializePerformanceStats(getWebAppClientMode(), getWebAppClientVersion());
   const browserAdapter = createBrowserPreferenceAdapter();
   const configurePreferences = () => configureWebAppPreferences({
     adapter: getClientSession().demo ? getDemoStorage() : browserAdapter,

@@ -16,6 +16,7 @@ import { RemoteClientSettings } from "../remote-client";
 import { AppearanceSection } from "./appearance-section";
 import { PrivacyPolicyLink } from "../privacy-policy-link";
 import type { WebAppExternalSession } from "@pablozaiden/webapp/web";
+import { PerformanceStatsSettings } from "../performance-stats-panel";
 
 export type { SettingsAction, SettingsRow, SettingsSection } from "../root-types";
 
@@ -87,6 +88,7 @@ export function SettingsView({ config, external, appName, version, refresh, cust
         {selected === "maintenance" && config ? <ShutdownSection config={config} setError={setError} /> : null}
         {selected === "about" ? <>
           <FormSection title="Version"><span>{appName ?? config?.appName} {version ?? config?.version}</span></FormSection>
+          {config?.currentUser ? <PerformanceStatsSettings version={version ?? config.version} /> : null}
           <PrivacyPolicyLink />
         </> : null}
       </div>

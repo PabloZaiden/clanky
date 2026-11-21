@@ -52,6 +52,7 @@ import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-s
 import type { ControlUiActionOutcome } from "@/shared/clanky-control";
 import type { PendingControlFileOpen } from "./use-control-ui-actions";
 import { useWorkspaceReadOnly } from "../../context/workspace-access-context";
+import { usePerformanceContent } from "@/platform/web/use-performance-content";
 
 export interface ShellMainContentProps {
   trashActions: ChatTrashActions;
@@ -831,8 +832,14 @@ function usesFullViewportLayout(props: ShellMainContentProps): boolean {
     || props.route.view === "execution-host-files";
 }
 
+function homeChatRevision(chats: Chat[]): string {
+  return chats.map(({ config, state }) => `${config.id}:${state.revision}`).join(",");
+}
+
 export function AppRouteContent(props: ShellMainContentProps) {
   const readOnly = useWorkspaceReadOnly();
+  usePerformanceContent("home", props.route.view === "home" && !props.shellLoading && !props.missingRouteTarget
+    && props.shellErrors.length === 0, props.chats, homeChatRevision);
   if (readOnly && ["compose", "terminal", "workspace-previews", "workspace-settings", "restart-workspace", "rebuild-workspace"].includes(props.route.view)) {
     return <Page><ErrorState title="Read-only workspace" description="This action requires work access." /></Page>;
   }

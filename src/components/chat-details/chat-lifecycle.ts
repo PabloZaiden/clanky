@@ -53,7 +53,7 @@ function mergeOperationalChatSnapshot(current: Chat | null, incoming: Chat): Cha
   });
 }
 
-export function useChatLifecycle(chatId: string): ChatLifecycleResult {
+export function useChatLifecycle(chatId: string, performanceDiagnostics: boolean): ChatLifecycleResult {
   const toast = useToast();
   const resourceState = useChatResourceState(chatId);
   const [isContinuingFromHistory, setIsContinuingFromHistory] = useState(false);
@@ -64,6 +64,7 @@ export function useChatLifecycle(chatId: string): ChatLifecycleResult {
     resourceId: chatId,
     resourceLabel: "chat",
     stream: "chat",
+    performanceDiagnostics,
     baseUrl: `/api/chats/${encodeURIComponent(chatId)}`,
     metadataUrl: `/api/chats/${encodeURIComponent(chatId)}`,
     resourceState,

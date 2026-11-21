@@ -20,6 +20,7 @@ import { markStreamingText } from "../lib/streaming-text";
 import { toTranscriptStreamEvent } from "./transcript-event-adapter";
 import { useTranscriptToolDetails } from "./useTranscriptToolDetails";
 import type { TranscriptResourceChange } from "@/shared/realtime";
+import { isPerformanceCaptureEnabled, notePerformanceChatSnapshot } from "@/platform/web/performance-stats";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -29,6 +30,7 @@ export interface TranscriptResourceSnapshot<TResource> {
 interface TranscriptSyncSnapshot<TResource> extends TranscriptResourceSnapshot<TResource> {
   replacesHistory: boolean;
   expandedWindow: boolean;
+  requestStarted?: number;
 }
 
 export interface TranscriptResourceState<TResource> {
@@ -44,6 +46,7 @@ export interface UseTranscriptResourceOptions<TResource, TSnapshot> {
   baseUrl: string;
   metadataUrl?: string;
   initialResource?: TResource | null;
+  performanceDiagnostics?: boolean;
   resourceState?: TranscriptResourceState<TResource>;
   decodeSnapshot: (snapshot: TSnapshot) => TranscriptResourceSnapshot<TResource>;
   mergeResource?: (current: TResource | null, incoming: TResource) => TResource;
@@ -228,6 +231,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
     let committedTranscript: ChatTranscript | undefined;
     const owner = createVersionedSyncController<TranscriptSyncSnapshot<TResource> | null, ContentEvent>({
       load: async ({ signal }) => {
+        const requestStarted = settings.current.performanceDiagnostics && isPerformanceCaptureEnabled() ? performance.now() : undefined;
         const window: TranscriptSnapshotOptions = windowRef.current.full ? { full: true } : historyRef.current
           ? historyRef.current.nextCursor ? { since: historyRef.current.nextCursor } : { full: true }
           : {};
@@ -245,6 +249,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
             ...decoded,
             replacesHistory: Boolean(window.full || window.since),
             expandedWindow: Boolean(window.full || window.since),
+            requestStarted,
           },
         };
       },
@@ -266,6 +271,11 @@ export function useTranscriptResource<TResource, TSnapshot>(
         setError(null);
         if (committedResource !== snapshot.resource) {
           committedResource = snapshot.resource;
+          if (snapshot.requestStarted !== undefined && committedTranscript) {
+            const previous = committedTranscript.position;
+            const next = snapshot.transcript.position;
+            notePerformanceChatSnapshot(previous.epoch !== next.epoch || previous.revision !== next.revision, snapshot.requestStarted);
+          }
           setMetadataError(null);
           setResource((current) => settings.current.mergeResource?.(current, snapshot.resource) ?? snapshot.resource);
         }

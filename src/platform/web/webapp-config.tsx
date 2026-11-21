@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { VALID_LOG_LEVELS, type WebAppConfigResponse } from "@/platform/contracts";
-import { appJson, getWebAppExternalClient, isWebAppPublicBasePath, onAuthRequired, setWebAppPublicBasePath } from "./api-client";
+import { appJson, getWebAppExternalClient, isWebAppPublicBasePath, onAuthRequired, setClankyRealtimePath, setWebAppPublicBasePath } from "./api-client";
 import { getClientSession } from "./client-session";
-import { configureWebAppClient, validateExternalSession, type WebAppExternalClient, type WebAppExternalSession } from "@pablozaiden/webapp/web";
+import { validateExternalSession, type WebAppExternalClient, type WebAppExternalSession } from "@pablozaiden/webapp/web";
 import { setClankyClientIdentity } from "./runtime";
 
 export interface WebAppConfigState {
@@ -111,7 +111,7 @@ function ServerWebAppConfigProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (!getClientSession().enabled) setWebAppPublicBasePath(response.publicBasePath);
-      configureWebAppClient({ realtimePath: response.realtime.path });
+      setClankyRealtimePath(response.realtime.path);
       setClankyClientIdentity(response.currentUser?.id, response.logLevel.level);
       setConfig(response);
     } catch (value) {

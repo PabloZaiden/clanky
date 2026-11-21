@@ -1,6 +1,7 @@
 import {
   appJson,
   appPath,
+  appWebSocketConnection,
   appWebSocketUrl,
   configureWebAppClient,
   createLogger,
@@ -23,6 +24,8 @@ import {
 import { clankyClientRuntime } from "./runtime";
 import { getDemoController } from "@/client-sdk/demo/controller";
 import { resetNativePreviews } from "./native-previews";
+import { measurePerformanceRequest } from "./performance-stats";
+import { measureRealtimeConnection } from "./performance-realtime";
 
 export {
   appAbsoluteUrl,
@@ -49,6 +52,12 @@ export {
 } from "@pablozaiden/webapp/web";
 
 const authRequiredListeners = new Set<() => void>();
+let realtimePath = "/api/ws";
+
+export function setClankyRealtimePath(path: string): void {
+  realtimePath = path;
+  configureWebAppClient({ realtimePath: path });
+}
 
 export function onAuthRequired(listener: () => void): () => void {
   authRequiredListeners.add(listener);
@@ -100,7 +109,8 @@ async function authenticatedRequest(request: Request): Promise<Response> {
 }
 
 async function request(request: Request): Promise<Response> {
-  const response = await authenticatedRequest(request);
+  const response = getClientSession().demo ? await authenticatedRequest(request)
+    : await measurePerformanceRequest(request, authenticatedRequest);
   if (response.headers.get("x-webapp-passkey-required") === "true"
     || response.headers.get("x-passkey-auth-required") === "true") {
     for (const listener of authRequiredListeners) listener();
@@ -159,19 +169,23 @@ export function configureClankyClient(
     mode,
     runtime: clankyClientRuntime,
     request,
-    ...(getClientSession().enabled ? {
-      apiBaseUrl: getClientSession().endpoint,
-      resourceUrl,
-      connect: async (path: string, options: { signal?: AbortSignal }) => {
-        if (getClientSession().demo) {
-          const demo = getDemoController();
-          if (!demo) throw new Error("Demo session has ended. Reload to reconnect.");
-          return await demo.connect(path, options);
-        }
+    connect: async (path, options) => {
+      if (getClientSession().demo) {
+        const demo = getDemoController();
+        if (!demo) throw new Error("Demo session has ended. Reload to reconnect.");
+        return await demo.connect(path, options);
+      }
+      const connect = async () => {
+        if (!getClientSession().enabled) return nativeWebAppDuplex(await appWebSocketConnection(path, options), options.signal);
         const resource = await resourceUrl(path, { ...options, kind: "websocket" });
         options.signal?.throwIfAborted();
         return nativeWebAppDuplex(new WebSocket(resource.url), options.signal);
-      },
+      };
+      return path === realtimePath ? await measureRealtimeConnection(connect, options.signal) : await connect();
+    },
+    ...(getClientSession().enabled ? {
+      apiBaseUrl: getClientSession().endpoint,
+      resourceUrl,
     } : {}),
   });
 }
