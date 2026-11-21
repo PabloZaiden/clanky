@@ -173,3 +173,27 @@ Use **Activity** to follow background work and **Diff** to review results.
 Set up **Automations** for recurring tasks. If you use
 [Listen](control-chats.md#agent-notifications), choose the alerts you want under
 **Settings > Agents & integrations > Notifications**.
+
+## Compare client performance
+
+In **Settings > About > Performance Stats**, enable **Capture performance**.
+Capture stays enabled after reload; the timeline is kept only in the current
+page. **Hide** closes the floating panel without stopping capture. Use
+**Export JSON** before reloading again or turning capture off.
+
+For a comparison, use the same Clanky build, controller, and chat on both
+clients. After opting in, reload or relaunch each client, then leave the
+chat in the background for the same interval. Create a transcript update
+from another client while it is hidden, return, and export one capture from
+each client. Repeat without an update for a baseline. Note the client and
+network conditions separately; the JSON does not include server addresses,
+account identifiers, chat content, or credentials.
+
+Startup ends when Home or the active chat has had a chance to paint. Foreground
+realtime confirmation and the first observed visible update are separate
+measurements. A reused connection is confirmed by existing WebSocket traffic;
+confirmation can include waiting for the next scheduled heartbeat. An unchanged
+chat snapshot means a read completed without a new transcript position. If no
+confirmation or update is observed, don't treat its absence as zero latency.
+HTTP wait includes server and network time; WebSocket RTT is round-trip time,
+not one-way latency.

@@ -21,6 +21,7 @@ import type { ThemePreference } from "../contracts";
 import { useSidebarPinProvider } from "@/hooks/useSidebarPinProvider";
 import { AppearanceProvider } from "./appearance-context";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
+import { PerformanceStatsPanel } from "./performance-stats-panel";
 
 function pagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -92,7 +93,10 @@ function ClankyApplicationContent({ children }: { children: ReactNode }) {
   }
   const identity = config?.currentUser?.id ?? `${external?.scope ?? ""}:${external?.generation ?? 0}`;
   return <Fragment key={identity}>
-    <AppearanceProvider accountBacked={Boolean(config?.currentUser)}>{children}</AppearanceProvider>
+    <AppearanceProvider accountBacked={Boolean(config?.currentUser)}>
+      {children}
+      {config?.currentUser ? <PerformanceStatsPanel version={config.version} /> : null}
+    </AppearanceProvider>
   </Fragment>;
 }
 

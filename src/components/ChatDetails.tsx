@@ -20,11 +20,17 @@ import { harnessActivityActions } from "./app-shell/harness-actions";
 import { ChatDiffView, ChatPlanView } from "./chat-details/chat-inspection";
 import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
+import { usePerformanceContent } from "@/platform/web/use-performance-content";
+import type { StreamPosition } from "@/shared/stream-position";
 import { useLiveVoiceBusy } from "../lib/voice-audio-ownership";
 import { useWorkspaceReadOnly } from "../context/workspace-access-context";
 import {
   useVoicePlayback,
 } from "../hooks";
+
+function transcriptPositionRevision(position: StreamPosition): string {
+  return `${position.epoch}:${position.revision}`;
+}
 
 export function ChatDetails({
   chatId,
@@ -73,7 +79,9 @@ export function ChatDetails({
     markChatStarting,
     handleContinueFromHistory,
     isContinuingFromHistory,
-  } = useChatLifecycle(chatId);
+  } = useChatLifecycle(chatId, !isEmbedded);
+  usePerformanceContent("chat", !isEmbedded && isVisible !== false && contentView === "conversation"
+    && Boolean(chat && transcript.revision) && !showActivity, transcript.position, transcriptPositionRevision);
   useEffect(() => {
     if (!isEmbedded && notFound) {
       onMissingEntity?.();

@@ -801,6 +801,7 @@ function renderMainContent(props: ShellMainContentProps) {
 
   return (
     <OverviewView
+      measurePerformance={route.view === "home" && props.shellErrors.length === 0}
       executionHosts={executionHosts}
       executionHostNodes={executionHostNodes}
       automations={automations.automations}

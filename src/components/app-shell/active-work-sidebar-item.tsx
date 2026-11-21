@@ -70,7 +70,7 @@ export function ActiveWorkMetadata({
   return (
     <span className="clanky-sidebar-item-metadata">
       {relativeTime ? (
-        <small className="clanky-sidebar-item-age">{relativeTime}</small>
+        <small className="clanky-sidebar-item-age"><time dateTime={lastInteractionAt}>{relativeTime}</time></small>
       ) : null}
       <span className="ml-auto inline-flex shrink-0 items-center gap-1">
         <small className="clanky-sidebar-item-type">{itemType}</small>
