@@ -1,6 +1,5 @@
 import { generate, parse, tokenize, tokenTypes } from "css-tree";
 import { THEME_STYLE_TOKENS, themeStyleSchema, type ThemeStyle, type ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
-import { CustomThemeSchema, type CustomTheme } from "@/contracts/schemas/appearance";
 import type { AppearanceTheme } from "./appearance-themes";
 
 const themeNameComment = /^Clanky (CSS )?theme:/i;
@@ -52,18 +51,22 @@ function readLegacyPalette(css: string): ThemeStyle | undefined {
   return style.success ? style.data : undefined;
 }
 
-export async function readThemeFile(file: File): Promise<CustomTheme> {
+function paletteContents(style: ThemeStyle, lightSelector: string): string {
+  const block = (selector: string, tokens: ThemeStyleTokens) =>
+    `${selector} {\n${Object.entries(tokens).map(([name, value]) => `  ${name}: ${value};`).join("\n")}\n}`;
+  return `${block(lightSelector, style.light)}\n\n${block(":root.dark", style.dark)}\n`;
+}
+
+export async function readThemeCss(file: File): Promise<string> {
   const css = await file.text();
-  const { name, possibleLegacy } = inspectThemeSource(css);
+  const { possibleLegacy } = inspectThemeSource(css);
   // Only past palette files need parsing; every other stylesheet goes straight to the browser.
   const style = possibleLegacy ? readLegacyPalette(css) : undefined;
-  const result = CustomThemeSchema.safeParse({
-    id: crypto.randomUUID(),
-    name: name ?? file.name.replace(/(?:\.clanky-theme)?\.css$/i, ""),
-    ...(style ? { style } : { css }),
-  });
-  if (!result.success) throw new Error(result.error.issues.map((issue) => issue.message).join(" "));
-  return result.data;
+  return style ? paletteContents(style, ":root:not(.dark)") : css;
+}
+
+export function editableThemeCss(theme: AppearanceTheme): string {
+  return theme.css ?? (theme.style ? paletteContents(theme.style, ":root:not(.dark)") : "");
 }
 
 export function themeFileContents(theme: AppearanceTheme): string {
@@ -71,7 +74,5 @@ export function themeFileContents(theme: AppearanceTheme): string {
     return inspectThemeSource(theme.css).name !== undefined ? theme.css : `/* Clanky CSS theme: ${theme.name} */\n\n${theme.css}`;
   }
   const style: ThemeStyle = themeStyleSchema.parse(theme.style ?? { light: {}, dark: {} });
-  const block = (selector: string, tokens: ThemeStyleTokens) =>
-    `${selector} {\n${Object.entries(tokens).map(([name, value]) => `  ${name}: ${value};`).join("\n")}\n}`;
-  return `/* Clanky theme: ${theme.name} */\n\n${block(":root", style.light)}\n\n${block(":root.dark", style.dark)}\n`;
+  return `/* Clanky theme: ${theme.name} */\n\n${paletteContents(style, ":root")}`;
 }

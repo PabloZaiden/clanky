@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
-import { useAsyncOperation } from "@pablozaiden/webapp/web";
-import { Button, ConfirmDialog, ErrorState, FormSection, Select } from "@pablozaiden/webapp/web";
-import { isThemePreference, useTheme } from "@pablozaiden/webapp/web";
-import { SettingsFieldRow } from "@pablozaiden/webapp/web";
-import { AppearancePreferenceSchema, SAFE_THEME_PARAMETER, type AppearancePreference } from "@/contracts/schemas/appearance";
+import {
+  Button, ConfirmDialog, ErrorState, FormSection, Modal, Select, SettingsFieldRow, TextAreaField, TextField,
+  isThemePreference, useAsyncOperation, useTheme,
+} from "@pablozaiden/webapp/web";
+import { AppearancePreferenceSchema, CUSTOM_THEME_ID, SAFE_THEME_PARAMETER, type AppearancePreference } from "@/contracts/schemas/appearance";
 import { CodeIcon } from "@/components/common/Icons";
 import { useAppearance } from "../appearance-context";
-import { appearanceThemes, isCustomTheme, selectedAppearanceTheme, type AppearanceTheme } from "../appearance-themes";
-import { readThemeFile, themeFileContents } from "../theme-file";
+import { appearanceThemes, selectedAppearanceTheme, type AppearanceTheme } from "../appearance-themes";
+import { editableThemeCss, readThemeCss, themeFileContents } from "../theme-file";
 import { downloadGeneratedFile } from "../download-generated-file";
 
 function ThemePreview({ theme, dark }: { theme: AppearanceTheme; dark: boolean }) {
@@ -48,14 +48,18 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   const { preference, resolvedTheme, savePreference, loading, error, retry } = useTheme();
   const { pending: saving, start, finish, isCurrent } = useAsyncOperation({ abortOnUnmount: false });
   const importing = useAsyncOperation();
-  const [saved, setSaved] = useState(false);
-  const [themeSaved, setThemeSaved] = useState(false);
   const appearance = useAppearance();
   const { saved: savedAppearance, draft, safeTheme, preview, save: saveAppearance, pending } = appearance;
+  const [editor, setEditor] = useState<string>();
+  const [themeName, setThemeName] = useState<string>();
+  const [nameError, setNameError] = useState<string>();
   const [removeOpen, setRemoveOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const themeGroupId = useId();
+  const nameFormId = useId();
   const selected = selectedAppearanceTheme(draft);
+  const isCustom = selected.id === CUSTOM_THEME_ID;
+  const isNamed = draft.customThemes.some(({ id }) => id === selected.id);
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedAppearance);
   const disabled = pending || saving || importing.pending || Boolean(appearance.error);
 
@@ -63,19 +67,42 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
 
   function previewAppearance(value: AppearancePreference) {
     setError(undefined);
-    const next = AppearancePreferenceSchema.parse(value);
-    preview(next);
-    setThemeSaved(false);
+    preview(value);
   }
 
-  async function applyAppearance(value = draft) {
+  function previewCustom(css: string) {
+    previewAppearance({ ...draft, selected: CUSTOM_THEME_ID, customCss: css });
+  }
+
+  async function applyAppearance() {
     setError(undefined);
-    setThemeSaved(false);
     try {
-      await saveAppearance(value);
-      setThemeSaved(true);
+      await saveAppearance(draft);
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function saveNamedTheme(name: string) {
+    if (disabled || dirty || savedAppearance.selected !== CUSTOM_THEME_ID) return;
+    setNameError(undefined);
+    const result = AppearancePreferenceSchema.safeParse({
+      ...savedAppearance,
+      customThemes: [...savedAppearance.customThemes, {
+        id: crypto.randomUUID(),
+        name,
+        css: savedAppearance.customCss ?? "",
+      }],
+    });
+    if (!result.success) {
+      setNameError(result.error.issues.map((issue) => issue.message).join(" "));
+      return;
+    }
+    try {
+      await saveAppearance(result.data);
+      setThemeName(undefined);
+    } catch (error) {
+      setNameError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -87,8 +114,8 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
     if (!token) return;
     setError(undefined);
     try {
-      const theme = await readThemeFile(file);
-      if (importing.isCurrent(token)) previewAppearance({ selected: theme.id, customThemes: [...draft.customThemes, theme] });
+      const css = await readThemeCss(file);
+      if (importing.isCurrent(token)) previewCustom(css);
     } catch (error) {
       if (importing.isCurrent(token)) setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -112,11 +139,9 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
     }
     const token = start();
     if (!token) return;
-    setSaved(false);
     setError(undefined);
     try {
       await savePreference(value);
-      if (isCurrent(token)) setSaved(true);
     } catch (error) {
       if (isCurrent(token)) setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -140,10 +165,9 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </Select>}
-      feedback={loading || saving || saved ? <small role="status" className="wapp-save-status">{loading ? "Loading…" : saving ? "Saving…" : "Saved"}</small> : undefined}
     />
-    {error ? <ErrorState description={error.message} action={<Button type="button" loading={loading} onClick={() => void retry()}>Retry</Button>} /> : null}
-    {appearance.error ? <ErrorState description={appearance.error.message} action={<Button type="button" loading={pending} onClick={() => void appearance.retry()}>Retry</Button>} /> : null}
+    {error ? <ErrorState description={error.message} action={<Button type="button" disabled={loading} onClick={() => void retry()}>Retry</Button>} /> : null}
+    {appearance.error ? <ErrorState description={appearance.error.message} action={<Button type="button" disabled={pending} onClick={() => void appearance.retry()}>Retry</Button>} /> : null}
     <fieldset className="clanky-theme-picker" disabled={disabled}>
       <legend>Theme</legend>
       <div className="clanky-theme-gallery">
@@ -156,30 +180,66 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
       </div>
     </fieldset>
     {dirty ? <SettingsFieldRow
-      title={safeTheme ? selected.name : `Previewing ${selected.name}`}
-      content={<small role="status">{safeTheme ? "Unsaved theme" : "Unsaved preview"}</small>}
+      title={safeTheme ? `Unapplied theme: ${selected.name}` : `Previewing ${selected.name}`}
       actions={<>
-        <Button type="button" disabled={disabled} loading={pending} onClick={() => void applyAppearance()}>Apply theme</Button>
+        <Button type="button" disabled={disabled} onClick={() => void applyAppearance()}>Apply theme</Button>
         <Button type="button" disabled={disabled} onClick={() => { preview(undefined); setError(undefined); }}>Cancel preview</Button>
       </>}
     /> : null}
     <SettingsFieldRow
-      title="Theme library"
-      feedback={themeSaved ? <small role="status">Saved</small> : undefined}
+      title="Custom theme"
       actions={<>
-        <Button type="button" disabled={disabled} onClick={() => fileInput.current?.click()}>Import theme</Button>
+        <Button type="button" disabled={disabled} onClick={() => setEditor(editableThemeCss(selected))}>
+          {isCustom ? "Edit CSS" : "Edit as Custom"}
+        </Button>
+        <Button type="button" disabled={disabled} onClick={() => fileInput.current?.click()}>Import CSS</Button>
+        {isCustom ? <Button type="button" disabled={disabled || dirty} onClick={() => {
+          setNameError(undefined);
+          setThemeName("");
+        }}>Save as…</Button> : null}
+      </>}
+    />
+    <SettingsFieldRow
+      title="Theme library"
+      actions={<>
         <Button type="button" disabled={disabled} onClick={exportTheme}>Export theme</Button>
         {draft.selected !== "clanky" ? <Button type="button" disabled={disabled} onClick={() => previewAppearance({ ...draft, selected: "clanky" })}>Reset to Clanky</Button> : null}
-        {isCustomTheme(selected) ? <Button type="button" disabled={disabled} tone="danger" onClick={() => setRemoveOpen(true)}>Remove theme</Button> : null}
+        {isNamed ? <Button type="button" disabled={disabled} tone="danger" onClick={() => setRemoveOpen(true)}>Remove theme</Button> : null}
       </>}
     />
     <input ref={fileInput} className="sr-only" type="file" accept=".css,text/css" tabIndex={-1}
       aria-label="Import theme stylesheet" onChange={(event) => void importTheme(event)} />
+    <Modal isOpen={editor !== undefined} onClose={() => setEditor(undefined)} title="Edit Custom theme" size="lg" footer={<>
+      <Button type="button" onClick={() => setEditor(undefined)}>Cancel</Button>
+      <Button type="button" variant="primary" disabled={disabled} onClick={() => {
+        if (editor === undefined) return;
+        previewCustom(editor);
+        setEditor(undefined);
+      }}>{safeTheme ? "Use CSS" : "Preview CSS"}</Button>
+    </>}>
+      <TextAreaField label="CSS" className="font-mono" rows={12} wrap="off" spellCheck={false}
+        value={editor ?? ""} onChange={(event) => setEditor(event.currentTarget.value)} />
+    </Modal>
+    <Modal isOpen={themeName !== undefined} onClose={() => { if (!pending) setThemeName(undefined); }}
+      title="Save theme as" size="sm" closeOnOverlayClick={!pending} footer={<>
+        <Button type="button" disabled={pending} onClick={() => setThemeName(undefined)}>Cancel</Button>
+        <Button type="submit" form={nameFormId} variant="primary" disabled={disabled || dirty || !themeName?.trim()}>Save theme</Button>
+      </>}>
+      <form id={nameFormId} onSubmit={(event) => {
+        event.preventDefault();
+        if (themeName?.trim()) void saveNamedTheme(themeName);
+      }}>
+        <TextField label="Theme name" required maxLength={60} disabled={pending}
+          value={themeName ?? ""} onChange={(event) => { setThemeName(event.currentTarget.value); setNameError(undefined); }} />
+        {nameError ? <p className="wapp-error" role="alert">{nameError}</p> : null}
+      </form>
+    </Modal>
     <ConfirmDialog open={removeOpen} title={`Remove "${selected.name}"?`}
       message="This removes the imported theme from your library."
       confirmLabel="Remove theme" danger onCancel={() => setRemoveOpen(false)}
       onConfirm={() => {
         previewAppearance({
+          ...draft,
           selected: "clanky",
           customThemes: draft.customThemes.filter(({ id }) => id !== selected.id),
         });

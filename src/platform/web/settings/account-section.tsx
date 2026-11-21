@@ -4,7 +4,6 @@ import { appJson } from "../api-client";
 import { Badge, Button, CheckboxField, ErrorState, FormSection, LoadingState, Select } from "@pablozaiden/webapp/web";
 import { useLogLevel } from "../log-level";
 import { SettingsFieldRow } from "@pablozaiden/webapp/web";
-import { AppearanceSection } from "./appearance-section";
 
 function isLogLevelName(value: string): value is LogLevelName {
   return VALID_LOG_LEVELS.some((level) => level === value);
@@ -63,8 +62,6 @@ export function AccountSection({ config, refresh, setError, category }: AccountS
           <p>Signed in as <strong>{config.currentUser.username}</strong> <Badge variant={config.currentUser.isAdmin ? "success" : "disabled"}>{config.currentUser.role}</Badge></p>
         </FormSection>
       ) : null}
-      {category === "general" ? <AppearanceSection setError={setError} /> : null}
-
       {category === "administration" && config.currentUser?.isAdmin ? (
         <FormSection title="Logging">
           {logLevel.error ? (

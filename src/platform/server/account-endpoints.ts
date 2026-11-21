@@ -199,7 +199,7 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
     },
     "/api/preferences/appearance": {
       auth: "user", sameOrigin: "mutations", tags: ["preferences"],
-      description: "Read or update the current user's visual theme and imported theme library.",
+      description: "Read or update the current user's visual theme, editable Custom stylesheet, and saved theme library.",
       operations: {
         GET: { automation: { policy: "read" } },
         PUT: { requestSchema: AppearancePreferenceSchema, automation: { policy: "write" } },
