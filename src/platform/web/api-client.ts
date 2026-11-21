@@ -176,7 +176,10 @@ export function configureClankyClient(
         return await demo.connect(path, options);
       }
       const connect = async () => {
-        if (!getClientSession().enabled) return nativeWebAppDuplex(await appWebSocketConnection(path, options), options.signal);
+        if (!getClientSession().enabled) {
+          if (core.connect) return core.connect(path, options);
+          return nativeWebAppDuplex(await appWebSocketConnection(path, options), options.signal);
+        }
         const resource = await resourceUrl(path, { ...options, kind: "websocket" });
         options.signal?.throwIfAborted();
         return nativeWebAppDuplex(new WebSocket(resource.url), options.signal);

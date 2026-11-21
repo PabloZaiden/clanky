@@ -1,3 +1,4 @@
+import { isAbortError, isTimeoutError } from "@/lib/request-lifecycle";
 import { readStorage, warnStorageIssue, writeStorage } from "./storage";
 
 type Screen = "home" | "chat";
@@ -125,10 +126,8 @@ export function beginPerformanceSpan(phase: Phase) {
 }
 
 export function performanceFailure(error: unknown): "aborted" | "timeout" | "error" {
-  if (error instanceof Error) {
-    if (error.name === "AbortError") return "aborted";
-    if (error.name === "TimeoutError") return "timeout";
-  }
+  if (isAbortError(error)) return "aborted";
+  if (isTimeoutError(error)) return "timeout";
   return "error";
 }
 

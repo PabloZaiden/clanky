@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
+import { usePerformanceContent } from "@/platform/web/use-performance-content";
 import {
   getExecutionHostSourceId,
   isProvisioningJobTerminal,
@@ -50,7 +51,27 @@ function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
   }
 }
 
+function readHomePresentation(view: RefObject<HTMLDivElement | null>): string | undefined {
+  if (!view.current) return undefined;
+  const parts: string[] = [];
+  function read(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE && node.nodeValue) {
+      parts.push(node.nodeValue);
+      return;
+    }
+    // A relative clock tick is not a new server update.
+    if (node instanceof HTMLTimeElement && node.dateTime) {
+      parts.push(node.dateTime);
+      return;
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) read(child);
+  }
+  read(view.current);
+  return JSON.stringify(parts);
+}
+
 export function OverviewView({
+  measurePerformance,
   executionHosts,
   executionHostNodes,
   automations,
@@ -67,6 +88,7 @@ export function OverviewView({
   dismissingAllWorkerUpdateJobs,
   showPrivateItems = false,
 }: {
+  measurePerformance: boolean;
   executionHosts: ExecutionHostDescriptor[];
   executionHostNodes: SidebarExecutionHostNode[];
   automations: Automation[];
@@ -84,6 +106,8 @@ export function OverviewView({
   showPrivateItems?: boolean;
 }) {
   const capabilities = getClankyClientCapabilities();
+  const view = useRef<HTMLDivElement>(null);
+  usePerformanceContent("home", measurePerformance, view, readHomePresentation, view);
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
   const serverMapItems = useMemo(() => {
@@ -140,7 +164,7 @@ export function OverviewView({
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={view} className="space-y-6">
       <OverviewWork
         sidebarWorkspaceGroups={sidebarWorkspaceGroups}
         executionHostNodes={executionHostNodes}
