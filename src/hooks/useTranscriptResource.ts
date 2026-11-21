@@ -20,7 +20,13 @@ import { markStreamingText } from "../lib/streaming-text";
 import { toTranscriptStreamEvent } from "./transcript-event-adapter";
 import { useTranscriptToolDetails } from "./useTranscriptToolDetails";
 import type { TranscriptResourceChange } from "@/shared/realtime";
-import { isPerformanceCaptureEnabled, notePerformanceChatSnapshot } from "@/platform/web/performance-stats";
+import {
+  isPerformanceCaptureEnabled,
+  notePerformanceChatOpenFailure,
+  notePerformanceChatOpenSnapshot,
+  notePerformanceChatSnapshot,
+  performanceFailure,
+} from "@/platform/web/performance-stats";
 
 export interface TranscriptResourceSnapshot<TResource> {
   resource: TResource;
@@ -31,6 +37,7 @@ interface TranscriptSyncSnapshot<TResource> extends TranscriptResourceSnapshot<T
   replacesHistory: boolean;
   expandedWindow: boolean;
   requestStarted?: number;
+  requestFinished?: number;
 }
 
 export interface TranscriptResourceState<TResource> {
@@ -250,6 +257,7 @@ export function useTranscriptResource<TResource, TSnapshot>(
             replacesHistory: Boolean(window.full || window.since),
             expandedWindow: Boolean(window.full || window.since),
             requestStarted,
+            requestFinished: requestStarted === undefined ? undefined : performance.now(),
           },
         };
       },
@@ -257,12 +265,16 @@ export function useTranscriptResource<TResource, TSnapshot>(
       reduce: reduceContent,
       onChange: (state) => {
         if (state.error) {
+          if (!committedTranscript && settings.current.performanceDiagnostics) {
+            notePerformanceChatOpenFailure(resourceId, performanceFailure(state.error));
+          }
           setError(String(state.error));
           setLoading(false);
           return;
         }
         if (state.data === undefined) return;
         if (state.data === null) {
+          if (settings.current.performanceDiagnostics) notePerformanceChatOpenFailure(resourceId, "error");
           clearResource(`${resourceLabel} not found`);
           return;
         }
@@ -280,6 +292,9 @@ export function useTranscriptResource<TResource, TSnapshot>(
           setResource((current) => settings.current.mergeResource?.(current, snapshot.resource) ?? snapshot.resource);
         }
         if (committedTranscript !== snapshot.transcript) {
+          if (!committedTranscript && snapshot.requestStarted !== undefined && snapshot.requestFinished !== undefined) {
+            notePerformanceChatOpenSnapshot(resourceId, snapshot.requestStarted, snapshot.requestFinished);
+          }
           committedTranscript = snapshot.transcript;
           const latest = snapshot.transcript;
           if (snapshot.replacesHistory) historyRef.current = latest;
@@ -308,7 +323,13 @@ export function useTranscriptResource<TResource, TSnapshot>(
       if (event.streamPosition) sync.current?.receive(event);
       else void sync.current?.refresh();
     },
-    onError: (failure) => { setLoading(false); setError(String(failure)); },
+    onError: (failure) => {
+      if (settings.current.performanceDiagnostics && !getTranscript().revision) {
+        notePerformanceChatOpenFailure(resourceId, performanceFailure(failure));
+      }
+      setLoading(false);
+      setError(String(failure));
+    },
   });
   useRealtime<ResourceRealtimeEvent<TranscriptResourceChange>>({
     resources: [STREAMS[stream].resource],

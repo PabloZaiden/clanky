@@ -3,6 +3,7 @@ import logoPath from "../../web-app-manifest-192x192.png" with { type: "file" };
 import { useToast, routeToHash, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ClankyRoot as WebAppRoot } from "@/platform/web/root";
 import { type WebAppConfigState } from "@/platform/web/webapp-config";
+import { notePerformanceChatOpenFailure } from "@/platform/web/performance-stats";
 import type { Automation } from "@/shared";
 import {
   buildShellRoutes,
@@ -105,10 +106,14 @@ export function AppShell() {
     setRoute,
   });
   useEffect(() => {
-    if (missingRouteTarget) {
-      navigateWithinShell(HOME_ROUTE);
+    if (route.view === "chat" && chatId) {
+      if (missingRouteTarget) notePerformanceChatOpenFailure(chatId, "error");
+      else if (activityRoute?.view === "chat" && activityRoute["chatId"] === chatId) {
+        notePerformanceChatOpenFailure(chatId, "aborted");
+      }
     }
-  }, [missingRouteTarget, navigateWithinShell]);
+    if (missingRouteTarget) navigateWithinShell(HOME_ROUTE);
+  }, [activityRoute, chatId, missingRouteTarget, navigateWithinShell, route.view]);
 
   const liveVoiceCall = useLiveVoice({
     enabled: voiceSettings.settings.live.configured, route,

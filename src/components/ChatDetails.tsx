@@ -20,6 +20,7 @@ import { harnessActivityActions } from "./app-shell/harness-actions";
 import { ChatDiffView, ChatPlanView } from "./chat-details/chat-inspection";
 import type { ChatSendMessageHandler } from "./chat-details/types";
 import { VoicePlaybackOverlay } from "./chat-details/voice-playback-overlay";
+import { notePerformanceChatOpenFailure, notePerformanceChatOpenPaint } from "@/platform/web/performance-stats";
 import { usePerformanceContent } from "@/platform/web/use-performance-content";
 import type { StreamPosition } from "@/shared/stream-position";
 import { useLiveVoiceBusy } from "../lib/voice-audio-ownership";
@@ -80,8 +81,9 @@ export function ChatDetails({
     handleContinueFromHistory,
     isContinuingFromHistory,
   } = useChatLifecycle(chatId, !isEmbedded);
+  const noteChatPaint = useCallback(() => notePerformanceChatOpenPaint(chatId), [chatId]);
   usePerformanceContent("chat", !isEmbedded && isVisible !== false && contentView === "conversation"
-    && Boolean(chat && transcript.revision) && !showActivity, transcript.position, transcriptPositionRevision);
+    && Boolean(chat && transcript.revision) && !showActivity, transcript.position, transcriptPositionRevision, { onPaint: noteChatPaint });
   useEffect(() => {
     if (!isEmbedded && notFound) {
       onMissingEntity?.();
@@ -92,11 +94,12 @@ export function ChatDetails({
     else onOpenActivity?.();
   }, [isEmbedded, onOpenActivity]);
   const showInspection = useCallback((view: "conversation" | "plan" | "diff") => {
+    if (!isEmbedded && view !== "conversation") notePerformanceChatOpenFailure(chatId, "aborted");
     setEmbeddedActivity(false);
     onCloseActivity?.();
     setContentView(view);
     if (view !== "conversation") setVisitedViews((current) => ({ ...current, [view]: true }));
-  }, [onCloseActivity]);
+  }, [chatId, isEmbedded, onCloseActivity]);
   const workspaceId = chat && isWorkspaceChat(chat) ? getChatWorkspaceId(chat) : undefined;
   const inspectionActions = useMemo(() => isVisible ? [
     { id: "chat-plan", label: "Plan", systemImage: "list.bullet.clipboard", onAction: () => showInspection("plan") },
