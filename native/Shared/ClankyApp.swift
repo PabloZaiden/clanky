@@ -100,8 +100,6 @@ final class ClankySceneDelegate: NSObject, UIWindowSceneDelegate, ObservableObje
 
 #if os(macOS)
 private struct ClankySettingsCommands: Commands {
-    @FocusedObject private var browser: BrowserModel?
-
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button("Settings...") {
@@ -115,11 +113,15 @@ private struct ClankySettingsCommands: Commands {
             }
                 .keyboardShortcut(",", modifiers: .command)
             Button("Open Without Theme") {
-                if let browser {
+                let windows = [NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }
+                    + NSApp.orderedWindows.filter(\.isVisible)
+                for window in windows {
+                    guard let view = window.contentView, let browser = BrowserWebView.browser(in: view) else { continue }
                     browser.openWithoutTheme()
-                } else if !NSApp.sendAction(#selector(BrowserWebView.openClankyWithoutTheme(_:)), to: nil, from: nil) {
-                    NSSound.beep()
+                    return
                 }
+                NSLog("Clanky could not find a browser window for theme recovery.")
+                NSSound.beep()
             }
         }
     }
@@ -255,9 +257,6 @@ private struct BrowserSession: View {
         } message: {
             Text(browser.error ?? app.error ?? "")
         }
-        #if os(macOS)
-        .focusedSceneObject(browser)
-        #endif
     }
 
     @ViewBuilder

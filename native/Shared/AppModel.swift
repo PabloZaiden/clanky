@@ -408,8 +408,12 @@ final class BrowserWebView: WKWebView {
         settingsBrowser.openSettings()
     }
 
-    @objc func openClankyWithoutTheme(_ sender: Any?) {
-        settingsBrowser?.openWithoutTheme()
+    static func browser(in view: NSView) -> BrowserModel? {
+        if let webView = view as? BrowserWebView { return webView.settingsBrowser }
+        for child in view.subviews {
+            if let browser = browser(in: child) { return browser }
+        }
+        return nil
     }
 }
 #else
