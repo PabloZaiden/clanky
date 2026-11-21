@@ -12,6 +12,7 @@ import {
   clientSessionDiagnosticsEnabled, readClientSessionDiagnostics, readNativeDiagnostics,
 } from "./client-session-diagnostics";
 import { PrivacyPolicyLink } from "./privacy-policy-link";
+import { SAFE_THEME_PARAMETER } from "@/contracts/schemas/appearance";
 
 function SessionDiagnostics() {
   const [diagnostics, setDiagnostics] = useState(readClientSessionDiagnostics);
@@ -43,9 +44,21 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function connectionUrl(path: string): string {
+  if (new URLSearchParams(location.search).get(SAFE_THEME_PARAMETER) !== "1") return path;
+  const url = new URL(path, document.baseURI);
+  if (url.origin === location.origin) url.searchParams.set(SAFE_THEME_PARAMETER, "1");
+  return url.href;
+}
+
+function getThemeAwareConnectionPickerUrl(): string | undefined {
+  const path = getClientConnectionPickerUrl();
+  return path ? connectionUrl(path) : undefined;
+}
+
 function changeServer(edit: () => void): void {
   if (getClientSession().localController) {
-    window.location.assign(new URL("../api/", document.baseURI));
+    window.location.assign(connectionUrl("../api/"));
   } else {
     edit();
   }
@@ -79,7 +92,7 @@ function EndpointForm({ endpoint, onConnected }: { endpoint?: string; onConnecte
 }
 
 export function RemoteClientBoundary({ children }: { children: ReactNode }) {
-  const connectionPickerUrl = getClientConnectionPickerUrl();
+  const connectionPickerUrl = getThemeAwareConnectionPickerUrl();
   const session = useSyncExternalStore(subscribeClientSession, getClientSession, getClientSession);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -141,7 +154,7 @@ export function RemoteClientBoundary({ children }: { children: ReactNode }) {
 }
 
 export function RemoteClientSettings() {
-  const connectionPickerUrl = getClientConnectionPickerUrl();
+  const connectionPickerUrl = getThemeAwareConnectionPickerUrl();
   const session = useSyncExternalStore(subscribeClientSession, getClientSession, getClientSession);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string>();

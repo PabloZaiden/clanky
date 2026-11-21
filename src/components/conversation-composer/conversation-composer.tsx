@@ -99,6 +99,7 @@ export function ConversationComposer(props: ConversationComposerProps) {
       hidden={hideForQuestionAnswer}
       aria-hidden={hideForQuestionAnswer || undefined}
       className="clanky-conversation-composer-surface"
+      data-clanky-composer
     >
       {showVoicePanel && voice ? (
         <VoiceListeningPanel

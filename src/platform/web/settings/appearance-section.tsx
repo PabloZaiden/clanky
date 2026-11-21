@@ -3,13 +3,19 @@ import { useAsyncOperation } from "@pablozaiden/webapp/web";
 import { Button, ConfirmDialog, ErrorState, FormSection, Select } from "@pablozaiden/webapp/web";
 import { isThemePreference, useTheme } from "@pablozaiden/webapp/web";
 import { SettingsFieldRow } from "@pablozaiden/webapp/web";
-import { AppearancePreferenceSchema, type AppearancePreference } from "@/contracts/schemas/appearance";
+import { AppearancePreferenceSchema, SAFE_THEME_PARAMETER, type AppearancePreference } from "@/contracts/schemas/appearance";
+import { CodeIcon } from "@/components/common/Icons";
 import { useAppearance } from "../appearance-context";
 import { appearanceThemes, isCustomTheme, selectedAppearanceTheme, type AppearanceTheme } from "../appearance-themes";
 import { readThemeFile, themeFileContents } from "../theme-file";
 import { downloadGeneratedFile } from "../download-generated-file";
 
 function ThemePreview({ theme, dark }: { theme: AppearanceTheme; dark: boolean }) {
+  if (theme.css !== undefined) {
+    return <span className="clanky-theme-preview items-center justify-center bg-[var(--wapp-surface-muted)]" aria-hidden="true">
+      <CodeIcon size="h-6 w-6" />
+    </span>;
+  }
   const colors = dark ? theme.style?.dark : theme.style?.light;
   const surface = colors?.["--wapp-surface"] ?? (dark ? "#171717" : "#ffffff");
   const muted = colors?.["--wapp-muted"] ?? (dark ? "#a3a3a3" : "#4b5563");
@@ -45,7 +51,7 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   const [saved, setSaved] = useState(false);
   const [themeSaved, setThemeSaved] = useState(false);
   const appearance = useAppearance();
-  const { saved: savedAppearance, draft, preview, save: saveAppearance, pending } = appearance;
+  const { saved: savedAppearance, draft, safeTheme, preview, save: saveAppearance, pending } = appearance;
   const [removeOpen, setRemoveOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const themeGroupId = useId();
@@ -119,6 +125,13 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
   }
 
   return <FormSection title="Appearance">
+    {safeTheme ? <SettingsFieldRow title="Theme safe mode" actions={
+      <Button type="button" disabled={dirty || disabled} onClick={() => {
+        const url = new URL(location.href);
+        url.searchParams.delete(SAFE_THEME_PARAMETER);
+        location.replace(url.href);
+      }}>Resume themes</Button>
+    } /> : null}
     <SettingsFieldRow
       title="Color mode"
       labelFor={themeId}
@@ -143,8 +156,8 @@ export function AppearanceSection({ setError }: { setError: (error: string | und
       </div>
     </fieldset>
     {dirty ? <SettingsFieldRow
-      title={`Previewing ${selected.name}`}
-      content={<small role="status">Unsaved preview</small>}
+      title={safeTheme ? selected.name : `Previewing ${selected.name}`}
+      content={<small role="status">{safeTheme ? "Unsaved theme" : "Unsaved preview"}</small>}
       actions={<>
         <Button type="button" disabled={disabled} loading={pending} onClick={() => void applyAppearance()}>Apply theme</Button>
         <Button type="button" disabled={disabled} onClick={() => { preview(undefined); setError(undefined); }}>Cancel preview</Button>

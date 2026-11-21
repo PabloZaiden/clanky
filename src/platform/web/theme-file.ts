@@ -1,53 +1,43 @@
-import { generate, parse } from "css-tree";
-import { THEME_STYLE_TOKENS, themeStyleSchema, type ThemeStyle, type ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
-import { CustomThemeSchema, THEME_FILE_MAX_BYTES, type CustomTheme } from "@/contracts/schemas/appearance";
+import { themeStyleSchema, type ThemeStyle, type ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
+import { CustomThemeSchema, type CustomTheme } from "@/contracts/schemas/appearance";
 import type { AppearanceTheme } from "./appearance-themes";
 
-export async function readThemeFile(file: File): Promise<CustomTheme> {
-  if (!file.size || file.size > THEME_FILE_MAX_BYTES) {
-    throw new Error("Choose a .clanky-theme.css file no larger than 64 KiB.");
+const themeNameComment = /\/\*\s*Clanky (?:CSS )?theme:\s*([^\r\n]*?)\s*\*\//i;
+
+function readLegacyExport(css: string): ThemeStyle | undefined {
+  // The old exporter used :root for light-only overrides. Recognize its format
+  // so partial palettes retain that behavior without interpreting arbitrary CSS.
+  const match = /^\/\* Clanky theme: [^\r\n]* \*\/\n\n:root \{\n([\s\S]*?)\n\}\n\n:root\.dark \{\n([\s\S]*?)\n\}\n?$/.exec(css.replaceAll("\r\n", "\n"));
+  if (!match) return;
+  function tokens(block: string): Record<string, string> | undefined {
+    const values: Record<string, string> = {};
+    for (const line of block ? block.split("\n") : []) {
+      const entry = /^ {2}(--[\w-]+): ([^;]+);$/.exec(line);
+      if (!entry) return;
+      values[entry[1]!] = entry[2]!;
+    }
+    return values;
   }
-  const source = await file.text();
-  const stylesheet = parse(source, {
-    parseCustomProperty: true,
-    onParseError(error) { throw new Error(`Invalid theme stylesheet: ${error.message}`); },
-  });
-  if (stylesheet.type !== "StyleSheet") throw new Error("Invalid theme stylesheet.");
-  const palettes = new Map<string, ThemeStyleTokens>();
-  stylesheet.children.forEach((rule) => {
-    if (rule.type !== "Rule" || !rule.prelude) {
-      throw new Error("Themes may contain only :root and :root.dark token declarations. Imports and other rules are not supported.");
-    }
-    const selector = generate(rule.prelude);
-    if (selector !== ":root" && selector !== ":root.dark") {
-      throw new Error("Use :root for light colors and :root.dark for dark colors.");
-    }
-    if (palettes.has(selector)) throw new Error(`The theme contains more than one ${selector} block.`);
-    const tokens: ThemeStyleTokens = {};
-    rule.block.children.forEach((declaration) => {
-      if (declaration.type !== "Declaration" || declaration.important) {
-        throw new Error("Themes support only token declarations, without !important.");
-      }
-      const name = THEME_STYLE_TOKENS.find((token) => token === declaration.property);
-      if (!name) throw new Error(`Unsupported theme token: ${declaration.property}`);
-      if (Object.hasOwn(tokens, name)) throw new Error(`Duplicate theme token: ${name}`);
-      tokens[name] = generate(declaration.value).trim();
-    });
-    palettes.set(selector, tokens);
-  });
-  const light = palettes.get(":root");
-  const dark = palettes.get(":root.dark");
-  if (!light || !dark) throw new Error("Include both :root and :root.dark blocks in the theme.");
-  const name = source.match(/\/\*\s*Clanky theme:\s*([^\r\n]*?)\s*\*\//i)?.[1]
+  const style = themeStyleSchema.safeParse({ light: tokens(match[1]!), dark: tokens(match[2]!) });
+  return style.success ? style.data : undefined;
+}
+
+export async function readThemeFile(file: File): Promise<CustomTheme> {
+  const css = await file.text();
+  const name = css.match(themeNameComment)?.[1]
     ?? file.name.replace(/(?:\.clanky-theme)?\.css$/i, "");
+  const style = readLegacyExport(css);
   const result = CustomThemeSchema.safeParse({
-    id: crypto.randomUUID(), name, style: { light, dark },
+    id: crypto.randomUUID(), name, ...(style ? { style } : { css }),
   });
   if (!result.success) throw new Error(result.error.issues.map((issue) => issue.message).join(" "));
   return result.data;
 }
 
 export function themeFileContents(theme: AppearanceTheme): string {
+  if (theme.css !== undefined) {
+    return themeNameComment.test(theme.css) ? theme.css : `/* Clanky CSS theme: ${theme.name} */\n\n${theme.css}`;
+  }
   const style: ThemeStyle = themeStyleSchema.parse(theme.style ?? { light: {}, dark: {} });
   const block = (selector: string, tokens: ThemeStyleTokens) =>
     `${selector} {\n${Object.entries(tokens).map(([name, value]) => `  ${name}: ${value};`).join("\n")}\n}`;

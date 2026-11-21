@@ -13,6 +13,13 @@
     <key>ClankyFrontendUpdates</key><string>$(CLANKY_FRONTEND_UPDATES)</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>UILaunchScreen</key><dict/>
+    <key>UIApplicationShortcutItems</key>
+    <array>
+        <dict>
+            <key>UIApplicationShortcutItemType</key><string>open-without-theme</string>
+            <key>UIApplicationShortcutItemTitle</key><string>Open Without Theme</string>
+        </dict>
+    </array>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key><true/>

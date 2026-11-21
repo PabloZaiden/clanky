@@ -2,15 +2,18 @@ import { z } from "zod";
 import { themeStyleSchema } from "@pablozaiden/webapp/contracts";
 
 export const BUILT_IN_THEME_IDS = ["clanky", "graphite", "nord", "sand", "forest", "plum"] as const;
-export const THEME_FILE_MAX_BYTES = 64 * 1024;
-export const CustomThemeSchema = z.object({
+export const SAFE_THEME_PARAMETER = "safe-theme";
+const themeIdentity = z.strictObject({
   id: z.uuid(),
   name: z.string().trim().min(1).max(60).refine(
     (name) => !/[\u0000-\u001f\u007f*]/.test(name),
     "Theme names cannot contain control characters or asterisks.",
   ),
-  style: themeStyleSchema,
-}).strict();
+});
+export const CustomThemeSchema = z.union([
+  themeIdentity.extend({ css: z.string() }),
+  themeIdentity.extend({ style: themeStyleSchema }),
+]);
 export const AppearancePreferenceSchema = z.object({
   selected: z.union([z.enum(BUILT_IN_THEME_IDS), z.uuid()]),
   customThemes: z.array(CustomThemeSchema).max(20, "Keep at most 20 custom themes."),
