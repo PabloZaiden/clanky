@@ -197,3 +197,13 @@ chat snapshot means a read completed without a new transcript position. If no
 confirmation or update is observed, don't treat its absence as zero latency.
 HTTP wait includes server and network time; WebSocket RTT is round-trip time,
 not one-way latency.
+
+To compare chat opening, start on Home and select the same chat on each client.
+Switch away and repeat to compare first and repeated openings. **Chat open**
+measures the selection through the first paint opportunity of the initial
+conversation, including an empty conversation. It does not wait for older
+messages or attachments. In JSON `chat-open` samples, `transcriptSource` is
+`available` when the initial transcript was already present or `snapshot`
+when an initial read was needed. `snapshotMs` reports the time spent awaiting
+and decoding that snapshot after selection. This does not identify the
+browser's HTTP cache.

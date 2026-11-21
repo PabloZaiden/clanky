@@ -6,12 +6,12 @@ export function usePerformanceContent<T>(
   ready: boolean,
   content: T,
   getRevision: (content: T) => string | undefined,
-  observe?: RefObject<HTMLElement | null>,
+  { observe, onPaint }: { observe?: RefObject<HTMLElement | null>; onPaint?: () => void } = {},
 ): void {
   const cycle = useSyncExternalStore(subscribePerformanceStats, performancePresentationCycle, () => -1);
   const previous = useRef<string | undefined>(undefined);
   const pending = useRef<number | undefined>(undefined);
-  const latest = useRef({ content, getRevision });
+  const latest = useRef({ content, getRevision, onPaint });
   const schedule = useCallback(() => {
     if (document.hidden || pending.current !== undefined) return;
     // The second frame lets the committed React content reach a paint opportunity.
@@ -24,18 +24,19 @@ export function usePerformanceContent<T>(
         if (revision === undefined) return;
         notePerformanceContent(screen, previous.current !== undefined && previous.current !== revision);
         previous.current = revision;
+        current.onPaint?.();
       });
     });
   }, [screen]);
 
   useEffect(() => {
-    latest.current = { content, getRevision };
+    latest.current = { content, getRevision, onPaint };
     if (cycle < 0 || !ready) {
       previous.current = undefined;
       return;
     }
     schedule();
-  }, [cycle, ready, content, getRevision, schedule]);
+  }, [cycle, ready, content, getRevision, onPaint, schedule]);
 
   useEffect(() => {
     if (cycle < 0 || !ready) return;

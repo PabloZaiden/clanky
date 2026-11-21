@@ -47,12 +47,18 @@ const connectionLabels = {
   idle: "Idle", connecting: "Connecting", open: "Open", subscribed: "Live", closed: "Disconnected",
 } as const;
 
+const chatOpenLabels = {
+  pending: "Opening", aborted: "Canceled", timeout: "Timed out", error: "Failed",
+  unchanged: "Not measured", unobserved: "Not measured",
+} as const;
+
 export function PerformanceStatsPanel({ version }: { version?: string }) {
   const { panel, connection, samples, discarded } = usePerformanceStats();
   const [expanded, setExpanded] = useState(true);
   const [error, setError] = useState<string>();
   if (!panel) return null;
   const startup = samples.findLast((sample) => sample.phase === "startup-content");
+  const chatOpen = samples.findLast((sample) => sample.phase === "chat-open");
   const foreground = samples.findLast((sample) => sample.phase === "foreground")?.foreground;
   const latest = (phase: string) => samples.findLast((sample) => sample.phase === phase && sample.foreground === foreground);
   const visible = latest("foreground-visible");
@@ -81,6 +87,8 @@ export function PerformanceStatsPanel({ version }: { version?: string }) {
       {expanded ? <>
         <dl className="my-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 tabular-nums">
           <dt>Startup to content</dt><dd>{duration(startup?.durationMs)}</dd>
+          <dt>Chat open</dt><dd>{chatOpen && chatOpen.outcome !== "ok"
+            ? chatOpenLabels[chatOpen.outcome] : duration(chatOpen?.durationMs)}</dd>
           <dt>Return to content</dt><dd>{duration(visible?.durationMs)}</dd>
           <dt>Socket confirmed</dt><dd>{realtime?.outcome === "ok" ? `${duration(realtime.durationMs)} (${realtime.connection})`
             : realtime?.outcome === "pending" ? "Awaiting confirmation" : "Not measured"}</dd>

@@ -7,7 +7,7 @@ type Outcome = "pending" | "ok" | "error" | "aborted" | "timeout" | "unchanged" 
 type HttpPhase =
   | "config" | "client-ticket" | "client-token" | "chats" | "chat-summary" | "chat-snapshot"
   | "workspaces" | "automations" | "automation-runs" | "execution-hosts" | "terminals";
-type Phase = HttpPhase | "startup-content" | "frontend" | "session-restore" | "token-refresh" | "socket-open" | "subscription"
+type Phase = HttpPhase | "startup-content" | "chat-open" | "frontend" | "session-restore" | "token-refresh" | "socket-open" | "subscription"
   | "heartbeat" | "foreground" | "foreground-visible" | "foreground-update"
   | "foreground-realtime" | "foreground-chat-snapshot" | "navigation" | "assets";
 
@@ -31,7 +31,16 @@ interface Sample {
   backgroundMs?: number;
   screen?: Screen;
   connection?: "reused" | "reconnected";
+  transcriptSource?: "available" | "snapshot";
+  snapshotMs?: number;
   timing?: Timing;
+}
+
+interface ChatOpening {
+  chatId: string;
+  hash: string;
+  start: number;
+  sample: Sample;
 }
 
 interface Foreground {
@@ -47,6 +56,7 @@ interface Foreground {
 interface Capture {
   origin: number;
   startup?: Sample;
+  chatOpening?: ChatOpening;
   samples: Sample[];
   discarded: number;
   foregroundCount: number;
@@ -131,6 +141,48 @@ export function performanceFailure(error: unknown): "aborted" | "timeout" | "err
   return "error";
 }
 
+function finishChatOpening(owner: Capture, outcome: "ok" | "aborted" | "timeout" | "error", end = performance.now()): void {
+  const opening = owner.chatOpening;
+  if (!opening) return;
+  owner.chatOpening = undefined;
+  finish(opening.sample, end, opening.start, outcome);
+  if (panel) notify();
+}
+
+export function notePerformanceChatNavigation(chatId: string | undefined, navigation?: { hash: string; start: number }): void {
+  const owner = capture;
+  if (!owner) return;
+  if (owner.chatOpening) finishChatOpening(owner, "aborted", navigation?.start);
+  if (!chatId || !navigation || navigation.start < owner.origin || document.hidden) return;
+  owner.chatOpening = { chatId, ...navigation, sample: add(owner, "chat-open", navigation.start, "client") };
+  if (panel) notify();
+}
+
+function currentChatOpening(chatId: string): ChatOpening | undefined {
+  const opening = capture?.chatOpening;
+  return opening?.chatId === chatId && opening.hash === location.hash ? opening : undefined;
+}
+
+export function notePerformanceChatOpenSnapshot(chatId: string, start: number, end: number): void {
+  const opening = currentChatOpening(chatId);
+  if (!opening || end < opening.start || opening.sample.transcriptSource) return;
+  opening.sample.transcriptSource = "snapshot";
+  opening.sample.snapshotMs = Math.round(end - Math.max(start, opening.start));
+}
+
+export function notePerformanceChatOpenPaint(chatId: string): void {
+  const owner = capture;
+  const opening = currentChatOpening(chatId);
+  if (!owner || !opening || document.hidden) return;
+  opening.sample.transcriptSource ??= "available";
+  finishChatOpening(owner, "ok");
+}
+
+export function notePerformanceChatOpenFailure(chatId: string, outcome: "aborted" | "timeout" | "error"): void {
+  const owner = capture;
+  if (owner && currentChatOpening(chatId)) finishChatOpening(owner, outcome);
+}
+
 export function performanceHttpPhase(url: string, method?: string): HttpPhase | undefined {
   const path = new URL(url).pathname;
   if (method === "POST" || method === undefined) {
@@ -210,6 +262,7 @@ function visibilityChanged(): void {
   if (!owner) return;
   owner.visibilityEpoch++;
   if (document.hidden) {
+    finishChatOpening(owner, "aborted");
     const foreground = owner.foreground;
     if (foreground) for (const sample of [foreground.visible, foreground.realtime, foreground.update]) {
       if (sample.outcome === "pending") sample.outcome = "unobserved";

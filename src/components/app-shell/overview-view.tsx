@@ -107,7 +107,7 @@ export function OverviewView({
 }) {
   const capabilities = getClankyClientCapabilities();
   const view = useRef<HTMLDivElement>(null);
-  usePerformanceContent("home", measurePerformance, view, readHomePresentation, view);
+  usePerformanceContent("home", measurePerformance, view, readHomePresentation, { observe: view });
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
   const serverMapItems = useMemo(() => {
