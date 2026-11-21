@@ -45,6 +45,7 @@ export function SettingsView({ config, external, appName, version, refresh, cust
     rows: section.rows?.filter((row) => isScopeVisible(row.scope, config, external)),
   }));
   const categories = new Map<string, string>([["general", "General"]]);
+  if (isScopeVisible("user", config, external)) categories.set("appearance", "Appearance");
   if (config) categories.set("account", "Account & access");
   for (const section of visibleSections) {
     if (section.category) categories.set(section.category.id, section.category.title);
@@ -77,8 +78,8 @@ export function SettingsView({ config, external, appName, version, refresh, cust
       <div key={selected}>
         {error ? <p className="wapp-error" role="alert">{error}</p> : null}
         {selected === "general" ? <RemoteClientSettings /> : null}
-        {selected === "general" && external ? <AppearanceSection setError={setError} /> : null}
-        {config && ["general", "account", "administration"].includes(selected) ? <AccountSection config={config} refresh={refresh} setError={setError} category={selected} /> : null}
+        {selected === "appearance" ? <AppearanceSection setError={setError} /> : null}
+        {config && ["account", "administration"].includes(selected) ? <AccountSection config={config} refresh={refresh} setError={setError} category={selected} /> : null}
         {selected === "account" && config ? <FormSection title="Security">
           <SecuritySection config={config} refresh={refresh} setError={setError} />
           <SessionsSection config={config} setError={setError} />

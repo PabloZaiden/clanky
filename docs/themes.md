@@ -1,6 +1,6 @@
 # Themes
 
-Open **Settings > General > Appearance** to choose a theme. **Color mode**
+Open **Settings > Appearance** to choose a theme. **Color mode**
 keeps Light, Dark and System independent of the theme.
 
 Select a gallery card to preview the whole app. Choose **Apply theme** to keep
@@ -8,7 +8,7 @@ it, or **Cancel preview** to return to the saved appearance. Leaving Settings
 also cancels an unapplied preview. **Reset to Clanky** previews the original
 appearance without deleting imported themes; apply it to keep the reset.
 
-Theme selections and imported themes are saved to your Clanky account.
+Theme selections, Custom CSS, and named themes are saved to your Clanky account.
 Saved theme and color-mode changes update open clients without reloading;
 an unapplied preview is preserved.
 Workspace-invitation browser clients without a Clanky account save them only
@@ -16,11 +16,16 @@ in that client profile.
 
 ## Import, edit and share
 
-Choose **Export theme** to download the selected theme as a
-`.clanky-theme.css` file. Edit it in a text editor, then choose **Import theme**.
-Imports are previews until you choose **Apply theme**. The library holds up to
-20 custom themes; removing one requires confirmation and is also applied with
-**Apply theme**.
+Select **Custom** and choose **Edit CSS**, or use **Edit as Custom** from another
+theme to start with its CSS. **Import CSS** replaces the Custom preview with a
+stylesheet from a file. Choose **Apply theme** to keep the preview in the same
+Custom slot; this does not add a theme to your library.
+
+With Custom applied, choose **Save as…** to keep a named copy. Later edits to
+Custom do not change that copy. The library holds up to 20 named themes in
+addition to Custom. Removing a named theme requires confirmation and **Apply
+theme**. To share any theme, choose **Export theme** to download it as a
+`.clanky-theme.css` file.
 
 Existing themes still work. An exported built-in theme provides a starting
 palette. To style specific components, write standard CSS. It applies to the

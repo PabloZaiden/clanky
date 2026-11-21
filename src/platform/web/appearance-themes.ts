@@ -1,5 +1,5 @@
 import type { ThemeStyle, ThemeStyleTokens } from "@pablozaiden/webapp/contracts";
-import { type AppearancePreference, type CustomTheme } from "@/contracts/schemas/appearance";
+import { CUSTOM_THEME_ID, type AppearancePreference } from "@/contracts/schemas/appearance";
 
 interface Palette {
   canvas: string;
@@ -67,15 +67,15 @@ export const BUILT_IN_THEMES: readonly AppearanceTheme[] = [
 ];
 
 export function appearanceThemes(preference: AppearancePreference): readonly AppearanceTheme[] {
-  return [...BUILT_IN_THEMES, ...preference.customThemes];
+  return [
+    ...BUILT_IN_THEMES,
+    { id: CUSTOM_THEME_ID, name: "Custom", css: preference.customCss ?? "" },
+    ...preference.customThemes,
+  ];
 }
 
 export function selectedAppearanceTheme(preference: AppearancePreference): AppearanceTheme {
   const theme = appearanceThemes(preference).find(({ id }) => id === preference.selected);
   if (!theme) throw new Error("The selected theme is not available.");
   return theme;
-}
-
-export function isCustomTheme(theme: AppearanceTheme): theme is CustomTheme {
-  return !BUILT_IN_THEMES.some(({ id }) => theme.id === id);
 }
