@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { SAFE_THEME_PARAMETER } from "./contracts/schemas/appearance";
 
 interface PagesChoice {
   href: string;
@@ -103,6 +104,16 @@ ${options.choices.map(choice => `          <li>
         <a href="./privacy/">Privacy Policy</a>
 ${options.revision ? `        &middot; Build: <a href="https://github.com/PabloZaiden/clanky/commit/${Bun.escapeHTML(options.revision)}">${Bun.escapeHTML(options.revision.slice(0, 7))}</a>\n` : ""}      </footer>
     </main>
+    <script>
+      if (new URLSearchParams(location.search).get("${SAFE_THEME_PARAMETER}") === "1") {
+        for (const link of document.querySelectorAll("a.connection")) {
+          const url = new URL(link.href);
+          if (url.origin !== location.origin) continue;
+          url.searchParams.set("${SAFE_THEME_PARAMETER}", "1");
+          link.href = url.href;
+        }
+      }
+    </script>
   </body>
 </html>
 `;

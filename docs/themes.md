@@ -22,46 +22,58 @@ Imports are previews until you choose **Apply theme**. The library holds up to
 20 custom themes; removing one requires confirmation and is also applied with
 **Apply theme**.
 
-An exported Clanky default has empty blocks: add supported declarations to
-override only the parts you want. Exporting another built-in theme provides
-a complete editable palette.
+Existing themes still work. An exported built-in theme provides a starting
+palette. To style specific components, write standard CSS. It applies to the
+web interface, including the web content in the Apple apps, but not native
+controls or the contents of sandboxed chat artifacts. Themes are CSS, not
+JavaScript, and the browser applies its ordinary resource policies.
+
+Older token-only palettes retain their light and dark behavior. If a
+stylesheet containing only `:root` and `:root.dark` token declarations should
+use normal CSS cascade rules instead, add the `Clanky CSS theme:` comment shown
+below.
 
 For example:
 
 ```css
-/* Clanky theme: Ocean */
+/* Clanky CSS theme: Ocean */
 
 :root {
   --wapp-sidebar-bg: #e4eff5;
   --wapp-content-bg: #f5fafc;
-  --wapp-surface: #ffffff;
-  --wapp-primary: #216482;
-  --wapp-panel-radius: 12px;
-  --wapp-control-radius: 8px;
-  --wapp-panel-border-width: 1px;
 }
 
 :root.dark {
   --wapp-sidebar-bg: #101f2a;
   --wapp-content-bg: #152937;
-  --wapp-surface: #1d3545;
-  --wapp-primary: #9bdaf4;
-  --wapp-panel-radius: 12px;
-  --wapp-control-radius: 8px;
-  --wapp-panel-border-width: 1px;
+}
+
+[data-message-role="assistant"] {
+  line-height: 1.65;
+}
+
+@media (min-width: 900px) {
+  [data-clanky-composer] { padding-inline: 1rem; }
 }
 ```
 
-Keep both blocks. Only supported custom properties are accepted; omitted
-properties retain Clanky's defaults. Use hex colors or `transparent`, radii
-from 0 to 24px, and border widths from 0 to 2px (`px` and `rem` are supported).
-Files must be no larger than 64 KiB. Theme names may contain up to 60
-characters, without control characters or asterisks.
+Use `#wapp-sidebar` for the sidebar, `[data-clanky-chat]` for the conversation,
+`[data-message-role="user"]` or `[data-message-role="assistant"]` for message
+rows, `[data-message-bubble="user"]` for user bubbles, and
+`[data-clanky-composer]` for the composer. Other internal classes may change.
+Check readable text, borders, focus and selected states in both color modes
+before sharing.
 
-Themes cannot load fonts, images, URLs or other stylesheets, use `!important`,
-or contain arbitrary selectors, layout rules or scripts. Invalid files leave
-the current theme unchanged and show an error. Check readable text, borders,
-focus and selected states in both color modes before sharing.
+## Open without a theme
 
-The supported properties and their validation are defined by the
-[framework visual-theme contract](https://github.com/PabloZaiden/webapp/blob/341d292f4f6f035cd0e51142c2cd34b8e1a77c0e/docs/settings.md#visual-themes).
+If a theme makes Settings inaccessible, open Clanky without the theme:
+
+- **Browser:** add `?safe-theme=1` to the Clanky URL, before any `#` fragment.
+  If the URL already has a query, add `&safe-theme=1` instead.
+- **Mac:** choose **Clanky > Open Without Theme**.
+- **iPhone or iPad:** touch and hold the Clanky app icon and choose
+  **Open Without Theme**.
+
+The original styling loads without deleting your themes or changing the saved
+selection. To recover, choose another theme or **Reset to Clanky**, then
+**Apply theme** and **Resume themes**.

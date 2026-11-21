@@ -209,7 +209,8 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
         return jsonResponse(stored === undefined ? DEFAULT_APPEARANCE : AppearancePreferenceSchema.parse(JSON.parse(stored)));
       },
       async PUT(req, context) {
-        const appearance = await parseJson(req, AppearancePreferenceSchema);
+        // Stylesheets use the HTTP server's body limit, not the default limit for small JSON requests.
+        const appearance = await parseJson(req, AppearancePreferenceSchema, { maxBytes: Number.MAX_SAFE_INTEGER });
         store.setPreference("appearance", JSON.stringify(appearance), context.requireUser().id);
         context.userRealtime.publishChanged(CLANKY_REALTIME_RESOURCES.appearance);
         return successResponse(appearance);

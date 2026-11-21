@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ThemeStyles, useAsyncOperation, useRealtimeRefresh } from "@pablozaiden/webapp/web";
-import { AppearancePreferenceSchema, DEFAULT_APPEARANCE, type AppearancePreference } from "@/contracts/schemas/appearance";
+import { AppearancePreferenceSchema, DEFAULT_APPEARANCE, SAFE_THEME_PARAMETER, type AppearancePreference } from "@/contracts/schemas/appearance";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { appJson } from "./api-client";
 import { clientScopedStorageKey } from "./client-session";
@@ -10,6 +10,7 @@ import { selectedAppearanceTheme } from "./appearance-themes";
 interface AppearanceState {
   saved: AppearancePreference;
   draft: AppearancePreference;
+  safeTheme: boolean;
   pending: boolean;
   error?: Error;
   preview(value: AppearancePreference | undefined): void;
@@ -20,6 +21,7 @@ interface AppearanceState {
 const AppearanceContext = createContext<AppearanceState | null>(null);
 
 export function AppearanceProvider({ accountBacked, children }: { accountBacked: boolean; children: ReactNode }) {
+  const [safeTheme] = useState(() => new URLSearchParams(location.search).get(SAFE_THEME_PARAMETER) === "1");
   const [saved, setSaved] = useState(DEFAULT_APPEARANCE);
   const [preview, setPreview] = useState<AppearancePreference>();
   const [error, setError] = useState<Error>();
@@ -90,12 +92,27 @@ export function AppearanceProvider({ accountBacked, children }: { accountBacked:
       finish(token);
     }
   }, [accountBacked, key, error, start, finish, isCurrent]);
+  const draft = preview ?? saved;
   const state = useMemo<AppearanceState>(() => ({
-    saved, draft: preview ?? saved, pending, error, preview: setPreview, save, retry,
-  }), [saved, preview, pending, error, save, retry]);
+    saved, draft, safeTheme, pending, error, preview: setPreview, save, retry,
+  }), [saved, draft, safeTheme, pending, error, save, retry]);
+  const theme = safeTheme ? undefined : selectedAppearanceTheme(draft);
+  const css = theme?.css;
+  useLayoutEffect(() => {
+    if (!css) return;
+    const root = document.documentElement;
+    const sheet = document.createElement("style");
+    sheet.textContent = css;
+    document.head.append(sheet);
+    root.setAttribute("data-wapp-themed", "");
+    return () => {
+      sheet.remove();
+      root.removeAttribute("data-wapp-themed");
+    };
+  }, [css]);
 
   return <AppearanceContext.Provider value={state}>
-    <ThemeStyles theme={selectedAppearanceTheme(preview ?? saved).style} />
+    {css === undefined ? <ThemeStyles theme={theme?.style} /> : null}
     {children}
   </AppearanceContext.Provider>;
 }

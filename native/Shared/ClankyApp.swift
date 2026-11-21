@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 @main
 enum ClankyEntry {
@@ -14,6 +17,7 @@ struct ClankyApp: App {
     @StateObject private var model = AppModel()
     #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
+    @UIApplicationDelegateAdaptor(ClankyApplicationDelegate.self) private var appDelegate
     #endif
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -58,6 +62,42 @@ struct ClankyApp: App {
     }
 }
 
+#if os(iOS)
+@MainActor
+final class ClankyApplicationDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, configurationForConnecting session: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: session.role)
+        if session.role == .windowApplication {
+            configuration.delegateClass = ClankySceneDelegate.self
+        }
+        return configuration
+    }
+}
+
+@MainActor
+final class ClankySceneDelegate: NSObject, UIWindowSceneDelegate, ObservableObject {
+    private static let safeThemeAction = "open-without-theme"
+    @Published private(set) var safeThemeRequested = false
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        if options.shortcutItem?.type == Self.safeThemeAction { safeThemeRequested = true }
+    }
+
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem) async -> Bool {
+        guard shortcutItem.type == Self.safeThemeAction else { return false }
+        safeThemeRequested = true
+        return true
+    }
+
+    func takeSafeThemeRequest() -> Bool {
+        guard safeThemeRequested else { return false }
+        safeThemeRequested = false
+        return true
+    }
+}
+#endif
+
 #if os(macOS)
 private struct ClankySettingsCommands: Commands {
     var body: some Commands {
@@ -72,6 +112,17 @@ private struct ClankySettingsCommands: Commands {
                 }
             }
                 .keyboardShortcut(",", modifiers: .command)
+            Button("Open Without Theme") {
+                let windows = [NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow, NSApp.mainWindow].compactMap { $0 }
+                    + NSApp.orderedWindows.filter(\.isVisible)
+                for window in windows {
+                    guard let view = window.contentView, let browser = BrowserWebView.browser(in: view) else { continue }
+                    browser.openWithoutTheme()
+                    return
+                }
+                NSLog("Clanky could not find a browser window for theme recovery.")
+                NSSound.beep()
+            }
         }
     }
 }
@@ -143,6 +194,9 @@ private struct BrowserSession: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var sceneID = UUID()
     @StateObject private var browser: BrowserModel
+    #if os(iOS)
+    @EnvironmentObject private var sceneDelegate: ClankySceneDelegate
+    #endif
 
     init(origin: URL, app: AppModel) {
         #if os(macOS)
@@ -162,6 +216,9 @@ private struct BrowserSession: View {
     var body: some View {
         browserContent
         .onAppear {
+            #if os(iOS)
+            if sceneDelegate.takeSafeThemeRequest() { browser.openWithoutTheme() }
+            #endif
             app.setScenePhase(scenePhase, for: sceneID)
             browser.setScenePhase(scenePhase)
         }
@@ -170,6 +227,9 @@ private struct BrowserSession: View {
             browser.setScenePhase(phase)
         }
         #if os(iOS)
+        .onChange(of: sceneDelegate.safeThemeRequested) { _, requested in
+            if requested, sceneDelegate.takeSafeThemeRequest() { browser.openWithoutTheme() }
+        }
         .onChange(of: app.frontendRevision) { _, _ in
             browser.frontendChanged()
         }
@@ -197,9 +257,6 @@ private struct BrowserSession: View {
         } message: {
             Text(browser.error ?? app.error ?? "")
         }
-        #if os(macOS)
-        .focusedSceneObject(browser)
-        #endif
     }
 
     @ViewBuilder

@@ -39,6 +39,7 @@ export interface AppearanceTheme {
   id: string;
   name: string;
   style?: ThemeStyle;
+  css?: string;
 }
 
 export const BUILT_IN_THEMES: readonly AppearanceTheme[] = [

@@ -407,6 +407,14 @@ final class BrowserWebView: WKWebView {
         }
         settingsBrowser.openSettings()
     }
+
+    static func browser(in view: NSView) -> BrowserModel? {
+        if let webView = view as? BrowserWebView { return webView.settingsBrowser }
+        for child in view.subviews {
+            if let browser = browser(in: child) { return browser }
+        }
+        return nil
+    }
 }
 #else
 typealias BrowserWebView = WKWebView
@@ -548,7 +556,11 @@ final class BrowserModel: ObservableObject {
         }
         guard webView.navigationDelegate != nil, webView.url == nil,
               assetLoad == nil, active else { return }
-        home()
+        if let pendingAssetAction {
+            withAssetsReady(pendingAssetAction)
+        } else {
+            home()
+        }
     }
 
     func setScenePhase(_ phase: ScenePhase) {
@@ -648,10 +660,11 @@ final class BrowserModel: ObservableObject {
 
     func home() {
         error = nil
-        if let initialURL {
-            load(initialURL)
-            return
-        }
+        load(homeURL())
+    }
+
+    private func homeURL() -> URL {
+        if let initialURL { return initialURL }
         var url = origin
         if let mode = UserDefaults.standard.string(forKey: Self.connectionKey) {
             if Self.connectionModes.contains(mode) {
@@ -661,6 +674,25 @@ final class BrowserModel: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: Self.connectionKey)
             }
         }
+        return url
+    }
+
+    func openWithoutTheme() {
+        let page = webView.url.flatMap { url in
+            url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port ? url : nil
+        } ?? homeURL()
+        guard var destination = URLComponents(url: page, resolvingAgainstBaseURL: false) else {
+            error = "Unable to open Clanky without a theme."
+            return
+        }
+        destination.queryItems = (destination.queryItems ?? []).filter { $0.name != "safe-theme" }
+            + [URLQueryItem(name: "safe-theme", value: "1")]
+        guard let url = destination.url else {
+            error = "Unable to open Clanky without a theme."
+            return
+        }
+        closePopup()
+        error = nil
         load(url)
     }
 
