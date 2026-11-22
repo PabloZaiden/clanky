@@ -6,6 +6,7 @@ import type {
   ControlUiActionOutcome,
 } from "@/shared/clanky-control";
 import { ControlUiActionEventSchema } from "@/shared/clanky-control";
+import { readClientPerformanceStats } from "@/platform/web/performance-stats";
 import { apiRequest } from "../../lib/api-client";
 import { getClankyClientId } from "../../lib/clanky-client-id";
 import { useRealtime } from "@pablozaiden/webapp/web";
@@ -239,6 +240,9 @@ export function useControlUiActions({
 
   const applyAction = useCallback(async (event: ControlUiActionEvent): Promise<ControlUiActionOutcome> => {
     const action = event.action;
+    if (action.type === "get_performance_stats" && event.source.kind === "chat_turn") {
+      return { status: "performance_stats", stats: readClientPerformanceStats(action.detail) };
+    }
     const clientResult = await handleClientAction(event);
     if (clientResult) return clientResult;
     const expected = getActionRoute(action);

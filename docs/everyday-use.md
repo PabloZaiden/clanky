@@ -207,3 +207,10 @@ messages or attachments. In JSON `chat-open` samples, `transcriptSource` is
 when an initial read was needed. `snapshotMs` reports the time spent awaiting
 and decoding that snapshot after selection. This does not identify the
 browser's HTTP cache.
+
+In a chat with Clanky control tools, ask the agent to analyze the Performance
+Stats from this client. It reads the active capture from the tab that sent
+your message, without starting capture or prompting again. Ask for recent
+samples when the summary is not enough. The selected stats are shared with
+the chat's agent. Export JSON for the full retained trace or to compare two
+clients in one chat.

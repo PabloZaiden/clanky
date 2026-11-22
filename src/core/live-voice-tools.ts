@@ -16,6 +16,7 @@ import { ControlToolContext } from "./control-tool-context";
 import { controlUiToolSchemas, controlUiToolDescriptions, isControlUiToolName, executeControlUiTool } from "./control-ui-tools";
 
 const log = createLogger("core:voice-tools");
+const { clanky_get_client_performance_stats: _chatOnly, ...voiceUiToolSchemas } = controlUiToolSchemas;
 export const LIVE_VOICE_SESSION_END_REQUEST = "voice_session_end_requested";
 export const LIVE_VOICE_GOODBYE_GUIDANCE =
   "After a clear goodbye (such as 'chau', 'chao', 'adiós' or 'hasta luego') or a direct request to finish, immediately delegate to Responses with clanky_accept_goodbye as the only tool call. Do not speak before or after the delegation. Do not do this for an opening greeting or pause.";
@@ -23,7 +24,7 @@ export const LIVE_VOICE_GOODBYE_TOOL_GUIDANCE =
   "Call this tool alone after a clear goodbye (such as 'chau', 'chao', 'adiós' or 'hasta luego') or direct request to finish. Do not use it for an opening greeting or pause. After calling it, do not call another tool or produce additional speech.";
 const schemas = {
   ...controlToolSchemas,
-  ...controlUiToolSchemas,
+  ...voiceUiToolSchemas,
   clanky_watch_work: z.object({
     command: z.enum(["add", "remove", "list"]),
     targets: z.array(z.object({
@@ -87,7 +88,9 @@ export async function executeLiveVoiceTool(options: {
     if (isControlToolName(options.name)) return await executeControlTool({
       service, actions, requestId, name: options.name, input: args, maxReadBytes: maxBytes,
     });
-    if (isControlUiToolName(options.name)) return await executeControlUiTool(direct, options.name, args);
+    if (isControlUiToolName(options.name) && Object.hasOwn(voiceUiToolSchemas, options.name)) {
+      return await executeControlUiTool(direct, options.name, args);
+    }
     switch (options.name) {
       case "clanky_watch_work":
         return await observer.change(schemas.clanky_watch_work.parse(args));

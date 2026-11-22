@@ -1,40 +1,19 @@
 import { isAbortError, isTimeoutError } from "@/lib/request-lifecycle";
+import {
+  MAX_CLIENT_PERFORMANCE_SAMPLES,
+  type ClientPerformanceDetail,
+  type ClientPerformanceSample as Sample,
+  type ClientPerformanceStats,
+} from "@/shared/client-performance-stats";
 import { readStorage, warnStorageIssue, writeStorage } from "./storage";
 
 type Screen = "home" | "chat";
 type Mode = "integrated" | "remote";
-type Outcome = "pending" | "ok" | "error" | "aborted" | "timeout" | "unchanged" | "unobserved";
+type Outcome = Sample["outcome"];
 type HttpPhase =
   | "config" | "client-ticket" | "client-token" | "chats" | "chat-summary" | "chat-snapshot"
   | "workspaces" | "automations" | "automation-runs" | "execution-hosts" | "terminals";
-type Phase = HttpPhase | "startup-content" | "chat-open" | "frontend" | "session-restore" | "token-refresh" | "socket-open" | "subscription"
-  | "heartbeat" | "foreground" | "foreground-visible" | "foreground-update"
-  | "foreground-realtime" | "foreground-chat-snapshot" | "navigation" | "assets";
-
-interface Timing {
-  dnsMs: number | null;
-  connectMs: number | null;
-  tlsMs: number | null;
-  requestToFirstByteMs: number | null;
-  downloadMs: number | null;
-  transferBytes: number | null;
-}
-
-interface Sample {
-  phase: Phase;
-  source: "client" | "resource-timing";
-  startMs: number;
-  durationMs: number | null;
-  outcome: Outcome;
-  foreground: number | null;
-  status?: number;
-  backgroundMs?: number;
-  screen?: Screen;
-  connection?: "reused" | "reconnected";
-  transcriptSource?: "available" | "snapshot";
-  snapshotMs?: number;
-  timing?: Timing;
-}
+type Phase = Sample["phase"];
 
 interface ChatOpening {
   chatId: string;
@@ -369,6 +348,40 @@ export function notePerformanceChatSnapshot(changed: boolean, started: number): 
 
 export function getPerformanceStats() {
   return { enabled: Boolean(capture), panel, connection, samples: capture?.samples ?? [], discarded: capture?.discarded ?? 0 };
+}
+
+export function summarizePerformanceRtt(samples: readonly Sample[]) {
+  const values = samples.flatMap((sample) => sample.phase === "heartbeat" && sample.outcome === "ok"
+    && sample.durationMs !== null ? [sample.durationMs] : []).sort((a, b) => a - b);
+  return {
+    count: values.length,
+    p50Ms: values[Math.ceil(values.length / 2) - 1] ?? null,
+    p95Ms: values.length >= 20 ? values[Math.ceil(values.length * 0.95) - 1]! : null,
+  };
+}
+
+const foregroundMetrics = ["foreground", "foreground-visible", "foreground-realtime",
+  "foreground-update", "foreground-chat-snapshot"] as const;
+
+export function readClientPerformanceStats(detail: ClientPerformanceDetail): ClientPerformanceStats {
+  const owner = capture;
+  if (!owner || !mode) return { state: "disabled" };
+  if (owner.samples.length === 0) return { state: "empty" };
+  const sorted = owner.samples.toSorted((a, b) => a.startMs - b.startMs);
+  const latestForeground = sorted.findLast((sample) => sample.phase === "foreground")?.foreground;
+  const samples = detail === "recent" ? sorted.slice(-MAX_CLIENT_PERFORMANCE_SAMPLES)
+    : [
+      sorted.findLast((sample) => sample.phase === "startup-content"),
+      sorted.findLast((sample) => sample.phase === "chat-open"),
+      ...foregroundMetrics.map((phase) => sorted.findLast((sample) =>
+        sample.phase === phase && sample.foreground === latestForeground)),
+    ].filter((sample) => sample !== undefined);
+  return {
+    state: "captured", detail, mode, surface: window.webappNativeResourceSaver ? "native-webview" : "browser",
+    startedAt: owner.origin === 0 ? "navigation" : "manual",
+    connection, sampleCount: owner.samples.length, discarded: owner.discarded,
+    websocketRtt: summarizePerformanceRtt(sorted), samples,
+  };
 }
 
 export function exportPerformanceStats(appVersion?: string): string {

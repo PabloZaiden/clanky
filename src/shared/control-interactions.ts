@@ -2,6 +2,7 @@
  * Ephemeral client context and human interactions for application control.
  */
 import { z } from "zod";
+import { ClientPerformanceDetailSchema } from "./client-performance-stats";
 
 export const ControlClientContextSchema = z.object({
   revision: z.number().int().nonnegative(),
@@ -20,5 +21,6 @@ export type ControlConfirmation = z.infer<typeof ControlConfirmationSchema>;
 
 export const ControlClientActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("get_context") }).strict(),
+  z.object({ type: z.literal("get_performance_stats"), detail: ClientPerformanceDetailSchema }).strict(),
   z.object({ type: z.literal("confirm_operation"), confirmation: ControlConfirmationSchema }).strict(),
 ]);

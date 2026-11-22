@@ -5,6 +5,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createLogger } from "@pablozaiden/webapp/server";
 import type { ControlUiAction, ControlUiActionOutcome } from "@/shared/clanky-control";
+import type { ClientPerformanceDetail } from "@/shared/client-performance-stats";
 import type { ExecuteOperationInput } from "@/contracts/schemas/control";
 import { ControlConfirmationDescriptionSchema, type ControlClientContext } from "@/shared/control-interactions";
 import { ExecutionHostRefSchema } from "@/contracts/schemas/execution-host";
@@ -93,6 +94,10 @@ export class ControlActions {
     const outcome = await this.dispatch({ type: "get_context" }, requestId);
     if (outcome.status === "context") this.updateContext(outcome.context);
     return outcome;
+  }
+
+  async getClientPerformanceStats(detail: ClientPerformanceDetail, requestId: string) {
+    return await this.dispatch({ type: "get_performance_stats", detail }, requestId);
   }
 
   async uiAction(action: ControlUiAction, requestId: string) {

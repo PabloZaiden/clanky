@@ -3,7 +3,7 @@ import { Button, FormSection, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import { downloadGeneratedFile } from "./download-generated-file";
 import {
   exportPerformanceStats, getPerformanceStats, performanceStatsRevision, setPerformanceCapture,
-  setPerformancePanel, subscribePerformanceStats,
+  setPerformancePanel, subscribePerformanceStats, summarizePerformanceRtt,
 } from "./performance-stats";
 
 function usePerformanceStats() {
@@ -65,10 +65,7 @@ export function PerformanceStatsPanel({ version }: { version?: string }) {
   const realtime = latest("foreground-realtime");
   const update = latest("foreground-update");
   const snapshot = latest("foreground-chat-snapshot");
-  const heartbeats = samples.flatMap((sample) => sample.phase === "heartbeat" && sample.outcome === "ok"
-    && sample.durationMs !== null ? [sample.durationMs] : []).sort((a, b) => a - b);
-  const median = heartbeats[Math.ceil(heartbeats.length / 2) - 1];
-  const p95 = heartbeats.length >= 20 ? heartbeats[Math.ceil(heartbeats.length * 0.95) - 1] : undefined;
+  const { count, p50Ms, p95Ms } = summarizePerformanceRtt(samples);
   return (
     <aside aria-label="Performance Stats"
       className="fixed z-40 w-max overflow-y-auto rounded-lg border border-[var(--wapp-border-soft)] bg-[var(--wapp-surface-raised)] px-3 py-2 text-xs text-[var(--wapp-text)] shadow-lg"
@@ -94,8 +91,8 @@ export function PerformanceStatsPanel({ version }: { version?: string }) {
             : realtime?.outcome === "pending" ? "Awaiting confirmation" : "Not measured"}</dd>
           <dt>First update</dt><dd>{update?.outcome === "ok" ? duration(update.durationMs)
             : snapshot?.outcome === "unchanged" ? "No change in snapshot" : "Not observed"}</dd>
-          <dt>WebSocket RTT</dt><dd>{duration(median)}{median !== undefined ? ` p50 (${heartbeats.length})` : ""}
-            {p95 !== undefined ? ` / ${duration(p95)} p95` : ""}</dd>
+          <dt>WebSocket RTT</dt><dd>{duration(p50Ms)}{p50Ms !== null ? ` p50 (${count})` : ""}
+            {p95Ms !== null ? ` / ${duration(p95Ms)} p95` : ""}</dd>
           <dt>Samples</dt><dd>{samples.length}{discarded > 0 ? ` (${discarded} discarded)` : ""}</dd>
         </dl>
         <Button type="button" onClick={() => {
