@@ -7,6 +7,7 @@ import type { Chat } from "./chat";
 import type { HarnessCapabilities } from "./harness-control";
 import { ControlClientContextSchema, ControlClientActionSchema } from "./control-interactions";
 import { HARNESS_ADAPTER_IDS } from "./harness-events";
+import { ClientPerformanceStatsSchema } from "./client-performance-stats";
 
 export const ClankyControlContextSchema = z.object({
   chatId: z.string().min(1).max(500),
@@ -86,6 +87,7 @@ export const ControlUiActionOutcomeSchema = z.discriminatedUnion("status", [
   }).strict(),
   z.object({ status: z.literal("presented") }).strict(),
   z.object({ status: z.literal("context"), context: ControlClientContextSchema }).strict(),
+  z.object({ status: z.literal("performance_stats"), stats: ClientPerformanceStatsSchema }).strict(),
   z.object({
     status: z.literal("failed"),
     code: z.enum([
