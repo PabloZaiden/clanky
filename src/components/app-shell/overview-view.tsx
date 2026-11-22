@@ -1,14 +1,12 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { usePerformanceContent } from "@/platform/web/use-performance-content";
 import {
-  getExecutionHostSourceId,
   isProvisioningJobTerminal,
   type Automation,
-  type ExecutionHostDescriptor,
   type PublicProvisioningJob,
   type WorkerUpdateJob,
 } from "@/shared";
-import { ConfirmModal, DataList, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { ConfirmModal, DataList, EmptyState, Panel, useToast, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type {
   DismissAllProvisioningJobsResult,
   UseWorkerUpdateJobsResult,
@@ -21,21 +19,10 @@ import {
 } from "./shell-types";
 import { isEffectivelyPrivate, shouldObscurePrivateItem } from "../../lib/private-items";
 import { ClankyListRow } from "./clanky-list-row";
-import { ServerTransportIcon } from "./server-sidebar-item";
 import { WorkerUpdateJobsSection } from "./worker-update-jobs-section";
 import { WorkspaceIdentity } from "../common";
-import { OverviewAutomations } from "./overview-automations";
 import { OverviewWork } from "./overview-work";
 import { JobListRow } from "../job-list-row";
-import { getClankyClientCapabilities } from "../../client-sdk/capabilities";
-
-function getExecutionHostRoute(host: ExecutionHostDescriptor): WebAppRoute {
-  return {
-    view: "execution-host",
-    hostKind: host.ref.kind,
-    hostId: getExecutionHostSourceId(host.ref),
-  };
-}
 
 function getProvisioningJobModeLabel(job: PublicProvisioningJob): string {
   switch (job.config.mode) {
@@ -72,11 +59,8 @@ function readHomePresentation(view: RefObject<HTMLDivElement | null>): string | 
 
 export function OverviewView({
   measurePerformance,
-  executionHosts,
   executionHostNodes,
   automations,
-  automationsLoading,
-  automationsError,
   workspaceGroups,
   sidebarWorkspaceGroups,
   onNavigate,
@@ -89,11 +73,8 @@ export function OverviewView({
   showPrivateItems = false,
 }: {
   measurePerformance: boolean;
-  executionHosts: ExecutionHostDescriptor[];
   executionHostNodes: SidebarExecutionHostNode[];
   automations: Automation[];
-  automationsLoading: boolean;
-  automationsError: string | null;
   workspaceGroups: { workspace: import("@/shared").Workspace }[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   onNavigate: (route: WebAppRoute) => void;
@@ -105,21 +86,10 @@ export function OverviewView({
   dismissingAllWorkerUpdateJobs: boolean;
   showPrivateItems?: boolean;
 }) {
-  const capabilities = getClankyClientCapabilities();
   const view = useRef<HTMLDivElement>(null);
   usePerformanceContent("home", measurePerformance, view, readHomePresentation, { observe: view });
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
-  const serverMapItems = useMemo(() => {
-    return executionHosts
-      .filter((host) => host.ref.kind !== "local")
-      .map((host) => ({
-        host,
-        sessionCount: executionHostNodes.find((node) => node.host.targetKey === host.targetKey)
-          ?.terminalSessions.length ?? 0,
-      }))
-      .sort((left, right) => left.host.name.localeCompare(right.host.name));
-  }, [executionHostNodes, executionHosts]);
   const workspaceChatCounts = useMemo(
     () => new Map(sidebarWorkspaceGroups.flatMap((group) => group.workspaces.map((node) => [
       node.workspace.id,
@@ -129,8 +99,8 @@ export function OverviewView({
   );
   const visibleWorkspaces = useMemo(() => workspaceGroups.map((group) => group.workspace), [workspaceGroups]);
   const visibleWorkspaceIds = useMemo(
-    () => new Set(workspaceGroups.map((group) => group.workspace.id)),
-    [workspaceGroups],
+    () => new Set(visibleWorkspaces.map((workspace) => workspace.id)),
+    [visibleWorkspaces],
   );
   const visibleAutomations = useMemo(
     () => automations.filter((automation) => visibleWorkspaceIds.has(automation.config.workspaceId)),
@@ -174,65 +144,24 @@ export function OverviewView({
         showPrivateItems={showPrivateItems}
       />
 
-      <Panel title="Resources">
-        <div className={`grid items-start gap-6 ${capabilities.executionHosts ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
-          <section className="space-y-2" aria-label="Workspaces">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Workspaces</h3>
-            {workspaceGroups.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No workspaces</p>
-            ) : (
-              <DataList>
-                {workspaceGroups.map((group) => {
-                  const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(group.workspace), showPrivateItems);
-                  const sessionCount = workspaceChatCounts.get(group.workspace.id) ?? 0;
-                  return (
-                    <ClankyListRow
-                      key={group.workspace.id}
-                      title={<WorkspaceIdentity workspace={group.workspace} />}
-                      meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
-                      onClick={() => onNavigate({ view: "workspace", workspaceId: group.workspace.id })}
-                      privateHidden={privateHidden}
-                    />
-                  );
-                })}
-              </DataList>
-            )}
-          </section>
-          <OverviewAutomations
-            automations={visibleAutomations}
-            loading={automationsLoading}
-            error={automationsError}
-            workspaces={visibleWorkspaces}
-            onNavigate={onNavigate}
-            showPrivateItems={showPrivateItems}
-          />
-          {capabilities.executionHosts ? <section className="space-y-2" aria-label="Servers">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Servers</h3>
-            {serverMapItems.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">No servers</p>
-            ) : (
-              <DataList>
-                {serverMapItems.map(({ host, sessionCount }) => {
-                  const privateHidden = shouldObscurePrivateItem(
-                    isEffectivelyPrivate({ isPrivate: host.isPrivate }),
-                    showPrivateItems,
-                  );
-                  return (
-                    <ClankyListRow
-                      key={`${host.ref.kind}:${getExecutionHostSourceId(host.ref)}`}
-                      title={host.name}
-                      description={host.endpoint ?? "Endpoint unavailable"}
-                      meta={`${sessionCount} terminal${sessionCount === 1 ? "" : "s"}`}
-                      badge={<ServerTransportIcon transport={host.ref.kind} />}
-                      onClick={() => onNavigate(getExecutionHostRoute(host))}
-                      privateHidden={privateHidden}
-                    />
-                  );
-                })}
-              </DataList>
-            )}
-          </section> : null}
-        </div>
+      <Panel title="Workspaces">
+        {visibleWorkspaces.length > 0 ? (
+          <DataList>
+            {visibleWorkspaces.map((workspace) => {
+              const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
+              const sessionCount = workspaceChatCounts.get(workspace.id) ?? 0;
+              return (
+                <ClankyListRow
+                  key={workspace.id}
+                  title={<WorkspaceIdentity workspace={workspace} />}
+                  meta={`${sessionCount} session${sessionCount === 1 ? "" : "s"}`}
+                  onClick={() => onNavigate({ view: "workspace", workspaceId: workspace.id })}
+                  privateHidden={privateHidden}
+                />
+              );
+            })}
+          </DataList>
+        ) : <EmptyState title="No workspaces" />}
       </Panel>
 
       {provisioningJobs.length > 0 ? (

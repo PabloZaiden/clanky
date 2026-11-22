@@ -802,11 +802,8 @@ function renderMainContent(props: ShellMainContentProps) {
   return (
     <OverviewView
       measurePerformance={route.view === "home" && props.shellErrors.length === 0}
-      executionHosts={executionHosts}
       executionHostNodes={executionHostNodes}
       automations={automations.automations}
-      automationsLoading={automations.loading}
-      automationsError={automations.error}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       onNavigate={navigateWithinShell}

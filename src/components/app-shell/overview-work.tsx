@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { DataList, EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { DataList, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
 import type { Automation, Workspace } from "@/shared";
 import {
   buildActiveWorkSidebarItems,
@@ -37,6 +37,7 @@ export function OverviewWork({
     return attention ? [{ item, attention }] : [];
   }), [activeItems]);
   const attentionAutomations = useMemo(() => automations.filter((automation) => automation.state.status === "error"), [automations]);
+  const hasAttentionItems = attentionItems.length > 0 || attentionAutomations.length > 0 || Boolean(approvals.data?.length);
   const recentItems = useMemo(() => {
     const history = buildChatHistorySidebarItems(sidebarWorkspaceGroups, { executionHostNodes });
     return [...activeItems, ...history]
@@ -53,30 +54,32 @@ export function OverviewWork({
 
   return (
     <>
-      <Panel title="Needs attention">
-        {approvals.error ? <ErrorState title="Could not load approvals" description={String(approvals.error)}
-          action={<Button disabled={approvals.loading} onClick={() => void approvals.refresh()}>Retry</Button>} /> : null}
-        {approvalsInitiallyLoading ? <LoadingState title="Loading approvals" /> : null}
-        {attentionItems.length > 0 || attentionAutomations.length > 0 || Boolean(approvals.data?.length) ? (
-          <DataList>
-            {approvals.data?.map((request) => (
-              <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
-            ))}
-            {attentionItems.map(({ item, attention }) => (
-              <OverviewWorkItem key={item.key} item={item} attention={attention} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
-            ))}
-            {attentionAutomations.map((automation) => (
-              <OverviewAutomationRow
-                key={automation.config.id}
-                automation={automation}
-                workspace={workspaces.find((workspace) => workspace.id === automation.config.workspaceId)}
-                showPrivateItems={showPrivateItems}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </DataList>
-        ) : !approvalsInitiallyLoading && !approvals.error ? <EmptyState title="Nothing needs your attention" /> : null}
-      </Panel>
+      {hasAttentionItems || approvalsInitiallyLoading || approvals.error ? (
+        <Panel title="Needs attention">
+          {approvals.error ? <ErrorState title="Could not load approvals" description={String(approvals.error)}
+            action={<Button disabled={approvals.loading} onClick={() => void approvals.refresh()}>Retry</Button>} /> : null}
+          {approvalsInitiallyLoading ? <LoadingState title="Loading approvals" /> : null}
+          {hasAttentionItems ? (
+            <DataList>
+              {approvals.data?.map((request) => (
+                <ControlRequestRow key={request.id} request={request} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
+              ))}
+              {attentionItems.map(({ item, attention }) => (
+                <OverviewWorkItem key={item.key} item={item} attention={attention} onNavigate={onNavigate} showPrivateItems={showPrivateItems} />
+              ))}
+              {attentionAutomations.map((automation) => (
+                <OverviewAutomationRow
+                  key={automation.config.id}
+                  automation={automation}
+                  workspace={workspaces.find((workspace) => workspace.id === automation.config.workspaceId)}
+                  showPrivateItems={showPrivateItems}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </DataList>
+          ) : null}
+        </Panel>
+      ) : null}
       {recentItems.length > 0 ? (
         <Panel title="Recent activity">
           <DataList>
