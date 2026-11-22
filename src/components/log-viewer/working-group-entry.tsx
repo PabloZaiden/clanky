@@ -77,7 +77,6 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
                 entry={childEntryForRender}
                 localDayKey={localDayKey}
                 spacingClass={spacingClass}
-                showActivityIndicator={false}
                 toolPathDisplayRoot={toolPathDisplayRoot}
                 onLoadToolDetails={onLoadToolDetails}
               />
@@ -123,6 +122,7 @@ export const WorkingGroupEntry = memo(function WorkingGroupEntry({
           <ActivityIndicator
             active={entry.isActive}
             label="Working"
+            transitionValue={entry.isActive ? "" : undefined}
             className="rounded-md py-0.5 text-left text-base text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48"
             data-working-summary="true"
           >

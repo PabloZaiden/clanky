@@ -9,7 +9,6 @@ import {
 } from "./utils";
 import { ToolEntry } from "./tool-entry";
 import { getToolMeta, type InferredToolKind } from "./tool-inference";
-import { ActivityIndicator } from "./activity-indicator";
 import { HarnessToolActivity } from "../harness-activity";
 
 interface ToolGroupEntryProps {
@@ -20,7 +19,6 @@ interface ToolGroupEntryProps {
   };
   localDayKey: number;
   spacingClass: string;
-  showActivityIndicator?: boolean;
   toolPathDisplayRoot?: string;
   onLoadToolDetails?: (toolCallId: string) => Promise<ToolCallData | null>;
 }
@@ -85,7 +83,6 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   entry,
   localDayKey,
   spacingClass,
-  showActivityIndicator = true,
   toolPathDisplayRoot,
   onLoadToolDetails,
 }: ToolGroupEntryProps) {
@@ -128,15 +125,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
-          <ActivityIndicator
-            active={entry.isActive && showActivityIndicator}
-            label="Working"
-            transitionValue={`${toolCallCountLabel} - ${groupSummary}`}
-            className="min-w-0"
-          >
-            <span className={`shrink-0 font-medium ${entry.isActive && showActivityIndicator ? "text-inherit" : "text-gray-500 dark:text-white/42"}`}>{toolCallCountLabel}</span>
-            <span className="min-w-0 truncate">- {groupSummary}</span>
-          </ActivityIndicator>
+          <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
+          <span className="min-w-0 truncate">- {groupSummary}</span>
         </button>
         <div
           hidden={!isExpanded}

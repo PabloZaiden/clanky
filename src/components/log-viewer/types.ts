@@ -100,8 +100,6 @@ export interface ToolGroupEntryBase {
   timestamp: string;
   /** Timestamp of the last tool call in the run. */
   lastTimestamp: string;
-  /** Whether this is the trailing tool activity with an in-progress call. */
-  isActive: boolean;
 }
 
 export interface ReasoningGroupEntryBase {

@@ -164,7 +164,6 @@ export function getEntryGroupKey(entry: GroupedEntryBase): string {
 
 function createToolGroupEntry(
   tools: ToolGroupEntryBase["tools"],
-  isActive: boolean,
 ): ToolGroupEntryBase {
   const firstTool = tools[0]!;
   const lastTool = tools[tools.length - 1]!;
@@ -174,7 +173,6 @@ function createToolGroupEntry(
     tools,
     timestamp: firstTool.timestamp,
     lastTimestamp: lastTool.timestamp,
-    isActive: isActive && tools.some(isToolCallInProgress),
   };
 }
 
@@ -293,10 +291,7 @@ export function groupConsecutiveEntries(
         cursor += 1;
       }
 
-      groupedEntries.push(createToolGroupEntry(
-        consecutiveTools,
-        isActive && cursor >= sorted.length,
-      ));
+      groupedEntries.push(createToolGroupEntry(consecutiveTools));
       index = cursor - 1;
       continue;
     }
@@ -365,7 +360,6 @@ export function hasActiveWorkEntry(entries: DisplayEntry[]): boolean {
     switch (entry.type) {
       case "tool":
         return index === lastIndex && isToolCallInProgress(entry.data);
-      case "tool-group":
       case "reasoning-group":
       case "working-group":
         return entry.isActive;
