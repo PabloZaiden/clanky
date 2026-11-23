@@ -14,6 +14,8 @@ import type {
 import { Button } from "../common";
 import { getProvisioningStatusBadgeVariant, getProvisioningStatusLabel } from "../common/status-variants";
 import {
+  getTerminalLastInteractionAt,
+  getWorkItemLastInteractionAt,
   type SidebarExecutionHostNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
@@ -90,14 +92,28 @@ export function OverviewView({
   usePerformanceContent("home", measurePerformance, view, readHomePresentation, { observe: view });
   const toast = useToast();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
-  const workspaceChatCounts = useMemo(
-    () => new Map(sidebarWorkspaceGroups.flatMap((group) => group.workspaces.map((node) => [
-      node.workspace.id,
-      node.chats.length + node.historyChats.length,
-    ]))),
+  const workspaceActivity = useMemo(
+    () => new Map(sidebarWorkspaceGroups.flatMap((group) => group.workspaces.map((node) => {
+      const chats = [...node.chats, ...node.historyChats];
+      let lastInteractionAt = "";
+      for (const { chat } of chats) {
+        const timestamp = getWorkItemLastInteractionAt(chat);
+        if (timestamp > lastInteractionAt) lastInteractionAt = timestamp;
+      }
+      for (const { session } of node.terminalSessions) {
+        const timestamp = getTerminalLastInteractionAt(session);
+        if (timestamp > lastInteractionAt) lastInteractionAt = timestamp;
+      }
+      return [node.workspace.id, { sessionCount: chats.length, lastInteractionAt }] as const;
+    }))),
     [sidebarWorkspaceGroups],
   );
-  const visibleWorkspaces = useMemo(() => workspaceGroups.map((group) => group.workspace), [workspaceGroups]);
+  const visibleWorkspaces = useMemo(() => {
+    const lastInteractionAt = (id: string) => workspaceActivity.get(id)?.lastInteractionAt ?? "";
+    return workspaceGroups.map((group) => group.workspace).sort((left, right) =>
+      lastInteractionAt(right.id).localeCompare(lastInteractionAt(left.id)),
+    );
+  }, [workspaceActivity, workspaceGroups]);
   const visibleWorkspaceIds = useMemo(
     () => new Set(visibleWorkspaces.map((workspace) => workspace.id)),
     [visibleWorkspaces],
@@ -149,7 +165,7 @@ export function OverviewView({
           <DataList>
             {visibleWorkspaces.map((workspace) => {
               const privateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
-              const sessionCount = workspaceChatCounts.get(workspace.id) ?? 0;
+              const sessionCount = workspaceActivity.get(workspace.id)?.sessionCount ?? 0;
               return (
                 <ClankyListRow
                   key={workspace.id}
