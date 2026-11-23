@@ -111,14 +111,18 @@ export async function authorizeClient(input: {
   }
 }
 
-export async function refreshClientCredentials(credentials: WebAppClientCredentials): Promise<WebAppClientCredentials> {
+export async function refreshClientCredentials(credentials: WebAppClientCredentials & { refreshAttempt: string }): Promise<WebAppClientCredentials> {
   return tokenCredentials(credentials.baseUrl, credentials.clientId, await authRequest(credentials.baseUrl, "/api/auth/token", {
     grant_type: "refresh_token",
     refresh_token: credentials.refreshToken,
     client_id: credentials.clientId,
+    refresh_attempt: credentials.refreshAttempt,
   }));
 }
 
 export async function revokeClientCredentials(credentials: WebAppClientCredentials): Promise<void> {
-  await authRequest(credentials.baseUrl, "/api/auth/revoke", { refreshToken: credentials.refreshToken });
+  await authRequest(credentials.baseUrl, "/api/auth/revoke", {
+    refreshToken: credentials.refreshToken,
+    refresh_attempt: credentials.refreshAttempt,
+  });
 }

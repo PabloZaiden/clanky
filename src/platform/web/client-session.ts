@@ -286,10 +286,25 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
   const renew = async () => {
     const saved = await readClientCredentials(store, previous.baseUrl);
     if (!saved || saved.clientId !== previous.clientId) {
-      throw new ClientAuthorizationError("The browser session changed. Sign in again.", "session_changed", 400);
+      return { error: new ClientAuthorizationError("The browser session changed. Sign in again.", "session_changed", 400), invalidate: true };
     }
-    const next = saved.accessToken !== previous.accessToken && saved.expiresAt > Date.now() + 15_000
-      ? saved : await refreshClientCredentials(saved);
+    let next = saved;
+    if (saved.accessToken === previous.accessToken || saved.expiresAt <= Date.now() + 15_000) {
+      const pending = { ...saved, refreshAttempt: saved.refreshAttempt ?? crypto.randomUUID() };
+      if (!saved.refreshAttempt) await store.write(pending);
+      try {
+        next = await refreshClientCredentials(pending);
+      } catch (error) {
+        const invalidate = error instanceof ClientAuthorizationError && error.status === 400
+          && (error.code === "invalid_grant" || error.code === "invalid_client");
+        if (invalidate && state.generation === generation) {
+          await store.remove(previous.baseUrl);
+          recordClientSessionDiagnostic("credentials-removed", { status: error.status, reason: "authorization-rejected" });
+        }
+        // The native lock can confirm the pending attempt even when the request failed.
+        return { error, invalidate };
+      }
+    }
     if (state.generation !== generation || state.endpoint !== next.baseUrl) {
       throw new Error("The selected server changed while renewing authorization.");
     }
@@ -300,12 +315,16 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
     }
     credentials = next;
     recordClientSessionDiagnostic("refresh-succeeded");
-    return next.accessToken;
+    return { token: next.accessToken };
   };
   try {
-    const token = await withClientCredentialLock(previous.baseUrl, renew, undefined, store);
+    const result = await withClientCredentialLock(previous.baseUrl, renew, undefined, store);
+    if ("error" in result) {
+      if (result.invalidate && state.generation === generation) invalidateClientSession();
+      throw result.error;
+    }
     end?.("ok");
-    return token;
+    return result.token;
   } catch (error) {
     end?.(performanceFailure(error), error instanceof ClientAuthorizationError ? error.status : undefined);
     const diagnostic = error instanceof ClientAuthorizationError
@@ -316,17 +335,6 @@ async function refreshSession(previous: WebAppClientCredentials): Promise<string
         && ["AbortError", "TimeoutError", "NetworkError"].includes(error.name)
         ? "request-error" as const : "unexpected-error" as const };
     recordClientSessionDiagnostic("refresh-failed", diagnostic);
-    if (state.generation === generation && error instanceof ClientAuthorizationError
-      && [400, 401].includes(error.status)) {
-      await withClientCredentialLock(previous.baseUrl, async () => {
-        const saved = await readClientCredentials(store, previous.baseUrl);
-        if (saved?.clientId === previous.clientId) {
-          await store.remove(previous.baseUrl);
-          recordClientSessionDiagnostic("credentials-removed", diagnostic);
-        }
-      }, undefined, store);
-      invalidateClientSession();
-    }
     throw error;
   }
 }

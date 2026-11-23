@@ -6,6 +6,7 @@ const credentialsSchema = z.object({
   clientId: z.string().min(1),
   accessToken: z.string().min(1),
   refreshToken: z.string().min(1),
+  refreshAttempt: z.uuidv4().optional(),
   expiresAt: z.number().finite(),
 });
 

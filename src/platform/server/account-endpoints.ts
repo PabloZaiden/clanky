@@ -487,14 +487,14 @@ export function createAccountEndpointHandler(dependencies: AccountEndpointDepend
           if (body.grant_type === "urn:ietf:params:oauth:grant-type:device_code" || body.device_code) {
             return jsonResponse(await exchangeDeviceCode(store, config, body.device_code ?? "", body.client_id));
           }
-          return jsonResponse(await exchangeRefreshToken(store, config, body.refresh_token ?? "", body.client_id));
+          return jsonResponse(await exchangeRefreshToken(store, config, body.refresh_token ?? "", body.client_id, body.refresh_attempt));
         } catch (error) {
           return tokenError(error);
         }
       }
       if (deviceAuthEnabled && path === "/api/auth/revoke" && req.method === "POST") {
         const body = await parseJson(req, revokeRefreshTokenRequestSchema);
-        revokeRefreshToken(store, body.refreshToken);
+        revokeRefreshToken(store, body.refreshToken, body.refreshAttempt);
         return successResponse();
       }
       if (deviceAuthEnabled && path === "/.well-known/jwks.json" && req.method === "GET") {

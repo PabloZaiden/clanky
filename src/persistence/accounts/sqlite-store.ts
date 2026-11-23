@@ -787,6 +787,7 @@ export function createAccountStore(db: Database): ClankyAccountStore {
     next: RefreshSessionRecord,
     now: string,
     clientId?: string,
+    resumable = false,
   ): RefreshSessionRotationResult {
     return immediateTransaction(() => {
       const row = db.query("SELECT * FROM webapp_refresh_sessions WHERE refresh_token_hash = ?").get(oldHash) as Row | null;
@@ -795,6 +796,20 @@ export function createAccountStore(db: Database): ClankyAccountStore {
       }
       const previous = mapRefresh(row);
       if (previous.revokedAt) {
+        if (resumable && clientId === previous.clientId) {
+          const successor = db.query(`
+            SELECT * FROM webapp_refresh_sessions
+            WHERE refresh_token_hash = ? AND family_id = ? AND user_id = ? AND client_id = ? AND scope = ?
+          `).get(next.refreshTokenHash, previous.familyId, previous.userId, previous.clientId, previous.scope) as Row | null;
+          if (successor) {
+            const session = mapRefresh(successor);
+            const user = readUserById(previous.userId);
+            if (user && !user.disabledAt && !session.revokedAt && session.expiresAt > now) {
+              return { kind: "rotated", previous, session, user };
+            }
+            return { kind: "replayed", familyId: previous.familyId, userId: previous.userId };
+          }
+        }
         db.query("UPDATE webapp_refresh_sessions SET revoked_at = ?, updated_at = ? WHERE family_id = ? AND revoked_at IS NULL")
           .run(now, now, previous.familyId);
         return { kind: "replayed", familyId: previous.familyId, userId: previous.userId };
