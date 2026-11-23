@@ -14,7 +14,7 @@ import { ControlRequestRow } from "../control/control-requests";
 import { usePendingControlRequests } from "../control/use-pending-control-requests";
 import { Button } from "../common";
 
-const RECENT_ACTIVITY_LIMIT = 5;
+const RECENT_ACTIVITY_LIMIT = 10;
 
 export function OverviewWork({
   sidebarWorkspaceGroups, executionHostNodes, automations, workspaces, onNavigate, showPrivateItems,
