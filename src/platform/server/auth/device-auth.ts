@@ -10,7 +10,7 @@ import {
 import type { AuthSessionSummary, CurrentUser, DeviceAuthorizationResponse, DeviceVerificationDetails, TokenResponse } from "../../contracts";
 import type { RuntimeConfig } from "../runtime-config";
 import type { DeviceAuthExchangeCandidate, RefreshSessionRecord, SigningKeyRecord, ClankyAccountStore } from "./store";
-import { addSeconds, isExpired, nowIso, randomToken, sha256 } from "./crypto";
+import { addSeconds, hmacSha256, isExpired, nowIso, randomToken, sha256 } from "./crypto";
 import { getRequestBaseUrl } from "@pablozaiden/webapp/server";
 import { AuthError, type AccessTokenClaims } from "./types";
 import { toCurrentUser } from "./users";
@@ -212,8 +212,7 @@ export function denyDevice(store: ClankyAccountStore, userCode: string): DeviceV
   }
 }
 
-function createRefreshRecord(userId: string, clientId: string, scope: string, familyId: string = crypto.randomUUID()): { token: string; record: RefreshSessionRecord } {
-  const token = randomToken(32);
+function createRefreshRecord(userId: string, clientId: string, scope: string, familyId: string = crypto.randomUUID(), token = randomToken(32)): { token: string; record: RefreshSessionRecord } {
   const createdAt = nowIso();
   const id = crypto.randomUUID();
   return {
@@ -300,14 +299,21 @@ export async function exchangeDeviceCode(store: ClankyAccountStore, config: Runt
   }
 }
 
-export async function exchangeRefreshToken(store: ClankyAccountStore, config: RuntimeConfig, refreshToken: string, clientId?: string): Promise<TokenResponse> {
+function refreshAttemptToken(refreshToken: string, attempt: string): string {
+  // A retry proves possession of both the old token and the original attempt secret.
+  return hmacSha256(`clanky:device-refresh:v1:${attempt}`, refreshToken);
+}
+
+export async function exchangeRefreshToken(store: ClankyAccountStore, config: RuntimeConfig, refreshToken: string, clientId?: string, attempt?: string): Promise<TokenResponse> {
   const hash = sha256(refreshToken);
   const session = store.getRefreshSessionByHash(hash);
   if (!session) {
     throw new AuthError("invalid_grant", "Refresh token is invalid", 400);
   }
-  const next = createRefreshRecord(session.userId, session.clientId, session.scope, session.familyId);
-  const result = store.rotateRefreshSession(hash, next.record, nowIso(), clientId);
+  const resumable = attempt !== undefined && clientId === session.clientId;
+  const next = createRefreshRecord(session.userId, session.clientId, session.scope, session.familyId,
+    resumable ? refreshAttemptToken(refreshToken, attempt) : undefined);
+  const result = store.rotateRefreshSession(hash, next.record, nowIso(), clientId, resumable);
   switch (result.kind) {
     case "not_found":
       throw new AuthError("invalid_grant", "Refresh token is invalid", 400);
@@ -382,9 +388,12 @@ export function revokeAuthSession(store: ClankyAccountStore, userId: string, id:
   return store.revokeRefreshSession(id, nowIso(), userId);
 }
 
-export function revokeRefreshToken(store: ClankyAccountStore, refreshToken: string): boolean {
+export function revokeRefreshToken(store: ClankyAccountStore, refreshToken: string, attempt?: string): boolean {
   const session = store.getRefreshSessionByHash(sha256(refreshToken));
-  return session ? store.revokeRefreshSession(session.id, nowIso()) : false;
+  if (!session) return false;
+  const successor = attempt && store.getRefreshSessionByHash(sha256(refreshAttemptToken(refreshToken, attempt)));
+  const target = successor && successor.familyId === session.familyId ? successor : session;
+  return store.revokeRefreshSession(target.id, nowIso());
 }
 
 export async function jwks(store: ClankyAccountStore) {

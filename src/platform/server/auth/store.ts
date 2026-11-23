@@ -205,7 +205,7 @@ export interface ClankyAccountStore {
   getRefreshSession(id: string, userId: string): RefreshSessionRecord | undefined;
   getRefreshSessionByHash(refreshTokenHash: string): RefreshSessionRecord | undefined;
   listRefreshSessions(userId?: string): RefreshSessionRecord[];
-  rotateRefreshSession(oldHash: string, next: RefreshSessionRecord, nowIso: string, clientId?: string): RefreshSessionRotationResult;
+  rotateRefreshSession(oldHash: string, next: RefreshSessionRecord, nowIso: string, clientId?: string, resumable?: boolean): RefreshSessionRotationResult;
   revokeRefreshSession(id: string, revokedAt: string, userId?: string): boolean;
   revokeRefreshFamily(familyId: string, revokedAt: string): void;
   revokeRefreshSessionsForUser(userId: string, revokedAt: string): void;

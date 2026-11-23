@@ -198,12 +198,11 @@ encrypted or HttpOnly. Trust the static host as application code: scripts on
 that origin, including injected XSS or another application, can read its stored
 credentials. Directory namespaces are not a security boundary between scripts
 on the same origin. Current browsers with secure-context Web Locks support
-coordinate refresh-token rotation across
-tabs. If a browser interrupts a credential lock after renewal has started,
-the client waits for that operation to finish before retiring that context's in-flight
-renewal. An interrupted request may still report an error, but it does not
-prematurely start a second exchange in that context with the same refresh token. Server-side
-expiry, revocation and replay rejection remain unchanged.
+coordinate refresh-token rotation across tabs. Temporary network failures do
+not clear a saved session. If the client closes before saving the renewal
+response, it can resume the same exchange on reopening. Recovery after a lost
+response requires both the client and controller to support it. An expired or
+revoked session still requires sign-in.
 The [Apple app shell](apple-apps.md#connections-and-web-behavior) provides
 additional app-owned coordination and confirmed credential snapshots between
 native windows; ordinary browser clients retain Web Locks.

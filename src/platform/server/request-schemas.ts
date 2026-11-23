@@ -118,6 +118,7 @@ const tokenRequestFields = {
   device_code: nonEmptyString.optional(),
   refresh_token: nonEmptyString.optional(),
   client_id: optionalClientId,
+  refresh_attempt: z.uuidv4().optional(),
 };
 
 export const tokenRequestSchema = z.object(tokenRequestFields).superRefine((value, context) => {
@@ -141,14 +142,16 @@ export const refreshTokenRequestSchema = z.object({
 export const revokeRefreshTokenRequestSchema = z.object({
   refreshToken: nonEmptyString.optional(),
   refresh_token: nonEmptyString.optional(),
+  refresh_attempt: z.uuidv4().optional(),
 }).superRefine((value, context) => {
   if (value.refreshToken === undefined && value.refresh_token === undefined) {
     context.addIssue({ code: "custom", path: ["refreshToken"], message: "refresh_token is required" });
   } else if (value.refreshToken !== undefined && value.refresh_token !== undefined && value.refreshToken !== value.refresh_token) {
     context.addIssue({ code: "custom", path: ["refreshToken"], message: "refresh_token and refreshToken must match when both are provided" });
   }
-}).transform(({ refreshToken, refresh_token }) => ({
+}).transform(({ refreshToken, refresh_token, refresh_attempt }) => ({
   refreshToken: refreshToken ?? refresh_token!,
+  refreshAttempt: refresh_attempt,
 }));
 
 export const createUserRequestSchema = z.object({

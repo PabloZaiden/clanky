@@ -1407,9 +1407,9 @@ process fails its affected waiting requests visibly. The same applies if an
 operation cannot confirm its saved snapshot; waiting windows must not receive an
 obsolete cached token. A failed snapshot reconciliation or credential operation
 releases ownership without publishing a snapshot, even if localStorage still
-contains readable older credentials. The coordinator does not claim to recover a lost
-token-exchange response. Genuine server revocation and replay rejection
-remain unchanged.
+contains readable older credentials. Recovery after a lost token-exchange
+response belongs to the [shared client and controller](static-client.md), not
+the native coordinator.
 Both the native shell and frontend must include this coordination. A frontend
 update alone cannot add the native coordinator to an older installed app.
 API, invitation and app-local-controller paths retain separate client storage
