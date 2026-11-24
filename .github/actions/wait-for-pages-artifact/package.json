@@ -1,0 +1,7 @@
+{
+  "name": "wait-for-pages-artifact",
+  "private": true,
+  "dependencies": {
+    "@actions/artifact": "2.1.8"
+  }
+}

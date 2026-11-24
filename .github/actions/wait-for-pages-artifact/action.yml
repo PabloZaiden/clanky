@@ -1,0 +1,5 @@
+name: Wait for Pages artifact
+description: Wait for the uploaded artifact to become discoverable by deploy-pages.
+runs:
+  using: node24
+  main: index.mjs

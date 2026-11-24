@@ -168,7 +168,9 @@ jobs:
           bun-version: latest
 
       - name: Install publication dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          bun install --cwd .github/actions/wait-for-pages-artifact --frozen-lockfile
 
       - name: Check current channel sources
         id: revision
@@ -206,11 +208,20 @@ jobs:
           echo "feeds=$feeds" >> "$GITHUB_OUTPUT"
 
       - name: Upload complete Pages artifact
+        id: pages_artifact
         if: steps.revision.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           name: github-pages-${{ github.run_attempt }}
           path: dist/pages
+
+      - name: Wait for uploaded Pages artifact to become visible
+        if: steps.revision.outputs.publish == 'true'
+        timeout-minutes: 1
+        uses: ./.github/actions/wait-for-pages-artifact
+        env:
+          PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
+          PAGES_ARTIFACT_ID: ${{ steps.pages_artifact.outputs.artifact_id }}
 
       - name: Deploy stable and latest channels
         id: deployment
