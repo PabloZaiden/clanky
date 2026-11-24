@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import type {
   CliCommandResult,
   WebAppCliCommandContext,
@@ -17,16 +17,6 @@ export const LINUX_SSH_AGENT_DIRECTORY_NAME = "worker-ssh-agent";
 
 const SHELL_BLOCK_START = "# >>> clanky worker ssh-agent >>>";
 const SHELL_BLOCK_END = "# <<< clanky worker ssh-agent <<<";
-const DEFAULT_SSH_IDENTITY_NAMES = [
-  "id_rsa",
-  "id_ecdsa",
-  "id_ecdsa_sk",
-  "id_ed25519",
-  "id_ed25519_sk",
-  "id_mldsa44_ed25519",
-  "id_dsa",
-  "id_xmss",
-] as const;
 
 export interface WorkerSshAgentPaths {
   label: string;
@@ -365,11 +355,25 @@ async function listAgentIdentities(
   return result;
 }
 
-async function hasDefaultSshIdentity(): Promise<boolean> {
+async function hasDefaultSshIdentity(
+  configuration: WorkerSshAgentConfiguration,
+): Promise<boolean> {
+  // Query the matching client without loading user or system SSH configuration.
+  const sshPath = resolve(dirname(configuration.sshAddPath), "ssh");
+  const defaults = await runProcess(sshPath, ["-F", "/dev/null", "-G", "-T", "localhost"], {}, false);
+  if (defaults.exitCode !== 0) {
+    const details = defaults.stderr.trim() || `exit code ${String(defaults.exitCode)}`;
+    throw new Error(`Unable to query OpenSSH default identity files: ${details}`);
+  }
+  const identities = [...defaults.stdout.matchAll(/^identityfile ~\/(\.ssh\/[^\r\n]+)\r?$/gm)];
+  if (identities.length === 0) {
+    throw new Error("OpenSSH did not report its default identity files.");
+  }
   // Bare ssh-add looks up the account's home rather than reading $HOME.
-  const sshDirectory = resolve(userInfo().homedir, ".ssh");
-  for (const name of DEFAULT_SSH_IDENTITY_NAMES) {
-    const path = resolve(sshDirectory, name);
+  const homeDirectory = userInfo().homedir;
+  for (const [, identity] of identities) {
+    if (!identity) continue;
+    const path = resolve(homeDirectory, identity);
     try {
       await stat(path);
       return true;
@@ -403,7 +407,7 @@ export async function unlockWorkerSshAgent(
       `Unable to access the Clanky worker SSH agent${details ? `: ${details}` : "."}`,
     );
   }
-  if (options.allowNoKeys && !(await hasDefaultSshIdentity())) {
+  if (options.allowNoKeys && !(await hasDefaultSshIdentity(configuration))) {
     return { changed: false, identities: 0 };
   }
 
