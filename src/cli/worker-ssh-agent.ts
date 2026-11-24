@@ -1,5 +1,6 @@
+import { stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import type {
   CliCommandResult,
   WebAppCliCommandContext,
@@ -354,8 +355,40 @@ async function listAgentIdentities(
   return result;
 }
 
+async function hasDefaultSshIdentity(
+  configuration: WorkerSshAgentConfiguration,
+): Promise<boolean> {
+  // Query the matching client without loading user or system SSH configuration.
+  const sshPath = resolve(dirname(configuration.sshAddPath), "ssh");
+  const defaults = await runProcess(sshPath, ["-F", "/dev/null", "-G", "-T", "localhost"], {}, false);
+  if (defaults.exitCode !== 0) {
+    const details = defaults.stderr.trim() || `exit code ${String(defaults.exitCode)}`;
+    throw new Error(`Unable to query OpenSSH default identity files: ${details}`);
+  }
+  const identities = [...defaults.stdout.matchAll(/^identityfile ~\/(\.ssh\/[^\r\n]+)\r?$/gm)];
+  if (identities.length === 0) {
+    throw new Error("OpenSSH did not report its default identity files.");
+  }
+  // Bare ssh-add looks up the account's home rather than reading $HOME.
+  const homeDirectory = userInfo().homedir;
+  for (const [, identity] of identities) {
+    if (!identity) continue;
+    const path = resolve(homeDirectory, identity);
+    try {
+      await stat(path);
+      return true;
+    } catch (error) {
+      if (typeof error === "object" && error !== null
+          && "code" in error && error.code === "ENOENT") continue;
+      throw new Error(`Unable to inspect SSH identity: ${path}`, { cause: error });
+    }
+  }
+  return false;
+}
+
 export async function unlockWorkerSshAgent(
   configuration: WorkerSshAgentConfiguration,
+  options: { allowNoKeys?: boolean } = {},
 ): Promise<WorkerSshAgentUnlockResult> {
   const environment = {
     HOME: configuration.homeDirectory,
@@ -373,6 +406,9 @@ export async function unlockWorkerSshAgent(
     throw new Error(
       `Unable to access the Clanky worker SSH agent${details ? `: ${details}` : "."}`,
     );
+  }
+  if (options.allowNoKeys && !(await hasDefaultSshIdentity(configuration))) {
+    return { changed: false, identities: 0 };
   }
 
   const added = await runProcess(
@@ -454,7 +490,7 @@ export async function runWorkerSshAgentCommand(
     context.stdout.write(`${JSON.stringify(await getWorkerSshAgentStatus(configuration))}\n`);
     return { exitCode: 0 };
   }
-  const result = await unlockWorkerSshAgent(configuration);
+  const result = await unlockWorkerSshAgent(configuration, { allowNoKeys: command.ifNeeded });
   if (!command.ifNeeded) {
     context.stdout.write(`${JSON.stringify({
       socket: configuration.paths.socketPath,

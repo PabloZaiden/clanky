@@ -910,7 +910,7 @@ async function installService(
   configuration: WorkerServiceConfiguration,
   noStart: boolean,
   runner: ProcessRunner,
-): Promise<void> {
+): Promise<boolean> {
   await mkdir(join(configuration.dataDir, SERVICE_LOG_DIRECTORY), {
     recursive: true,
   });
@@ -922,7 +922,7 @@ async function installService(
       0o600,
     );
     if (!noStart) await startMacService(configuration.paths, runner);
-    return;
+    return false;
   }
   if (configuration.sshAgent) {
     await stopLinuxService(configuration.paths.label, runner);
@@ -948,16 +948,19 @@ async function installService(
   await assertSystemctlSuccess(runner, ["enable", LINUX_SSH_AGENT_UNIT_NAME]);
   await assertSystemctlSuccess(runner, ["enable", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME]);
   await assertSystemctlSuccess(runner, ["enable", configuration.paths.label]);
+  let sshAgentUnlocked = false;
   if (!noStart) {
     await assertSystemctlSuccess(runner, ["start", LINUX_SSH_AGENT_UNIT_NAME]);
     await assertSystemctlSuccess(runner, ["start", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME]);
     if (!configuration.sshAgent) {
       throw new Error("Linux worker SSH-agent configuration is unavailable.");
     }
-    await unlockWorkerSshAgent(configuration.sshAgent);
+    const unlock = await unlockWorkerSshAgent(configuration.sshAgent, { allowNoKeys: true });
+    sshAgentUnlocked = unlock.identities > 0;
     await assertSystemctlSuccess(runner, ["restart", configuration.paths.label]);
   }
   await installShellIntegration(configuration);
+  return sshAgentUnlocked;
 }
 
 async function uninstallService(
@@ -1129,7 +1132,7 @@ async function runWorkerServiceOperation(
       environment,
       homeDirectory,
     });
-    await installService(
+    const sshAgentUnlocked = await installService(
       configuration,
       command.noStart,
       runner,
@@ -1148,7 +1151,7 @@ async function runWorkerServiceOperation(
               upstreamSocket: configuration.sshAgent.paths.upstreamSocketPath,
               relayService: LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME,
               relaySocket: LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME,
-              unlocked: !command.noStart,
+              unlocked: sshAgentUnlocked,
             },
           }
         : {}),
