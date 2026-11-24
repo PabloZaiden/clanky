@@ -88,6 +88,11 @@ incompatible. Upgrade the Clanky binary and Copilot CLI on each execution
 worker together; updating only the controller does not update a remote worker's
 SDK. Existing native session identities and authentication are preserved.
 
+New and resumed Copilot sessions discover supported local configuration,
+including skills, through the Copilot CLI on the execution host. For Mesh
+sessions, configure Copilot under the account running the worker, not on the
+controller.
+
 Provider subprocesses do not inherit `CLANKY_BASE_URL` or `CLANKY_API_KEY` from
 the server or worker environment. Other environment variables and
 provider authentication are preserved. Personal keys and interactive terminals

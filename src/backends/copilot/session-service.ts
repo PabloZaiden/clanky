@@ -75,6 +75,7 @@ export class CopilotSessionService {
     const tools = await this.nativeTools(options.ownership);
     const session = await this.runtime.client.createSession({
       workingDirectory: options.directory,
+      enableConfigDiscovery: true,
       systemMessage: {
         mode: "append",
         content: buildAgentInstructions({ controlTools: options.ownership.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
@@ -137,6 +138,7 @@ export class CopilotSessionService {
     }
     const session = await this.runtime.client.resumeSession(binding.nativeId, {
       workingDirectory: binding.directory,
+      enableConfigDiscovery: true,
       systemMessage: {
         mode: "append",
         content: buildAgentInstructions({ controlTools: binding.controlTools, htmlArtifacts: tools.some((tool) => tool.name === "clanky_html_render") }),
