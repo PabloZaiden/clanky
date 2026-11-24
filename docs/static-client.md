@@ -82,6 +82,8 @@ drafts, prereleases and the rolling `latest` release do not select stable.
 Both channels must be published together from their exact source revisions.
 Publication succeeds only after verifying the publicly served metadata,
 integrity manifests and connection bootstraps, not merely admitting deployment.
+If GitHub cannot list the uploaded artifact before the deploy step, rerun
+the failed jobs instead of rebuilding the other distributions.
 
 Configure repository **Settings > Pages > Source** to
 **GitHub Actions** before the first deployment and allow `main` in the
