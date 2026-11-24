@@ -773,9 +773,11 @@ Use `--no-start` when installation should register the service without starting
 it immediately. The service account needs access to Git, the selected provider
 runtime, the workspace directory, and any other tools used by agents.
 
-On Linux, installation creates systemd services. On macOS, it installs a
-per-user LaunchAgent; the worker can request Accessibility, Screen Recording,
-and Files and Folders permissions when those capabilities are used.
+On Linux, installation creates systemd services. It loads default SSH private
+keys if present, but starts the worker even when the SSH agent has no keys.
+On macOS, it installs a per-user LaunchAgent; the worker can request
+Accessibility, Screen Recording, and Files and Folders permissions when those
+capabilities are used.
 
 ## Enroll a worker
 
