@@ -15,7 +15,7 @@ import type { TestAutomationCodeRequest } from "@/contracts/schemas";
 import { automationManager } from "../../core/automation-manager";
 import { isDomainError } from "../../domain/domain-error";
 import { testDeterministicAutomationCode } from "../../core/deterministic-automation-test";
-import { assertWorktreesAllowed, isGitBackedWorkspace } from "../../core/workspace-capabilities";
+import { assertWorktreesAllowed, workspaceSupportsWorktrees } from "../../core/workspace-capabilities";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
 import { validateAutomationModel } from "./helpers";
@@ -54,7 +54,7 @@ async function prepareDeterministicAutomationTest(
     return workspace;
   }
   if (
-    !isGitBackedWorkspace(workspace)
+    !workspaceSupportsWorktrees(workspace)
     && (body.useWorktree || body.baseBranch !== undefined)
   ) {
     return errorResponse(
@@ -63,7 +63,7 @@ async function prepareDeterministicAutomationTest(
       409,
     );
   }
-  if (body.useWorktree) {
+  if (workspace.workspaceType === "multi-git" || body.useWorktree) {
     try {
       assertWorktreesAllowed(workspace);
     } catch (error) {
@@ -104,7 +104,8 @@ function testOptionsFromPrepared(
     directory: workspace.directory,
     model: body.model,
     baseBranch: body.baseBranch,
-    useWorktree: body.useWorktree,
+    repositoryBases: body.repositoryBases,
+    useWorktree: workspace.workspaceType === "multi-git" || body.useWorktree,
     testRunId: body.testRunId,
     ...options,
   };

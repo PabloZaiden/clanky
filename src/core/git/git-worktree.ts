@@ -215,14 +215,14 @@ export async function listWorktrees(
     throw gitError("Failed to list worktrees", result, listArgs);
   }
 
-  const output = result.stdout.replace(/\r\n/g, "\n").trim();
+  const output = result.stdout.replace(/\r\n/g, "\n");
   if (!output) return [];
 
   const entries: Array<{ path: string; head: string; branch: string }> = [];
   const blocks = output.split("\n\n");
 
   for (const block of blocks) {
-    const lines = block.trim().split("\n");
+    const lines = block.split("\n");
     let path = "";
     let head = "";
     let branch = "";

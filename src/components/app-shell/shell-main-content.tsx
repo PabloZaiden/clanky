@@ -98,10 +98,10 @@ export interface ShellMainContentProps {
   onSavedAutomationEdit: (automation: import("@/shared").Automation) => void;
 
   // Compose state
-  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat>;
   createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   startAutomationImport: (workspaceId: string) => void;
-  pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
+  pullLatestWorkspaceChanges: (workspaceId: string, repository?: string) => Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
 
   // Workspace create
@@ -555,7 +555,7 @@ function renderMainContent(props: ShellMainContentProps) {
         automationsLoading={automations.loading}
         automationsError={automations.error}
         onNavigate={navigateWithinShell}
-        onPullLatestChanges={() => props.pullLatestWorkspaceChanges(selectedWorkspace.id)}
+        onPullLatestChanges={(repository) => props.pullLatestWorkspaceChanges(selectedWorkspace.id, repository)}
         pullingLatestChanges={props.pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
         onError={props.toast.error}
         showPrivateItems={showPrivateItems}

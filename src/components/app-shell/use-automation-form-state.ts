@@ -20,6 +20,7 @@ export interface AutomationFormDraft {
   workspaceId: string;
   modelKey: string;
   baseBranch: string;
+  repositoryBases: import("@/shared/repository-group").RepositoryBaseSelection[];
   useWorktree: boolean;
   startAtLocal: string;
   startAtTouched: boolean;
@@ -33,6 +34,7 @@ type AutomationFormAction =
   | { type: "set-workspace-id"; value: string }
   | { type: "set-model-key"; value: string }
   | { type: "set-base-branch"; value: string }
+  | { type: "set-repository-bases"; value: AutomationFormDraft["repositoryBases"] }
   | { type: "set-use-worktree"; value: boolean }
   | { type: "set-start-at"; value: string }
   | { type: "set-start-at-default"; value: string }
@@ -101,6 +103,7 @@ function createInitialDraft({
       ? makeModelKey(automation.config.model.providerID, automation.config.model.modelID, automation.config.model.variant)
       : "",
     baseBranch: automation?.config.baseBranch ?? "",
+    repositoryBases: automation?.config.repositoryBases ?? [],
     useWorktree: automation?.config.useWorktree ?? true,
     startAtLocal: automation?.config.schedule.startAtLocal ?? "",
     startAtTouched: Boolean(automation),
@@ -123,11 +126,14 @@ function automationFormReducer(state: AutomationFormDraft, action: AutomationFor
             workspaceId: action.value,
             modelKey: "",
             baseBranch: "",
+            repositoryBases: [],
           };
     case "set-model-key":
       return { ...state, modelKey: action.value };
     case "set-base-branch":
       return { ...state, baseBranch: action.value };
+    case "set-repository-bases":
+      return { ...state, repositoryBases: action.value };
     case "set-use-worktree":
       return { ...state, useWorktree: action.value };
     case "set-start-at":
@@ -182,6 +188,7 @@ export interface UseAutomationFormStateResult {
   setWorkspaceId: (value: string) => void;
   setModelKey: (value: string) => void;
   setBaseBranch: (value: string) => void;
+  setRepositoryBases: (value: AutomationFormDraft["repositoryBases"]) => void;
   setUseWorktree: (value: boolean) => void;
   setStartAtLocal: (value: string) => void;
   setIntervalValue: (value: number) => void;
@@ -420,9 +427,9 @@ export function useAutomationFormState({
             baseBranch: draft.baseBranch.trim() || undefined,
             useWorktree: worktreesAllowed || preserveExistingWorktree ? draft.useWorktree : false,
           }
-        : {
-            useWorktree: false,
-          }),
+        :         selectedWorkspace.workspaceType === "multi-git"
+          ? { useWorktree: true, repositoryBases: draft.repositoryBases }
+          : { useWorktree: false }),
       schedule,
     };
 
@@ -475,7 +482,7 @@ export function useAutomationFormState({
     canSubmit,
     workspaceSelectionsReady,
     worktreeControlDisabled,
-    worktreeForNewRun: draft.useWorktree,
+    worktreeForNewRun: selectedWorkspace?.workspaceType === "multi-git" || draft.useWorktree,
     schedulerTimezone,
     schedulerError: scheduling.error,
     refreshScheduler: scheduling.refresh,
@@ -484,6 +491,7 @@ export function useAutomationFormState({
     setWorkspaceId,
     setModelKey,
     setBaseBranch,
+    setRepositoryBases: (value: AutomationFormDraft["repositoryBases"]) => dispatch({ type: "set-repository-bases", value }),
     setUseWorktree,
     setStartAtLocal,
     setIntervalValue,

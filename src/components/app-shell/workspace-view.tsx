@@ -11,7 +11,7 @@ import {
   getTerminalSessionStatusBadgeVariant,
   getTerminalSessionStatusLabel,
 } from "../common";
-import { EmptyState, ErrorState, LoadingState, Panel, type WebAppRoute } from "@pablozaiden/webapp/web";
+import { EmptyState, ErrorState, LoadingState, Panel, SelectField, type WebAppRoute } from "@pablozaiden/webapp/web";
 import { ConfiguredAutomationsSection } from "../ConfiguredAutomationsSection";
 import {
   isEffectivelyPrivate,
@@ -25,12 +25,14 @@ import { isWorkspaceReadOnly } from "@/shared/workspace";
 import { getWorkItemLastInteractionAt } from "./shell-types";
 import { WorkspaceEnvironmentPanel } from "../WorkspaceEnvironmentPanel";
 import { SshKeyAccess } from "../SshKeyAccess";
+import { useWorkspaceRepositories } from "../common/repository-base-fields";
 
 async function openWorkspaceGitHubUrl(
   workspace: Workspace,
   onError: (message: string) => void,
+  repository?: string,
 ): Promise<void> {
-  const persistedUrl = normalizeGitHubRepositoryUrl(workspace.repoUrl ?? "");
+  const persistedUrl = repository ? null : normalizeGitHubRepositoryUrl(workspace.repoUrl ?? "");
   if (persistedUrl) {
     window.open(persistedUrl, "_blank", "noopener,noreferrer");
     return;
@@ -39,7 +41,7 @@ async function openWorkspaceGitHubUrl(
   let fetchedUrl: string | null;
   try {
     const data = await apiRequest<{ githubUrl?: unknown }>(
-      `/api/git/github-repository-url?workspaceId=${encodeURIComponent(workspace.id)}`,
+      `/api/git/github-repository-url?${new URLSearchParams({ workspaceId: workspace.id, ...(repository ? { repository } : {}) })}`,
       {
         action: "Load GitHub repository URL",
         fallbackMessage: "GitHub repository URL is not available for this workspace",
@@ -136,12 +138,15 @@ export function WorkspaceView({
   automationsLoading: boolean;
   automationsError: string | null;
   onNavigate: (route: WebAppRoute) => void;
-  onPullLatestChanges: () => Promise<void>;
+  onPullLatestChanges: (repository?: string) => Promise<void>;
   pullingLatestChanges: boolean;
   onError: (message: string) => void;
   showPrivateItems?: boolean;
 }) {
   const scratchpadPrivateHidden = shouldObscurePrivateItem(isEffectivelyPrivate(workspace), showPrivateItems);
+  const repositoryQuery = useWorkspaceRepositories(workspace, !scratchpadPrivateHidden);
+  const [selectedRepository, setSelectedRepository] = useState("");
+  const repository = repositoryQuery.data?.find(({ name }) => name === selectedRepository);
   const scratchpadPreview = useWorkspaceScratchpadPreview(workspace.id, !scratchpadPrivateHidden);
   const activityChats = relatedChats.filter((chat) => chat.state.status !== "done");
   const historyChats = relatedChats.filter((chat) => chat.state.status === "done");
@@ -181,6 +186,32 @@ export function WorkspaceView({
           </Button>
         </div>
       ) : null}
+          {workspace.workspaceType === "multi-git" && !scratchpadPrivateHidden ? (
+            <Panel title="Repositories" className="border-0">
+              <div className="space-y-3">
+                {repositoryQuery.error ? <ErrorState title="Could not discover repositories" description={String(repositoryQuery.error)} /> : null}
+                {repositoryQuery.loading && !repositoryQuery.data ? <LoadingState title="Finding repositories" /> : null}
+                {repositoryQuery.data?.length === 0 ? <p>No Git repositories found.</p> : null}
+                {repositoryQuery.data?.length ? (
+                  <SelectField id="workspace-repository" label="Repository" value={repository?.name ?? ""}
+                    onChange={(event) => setSelectedRepository(event.currentTarget.value)}>
+                    <option value="">Select a repository</option>
+                    {repositoryQuery.data.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+                  </SelectField>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={() => void repositoryQuery.refresh()} disabled={repositoryQuery.loading}>Refresh</Button>
+                  {repository ? (
+                    <>
+                      {!isWorkspaceReadOnly(workspace) ? <Button onClick={() => void onPullLatestChanges(repository.name)}
+                        loading={pullingLatestChanges}>Pull Latest Changes</Button> : null}
+                      <Button onClick={() => void openWorkspaceGitHubUrl(workspace, onError, repository.name)}>Open in GitHub</Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </Panel>
+          ) : null}
       <Panel data-testid="workspace-activity-card" title="Activity" className="border-0">
         <div>
           {hasActivity ? (

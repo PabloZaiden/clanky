@@ -3,6 +3,7 @@ import type { Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import { ModelSelector } from "../ModelSelector";
 import { BranchSelector } from "../common/branch-selector";
+import { RepositoryBaseFields } from "../common/repository-base-fields";
 import type {
   AutomationFormDraft,
   AutomationFormIntervalUnit,
@@ -32,6 +33,7 @@ export interface AutomationFormFieldsProps {
   setWorkspaceId: (value: string) => void;
   setModelKey: (value: string) => void;
   setBaseBranch: (value: string) => void;
+  setRepositoryBases: (value: AutomationFormDraft["repositoryBases"]) => void;
   setUseWorktree: (value: boolean) => void;
   worktreeControlDisabled: boolean;
   setStartAtLocal: (value: string) => void;
@@ -59,6 +61,7 @@ export function AutomationFormFields({
   setWorkspaceId,
   setModelKey,
   setBaseBranch,
+  setRepositoryBases,
   setUseWorktree,
   worktreeControlDisabled,
   setStartAtLocal,
@@ -123,7 +126,13 @@ export function AutomationFormFields({
         />
       </div>
 
-      {selectedWorkspace?.workspaceType === "git" ? (
+      {selectedWorkspace?.workspaceType === "multi-git" ? (
+        <details>
+          <summary className="cursor-pointer text-sm font-medium">Base branches</summary>
+          <RepositoryBaseFields key={selectedWorkspace.id} workspace={selectedWorkspace} value={draft.repositoryBases}
+            onChange={setRepositoryBases} />
+        </details>
+      ) : selectedWorkspace?.workspaceType === "git" ? (
         <BranchSelector
           selectedBranch={draft.baseBranch}
           onBranchChange={setBaseBranch}

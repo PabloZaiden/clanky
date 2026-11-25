@@ -17,6 +17,16 @@ import { chatTranscriptStore } from "../transcripts/chat-store";
 import { invalidateChatMetadata } from "./metadata-cache";
 
 const STANDALONE = "scope = 'workspace'";
+
+export function hasRepositoryGroupDependents(chatId: string, workspaceId: string): boolean {
+  return getDatabase().prepare(`
+    SELECT 1 FROM chats
+    WHERE workspace_id = ? AND user_id = ? AND id <> ?
+      AND json_extract(worktree_group_json, '$.ownerChatId') = ?
+    LIMIT 1
+  `).get(workspaceId, requireResourcePersistenceUserId("chat", chatId, workspaceId), chatId, chatId) !== null;
+}
+
 export function loadTrashedChat(chatId: string): Chat | null {
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
@@ -139,9 +149,10 @@ export function saveTrashedChatWorktree(chatId: string, worktree: ChatWorktreeSt
   invalidateChatMetadata(db, userId, chatId);
   return db.prepare(`
     UPDATE chats SET worktree_original_branch = ?, worktree_working_branch = ?,
-      worktree_path = ?, state_revision = state_revision + 1
+      worktree_path = ?, worktree_group_json = ?, state_revision = state_revision + 1
     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND ${STANDALONE}
-  `).run(worktree.originalBranch, worktree.workingBranch, worktree.worktreePath ?? null,
+  `).run(worktree.originalBranch ?? null, worktree.workingBranch ?? null, worktree.worktreePath ?? null,
+    worktree.group ? JSON.stringify(worktree.group) : null,
     chatId, userId).changes > 0;
 }
 

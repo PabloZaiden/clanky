@@ -1,6 +1,6 @@
 import { defineRoutes } from "@/platform/server";
 import { workspaceOperation } from "./workspace-delegation";
-import { GitRemoteStatusQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
+import { GitRemoteStatusQuerySchema, WorkspaceGitQuerySchema, WorkspaceQuerySchema } from "./route-schemas";
 /**
  * Git API endpoints for Clanky.
  * 
@@ -32,6 +32,9 @@ import type {
 import type { CommandExecutor } from "../core/command-executor";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { errorResponse, internalErrorResponse, requireGitBackedWorkspace, requireWorkspace } from "./helpers";
+import { listWorkspaceRepositories, resolveRepositoryDefaultBranch, resolveWorkspaceRepository } from "../core/repository-group-service";
+import { RepositoryNameSchema } from "@/contracts/schemas/repository-group";
+import { isDomainError } from "../domain/domain-error";
 
 const log = createLogger("api:git");
 
@@ -55,10 +58,16 @@ export interface DefaultBranchResponse {
 
 async function resolveGitHubRepositoryUrl(
   workspaceId: string,
+  request: Request,
 ): Promise<string | null | Response> {
   const workspaceResult = await requireWorkspace(workspaceId);
   if (workspaceResult instanceof Response) {
     return workspaceResult;
+  }
+  if (workspaceResult.workspaceType === "multi-git") {
+    const target = await validateGitRequest(request);
+    if (target instanceof Response) return target;
+    return await resolveGitHubRepositoryUrlForWorkspace(target.workspace, target.git, target.directory);
   }
   const gitWorkspace = requireGitBackedWorkspace(workspaceResult);
   if (gitWorkspace instanceof Response) {
@@ -70,15 +79,14 @@ async function resolveGitHubRepositoryUrl(
 async function resolveGitHubRepositoryUrlForWorkspace(
   workspace: Workspace,
   git?: GitService,
+  directory = workspace.directory,
 ): Promise<string | null> {
-  const directory = workspace.directory;
-
-  const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
+  const persistedRepoUrl = workspace.workspaceType === "git" ? workspace.repoUrl?.trim() ?? "" : "";
   if (persistedRepoUrl) {
     return normalizeGitHubRepositoryUrl(persistedRepoUrl);
   }
 
-  const gitService = git ?? await createGitServiceForWorkspace(workspace);
+  const gitService = git ?? GitService.withExecutor(await backendManager.getCommandExecutorAsync(workspace.id, directory));
 
   if (!(await gitService.isGitRepo(directory))) {
     return null;
@@ -102,11 +110,6 @@ async function resolveGitHubRepositoryUrlForWorkspace(
   }
 }
 
-async function createGitServiceForWorkspace(workspace: Workspace): Promise<GitService> {
-  const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-  return GitService.withExecutor(executor);
-}
-
 /** Validate a workspace git request and verify its repository. */
 async function validateGitRequest(req: Request): Promise<
   { git: GitService; executor: CommandExecutor; directory: string; workspace: Workspace } | Response
@@ -123,6 +126,21 @@ async function validateGitRequest(req: Request): Promise<
   if (workspace instanceof Response) {
     return workspace;
   }
+  if (workspace.workspaceType === "multi-git") {
+    const repository = RepositoryNameSchema.safeParse(url.searchParams.get("repository"));
+    if (!repository.success) return errorResponse("repository_required", "Choose a repository in this workspace", 400);
+    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+    try {
+      const directory = await resolveWorkspaceRepository(executor, workspace.directory, repository.data);
+      return { git: GitService.withExecutor(executor), executor, directory, workspace };
+    } catch (error) {
+      if (isDomainError(error) && error.code === "repository_group_unavailable") {
+        return errorResponse(error.code, error.message, 409);
+      }
+      throw error;
+    }
+  }
+  if (url.searchParams.has("repository")) return errorResponse("validation_error", "This workspace does not have multiple repositories", 400);
   const gitWorkspace = requireGitBackedWorkspace(workspace);
   if (gitWorkspace instanceof Response) {
     return gitWorkspace;
@@ -131,15 +149,13 @@ async function validateGitRequest(req: Request): Promise<
   const executor = await backendManager.getCommandExecutorAsync(gitWorkspace.id, gitWorkspace.directory);
   const git = GitService.withExecutor(executor);
   const directory = gitWorkspace.directory;
-  const isGitRepo = await git.isGitRepo(directory);
-  if (!isGitRepo) {
+  if (!await git.isGitRepo(directory)) {
     log.debug("Workspace directory is not a git repository", {
       workspaceId: workspace.id,
       directory,
     });
     return errorResponse("not_git_repo", "Workspace directory is not a git repository");
   }
-
   return { git, executor, directory, workspace: gitWorkspace };
 }
 
@@ -154,6 +170,34 @@ async function validateGitRequest(req: Request): Promise<
  * - GET /api/git/github-issues - List open issues
  */
 export const gitRoutes = defineRoutes({
+  "/api/git/repositories": {
+    delegation: workspaceOperation("workspace"),
+    auth: "user",
+    sameOrigin: "mutations",
+    description: "Discover the direct Git repositories and available base branches in a multirepository workspace.",
+    operations: {
+      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+    },
+    async GET(req) {
+      const query = WorkspaceQuerySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+      if (!query.success) return errorResponse("validation_error", "Choose a workspace", 400);
+      const workspace = await requireWorkspace(query.data.workspaceId);
+      if (workspace instanceof Response) return workspace;
+      if (workspace.workspaceType !== "multi-git") {
+        return errorResponse("repository_group_unavailable", "This workspace is not multirepository", 409);
+      }
+      const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+      try {
+        return Response.json(await listWorkspaceRepositories(executor, workspace.directory));
+      } catch (error) {
+        if (isDomainError(error) && error.code === "repository_group_unavailable") {
+          return errorResponse(error.code, error.message, 409);
+        }
+        log.error("Failed to discover workspace repositories", { workspaceId: workspace.id, error: String(error) });
+        return internalErrorResponse(error, { error: "git_error", message: "Failed to discover workspace repositories", status: 500 });
+      }
+    },
+  },
   /**
    * GET /api/git/branches - Get local and cached remote-tracking branches.
    * 
@@ -177,7 +221,7 @@ export const gitRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List local and cached remote-tracking git branches for a workspace.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: WorkspaceGitQuerySchema, automation: { policy: "read" } },
     },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/branches");
@@ -230,7 +274,7 @@ export const gitRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Detect the default git branch for a workspace.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: WorkspaceGitQuerySchema, automation: { policy: "read" } },
     },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/default-branch");
@@ -240,7 +284,9 @@ export const gitRoutes = defineRoutes({
         if (result instanceof Response) return result;
         const { git, directory } = result;
 
-        const defaultBranch = await git.getDefaultBranch(directory);
+        const defaultBranch = result.workspace.workspaceType === "multi-git"
+          ? (await resolveRepositoryDefaultBranch(result.executor, directory)).branch
+          : await git.getDefaultBranch(directory);
 
         const response: DefaultBranchResponse = {
           defaultBranch,
@@ -301,7 +347,7 @@ export const gitRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Resolve the GitHub repository URL for a workspace.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: WorkspaceGitQuerySchema, automation: { policy: "read" } },
     },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-repository-url");
@@ -315,7 +361,7 @@ export const gitRoutes = defineRoutes({
           return errorResponse("missing_workspace_id", "workspaceId query parameter is required");
         }
 
-        const githubUrl = await resolveGitHubRepositoryUrl(workspaceId);
+        const githubUrl = await resolveGitHubRepositoryUrl(workspaceId, req);
         if (githubUrl instanceof Response) {
           return githubUrl;
         }
@@ -341,7 +387,7 @@ export const gitRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List open GitHub issues for a workspace repository.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: WorkspaceQuerySchema, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: WorkspaceGitQuerySchema, automation: { policy: "read" } },
     },
     async GET(req: Request, _ctx): Promise<Response> {
       log.debug("GET /api/git/github-issues");
@@ -353,6 +399,7 @@ export const gitRoutes = defineRoutes({
         const githubUrl = await resolveGitHubRepositoryUrlForWorkspace(
           result.workspace,
           result.git,
+          result.directory,
         );
         if (!githubUrl) {
           const response: GitHubIssuesResponse = { issues: [] };
