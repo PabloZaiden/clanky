@@ -93,9 +93,10 @@ from the workspace terminal. Clanky discovers the repositories when you open
 the repository list or create a chat. Existing chats keep their original group.
 
 A chat starts in its own directory with a new branch and worktree for each
-repository and a private copy of every file in the parent directory, including
-dotfiles. Files outside the repositories are not part of a Git diff and do not
-sync back to the workspace. In **New Chat**, use **Base branches** to override
+repository and a private copy of every file directly in the workspace root,
+including dotfiles. Non-repository subdirectories are not copied. Files outside
+the repositories are not part of a Git diff and do not sync back to the
+workspace. In **New Chat**, use **Base branches** to override
 the default for individual repositories. Set recurring choices under
 **Workspace settings > General > Default base branches**. Select a repository
 in **Diff** to review its changes, branch and pull request.

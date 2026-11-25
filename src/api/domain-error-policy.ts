@@ -153,6 +153,7 @@ const API_DOMAIN_ERROR_CODES = {
   control_action_not_found: true,
   directory_in_use: true,
   git_command_invalid: true,
+  repository_group_in_use: true,
   repository_group_unavailable: true,
   execution_host_addresses_unavailable: true,
   execution_host_binding_stale: true,
@@ -507,6 +508,7 @@ const COMMON_MAPPINGS = {
   control_action_cancelled: { status: 409, message: "The UI action request was cancelled." },
   control_action_not_found: { status: 404, message: "The pending UI action is unavailable." },
   git_command_invalid: { status: 400, messageFromDetails: (error) => error.message },
+  repository_group_in_use: { status: 409, message: "Other chats share this directory. Permanently delete them before deleting this chat." },
   repository_group_unavailable: { status: 409, messageFromDetails: (error) => error.message },
   execution_host_capability_unavailable: {
     status: 409,

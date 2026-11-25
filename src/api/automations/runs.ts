@@ -553,11 +553,18 @@ export const runsRoutes = defineRoutes({
       if (statuses.length === 0) {
         return successResponse({ deletedRunIds: [] });
       }
-      const deletedRunIds = await automationManager.purgeRuns(ctx.params["id"]!, {
-        before: validation.data.before,
-        statuses,
-      });
-      return successResponse({ deletedRunIds });
+      try {
+        const deletedRunIds = await automationManager.purgeRuns(ctx.params["id"]!, {
+          before: validation.data.before,
+          statuses,
+        });
+        return successResponse({ deletedRunIds });
+      } catch (error) {
+        log.error("Failed to purge automation runs", { automationId: ctx.params["id"], error: String(error) });
+        return internalErrorResponse(error, {
+          error: "purge_automation_runs_failed", message: "Failed to purge automation runs", status: 500,
+        }, undefined, "automations");
+      }
     },
   },
 
@@ -591,11 +598,18 @@ export const runsRoutes = defineRoutes({
     },
 
     async DELETE(_req: Request, ctx): Promise<Response> {
-      const deleted = await automationManager.deleteRun(ctx.params["id"]!);
-      if (!deleted) {
-        return errorResponse("automation_run_not_found", "Automation run not found", 404);
+      try {
+        const deleted = await automationManager.deleteRun(ctx.params["id"]!);
+        if (!deleted) {
+          return errorResponse("automation_run_not_found", "Automation run not found", 404);
+        }
+        return successResponse();
+      } catch (error) {
+        log.error("Failed to delete automation run", { runId: ctx.params["id"], error: String(error) });
+        return internalErrorResponse(error, {
+          error: "delete_automation_run_failed", message: "Failed to delete automation run", status: 500,
+        }, undefined, "automations");
       }
-      return successResponse();
     },
   },
 });

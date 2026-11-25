@@ -194,7 +194,7 @@ export const crudRoutes = defineRoutes({
           error: "delete_automation_failed",
           message: "Failed to delete automation",
           status: 500,
-        });
+        }, undefined, "automations");
       }
     },
   },

@@ -60,6 +60,7 @@ export interface CreateChatOptions {
   expectedExecutionHostBinding?: ExecutionHostBinding;
   syncBaseBranch?: boolean;
   prepareWorktreeOnCreate?: boolean;
+  onRetainedGroup?: (chat: Chat) => void;
 }
 
 export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, "scope" | "startWithPlan"> {}

@@ -14,7 +14,7 @@ const log = createLogger("api:trash");
 
 function trashError(error: unknown): Response {
   const known = isDomainError(error) && [
-    "trashed_chat_not_found", "trash_cleanup_failed", "trash_worktree_in_use", "invalid_trash_cursor",
+    "trashed_chat_not_found", "trash_cleanup_failed", "repository_group_in_use", "invalid_trash_cursor",
   ].includes(error.code);
   if (known && error.code !== "trash_cleanup_failed") log.warn("Trash operation failed", { code: error.code });
   else log.error("Trash operation failed", { error: String(error) });
@@ -22,7 +22,7 @@ function trashError(error: unknown): Response {
     mappings: {
       trashed_chat_not_found: { status: 404, message: "Chat not found in Trash" },
       trash_cleanup_failed: { status: 503, message: "External cleanup failed. The chat remains in Trash; try again when its host is available." },
-      trash_worktree_in_use: { status: 409, message: "Other chats share this directory. Permanently delete them before deleting this chat." },
+      repository_group_in_use: { status: 409, error: "trash_worktree_in_use", message: "Other chats share this directory. Permanently delete them before deleting this chat." },
       invalid_trash_cursor: { status: 400, message: "Invalid Trash cursor" },
     },
     fallback: { status: 500, error: "trash_operation_failed", message: "Trash operation failed" },

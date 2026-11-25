@@ -50,6 +50,8 @@ import {
   getAgentExecutionHostCapability,
 } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
+import { hasRepositoryGroupDependents } from "../persistence/chats/trash";
+import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import type { ChatHistoryExportService } from "./chat-history-export-service";
 import { conversationAttachmentService } from "./conversation-attachment-service";
 import { resourcePrivacyEventEmitter } from "./event-emitter";
@@ -65,6 +67,7 @@ export interface ChatLifecycleServiceDependencies {
 }
 
 export class ChatLifecycleService implements ChatLifecyclePort {
+  private readonly repositoryGroupOperations = new KeyedOperationQueue();
   private readonly state: ChatStatePort;
   private readonly worktree: ChatWorktreePort;
   private readonly session: ChatSessionPort;
@@ -273,7 +276,10 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         try {
           await this.deleteChat(id);
         } catch (cleanupError) {
-          await this.state.markChatError(preparedChat, `${String(error)} Cleanup remains pending: ${String(cleanupError)}`);
+          options.onRetainedGroup?.(preparedChat);
+          const message = `${String(error)} Cleanup remains pending: ${String(cleanupError)}`;
+          await this.state.markChatError(preparedChat, message);
+          throw new DomainError("repository_group_unavailable", message, { cause: error });
         }
         throw error;
       }
@@ -292,10 +298,24 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async createChatHere(sourceChatId: string): Promise<Chat> {
-    const sourceChat = await this.state.getChat(sourceChatId);
+    const sourceChat = await this.state.getChatSummary(sourceChatId);
     if (!sourceChat) {
       throw new DomainError("chat_not_found", "Chat not found.");
     }
+    const group = sourceChat.state.worktree?.group;
+    if (!group) return await this.createChatFromSource(sourceChat);
+    return await this.repositoryGroupOperations.run(group.ownerChatId, async () => {
+      const current = await this.state.getChatSummary(sourceChatId);
+      if (!current) throw new DomainError("chat_not_found", "Chat not found.");
+      if (current.state.worktree?.group?.ownerChatId !== group.ownerChatId) {
+        throw new DomainError("repository_group_unavailable", "The source chat no longer uses this repository group.");
+      }
+      await this.worktree.resolveWorkingDirectory(current, { prepareWorkspace: false });
+      return await this.createChatFromSource(current);
+    });
+  }
+
+  private async createChatFromSource(sourceChat: Chat): Promise<Chat> {
     if (!isWorkspaceChat(sourceChat)) {
       throw new DomainError(
         "chat_context_unavailable",
@@ -537,26 +557,42 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async deleteChat(chatId: string, options: DeleteChatOptions = {}): Promise<boolean> {
-    const chat = await this.state.getChat(chatId);
-    if (!chat) {
-      return false;
-    }
+    const snapshot = await this.state.getChatSummary(chatId);
+    if (!snapshot) return false;
+    const group = snapshot.state.worktree?.group;
+    return await this.withPermanentChatRemoval(snapshot, async () => {
+      const chat = group ? await this.state.getChatSummary(chatId) : snapshot;
+      if (!chat) return false;
 
-    if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
-    if (options.deferCleanup) {
-      const result = await this.deleteChatDeferred(chat);
-      return result.deleted;
-    }
+      if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
+      if (options.deferCleanup && !group) {
+        const result = await this.deleteChatDeferred(chat);
+        return result.deleted;
+      }
+      if (group) await this.worktree.waitForPreparation(chatId);
 
-    await this.cleanupChatRuntime(chat, {
-      closeStream: () => this.conversation.closeActiveStream(chatId),
+      const complete = await this.cleanupChatRuntime(chat, {
+        closeStream: () => this.conversation.closeActiveStream(chatId),
+      });
+      if (!complete && group) {
+        throw new DomainError("repository_group_unavailable", "The chat was kept because its repository group could not be safely cleaned up.");
+      }
+      const deleted = await this.state.deletePersistedChat(chatId);
+      if (deleted) this.state.emitChatDeleted(chat, createTimestamp());
+      return deleted;
     });
+  }
 
-    const deleted = await this.state.deletePersistedChat(chatId);
-    if (deleted) {
-      this.state.emitChatDeleted(chat, createTimestamp());
-    }
-    return deleted;
+  async withPermanentChatRemoval<T>(chat: Chat, remove: () => Promise<T>): Promise<T> {
+    const group = chat.state.worktree?.group;
+    if (!group) return await remove();
+    return await this.repositoryGroupOperations.run(group.ownerChatId, async () => {
+      const { id, workspaceId } = chat.config;
+      if (id === group.ownerChatId && workspaceId && hasRepositoryGroupDependents(id, workspaceId)) {
+        throw new DomainError("repository_group_in_use", "Other chats share this directory. Permanently delete them before deleting this chat.");
+      }
+      return await remove();
+    });
   }
 
   private async cleanupChatRuntime(

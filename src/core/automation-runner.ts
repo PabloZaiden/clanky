@@ -370,6 +370,10 @@ export class AutomationRunner {
         directory: automation.config.directory,
         syncBaseBranch: true,
         prepareWorktreeOnCreate: true,
+        onRetainedGroup: (retained) => {
+          chatId = retained.config.id;
+          currentRun = { ...currentRun, chatId, worktree: retained.state.worktree };
+        },
       });
       chatId = chat.config.id;
       if (abortController.signal.aborted) {
