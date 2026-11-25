@@ -24,18 +24,18 @@ export async function github(args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-function parseVersion(tag: string): Version | null {
+export function parseVersion(tag: string): Version | null {
   const match = stableTagPattern.exec(tag);
   return match ? [BigInt(match[1]!), BigInt(match[2]!), BigInt(match[3]!)] : null;
 }
 
-function isNewer(candidate: Version, current: Version): boolean {
+export function compareVersions(candidate: Version, current: Version): number {
   for (const index of [0, 1, 2] as const) {
     if (candidate[index] !== current[index]) {
-      return candidate[index] > current[index];
+      return candidate[index] > current[index] ? 1 : -1;
     }
   }
-  return false;
+  return 0;
 }
 
 export async function latestVersion(repository: string): Promise<Version> {
@@ -49,7 +49,7 @@ export async function latestVersion(repository: string): Promise<Version> {
   let latest: Version | null = null;
   for (const tag of tags.split("\n")) {
     const version = parseVersion(tag);
-    if (version && (!latest || isNewer(version, latest))) {
+    if (version && (!latest || compareVersions(version, latest) > 0)) {
       latest = version;
     }
   }
