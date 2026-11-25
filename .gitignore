@@ -6,6 +6,7 @@ node_modules
 # output
 out
 dist
+/native/linux/target/
 *.tgz
 
 # code coverage

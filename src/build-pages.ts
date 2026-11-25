@@ -12,11 +12,13 @@ import { buildClient } from "./build-client";
 import { checkPagesSize, renderPagesChooser } from "./pages-site";
 import { CLANKY_VERSION } from "./version";
 
-const [version = CLANKY_VERSION, ...extra] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const desktop = args[0] === "--desktop";
+const [version = CLANKY_VERSION, ...extra] = desktop ? args.slice(1) : args;
 if (extra.length || !version.trim()) {
-  throw new Error("Usage: bun run build:pages [frontend-version]");
+  throw new Error("Usage: bun run build:pages [--desktop] [frontend-version]");
 }
-const outdir = resolve("dist/pages");
+const outdir = resolve(desktop ? "dist/linux-desktop/web" : "dist/pages");
 const revision = (process.env["GITHUB_SHA"] ?? await Bun.$`git rev-parse HEAD`.text()).trim();
 if (!/^[a-f0-9]{40}$/.test(revision)) {
   throw new Error("Pages publishing requires a full Git commit SHA.");
@@ -36,13 +38,13 @@ await cp(new URL("./favicon.svg", import.meta.url), join(outdir, "favicon.svg"))
 await cp(resolve("assets/privacy"), join(outdir, "privacy"), { recursive: true, errorOnExist: true, force: false });
 
 await Bun.write(join(outdir, "index.html"), renderPagesChooser({
-  prompt: "Choose how to connect.",
+  prompt: desktop ? undefined : "Choose how to connect.",
   navigation: "Client connections",
   choices: [
-    { href: "./api/", label: "Connect to an API", description: "Use your own Clanky server." },
-    { href: "./collaboration/", label: "Connect through collaboration", description: "Connect with a controller invitation." },
+    { href: "./api/", label: "Connect to an API", description: desktop ? undefined : "Use your own Clanky server." },
+    { href: "./collaboration/", label: "Connect through collaboration", description: desktop ? undefined : "Connect with a controller invitation." },
   ],
-  revision,
+  revision: desktop ? undefined : revision,
 }));
 
 const paths = (await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: outdir, onlyFiles: true }))).sort();

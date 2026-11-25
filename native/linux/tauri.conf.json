@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Clanky",
+  "identifier": "com.clanky.desktop",
+  "build": {
+    "frontendDist": "../../dist/linux-desktop/web"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../Shared/Assets.xcassets/AppIcon.appiconset/mac-256.png"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true
+    }
+  }
+}

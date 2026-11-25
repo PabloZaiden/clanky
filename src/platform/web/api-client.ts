@@ -27,6 +27,12 @@ import { resetNativePreviews } from "./native-previews";
 import { measurePerformanceRequest } from "./performance-stats";
 import { measureRealtimeConnection } from "./performance-realtime";
 
+declare global {
+  interface Window {
+    clankyOpenAuthorizationUrl?: (url: string) => void;
+  }
+}
+
 export {
   appAbsoluteUrl,
   appDuplexConnection,
@@ -163,7 +169,10 @@ export function configureClankyClient(
     if (external) configureExternalClientStorageScope(() => `external:${validateExternalSession(external.session.getSnapshot()).scope}`);
     return;
   }
-  if (mode === "remote") configureRemoteClient(core.apiBaseUrl ?? undefined, remote);
+  if (mode === "remote") configureRemoteClient(core.apiBaseUrl ?? undefined, {
+    openAuthorizationUrl: window.clankyOpenAuthorizationUrl,
+    ...remote,
+  });
   configureWebAppClient({
     ...core,
     mode,

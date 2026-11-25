@@ -87,6 +87,11 @@ archives have no retention; a stale/in-progress download may fail safely during
 rolling publication. See [automatic Mac updates](apple-apps.md#automatic-mac-app-updates)
 and [Apple downloads/signing](apple-apps.md#ci-builds-for-main-and-releases).
 
+Linux desktop AppImages for x64 and ARM64 are published to both channels with
+SHA-256 checksums and signed update metadata. These are separate from the CLI
+assets and update the whole desktop application. See
+[Linux desktop](linux-desktop.md) for download, launch and update instructions.
+
 Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
 job. It installs dependencies and runs prebuild once, then uses the same Bun
 entrypoint to compile Linux and Darwin x64/arm64 targets in sequence. Only
