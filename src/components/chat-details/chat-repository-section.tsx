@@ -12,17 +12,18 @@ const PR_STATE_COLORS = {
   merged: "text-purple-600 dark:text-purple-400",
 };
 
-export function ChatRepositorySection({ chatId }: { chatId: string }) {
+export function ChatRepositorySection({ chatId, selectedRepository }: { chatId: string; selectedRepository?: string }) {
   const toast = useToast();
   const query = useLiveQuery<ChatRepositoryContext>({
     load: (signal) => apiRequest<ChatRepositoryContext>(
-      `/api/chats/${encodeURIComponent(chatId)}/repository-context`,
+      `/api/chats/${encodeURIComponent(chatId)}/repository-context${selectedRepository
+        ? `?${new URLSearchParams({ repository: selectedRepository })}` : ""}`,
       {
         signal: AbortSignal.any([signal, AbortSignal.timeout(SNAPSHOT_REQUEST_TIMEOUT_MS)]),
         action: "Read chat repository context",
       },
     ),
-    deps: [chatId],
+    deps: [chatId, selectedRepository],
     realtime: { resources: ["chats"], targets: { chatId } },
   });
   const repository = query.data;
@@ -36,11 +37,12 @@ export function ChatRepositorySection({ chatId }: { chatId: string }) {
     }
   }
 
-  return (
-    <ComposerActionsMenuSection label="Repository">
-      <div className="flex h-8 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+  const content = (
+      <div className={`flex min-w-0 items-center gap-2 text-sm text-gray-600 dark:text-gray-300 ${
+        selectedRepository ? "flex-wrap" : "h-8 overflow-hidden whitespace-nowrap"
+      }`}>
         {query.error ? (
-          <p role="status" className="truncate">Repository lookup unavailable.</p>
+          <p role="status">{selectedRepository ? String(query.error) : "Repository lookup unavailable."}</p>
         ) : !repository ? (
           <p>Loading repository…</p>
         ) : !repository.isGitRepo ? (
@@ -50,7 +52,9 @@ export function ChatRepositorySection({ chatId }: { chatId: string }) {
             {repository.branch ? (
               <button
                 type="button"
-                className="h-full min-w-0 flex-1 truncate text-left font-mono hover:underline"
+                className={`min-w-0 text-left font-mono hover:underline ${
+                  selectedRepository ? "mr-auto [overflow-wrap:anywhere]" : "h-full flex-1 truncate"
+                }`}
                 title={repository.branch}
                 aria-label={`Copy branch ${repository.branch}`}
                 onClick={() => void copyBranch()}
@@ -58,6 +62,7 @@ export function ChatRepositorySection({ chatId }: { chatId: string }) {
                 {repository.branch}
               </button>
             ) : <span className="min-w-0 flex-1 truncate">Detached HEAD</span>}
+            {repository.hasChanges !== undefined ? <span className="shrink-0">{repository.hasChanges ? "Uncommitted changes" : "Clean"}</span> : null}
             {repository.pullRequestLookup === "found" && repository.pullRequest ? (
               <a
                 href={repository.pullRequest.url}
@@ -76,6 +81,6 @@ export function ChatRepositorySection({ chatId }: { chatId: string }) {
           </>
         )}
       </div>
-    </ComposerActionsMenuSection>
   );
+  return selectedRepository ? content : <ComposerActionsMenuSection label="Repository">{content}</ComposerActionsMenuSection>;
 }

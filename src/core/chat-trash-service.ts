@@ -26,7 +26,7 @@ export class ChatTrashService {
 
   constructor(
     private readonly state: ChatStatePort,
-    private readonly lifecycle: Pick<ChatLifecycleService, "cleanupTrashResources">,
+    private readonly lifecycle: Pick<ChatLifecycleService, "cleanupTrashResources" | "withPermanentChatRemoval">,
     private readonly conversation: Pick<ChatConversationPort, "checkpointForDeletion" | "interruptChat">,
   ) {}
 
@@ -89,27 +89,28 @@ export class ChatTrashService {
   } = {}): Promise<boolean> {
     return await this.operations.run(chatId, async () => {
       const chat = loadTrashedChat(chatId);
-      if (!chat?.config.deletedAt || (options.deletedAt && chat.config.deletedAt !== options.deletedAt)) return false;
-      let complete = false;
-      try {
-        complete = await this.lifecycle.cleanupTrashResources(chat, {
-          preserveWorktree: true, ...options,
-        });
-        if (complete) {
-          const latest = loadTrashedChat(chatId);
-          if (!latest) return false;
-          complete = await this.lifecycle.cleanupTrashResources(latest);
+      const deletedAt = chat?.config.deletedAt;
+      if (!chat || !deletedAt || (options.deletedAt && deletedAt !== options.deletedAt)) return false;
+      return await this.lifecycle.withPermanentChatRemoval(chat, async () => {
+        let complete = false;
+        try {
+          complete = await this.lifecycle.cleanupTrashResources(chat, { preserveWorktree: true });
+          if (complete) {
+            const latest = loadTrashedChat(chatId);
+            if (!latest) return false;
+            complete = await this.lifecycle.cleanupTrashResources(latest);
+          }
+        } catch (error) {
+          log.warn("Trashed chat external cleanup failed", { chatId, error: String(error) });
         }
-      } catch (error) {
-        log.warn("Trashed chat external cleanup failed", { chatId, error: String(error) });
-      }
-      if (!complete && !options.bestEffort) {
-        throw new DomainError("trash_cleanup_failed", "The chat remains in Trash because external cleanup failed. Try again when its host is available.");
-      }
-      if (!complete) log.warn("Permanently deleting trashed chat with incomplete external cleanup", { chatId });
-      const deleted = deleteTrashedChat(chatId, chat.config.deletedAt);
-      if (deleted) this.changed(chatId, chat.config.workspaceId);
-      return deleted;
+        if (!complete && (!options.bestEffort || chat.state.worktree?.group && chat.config.useWorktree)) {
+          throw new DomainError("trash_cleanup_failed", "The chat remains in Trash because external cleanup failed. Try again when its host is available.");
+        }
+        if (!complete) log.warn("Permanently deleting trashed chat with incomplete external cleanup", { chatId });
+        const deleted = deleteTrashedChat(chatId, deletedAt);
+        if (deleted) this.changed(chatId, chat.config.workspaceId);
+        return deleted;
+      });
     });
   }
 
@@ -118,7 +119,7 @@ export class ChatTrashService {
   } = {}): Promise<ChatTrashResult> {
     const cutoff = options.cutoff ?? createTimestamp();
     const result: ChatTrashResult = { deletedCount: 0, failedCount: 0, failures: [] };
-    let after: { id: string; deletedAt: string } | undefined;
+    let after: ReturnType<typeof listTrashCleanupCandidates>[number] | undefined;
     for (;;) {
       const candidates = listTrashCleanupCandidates({ cutoff, after, workspaceId: options.workspaceId });
       if (!candidates.length) return result;

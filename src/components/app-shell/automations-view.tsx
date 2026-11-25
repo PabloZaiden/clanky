@@ -147,6 +147,7 @@ function AutomationForm({
     selectedWorkspace: form.selectedWorkspace,
     modelKey: form.draft.modelKey,
     baseBranch: form.draft.baseBranch,
+    repositoryBases: form.draft.repositoryBases,
     useWorktree: form.worktreeForNewRun,
     workspaceSelectionsReady: form.workspaceSelectionsReady,
     onTestStarted: generation.invalidatePendingDraft,
@@ -261,6 +262,7 @@ function AutomationForm({
         setWorkspaceId={form.setWorkspaceId}
         setModelKey={form.setModelKey}
         setBaseBranch={form.setBaseBranch}
+        setRepositoryBases={form.setRepositoryBases}
         setUseWorktree={form.setUseWorktree}
         worktreeControlDisabled={form.worktreeControlDisabled}
         setStartAtLocal={form.setStartAtLocal}
@@ -501,7 +503,9 @@ function AutomationDetail({
           <span>Next run: {formatDate(automation.state.nextRunAt)}</span>
           <span>Every {automation.config.schedule.interval.value} {automation.config.schedule.interval.unit}</span>
           <span>Execution: {isAutomationCodeEnabled(automation.config) ? "deterministic code" : "prompt"}</span>
-          <span>Base branch: {automation.config.baseBranch ?? "default"}</span>
+          <span>{automation.config.repositoryBases
+            ? `Base branches: ${automation.config.repositoryBases.length || "no"} overrides`
+            : `Base branch: ${automation.config.baseBranch ?? "default"}`}</span>
           <span>Worktree: {automation.config.useWorktree ? "yes" : "no"}</span>
         </div>
       </section>

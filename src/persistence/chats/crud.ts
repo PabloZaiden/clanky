@@ -63,6 +63,7 @@ export const CHAT_METADATA_COLUMNS = [
   "worktree_original_branch",
   "worktree_working_branch",
   "worktree_path",
+  "worktree_group_json",
   "pending_permission_requests",
   "queued_messages",
   "active_message_id",
@@ -195,6 +196,14 @@ export async function listChatSummaries(): Promise<Chat[]> {
 
 export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
   return listChatSummariesByWorkspace(workspaceId);
+}
+
+export function workspaceHasRepositoryGroups(workspaceId: string, includeTrash: boolean): boolean {
+  return getDatabase().prepare(`
+    SELECT 1 FROM chats
+    WHERE workspace_id = ? AND user_id = ? AND worktree_group_json IS NOT NULL AND (? OR deleted_at IS NULL)
+    LIMIT 1
+  `).get(workspaceId, requireResourcePersistenceUserId("chat", undefined, workspaceId), Number(includeTrash)) !== null;
 }
 
 export async function listChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {

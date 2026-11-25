@@ -3,6 +3,7 @@ import { useUnsavedChanges } from "@pablozaiden/webapp/web";
 import type { Workspace, ServerSettings, ExecutionHostRef } from "@/shared";
 import { areServerSettingsEqual, executionHostRefsEqual } from "@/shared";
 import type { WorkspaceIconChange } from "./workspace-icon-actions";
+import type { RepositoryBaseSelection } from "@/shared/repository-group";
 
 export interface WorkspaceSettingsDraft {
   name: string;
@@ -10,6 +11,7 @@ export interface WorkspaceSettingsDraft {
   isPrivate: boolean;
   allowClankyContext: boolean;
   allowWorktrees: boolean;
+  repositoryBases: RepositoryBaseSelection[];
   settings: ServerSettings;
   executionHost: ExecutionHostRef | null;
 }
@@ -21,6 +23,7 @@ function readDraft(workspace: Workspace): WorkspaceSettingsDraft {
     isPrivate: workspace.isPrivate === true,
     allowClankyContext: workspace.allowClankyContext === true,
     allowWorktrees: workspace.allowWorktrees !== false,
+    repositoryBases: workspace.repositoryBases ?? [],
     settings: workspace.serverSettings,
     executionHost: workspace.executionHostBinding.host,
   };

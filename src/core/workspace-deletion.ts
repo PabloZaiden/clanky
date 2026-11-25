@@ -1,4 +1,5 @@
 import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace } from "../persistence/workspaces";
+import { workspaceHasRepositoryGroups } from "../persistence/chats/crud";
 import type { Workspace } from "@/shared/workspace";
 import type { DeleteWorkspaceResponse } from "@/contracts/api";
 import { executionHostService } from "./execution-host-service";
@@ -27,6 +28,8 @@ export type WorkspaceDeletionErrorCode =
   | "workspace_not_found"
   | "workspace_not_auto_provisioned"
   | "workspace_environment_cleanup_failed"
+  | "workspace_repository_cleanup_failed"
+  | "workspace_repository_groups_in_use"
   | "workspace_delete_failed";
 
 export type DeleteWorkspaceResult =
@@ -129,13 +132,28 @@ async function deleteWorkspaceWithOptionsUnlocked(
       );
     }
 
+    if (workspace.workspaceType === "multi-git" && workspaceHasRepositoryGroups(id, false)) {
+      return deletionFailure(
+        "workspace_repository_groups_in_use",
+        "Remove existing chats and automation runs before deleting this workspace.",
+        { workspaceId: id },
+      );
+    }
+
     const { previewSessionManager } = await import("./preview-session-manager");
     await previewSessionManager.closeWorkspacePreviews(id);
     const { chatManager } = await import("./chat-manager");
-    await chatManager.emptyTrash({
+    const trash = await chatManager.emptyTrash({
       workspaceId: id,
       bestEffort: true,
     });
+    if (workspace.workspaceType === "multi-git" && trash.failedCount > 0) {
+      return deletionFailure(
+        "workspace_repository_cleanup_failed",
+        "The workspace was kept because one or more chat directories could not be removed.",
+        { workspaceId: id },
+      );
+    }
 
     await terminalSessionManager.deleteSessionsForWorkspace(id, { lockAlreadyHeld: true });
     await managedCredentialService.revokeWorkspace(id);

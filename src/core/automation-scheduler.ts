@@ -41,6 +41,7 @@ function createSkippedRun(automation: Automation, scheduledFor: string, skipReas
       prompt: automation.config.prompt,
       model: automation.config.model,
       baseBranch: automation.config.baseBranch,
+      repositoryBases: automation.config.repositoryBases,
       useWorktree: automation.config.useWorktree,
       schedule: automation.config.schedule,
     },

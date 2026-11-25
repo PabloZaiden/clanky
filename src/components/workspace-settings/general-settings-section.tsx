@@ -3,6 +3,7 @@ import type { Workspace } from "@/shared";
 import { WorkspaceIconSection } from "./workspace-icon-section";
 import type { WorkspaceSettingsDraft } from "./use-workspace-settings-draft";
 import type { WorkspaceIconChange } from "./workspace-icon-actions";
+import { RepositoryBaseFields } from "../common/repository-base-fields";
 
 export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconChange, onIconChange, onIconLoadingChange, formId }: {
   workspace: Workspace;
@@ -14,7 +15,7 @@ export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconC
   onIconLoadingChange: (loading: boolean) => void;
   formId: string;
 }) {
-  return (
+  return (<>
     <FormSection title="General">
       <SettingsFieldRow title="Name" labelFor={`${formId}-workspace-name`} content={
         <Input id={`${formId}-workspace-name`} fieldWidth="normal" required value={draft.name}
@@ -37,5 +38,11 @@ export function GeneralSettingsSection({ workspace, draft, onChange, icon, iconC
             checked={draft.allowWorktrees} onChange={(event) => onChange({ allowWorktrees: event.currentTarget.checked })} />} />
       ) : null}
     </FormSection>
-  );
+    {workspace.workspaceType === "multi-git" ? (
+      <FormSection title="Default base branches">
+        <RepositoryBaseFields workspace={workspace} value={draft.repositoryBases}
+          onChange={(repositoryBases) => onChange({ repositoryBases })} preferences />
+      </FormSection>
+    ) : null}
+  </>);
 }

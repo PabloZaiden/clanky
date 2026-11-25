@@ -65,6 +65,7 @@ function createRunFromAutomation(
       code: automation.config.code,
       model: automation.config.model,
       baseBranch: automation.config.baseBranch,
+      repositoryBases: automation.config.repositoryBases,
       useWorktree: automation.config.useWorktree,
       schedule: automation.config.schedule,
     },
@@ -365,9 +366,14 @@ export class AutomationRunner {
         modelVariant: automation.config.model.variant,
         useWorktree: automation.config.useWorktree,
         baseBranch: automation.config.baseBranch,
+        repositoryBases: automation.config.repositoryBases,
         directory: automation.config.directory,
         syncBaseBranch: true,
         prepareWorktreeOnCreate: true,
+        onRetainedGroup: (retained) => {
+          chatId = retained.config.id;
+          currentRun = { ...currentRun, chatId, worktree: retained.state.worktree };
+        },
       });
       chatId = chat.config.id;
       if (abortController.signal.aborted) {

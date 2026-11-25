@@ -2,6 +2,7 @@ import type { Automation, AutomationConfig, AutomationConfigSnapshot, Automation
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireResourcePersistenceUserId } from "../ownership";
 import { parseStoredTokenUsage } from "../harness-usage";
+import { ChatWorktreeGroupSchema, RepositoryBasesSchema } from "@/contracts/schemas/repository-group";
 
 const log = createLogger("persistence:automations");
 
@@ -18,6 +19,7 @@ export const ALLOWED_AUTOMATION_COLUMNS = new Set([
   "model_model_id",
   "model_variant",
   "base_branch",
+  "repository_bases_json",
   "use_worktree",
   "schedule_start_at_local",
   "schedule_timezone",
@@ -58,6 +60,7 @@ export const ALLOWED_AUTOMATION_RUN_COLUMNS = new Set([
   "worktree_original_branch",
   "worktree_working_branch",
   "worktree_path",
+  "worktree_group_json",
   "pending_permission_requests",
   "attachments",
   "config_snapshot",
@@ -114,6 +117,7 @@ export function automationToRow(automation: Automation): Record<string, unknown>
     model_model_id: config.model.modelID,
     model_variant: config.model.variant ?? null,
     base_branch: config.baseBranch ?? null,
+    repository_bases_json: config.repositoryBases ? JSON.stringify(config.repositoryBases) : null,
     use_worktree: config.useWorktree ? 1 : 0,
     schedule_start_at_local: config.schedule.startAtLocal,
     schedule_timezone: config.schedule.timezone,
@@ -152,6 +156,8 @@ export function rowToAutomation(row: Record<string, unknown>): Automation {
       variant: (row["model_variant"] as string | null) ?? "",
     },
     baseBranch: (row["base_branch"] as string | null) ?? undefined,
+    ...(typeof row["repository_bases_json"] === "string"
+      ? { repositoryBases: RepositoryBasesSchema.parse(JSON.parse(row["repository_bases_json"])) } : {}),
     useWorktree: row["use_worktree"] === 1,
     schedule: {
       startAtLocal: requireString(row, "schedule_start_at_local", rowId),
@@ -211,6 +217,7 @@ export function automationRunToRow(run: AutomationRun): Record<string, unknown> 
     worktree_original_branch: run.worktree?.originalBranch ?? null,
     worktree_working_branch: run.worktree?.workingBranch ?? null,
     worktree_path: run.worktree?.worktreePath ?? null,
+    worktree_group_json: run.worktree?.group ? JSON.stringify(run.worktree.group) : null,
     pending_permission_requests: JSON.stringify(run.pendingPermissionRequests ?? []),
     attachments: JSON.stringify(run.attachments ?? []),
     config_snapshot: JSON.stringify(run.configSnapshot),
@@ -284,7 +291,12 @@ export function rowToAutomationRun(row: Record<string, unknown>): AutomationRun 
     };
   }
 
-  if (
+  if (typeof row["worktree_group_json"] === "string") {
+    run.worktree = {
+      group: ChatWorktreeGroupSchema.parse(JSON.parse(row["worktree_group_json"])),
+      worktreePath: (row["worktree_path"] as string | null) ?? undefined,
+    };
+  } else if (
     row["worktree_original_branch"] !== null
     && row["worktree_original_branch"] !== undefined
     && row["worktree_working_branch"] !== null

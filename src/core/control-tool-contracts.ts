@@ -3,7 +3,8 @@
  */
 import { z } from "zod";
 import { ModelConfigSchema } from "@/contracts/schemas/model";
-import { AgentSettingsSchema } from "@/contracts/schemas/workspace";
+import { AgentSettingsSchema, WorkspaceTypeSchema } from "@/contracts/schemas/workspace";
+import { RepositoryBasesSchema } from "@/contracts/schemas/repository-group";
 import { ControlConfirmationDescriptionSchema } from "@/shared/control-interactions";
 import { ExecuteOperationSchema, type ControlToolDefinition } from "@/contracts/schemas/control";
 import { AgentNotificationSchema } from "@/contracts/schemas/agent-notifications";
@@ -49,6 +50,7 @@ export const controlDirectSchemas = {
     adapter: z.enum(HARNESS_ADAPTER_IDS).nullable().default(null).describe("Direct-host harness selection; null uses the host's preferred harness. Workspace chats use their workspace adapter."),
     directory: z.string().trim().min(1).max(16_384).nullable().default(null),
     model, useWorktree: z.boolean().nullable().default(null), baseBranch: optionalText,
+    repositoryBases: RepositoryBasesSchema.optional(),
     startWithPlan: z.boolean().default(false),
     initialMessage: message.nullable().default(null), open: z.boolean().default(false),
     confirmationDescription: confirmation,
@@ -73,7 +75,7 @@ export const controlDirectSchemas = {
   clanky_create_workspace: z.object({
     name: z.string().trim().min(1).max(100),
     host: target, directory: z.string().trim().min(1).max(16_384),
-    agent: AgentSettingsSchema, workspaceType: z.enum(["git", "directory"]).default("git"),
+    agent: AgentSettingsSchema, workspaceType: WorkspaceTypeSchema.default("git"),
     allowWorktrees: z.boolean().nullable().default(null),
     allowClankyContext: z.boolean().nullable().default(null),
     confirmationDescription: confirmation,

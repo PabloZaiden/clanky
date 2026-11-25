@@ -33,6 +33,9 @@ export function chatActionErrorResponse(error: unknown): Response | null {
       504,
     );
   }
+  if (error.code === "repository_group_unavailable") {
+    return errorResponse(error.code, error.message, 409);
+  }
 
   const response = domainErrorResponse(error, {
     policy: "chats",
