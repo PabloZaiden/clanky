@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Clanky
+Exec=clanky-desktop
+Icon=clanky
+Categories=Development;
+Terminal=false

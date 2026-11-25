@@ -4,11 +4,11 @@ import { SAFE_THEME_PARAMETER } from "./contracts/schemas/appearance";
 interface PagesChoice {
   href: string;
   label: string;
-  description: string;
+  description?: string;
 }
 
 export function renderPagesChooser(options: {
-  prompt: string;
+  prompt?: string;
   navigation: string;
   choices: PagesChoice[];
   revision?: string;
@@ -86,16 +86,14 @@ export function renderPagesChooser(options: {
         <img src="./favicon.svg" alt="" width="48" height="48">
         <div>
           <h1>Clanky</h1>
-          <p>${Bun.escapeHTML(options.prompt)}</p>
-        </div>
+${options.prompt ? `          <p>${Bun.escapeHTML(options.prompt)}</p>\n` : ""}        </div>
       </header>
       <nav aria-label="${Bun.escapeHTML(options.navigation)}">
         <ul>
 ${options.choices.map(choice => `          <li>
             <a class="connection" href="${Bun.escapeHTML(choice.href)}">
               <strong>${Bun.escapeHTML(choice.label)}</strong>
-              <span class="description">${Bun.escapeHTML(choice.description)}</span>
-              <span class="arrow" aria-hidden="true">&rarr;</span>
+${choice.description ? `              <span class="description">${Bun.escapeHTML(choice.description)}</span>\n` : ""}              <span class="arrow" aria-hidden="true">&rarr;</span>
             </a>
           </li>`).join("\n")}
         </ul>

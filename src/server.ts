@@ -3,6 +3,7 @@
  */
 
 import type { Server } from "bun";
+import { writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { CLANKY_WEB_OPTIONS } from "./web-client-options";
 import { createClankyPlatformServer, defineRoutes, getRequestOriginInfo, log, readRuntimeConfig, type WebAppServer, type WebAppWebSocketData } from "@/platform/server";
@@ -368,6 +369,11 @@ async function completeStartup(
     log.info(message);
   }
   log.info(`Clanky server running at ${server.url}`);
+  const desktopReadyFile = process.env["CLANKY_DESKTOP_READY_FILE"];
+  if (desktopReadyFile) {
+    delete process.env["CLANKY_DESKTOP_READY_FILE"];
+    await writeFile(desktopReadyFile, `${process.pid}\n`, { flag: "wx", mode: 0o600 });
+  }
 }
 
 async function stopBackgroundWorkers(): Promise<void> {

@@ -121,6 +121,10 @@ for a Mac `.app` with its controller, or `bun run build:apple:ios` for an iOS
 simulator app. The Apple guide owns prerequisites, device and Linux builds,
 signing, configuration selection and CI distribution.
 
+Use `bun run build:linux:desktop` on a native Linux x64 or ARM64 build host
+to package the Tauri shell, frontend and controller as an AppImage. See
+[Linux desktop](linux-desktop.md) for prerequisites and signing.
+
 Use the [testing guide](development/testing.md) for prerequisites, narrower
 checks, coverage decisions, and required validation.
 

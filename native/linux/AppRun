@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec "${APPDIR:?AppImage mount is unavailable}/usr/bin/clanky-desktop" "$@"
