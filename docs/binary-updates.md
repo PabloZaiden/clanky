@@ -92,7 +92,10 @@ SHA-256 checksums and signed update metadata. These are separate from the CLI
 assets and update the whole desktop application. Rolling CLI publication leaves
 the previous Linux desktop feed and its AppImages in place. The desktop
 publisher verifies both new architectures before switching its feed and
-removing obsolete desktop assets. See
+removing obsolete desktop assets. The Linux updater orders stable and rolling
+builds by the binary workflow run number bound into the signed updater version,
+not by the release label. Preserve the workflow's build sequence on both
+channels. See
 [Linux desktop](linux-desktop.md) for download, launch and update instructions.
 
 Stable and rolling binary builds share one Apple Silicon `xcode-27` compilation
