@@ -80,9 +80,18 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.source }}
+          path: release-source
+          persist-credentials: false
+
+      - name: Checkout App Store publication tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: publication-tooling
           persist-credentials: false
 
       - name: Require release containing bundled-only App Store tooling
+        working-directory: release-source
         shell: bash
         run: |
           set -euo pipefail
@@ -97,10 +106,16 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
+      - name: Install release source dependencies
+        working-directory: release-source
+        run: bun install --frozen-lockfile
+
+      - name: Install publication tooling dependencies
+        working-directory: publication-tooling
         run: bun install --frozen-lockfile
 
       - name: Archive, upload and submit the latest release
+        working-directory: release-source
         env:
           IOS_RELEASE_TAG: ${{ needs.release.outputs.tag }}
           IOS_SOURCE_REVISION: ${{ needs.release.outputs.source }}
@@ -115,7 +130,8 @@ jobs:
         run: |
           set -euo pipefail
           result="$RUNNER_TEMP/ios-app-store-result.json"
-          bun scripts/ios-testflight.ts "$IOS_RELEASE_TAG" --app-store > "$result"
+          GITHUB_SHA="$IOS_SOURCE_REVISION" \
+            bun ../publication-tooling/scripts/ios-testflight.ts "$IOS_RELEASE_TAG" --app-store > "$result"
           jq -e --arg version "${IOS_RELEASE_TAG#v}" --arg source "$IOS_SOURCE_REVISION" '
             .version == $version and .frontendVersion == $version and .sourceRevision == $source
             and .internalOnly == false and .frontendUpdatesEnabled == false and .processingState == "VALID"
