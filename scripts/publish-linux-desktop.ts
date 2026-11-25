@@ -14,7 +14,8 @@ if (!input || !tag || !repository || !revision || !version || extra.length
 const files: string[] = [];
 const expected = new Map<string, string>();
 const platforms: Record<string, { url: string; signature: string }> = {};
-const feedPath = join(input, "clanky-linux-desktop-update.json");
+const feedName = "clanky-linux-desktop-update.json";
+const feedPath = join(input, feedName);
 const hash = async (path: string) => {
   const digest = new Bun.CryptoHasher("sha256");
   for await (const chunk of Bun.file(path).stream()) digest.update(chunk);
@@ -45,7 +46,8 @@ for (const [target, arch] of [["linux-x64", "x86_64"], ["linux-arm64", "aarch64"
     signature,
   };
 }
-await Bun.write(feedPath, `${JSON.stringify({ version, platforms }, null, 2)}\n`);
+const feed = `${JSON.stringify({ version, platforms }, null, 2)}\n`;
+await Bun.write(feedPath, feed);
 
 if (process.env["CLANKY_RELEASE_VALIDATE_ONLY"] === "1") {
   console.log("Linux desktop release inputs verified.");
@@ -61,15 +63,71 @@ if (tag === "latest") {
     throw new Error("The published CLI manifest does not match the Linux desktop build.");
   }
 }
-const assetSchema = z.array(z.object({ name: z.string(), digest: z.string().nullable() }));
-async function verifyAssets(assets: Map<string, string>) {
-  const remote = assetSchema.parse(JSON.parse(await github(["api", `repos/${repository}/releases/tags/${tag}`, "--jq", ".assets | map({name,digest})"])));
+const assetSchema = z.array(z.object({ id: z.number(), name: z.string(), digest: z.string().nullable() }));
+const releaseAssets = async () => assetSchema.parse(JSON.parse(await github([
+  "api", `repos/${repository}/releases/tags/${tag}`, "--jq", ".assets | map({id,name,digest})",
+])));
+type ReleaseAsset = z.infer<typeof assetSchema>[number];
+
+function verifyAssets(assets: Map<string, string>, remote: ReleaseAsset[]) {
   const digests = new Map(remote.map(asset => [asset.name, asset.digest]));
   for (const [name, digest] of assets) {
     if (digests.get(name) !== digest) throw new Error(`The uploaded Linux desktop asset ${name} does not match its expected digest.`);
   }
 }
-await github(["release", "upload", tag, ...files, "--clobber", "--repo", repository]);
-await verifyAssets(expected);
-await github(["release", "upload", tag, feedPath, "--clobber", "--repo", repository]);
-await verifyAssets(new Map([["clanky-linux-desktop-update.json", `sha256:${await hash(feedPath)}`]]));
+
+const feedDigest = `sha256:${await hash(feedPath)}`;
+const previousAssets = tag === "latest" ? await releaseAssets() : [];
+const previousFeed = previousAssets.find(asset => asset.name === feedName);
+const downloadLatest = (name: string) => github(["release", "download", "latest", "--repo", repository, "--pattern", name, "--output", "-"]);
+const previousVersion = previousFeed && z.object({ version: z.string() })
+  .parse(JSON.parse(await downloadLatest(feedName))).version;
+if (previousVersion === version) {
+  // A retry must not overwrite binaries already referenced by a published feed.
+  verifyAssets(expected, previousAssets);
+} else {
+  await github(["release", "upload", tag, ...files, "--clobber", "--repo", repository]);
+  verifyAssets(expected, await releaseAssets());
+}
+
+if (tag !== "latest") {
+  await github(["release", "upload", tag, feedPath, "--clobber", "--repo", repository]);
+} else if (previousFeed?.digest !== feedDigest) {
+  const pendingName = "clanky-linux-desktop-update.pending.json";
+  const pendingPath = join(input, pendingName);
+  await Bun.write(pendingPath, feed);
+  await github(["release", "upload", tag, pendingPath, "--clobber", "--repo", repository]);
+  const pendingAssets = await releaseAssets();
+  verifyAssets(new Map([[pendingName, feedDigest]]), pendingAssets);
+  const pending = pendingAssets.find(asset => asset.name === pendingName);
+  if (!pending) throw new Error("The verified pending Linux update feed is missing.");
+
+  const rename = (asset: ReleaseAsset, name: string) => github([
+    "api", `repos/${repository}/releases/assets/${asset.id}`, "--method", "PATCH", "-f", `name=${name}`,
+  ]);
+  try {
+    if (previousFeed) await rename(previousFeed, `clanky-linux-desktop-update.previous-${previousFeed.id}.json`);
+    await rename(pending, feedName);
+  } catch (error) {
+    if (previousFeed) {
+      try {
+        if (!(await releaseAssets()).some(asset => asset.name === feedName)) await rename(previousFeed, feedName);
+      } catch (recoveryError) {
+        throw new AggregateError([error, recoveryError], "Linux update feed promotion and recovery failed.");
+      }
+    }
+    throw error;
+  }
+}
+
+const published = await releaseAssets();
+verifyAssets(new Map([[feedName, feedDigest]]), published);
+if (tag === "latest") {
+  const obsoleteAppImage = /^Clanky-v\d+\.\d+\.\d+-main-[0-9A-Za-z.-]+-linux-(x64|arm64)\.AppImage(\.sha256|\.sig)?$/;
+  const temporaryFeed = /^clanky-linux-desktop-update\.(pending|previous-\d+)\.json$/;
+  for (const { id, name } of published) {
+    if ((obsoleteAppImage.test(name) && !expected.has(name)) || temporaryFeed.test(name)) {
+      await github(["api", `repos/${repository}/releases/assets/${id}`, "--method", "DELETE"]);
+    }
+  }
+}

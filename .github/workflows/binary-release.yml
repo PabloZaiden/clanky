@@ -334,7 +334,7 @@ jobs:
   binaries:
     needs: metadata
     if: needs.metadata.outputs.publish == 'true'
-    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@a60b4b71e8add6dcdf1aa89f71f132b742c326e7
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@f8e9ba0b5e8f1f0ecabbe5d373f81f6fc6d49a92
     permissions:
       contents: write
     secrets:
@@ -345,6 +345,7 @@ jobs:
       macos_notarization_issuer_id: ${{ secrets.CLANKY_APPLE_NOTARY_ISSUER_ID }}
     with:
       release_channel: ${{ github.event_name == 'release' && 'stable' || 'latest' }}
+      rolling_retained_asset_pattern: '^(clanky-linux-desktop-update(\.(pending|previous-[0-9]+))?\.json|Clanky-v[0-9]+\.[0-9]+\.[0-9]+-main-[0-9A-Za-z.-]+-linux-(x64|arm64)\.AppImage(\.sha256|\.sig)?)$'
       install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
       macos_finalize_command: bun scripts/macos-distribution.ts --notarize
