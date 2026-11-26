@@ -15,7 +15,7 @@ import type { TestAutomationCodeRequest } from "@/contracts/schemas";
 import { automationManager } from "../../core/automation-manager";
 import { isDomainError } from "../../domain/domain-error";
 import { testDeterministicAutomationCode } from "../../core/deterministic-automation-test";
-import { assertWorktreesAllowed, isGitBackedWorkspace } from "../../core/workspace-capabilities";
+import { assertWorktreesAllowed, workspaceSupportsWorktrees } from "../../core/workspace-capabilities";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
 import { validateAutomationModel } from "./helpers";
@@ -54,7 +54,7 @@ async function prepareDeterministicAutomationTest(
     return workspace;
   }
   if (
-    !isGitBackedWorkspace(workspace)
+    !workspaceSupportsWorktrees(workspace)
     && (body.useWorktree || body.baseBranch !== undefined)
   ) {
     return errorResponse(
@@ -63,7 +63,7 @@ async function prepareDeterministicAutomationTest(
       409,
     );
   }
-  if (body.useWorktree) {
+  if (workspace.workspaceType === "multi-git" || body.useWorktree) {
     try {
       assertWorktreesAllowed(workspace);
     } catch (error) {
@@ -104,7 +104,8 @@ function testOptionsFromPrepared(
     directory: workspace.directory,
     model: body.model,
     baseBranch: body.baseBranch,
-    useWorktree: body.useWorktree,
+    repositoryBases: body.repositoryBases,
+    useWorktree: workspace.workspaceType === "multi-git" || body.useWorktree,
     testRunId: body.testRunId,
     ...options,
   };
@@ -552,11 +553,18 @@ export const runsRoutes = defineRoutes({
       if (statuses.length === 0) {
         return successResponse({ deletedRunIds: [] });
       }
-      const deletedRunIds = await automationManager.purgeRuns(ctx.params["id"]!, {
-        before: validation.data.before,
-        statuses,
-      });
-      return successResponse({ deletedRunIds });
+      try {
+        const deletedRunIds = await automationManager.purgeRuns(ctx.params["id"]!, {
+          before: validation.data.before,
+          statuses,
+        });
+        return successResponse({ deletedRunIds });
+      } catch (error) {
+        log.error("Failed to purge automation runs", { automationId: ctx.params["id"], error: String(error) });
+        return internalErrorResponse(error, {
+          error: "purge_automation_runs_failed", message: "Failed to purge automation runs", status: 500,
+        }, undefined, "automations");
+      }
     },
   },
 
@@ -590,11 +598,18 @@ export const runsRoutes = defineRoutes({
     },
 
     async DELETE(_req: Request, ctx): Promise<Response> {
-      const deleted = await automationManager.deleteRun(ctx.params["id"]!);
-      if (!deleted) {
-        return errorResponse("automation_run_not_found", "Automation run not found", 404);
+      try {
+        const deleted = await automationManager.deleteRun(ctx.params["id"]!);
+        if (!deleted) {
+          return errorResponse("automation_run_not_found", "Automation run not found", 404);
+        }
+        return successResponse();
+      } catch (error) {
+        log.error("Failed to delete automation run", { runId: ctx.params["id"], error: String(error) });
+        return internalErrorResponse(error, {
+          error: "delete_automation_run_failed", message: "Failed to delete automation run", status: 500,
+        }, undefined, "automations");
       }
-      return successResponse();
     },
   },
 });

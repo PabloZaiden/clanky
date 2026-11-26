@@ -17,6 +17,16 @@ import { chatTranscriptStore } from "../transcripts/chat-store";
 import { invalidateChatMetadata } from "./metadata-cache";
 
 const STANDALONE = "scope = 'workspace'";
+
+export function hasRepositoryGroupDependents(chatId: string, workspaceId: string): boolean {
+  return getDatabase().prepare(`
+    SELECT 1 FROM chats
+    WHERE workspace_id = ? AND user_id = ? AND id <> ?
+      AND json_extract(worktree_group_json, '$.ownerChatId') = ?
+    LIMIT 1
+  `).get(workspaceId, requireResourcePersistenceUserId("chat", chatId, workspaceId), chatId, chatId) !== null;
+}
+
 export function loadTrashedChat(chatId: string): Chat | null {
   const row = getDatabase().prepare(`
     SELECT ${CHAT_METADATA_COLUMNS} FROM chats
@@ -139,31 +149,36 @@ export function saveTrashedChatWorktree(chatId: string, worktree: ChatWorktreeSt
   invalidateChatMetadata(db, userId, chatId);
   return db.prepare(`
     UPDATE chats SET worktree_original_branch = ?, worktree_working_branch = ?,
-      worktree_path = ?, state_revision = state_revision + 1
+      worktree_path = ?, worktree_group_json = ?, state_revision = state_revision + 1
     WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL AND ${STANDALONE}
-  `).run(worktree.originalBranch, worktree.workingBranch, worktree.worktreePath ?? null,
+  `).run(worktree.originalBranch ?? null, worktree.workingBranch ?? null, worktree.worktreePath ?? null,
+    worktree.group ? JSON.stringify(worktree.group) : null,
     chatId, userId).changes > 0;
 }
 
+type TrashCleanupCandidate = { id: string; deletedAt: string; ownsGroup: number };
+
 export function listTrashCleanupCandidates(options: {
   cutoff: string;
-  after?: { id: string; deletedAt: string };
+  after?: TrashCleanupCandidate;
   workspaceId?: string;
-}): Array<{ id: string; deletedAt: string }> {
+}): TrashCleanupCandidate[] {
+  const ownsGroup = "COALESCE(json_extract(worktree_group_json, '$.ownerChatId') = id, 0)";
   const conditions = ["user_id = ?", "deleted_at <= ?", STANDALONE];
-  const values: string[] = [requireResourcePersistenceUserId("chat", undefined, options.workspaceId), options.cutoff];
+  const values: (string | number)[] = [requireResourcePersistenceUserId("chat", undefined, options.workspaceId), options.cutoff];
   const scopeWorkspaceId = getPersistenceWorkspaceId();
   if (scopeWorkspaceId) { conditions.push("workspace_id = ?"); values.push(scopeWorkspaceId); }
   if (options.after) {
-    conditions.push("(deleted_at, id) > (?, ?)");
-    values.push(options.after.deletedAt, options.after.id);
+    conditions.push(`(${ownsGroup}, deleted_at, id) > (?, ?, ?)`);
+    values.push(options.after.ownsGroup, options.after.deletedAt, options.after.id);
   }
   if (options.workspaceId) {
     conditions.push("workspace_id = ?");
     values.push(options.workspaceId);
   }
   return getDatabase().prepare(`
-    SELECT id, deleted_at AS deletedAt FROM chats WHERE ${conditions.join(" AND ")}
-    ORDER BY deleted_at, id LIMIT 30
-  `).all(...values) as Array<{ id: string; deletedAt: string }>;
+    SELECT id, deleted_at AS deletedAt, ${ownsGroup} AS ownsGroup
+    FROM chats WHERE ${conditions.join(" AND ")}
+    ORDER BY ownsGroup, deleted_at, id LIMIT 30
+  `).all(...values) as TrashCleanupCandidate[];
 }

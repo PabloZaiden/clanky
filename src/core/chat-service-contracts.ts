@@ -40,6 +40,7 @@ import type { ChatTrashService } from "./chat-trash-service";
 import type { LiveTranscriptState } from "./transcript-stream-projection";
 import type { ReplyToChatQuestionRequest } from "@/contracts/api";
 import type { HarnessAdapter } from "@/shared/harness-events";
+import type { RepositoryBaseSelection } from "@/shared/repository-group";
 
 export interface CreateChatOptions {
   name?: string;
@@ -53,10 +54,13 @@ export interface CreateChatOptions {
   useChatNameAsBranch?: boolean;
   startWithPlan?: boolean;
   baseBranch?: string;
+  repositoryBases?: RepositoryBaseSelection[];
+  sharedGroup?: ChatWorktreeState;
   directory?: string;
   expectedExecutionHostBinding?: ExecutionHostBinding;
   syncBaseBranch?: boolean;
   prepareWorktreeOnCreate?: boolean;
+  onRetainedGroup?: (chat: Chat) => void;
 }
 
 export interface CreateAutomationRunChatOptions extends Omit<CreateChatOptions, "scope" | "startWithPlan"> {}

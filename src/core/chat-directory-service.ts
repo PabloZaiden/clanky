@@ -13,6 +13,17 @@ import { executionPathsEqual } from "./execution-path";
 import { GitService } from "./git";
 import { getWorkingTreeDiff, getWorkingTreeFileDiff } from "./git/git-diff";
 import { ManagedPathService } from "./managed-path-service";
+import { requireGroupRepository, requireRepositoryGroupDirectory } from "./repository-group-service";
+
+async function selectRepository({ chat, executor, directory }: ChatDirectoryContext, repository?: string) {
+  const group = chat.state.worktree?.group;
+  if (!group && repository === undefined) return { directory };
+  const record = group?.repositories.find((repo) => repo.name === repository);
+  if (!group || !record) {
+    throw new DomainError("repository_group_unavailable", "Choose a repository in this chat's worktree group.");
+  }
+  return { directory: await requireGroupRepository(executor, group, record), record };
+}
 
 interface ChatDirectoryContext {
   chat: Chat;
@@ -25,8 +36,13 @@ const log = createLogger("core:chat-directory");
 export class ChatDirectoryService {
   constructor(private readonly state: Pick<ChatStatePort, "getChatSummary" | "getWorkspace">) {}
 
-  async getDiff(chatId: string) {
-    return this.withDirectory(chatId, async ({ chat, executor, directory }) => {
+  async getDiff(chatId: string, repository?: string) {
+    return this.withDirectory(chatId, async (context) => {
+      const { chat, executor } = context;
+      const { directory, record } = await selectRepository(context, repository);
+      if (record) {
+        return getWorkingTreeDiff(executor, directory, record.baseRef, record.baseCommit);
+      }
       if (!await this.isGitRepository(executor, directory)) {
         throw new DomainError("chat_git_unavailable", "This chat's directory is not a Git repository.");
       }
@@ -59,9 +75,13 @@ export class ChatDirectoryService {
     });
   }
 
-  async getFileDiff(chatId: string, base: string, path: string) {
-    return this.withDirectory(chatId, async ({ executor, directory }) => {
-      const file = await getWorkingTreeFileDiff(executor, directory, base, path);
+  async getFileDiff(chatId: string, base: string, path: string, repository?: string) {
+    return this.withDirectory(chatId, async (context) => {
+      const { directory, record } = await selectRepository(context, repository);
+      if (record && base !== record.baseCommit) {
+        throw new DomainError("repository_group_unavailable", "Use the comparison base for the selected repository.");
+      }
+      const file = await getWorkingTreeFileDiff(context.executor, directory, base, path);
       if (!file) {
         throw new DomainError("chat_diff_file_not_found", "The file is no longer in this change list.");
       }
@@ -69,8 +89,10 @@ export class ChatDirectoryService {
     });
   }
 
-  async getRepositoryContext(chatId: string): Promise<ChatRepositoryContext> {
-    return this.withDirectory(chatId, async ({ executor, directory }) => {
+  async getRepositoryContext(chatId: string, repository?: string): Promise<ChatRepositoryContext> {
+    return this.withDirectory(chatId, async (work) => {
+      const { executor } = work;
+      const { directory, record } = await selectRepository(work, repository);
       if (!await this.isGitRepository(executor, directory)) {
         return { isGitRepo: false, branch: null, pullRequest: null, pullRequestLookup: "none" };
       }
@@ -80,6 +102,7 @@ export class ChatDirectoryService {
         branch,
         pullRequest: null,
         pullRequestLookup: "unavailable",
+        ...(record ? { hasChanges: await GitService.withExecutor(executor).hasUncommittedChanges(directory) } : {}),
       };
       if (!branch) return { ...context, message: "Pull request lookup is unavailable for a detached HEAD." };
       try {
@@ -175,7 +198,14 @@ export class ChatDirectoryService {
       let directory = chat.state.session?.binding?.directory
         ?? chat.state.worktree?.worktreePath
         ?? chat.config.directory;
-      if (chat.config.useWorktree) {
+      const group = chat.state.worktree?.group;
+      if (group) {
+        const canonical = await requireRepositoryGroupDirectory(executor, group, chat.state.worktree?.worktreePath);
+        if (!executionPathsEqual(directory, canonical, executor.pathStyle)) {
+          throw new DomainError("chat_directory_unavailable", "The chat's execution directory no longer matches its repository group.");
+        }
+        directory = canonical;
+      } else if (chat.config.useWorktree) {
         const worktreePath = chat.state.worktree?.worktreePath;
         if (!worktreePath) {
           throw new DomainError("chat_directory_unavailable", "The chat worktree has not been prepared.");

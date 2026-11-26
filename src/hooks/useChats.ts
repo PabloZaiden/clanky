@@ -51,7 +51,7 @@ export interface UseChatsResult {
   refresh: () => Promise<void>;
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
-  createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  createChat: (request: CreateChatRequest) => Promise<Chat>;
   createChatHere: (sourceChatId: string) => Promise<Chat>;
   createExecutionHostChat: (
     host: ExecutionHostRef,
@@ -101,7 +101,7 @@ export function useChats(): UseChatsResult {
     await query.refresh();
   }, [query.refresh]);
 
-  const createChat = useCallback(async (request: CreateChatRequest): Promise<Chat | null> => {
+  const createChat = useCallback(async (request: CreateChatRequest): Promise<Chat> => {
     try {
       setError(null);
       return await mutate((signal) => apiRequest<Chat>("/api/chats", {
@@ -118,7 +118,7 @@ export function useChats(): UseChatsResult {
         error: String(createError),
       });
       setError(String(createError));
-      return null;
+      throw createError;
     }
   }, [mutate]);
 

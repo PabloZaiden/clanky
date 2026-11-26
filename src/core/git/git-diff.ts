@@ -117,8 +117,11 @@ export async function getWorkingTreeDiff(
   executor: CommandExecutor,
   directory: string,
   baseBranch: string,
+  baseCommit?: string,
 ): Promise<{ files: FileDiff[]; base: string; baseRef: string }> {
-  const { repository, base, baseRef } = await getWorkingTreeDiffBase(executor, directory, baseBranch);
+  const { repository, base, baseRef } = baseCommit
+    ? { repository: directory, base: baseCommit, baseRef: baseBranch }
+    : await getWorkingTreeDiffBase(executor, directory, baseBranch);
   const files = await getDiffForBase(executor, repository, base);
   const untrackedArgs = ["ls-files", "--others", "--exclude-standard", "-z"];
   const untracked = await runGitCommand(executor, repository, untrackedArgs);

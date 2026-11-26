@@ -246,20 +246,20 @@ export class ChatManager {
     return (await this.services.worktree.resolveWorkingDirectory(chat, { prepareWorkspace: false })).directory;
   }
 
-  getDiff(chatId: string) {
-    return new ChatDirectoryService(this.services.state).getDiff(chatId);
+  getDiff(chatId: string, repository?: string) {
+    return new ChatDirectoryService(this.services.state).getDiff(chatId, repository);
   }
 
-  getFileDiff(chatId: string, base: string, path: string) {
-    return new ChatDirectoryService(this.services.state).getFileDiff(chatId, base, path);
+  getFileDiff(chatId: string, base: string, path: string, repository?: string) {
+    return new ChatDirectoryService(this.services.state).getFileDiff(chatId, base, path, repository);
   }
 
   getPlanningFile(chatId: string, file: "plan" | "status") {
     return new ChatDirectoryService(this.services.state).getPlanningFile(chatId, file);
   }
 
-  getRepositoryContext(chatId: string) {
-    return new ChatDirectoryService(this.services.state).getRepositoryContext(chatId);
+  getRepositoryContext(chatId: string, repository?: string) {
+    return new ChatDirectoryService(this.services.state).getRepositoryContext(chatId, repository);
   }
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {

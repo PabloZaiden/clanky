@@ -7,7 +7,7 @@ import { defineRoutes } from "@/platform/server";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { CreateAutomationRequestSchema, UpdateAutomationRequestSchema } from "@/contracts/schemas";
 import { automationManager } from "../../core/automation-manager";
-import { isGitBackedWorkspace } from "../../core/workspace-capabilities";
+import { workspaceSupportsWorktrees } from "../../core/workspace-capabilities";
 import { domainErrorResponse, errorResponse, internalErrorResponse, requireWorkspace, successResponse } from "../helpers";
 import { parseAndValidate } from "../validation";
 import { validateAutomationModel } from "./helpers";
@@ -55,7 +55,7 @@ export const crudRoutes = defineRoutes({
         return workspace;
       }
       if (
-        !isGitBackedWorkspace(workspace)
+        !workspaceSupportsWorktrees(workspace)
         && (body.useWorktree || body.baseBranch !== undefined)
       ) {
         return errorResponse(
@@ -194,7 +194,7 @@ export const crudRoutes = defineRoutes({
           error: "delete_automation_failed",
           message: "Failed to delete automation",
           status: 500,
-        });
+        }, undefined, "automations");
       }
     },
   },

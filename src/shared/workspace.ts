@@ -14,6 +14,7 @@
 import type { ServerSettings } from "./settings";
 import type { ExecutionHostBinding } from "./execution-host";
 import type { WorkspaceAccessCapability } from "./collaboration";
+import type { RepositoryBaseSelection } from "./repository-group";
 
 export const WORKSPACE_SCRATCHPAD_MAX_LENGTH = 100_000;
 export const WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE =
@@ -48,6 +49,7 @@ export interface Workspace {
   workspaceType: WorkspaceType;
   /** Whether new worktree-backed execution contexts may be created */
   allowWorktrees?: boolean;
+  repositoryBases?: RepositoryBaseSelection[];
   /** Monotonic revision of the workspace execution target */
   executionTargetRevision: number;
   /** Canonical immutable execution-host binding. */
@@ -91,7 +93,7 @@ export function isRestartableAutomaticWorkspace<
     && workspace.sourceDirectory.trim().length > 0;
 }
 
-export type WorkspaceType = "git" | "directory";
+export type WorkspaceType = "git" | "directory" | "multi-git";
 
 export const DEFAULT_WORKSPACE_TYPE: WorkspaceType = "git";
 

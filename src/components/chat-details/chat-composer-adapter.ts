@@ -107,7 +107,7 @@ export function useChatComposerAdapter({
   return {
     draftId: `chat:${chatId}`,
     tokenUsage: chat.state.usage ?? null,
-    repositoryChatId: chatId,
+    repositoryChatId: chat.state.worktree?.group ? undefined : chatId,
     currentModel: chat.config.model,
     modelWorkspaceId: isEmbedded || chat.config.source?.kind === "execution_host"
       ? undefined

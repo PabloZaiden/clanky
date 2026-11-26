@@ -35,7 +35,7 @@ interface ComposeViewProps {
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
   navigateWithinShell: (route: WebAppRoute) => void;
-  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat | null>;
+  createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat>;
   createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
   startAutomationImport: (workspaceId: string) => void;
   dashboardData: UseDashboardDataResult;

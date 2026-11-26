@@ -133,7 +133,7 @@ export function getCodeExplorerOptions({
           },
         };
       }),
-    ...chats.map((chat) => ({
+    ...chats.filter((chat) => !chat.state.worktree?.group || chat.state.worktree.worktreePath).map((chat) => ({
       id: `chat:${chat.config.id}`,
       kind: "chat" as const,
       label: chat.config.name,
@@ -279,7 +279,7 @@ export function resolveCodeExplorerTarget({
     }
     case "chat": {
       const chat = chats.find((candidate) => candidate.config.id === routeTargetId);
-      if (!chat) {
+      if (!chat || (chat.state.worktree?.group && !chat.state.worktree.worktreePath)) {
         return null;
       }
 

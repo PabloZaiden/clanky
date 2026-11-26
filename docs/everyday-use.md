@@ -65,8 +65,8 @@ your other devices.
 A workspace brings together your project and its conversations.
 
 1. Open **Workspaces** and create a workspace with **Manual** setup.
-2. Give it a name and enter your project folder in **Directory**. Enable **Git
-   repository** for a Git project.
+2. Give it a name and enter your project folder in **Directory**. Choose **Git
+   repository**, **Multiple Git repositories**, or **Directory**.
 3. Choose your computer as the **Execution host** and select **GitHub Copilot**,
    **Codex**, **OpenCode 2** or **Claude Agent** under **Adapter**. Test the
    connection and create the workspace.
@@ -84,6 +84,32 @@ Show me the plan so we can discuss it before implementation.
 
 Read **Plan** and **Status**, discuss the proposal, then send "Implement this
 plan" when you're happy with it. Use **Diff** to review the changes.
+
+### Work across several repositories
+
+Choose **Multiple Git repositories** for a non-Git directory with repositories
+in its immediate subdirectories. The directory can start empty; clone into it
+from the workspace terminal. Clanky discovers the repositories when you open
+the repository list or create a chat. Existing chats keep their original group.
+
+A chat starts in its own directory with a new branch and worktree for each
+repository and a private copy of every file directly in the workspace root,
+including dotfiles. Non-repository subdirectories are not copied. Files outside
+the repositories are not part of a Git diff and do not sync back to the
+workspace. In **New Chat**, use **Base branches** to override
+the default for individual repositories. Set recurring choices under
+**Workspace settings > General > Default base branches**. Select a repository
+in **Diff** to review its changes, branch and pull request.
+
+When a base tracks a remote branch, Clanky also tries to fast-forward the
+existing local branch in the original repository. It never switches branches,
+overwrites local changes, or modifies a branch checked out in another
+worktree. If it cannot update a branch safely, the chat reports the reason
+and still uses the selected base. Quick Chat skips this synchronization.
+
+**New Chat here** shares the current chat's directory instead of making a copy.
+Permanently delete chats that share it before purging the original. Remove
+existing chats and automation runs before moving a workspace to another host.
 
 ## 3. Connect through Tailscale
 

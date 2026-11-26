@@ -26,6 +26,7 @@ import {
 import { executionHostService } from "./execution-host-service";
 import { executionPathsEqual, isAbsoluteExecutionPath } from "./execution-path";
 import { GitService } from "./git";
+import { requireGroupRepository, requireRepositoryGroupDirectory } from "./repository-group-service";
 import { ManagedPathService } from "./managed-path-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
 import type { ChatStatePort } from "./chat-service-contracts";
@@ -272,7 +273,13 @@ export class ChatHistoryExportService {
       }
       const git = GitService.withExecutor(executor);
       const isGitRepo = await git.isGitRepo(directory);
-      if (chat.config.useWorktree) {
+      const group = chat.state.worktree?.group;
+      if (group) {
+        await requireRepositoryGroupDirectory(executor, group, directory);
+        for (const repository of group.repositories) {
+          await requireGroupRepository(executor, group, repository, chat.config.useWorktree ? group.branch : undefined);
+        }
+      } else if (chat.config.useWorktree) {
         let repositoryDirectory = chat.config.directory;
         if (!isAbsoluteExecutionPath(repositoryDirectory, executor.pathStyle)) {
           const repositoryExecutor = await this.getExecutor(

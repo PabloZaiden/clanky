@@ -9,6 +9,7 @@ import type { ChatPermissionRequest, ChatWorktreeState } from "./chat";
 import type { MessageAttachment } from "./message-attachments";
 import type { ModelConfig } from "./model";
 import type { TokenUsageSummary } from "./harness-usage";
+import type { RepositoryBaseSelection } from "./repository-group";
 import type {
   PersistedMessage,
   PersistedToolCall,
@@ -42,6 +43,7 @@ export interface AutomationConfigSnapshot {
   code?: string;
   model: ModelConfig;
   baseBranch?: string;
+  repositoryBases?: RepositoryBaseSelection[];
   useWorktree: boolean;
   schedule: AutomationSchedule;
 }

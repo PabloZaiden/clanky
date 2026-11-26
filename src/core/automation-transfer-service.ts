@@ -18,6 +18,9 @@ export function createAutomationTransferPayload(automation: Automation): Automat
       ...(automation.config.code === undefined ? {} : { code: automation.config.code }),
       model: automation.config.model,
       ...(automation.config.baseBranch === undefined ? {} : { baseBranch: automation.config.baseBranch }),
+      ...(automation.config.repositoryBases === undefined ? {} : {
+        repositoryBases: automation.config.repositoryBases.map(({ repository, ref }) => ({ repository, ref })),
+      }),
       useWorktree: automation.config.useWorktree,
       schedule: {
         startAtLocal: automation.config.schedule.startAtLocal,
@@ -54,6 +57,9 @@ export async function importAutomationConfig(
   }
 
   const isGitWorkspace = isGitBackedWorkspace(workspace);
+  if (workspace.workspaceType !== "multi-git" && payload.automation.repositoryBases?.length) {
+    throw new DomainError("repository_group_unavailable", "This automation's repository base branches require a multirepository workspace.");
+  }
   return await automationManager.createAutomation({
     name: payload.automation.name,
     workspaceId,
@@ -61,7 +67,8 @@ export async function importAutomationConfig(
     code: payload.automation.code,
     model: payload.automation.model,
     baseBranch: isGitWorkspace ? payload.automation.baseBranch : undefined,
-    useWorktree: isGitWorkspace ? payload.automation.useWorktree : false,
+    repositoryBases: workspace.workspaceType === "multi-git" ? payload.automation.repositoryBases : undefined,
+    useWorktree: workspace.workspaceType === "multi-git" || (isGitWorkspace && payload.automation.useWorktree),
     schedule: payload.automation.schedule,
     enabled: false,
   });

@@ -81,9 +81,10 @@ export interface ChatConfig {
 }
 
 export interface ChatWorktreeState {
-  originalBranch: string;
-  workingBranch: string;
+  originalBranch?: string;
+  workingBranch?: string;
   worktreePath?: string;
+  group?: import("./repository-group").ChatWorktreeGroup;
 }
 
 export interface ChatRepositoryContext {
@@ -91,6 +92,7 @@ export interface ChatRepositoryContext {
   branch: string | null;
   pullRequest: { number: number; url: string; state: "open" | "closed" | "merged" } | null;
   pullRequestLookup: "found" | "none" | "unavailable";
+  hasChanges?: boolean;
   message?: string;
 }
 
