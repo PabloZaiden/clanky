@@ -30,10 +30,11 @@ export function MeshEnrollmentForm({ mesh, onClose }: { mesh: UseMeshResult; onC
   }
 
   return (
-    created ? <>
-      <CodeValue label="Worker enrollment command" value={created.workerJoinCommand} />
+    created ? <div className="grid gap-3">
+      <CodeValue label="1. Enroll worker" value={created.workerJoinCommand} />
+      <CodeValue label="2. Install and start service" value="clanky worker service install" />
       <FormActions><Button onClick={onClose}>Done</Button></FormActions>
-    </> :
+    </div> :
       <form className="grid gap-3" onSubmit={(event) => void createToken(event)}>
         <TextField
           id="mesh-enrollment-name"
