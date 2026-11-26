@@ -44,6 +44,8 @@ import { createLogger } from "@pablozaiden/webapp/server";
 import { countTerminalSessionsByWorkspace } from "../persistence/terminal-sessions";
 import { withWorkspaceExecutionLock, withWorkspaceRuntimeLock } from "./workspace-execution-lock";
 import { executionHostService } from "./execution-host-service";
+import { closeCommandExecutor } from "./command-executor";
+import { bindWorkspaceRepositoryBases } from "./repository-group-service";
 import { workspaceWorkerEnrollmentService } from "./workspace-worker-enrollment-service";
 import { meshManager } from "./mesh-manager";
 import {
@@ -55,6 +57,7 @@ import {
 } from "../context/user-context";
 import { requireWorkspaceAccess } from "./collaboration-authority";
 import { requireWorkspaceUpdateUserId } from "../persistence/ownership";
+import { workspaceHasRepositoryGroups } from "../persistence/chats/crud";
 
 const log = createLogger("core:workspace-manager");
 
@@ -86,7 +89,7 @@ export interface CreateWorkspaceInput {
 }
 
 export type UpdateWorkspaceInput = Partial<
-  Pick<Workspace, "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath">
+  Pick<Workspace, "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "isPrivate" | "archived" | "allowClankyContext" | "devcontainerSubpath" | "repositoryBases">
 > & {
   executionHost?: ExecutionHostRef;
   allowExecutionTargetChangeWithTerminals?: boolean;
@@ -176,6 +179,12 @@ function getValidationFailure(
     return {
       code: "not_git_repo",
       message: "Directory must be a git repository",
+    };
+  }
+  if (workspaceType === "multi-git" && validation.isGitRepo) {
+    return {
+      code: "validation_failed",
+      message: "A multirepository workspace must be outside a Git working tree",
     };
   }
 
@@ -542,6 +551,12 @@ export class WorkspaceManager {
       );
     }
     if (requestedExecutionTargetChange) {
+      if (current.workspaceType === "multi-git" && workspaceHasRepositoryGroups(id, true)) {
+        throw new DomainError(
+          "workspace_repository_groups_in_use",
+          "Permanently remove existing chats and automation runs before changing the execution host.",
+        );
+      }
       const terminalCount = await countTerminalSessionsByWorkspace(id);
       if (terminalCount > 0 && updates.allowExecutionTargetChangeWithTerminals !== true) {
         throw new DomainError(
@@ -591,8 +606,13 @@ export class WorkspaceManager {
         && updates.devcontainerSubpath !== current.devcontainerSubpath;
       const scratchpadChanged = updates.scratchpad !== undefined
         && updates.scratchpad !== current.scratchpad;
+      const repositoryBasesChanged = updates.repositoryBases !== undefined
+        && JSON.stringify(updates.repositoryBases) !== JSON.stringify(current.repositoryBases ?? []);
+      if (updates.repositoryBases !== undefined && current.workspaceType !== "multi-git") {
+        throw new DomainError("repository_group_unavailable", "Per-repository bases require a multirepository workspace.");
+      }
 
-      if (!nameChanged && !directoryChanged && !scratchpadChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !allowWorktreesChanged && !devcontainerSubpathChanged) {
+      if (!nameChanged && !directoryChanged && !scratchpadChanged && !serverSettingsChanged && !executionTargetChanged && !privateChanged && !archivedChanged && !allowClankyContextChanged && !allowWorktreesChanged && !devcontainerSubpathChanged && !repositoryBasesChanged) {
         return current;
       }
 
@@ -605,6 +625,22 @@ export class WorkspaceManager {
       }
       if (scratchpadChanged) {
         normalizedUpdates.scratchpad = updates.scratchpad;
+      }
+      if (repositoryBasesChanged && updates.repositoryBases) {
+        normalizedUpdates.repositoryBases = updates.repositoryBases;
+        if (updates.repositoryBases.length > 0) {
+          const directory = updates.directory ?? current.directory;
+          const executor = await executionHostService.getCommandExecutor(nextExecutionHostBinding, {
+            operationId: `workspace-repository-bases:${id}`,
+            directory,
+            provider: (updates.serverSettings ?? current.serverSettings).agent.provider,
+          });
+          try {
+            normalizedUpdates.repositoryBases = await bindWorkspaceRepositoryBases(executor, directory, updates.repositoryBases);
+          } finally {
+            closeCommandExecutor(executor);
+          }
+        }
       }
       if (serverSettingsChanged) {
         normalizedUpdates.serverSettings = updates.serverSettings;

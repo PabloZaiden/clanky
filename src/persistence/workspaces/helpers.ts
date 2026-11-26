@@ -7,6 +7,7 @@ import {
   type Workspace,
 } from "@/shared/workspace";
 import { parseServerSettings } from "@/shared/settings";
+import { RepositoryBasesSchema } from "@/contracts/schemas/repository-group";
 import { requireResourcePersistenceUserId } from "../ownership";
 import {
   executionHostBindingFromRow,
@@ -26,6 +27,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     directory: workspace.directory,
     scratchpad: workspace.scratchpad,
     workspace_type: workspace.workspaceType,
+    repository_bases_json: workspace.repositoryBases ? JSON.stringify(workspace.repositoryBases) : null,
     allow_worktrees: workspace.allowWorktrees !== false ? 1 : 0,
     execution_target_revision: Math.max(1, Math.floor(workspace.executionTargetRevision)),
     server_settings: JSON.stringify(workspace.serverSettings),
@@ -54,9 +56,12 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     name: row["name"] as string,
     directory: row["directory"] as string,
     scratchpad: typeof row["scratchpad"] === "string" ? row["scratchpad"] : "",
-    workspaceType: row["workspace_type"] === "directory"
-      ? "directory"
+    workspaceType: row["workspace_type"] === "directory" || row["workspace_type"] === "multi-git"
+      ? row["workspace_type"]
       : DEFAULT_WORKSPACE_TYPE,
+    ...(typeof row["repository_bases_json"] === "string"
+      ? { repositoryBases: RepositoryBasesSchema.parse(JSON.parse(row["repository_bases_json"])) }
+      : {}),
     allowWorktrees: row["allow_worktrees"] === 0 ? false : true,
     executionTargetRevision: typeof row["execution_target_revision"] === "number"
       ? Math.max(1, Math.floor(row["execution_target_revision"] as number))

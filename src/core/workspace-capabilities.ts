@@ -4,6 +4,10 @@ import { DomainError } from "../domain/domain-error";
 export const WORKSPACE_GIT_REQUIRED_CODE = "workspace_git_required" as const;
 export const WORKSPACE_WORKTREES_DISABLED_CODE = "workspace_worktrees_disabled" as const;
 
+export function workspaceSupportsWorktrees(workspace: Pick<Workspace, "workspaceType">): boolean {
+  return workspace.workspaceType !== "directory";
+}
+
 export function isGitBackedWorkspace(
   workspace: Pick<Workspace, "workspaceType">,
 ): boolean {

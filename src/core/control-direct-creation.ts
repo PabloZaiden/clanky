@@ -107,13 +107,14 @@ export async function directCreateChat(context: ControlToolContext, input: Direc
     const owned = directRecord(workspace);
     const preference = input.model ?? (last ? ModelConfigSchema.parse(last) : null);
     const model = chooseModel(ModelsSchema.parse(models), preference);
-    const worktreesAllowed = owned["workspaceType"] === "git" && owned["allowWorktrees"] !== false;
+    const multiGit = owned["workspaceType"] === "multi-git";
+    const worktreesAllowed = (owned["workspaceType"] === "git" || multiGit) && owned["allowWorktrees"] !== false;
     if (input.useWorktree === true && !worktreesAllowed) {
       throw new DomainError("voice_worktree_unavailable", "Worktrees are unavailable for this workspace.");
     }
-    const useWorktree = input.useWorktree ?? (worktreesAllowed && DEFAULT_CHAT_CONFIG.useWorktree);
+    const useWorktree = multiGit ? (input.useWorktree ?? true) : input.useWorktree ?? (worktreesAllowed && DEFAULT_CHAT_CONFIG.useWorktree);
     let baseBranch = input.baseBranch;
-    if (useWorktree) {
+    if (useWorktree && !multiGit) {
       const branches = z.object({
         currentBranch: z.string(),
         branches: z.array(z.object({ name: z.string() })),
@@ -126,10 +127,11 @@ export async function directCreateChat(context: ControlToolContext, input: Direc
     body = CreateChatRequestSchema.parse({
       workspaceId, model, useWorktree, startWithPlan: input.startWithPlan, ...(input.name ? { name: input.name } : {}),
       ...(baseBranch ? { baseBranch } : {}), ...(input.directory ? { directory: input.directory } : {}),
+      ...(input.repositoryBases !== undefined ? { repositoryBases: input.repositoryBases } : {}),
     });
   } else {
     if (!input.directory) throw new DomainError("voice_directory_required", "Choose the directory on the selected execution host.");
-    if (input.useWorktree || input.baseBranch) throw new DomainError("voice_host_chat_worktree_unsupported", "A direct-host chat has no workspace worktree settings.");
+    if (input.useWorktree || input.baseBranch || input.repositoryBases !== undefined) throw new DomainError("voice_host_chat_worktree_unsupported", "A direct-host chat has no workspace worktree settings.");
     const host = await context.host(input.host!);
     const ref = ExecutionHostRefSchema.parse(host["ref"]);
     parameters = { kind: ref.kind, id: getExecutionHostSourceId(ref) };

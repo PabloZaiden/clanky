@@ -581,6 +581,7 @@ jobs:
           '
       - name: Build and sign the AppImage
         env:
+          CLANKY_LINUX_UPDATE_BUILD: ${{ github.run_number }}
           CLANKY_LINUX_UPDATE_PUBLIC_KEY: ${{ vars.CLANKY_LINUX_UPDATE_PUBLIC_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.CLANKY_LINUX_UPDATE_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.CLANKY_LINUX_UPDATE_PRIVATE_KEY_PASSWORD }}
@@ -625,6 +626,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name || 'latest' }}
           DISTRIBUTION_VERSION: ${{ needs.apple-version.outputs.version }}
+          CLANKY_LINUX_UPDATE_BUILD: ${{ github.run_number }}
         run: |
           bun --no-env-file scripts/publish-linux-desktop.ts "$RUNNER_TEMP/linux-desktop" "$RELEASE_TAG" \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$DISTRIBUTION_VERSION"

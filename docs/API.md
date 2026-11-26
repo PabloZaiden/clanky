@@ -719,6 +719,20 @@ the initial guidance.
 | `GET /api/chats/:id/diff/file?base=<commit>&path=<relative-path>` | One file's metadata, line counts and `patch` |
 | `GET /api/chats/:id/repository-context` | `{ isGitRepo, branch, pullRequest, pullRequestLookup, message? }` |
 
+For a `multi-git` workspace, `GET /api/git/repositories?workspaceId=<id>`
+discovers the immediate child repositories and returns their names, identities,
+available refs, and default refs. Pass `repositoryBases: [{ repository, ref }]`
+when creating a chat or configuring an automation to override selected bases.
+Use fully qualified refs such as `refs/heads/main` or
+`refs/remotes/origin/main`. Include the identity from discovery to reject a
+selection if the repository has since been replaced.
+
+Multirepository chat diff, file patch, and repository-context requests require
+`repository=<name>` from the chat's persisted worktree group. Pass the pinned
+comparison commit reported by the selected repository's diff to the file patch
+request. Workspace Git operations and explicit pulls also require
+`repository=<name>`, but resolve it against the current workspace directory.
+
 Diff compares the current working tree with the merge base of HEAD and the
 chat's original or repository-default branch. `X-Clanky-Diff-Base` gives the
 comparison commit and `X-Clanky-Diff-Base-Ref` the selected ref. It includes

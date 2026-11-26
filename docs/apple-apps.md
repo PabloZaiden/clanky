@@ -309,8 +309,10 @@ Run it from the default branch only after the tooling has been merged and a
 normal versioned release containing the bundled-only App Store policy has been
 published. The workflow rejects older release sources before building or
 uploading. It pins that latest release's exact tag and commit, excludes
-prereleases and the rolling
-`latest` channel, and shares the existing iOS upload queue. It builds Release
+prereleases and the rolling `latest` channel, and shares the existing iOS
+upload queue. The dispatch's default-branch commit supplies the publication
+tooling, while the app is built from the pinned release commit. This allows
+publication fixes without changing the release tag. The workflow builds Release
 arm64 with an unused build number, verifies the archive and extracted IPA,
 and requires Apple's `VALID` / `APP_STORE_ELIGIBLE` processing result.
 
@@ -330,7 +332,8 @@ Before building, the workflow reuses an editable App Store draft matching the
 release number. Prepared copy and media are preserved; missing primary-language
 What's New is filled from the release's dedicated section. If no draft exists,
 it creates the matching iOS version using Apple's current-version metadata
-inheritance, copies copyright and sets the new What's New from that release.
+inheritance, copies copyright unchanged from the highest iOS version ready for
+distribution, and sets What's New from the selected release.
 Another pending version or active review blocks preparation rather than being
 renamed, overwritten or submitted accidentally. The first App Store version
 must still be prepared manually because there is no distributed listing to inherit.

@@ -35,6 +35,7 @@ export interface UseWorkspacesResult {
   /** Pull latest changes for the workspace default branch */
   pullLatestChanges: (
     id: string,
+    repository?: string,
   ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
 }
 
@@ -150,6 +151,7 @@ export function useWorkspaces(): UseWorkspacesResult {
 
   const pullLatestChanges = useCallback(async (
     id: string,
+    repository?: string,
   ): Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }> => {
     try {
       setSaving(true);
@@ -158,7 +160,7 @@ export function useWorkspaces(): UseWorkspacesResult {
         defaultBranch?: string;
         currentBranch?: string;
         message?: string;
-      }>(`/api/workspaces/${id}/pull-latest-changes`, {
+      }>(`/api/workspaces/${id}/pull-latest-changes${repository ? `?${new URLSearchParams({ repository })}` : ""}`, {
         signal,
         method: "POST",
         action: "Pull latest workspace changes",

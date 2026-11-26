@@ -16,13 +16,14 @@ import {
   WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE,
 } from "@/shared";
 import { ExecutionHostRefSchema } from "./execution-host";
+import { RepositoryBasesSchema } from "./repository-group";
 
 /**
  * Agent provider options.
  */
 export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 
-export const WorkspaceTypeSchema = z.enum(["git", "directory"]);
+export const WorkspaceTypeSchema = z.enum(["git", "directory", "multi-git"]);
 
 /**
  * Adapter selection is independent of the execution host.
@@ -120,6 +121,7 @@ export const UpdateWorkspaceRequestSchema = z.object({
   scratchpad: z.string()
     .max(WORKSPACE_SCRATCHPAD_MAX_LENGTH, WORKSPACE_SCRATCHPAD_TOO_LONG_MESSAGE)
     .optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
 });
 
 /**

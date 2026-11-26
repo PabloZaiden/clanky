@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ErrorState, LoadingState, Page, useLiveQuery } from "@pablozaiden/webapp/web";
+import { ErrorState, LoadingState, Page, SelectField, useLiveQuery } from "@pablozaiden/webapp/web";
 import type { FileContentResponse, FileDiff, FileDiffContent } from "@/contracts";
 import { readApiResponse, requestApiResponse } from "../../lib/api-client";
 import { SNAPSHOT_REQUEST_TIMEOUT_MS } from "../../lib/request-lifecycle";
@@ -8,6 +8,8 @@ import { useMarkdownPreference } from "../../hooks/useMarkdownPreference";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { DiffView } from "../common/diff-view";
 import { DiffPatchViewer } from "../common/diff-patch-viewer";
+import { ChatRepositorySection } from "./chat-repository-section";
+import type { ChatWorktreeGroup } from "@/shared/repository-group";
 
 function useChatInspection<T>(
   chatId: string,
@@ -84,13 +86,14 @@ export function ChatPlanView(props: ChatInspectionProps) {
   );
 }
 
-function ChatDiffPatch({ chatId, base, path, visible, active, cacheKey, previous, onLoaded }: {
+function ChatDiffPatch({ chatId, base, path, repository, visible, active, cacheKey, previous, onLoaded }: {
   chatId: string; base: string; path: string; visible: boolean; active: boolean;
+  repository?: string;
   cacheKey: string; previous?: FileDiffContent;
   onLoaded: (key: string, file: FileDiffContent) => void;
 }) {
   const query = useChatInspection<FileDiffContent>(chatId,
-    `diff/file?${new URLSearchParams({ base, path })}`, visible, active, { enabled: visible });
+    `diff/file?${new URLSearchParams({ base, path, ...(repository ? { repository } : {}) })}`, visible, active, { enabled: visible });
   useEffect(() => {
     if (query.data) onLoaded(cacheKey, query.data);
   }, [cacheKey, onLoaded, query.data]);
@@ -107,8 +110,11 @@ function ChatDiffPatch({ chatId, base, path, visible, active, cacheKey, previous
   );
 }
 
-export function ChatDiffView(props: ChatInspectionProps) {
-  const query = useChatInspection(props.chatId, "diff", props.visible, props.active, { read: async (response) => ({
+export function ChatDiffView(props: ChatInspectionProps & { group?: ChatWorktreeGroup; groupReady?: boolean }) {
+  const [selected, setSelected] = useState("");
+  const repository = props.group?.repositories.find(({ name }) => name === selected)?.name;
+  const query = useChatInspection(props.chatId, repository ? `diff?${new URLSearchParams({ repository })}` : "diff",
+    props.visible, props.active, { enabled: !props.group || (Boolean(repository) && props.groupReady), read: async (response) => ({
     files: await readApiResponse<FileDiff[]>(response),
     baseCommit: response.headers.get("X-Clanky-Diff-Base"),
   }) });
@@ -117,11 +123,28 @@ export function ChatDiffView(props: ChatInspectionProps) {
   const onLoaded = useCallback((key: string, file: FileDiffContent) => {
     setContents((current) => ({ ...current, [key]: file }));
   }, []);
-  const keyFor = (file: FileDiff) => JSON.stringify([props.chatId, query.data?.baseCommit, file.path]);
+  const keyFor = (file: FileDiff) => JSON.stringify([props.chatId, repository, query.data?.baseCommit, file.path]);
   return (
     <Page>
-      {query.error ? <ErrorState title="Unable to read changes" description={String(query.error)} /> : null}
-      {query.data || query.loading ? <DiffView
+      {props.group ? (
+        props.group.repositories.length ? (
+          <div className="mb-4 space-y-3">
+            <SelectField id="chat-diff-repository" label="Repository" value={repository ?? ""}
+              onChange={(event) => {
+                setSelected(event.currentTarget.value);
+                setExpandedFiles(new Set());
+              }}>
+              <option value="">Select a repository</option>
+              {props.group.repositories.map(({ name }) => <option key={name} value={name}>{name}</option>)}
+            </SelectField>
+            {props.visible && repository && props.groupReady
+              ? <ChatRepositorySection key={repository} chatId={props.chatId} selectedRepository={repository} />
+              : null}
+          </div>
+        ) : <p>No Git repositories in this chat.</p>
+      ) : null}
+      {(!props.group || repository) && query.error ? <ErrorState title="Unable to read changes" description={String(query.error)} /> : null}
+      {(!props.group || repository) && (query.data || query.loading) ? <DiffView
         diffContent={query.data?.files.map((file) => {
           const cached = contents[keyFor(file)];
           return cached && file.additions === null
@@ -132,7 +155,7 @@ export function ChatDiffView(props: ChatInspectionProps) {
         expandedFiles={expandedFiles}
         onExpandedFilesChange={setExpandedFiles}
         renderPatch={(file) => query.data?.baseCommit ? <ChatDiffPatch
-          key={keyFor(file)} chatId={props.chatId} base={query.data.baseCommit} path={file.path}
+          key={keyFor(file)} chatId={props.chatId} base={query.data.baseCommit} path={file.path} repository={repository}
           visible={props.visible} active={props.active} cacheKey={keyFor(file)}
           previous={contents[keyFor(file)]} onLoaded={onLoaded}
         /> : <ErrorState title="Comparison base unavailable" description="Refresh the change list before opening a file." />}

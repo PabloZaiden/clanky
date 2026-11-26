@@ -18,6 +18,7 @@ use std::{
     },
     time::Duration,
 };
+use updates::UpdateChannel;
 use tauri::{
     menu::{Menu, MenuItem, Submenu},
     webview::NewWindowResponse,
@@ -35,6 +36,7 @@ struct Settings {
     automatic: bool,
     connection: Option<Connection>,
     network: NetworkMode,
+    update_channel: Option<UpdateChannel>,
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -91,16 +93,40 @@ impl Preferences {
         }
         Ok(())
     }
+
+    fn update_channel(&self, app: &AppHandle) -> UpdateChannel {
+        self.settings
+            .update_channel
+            .unwrap_or_else(|| UpdateChannel::from_prerelease(app.package_info().version.pre.as_str()))
+    }
 }
 
 struct Desktop {
     origin: Url,
     preferences: Mutex<Preferences>,
-    controller: Mutex<Controller>,
     endpoint: SharedEndpoint,
+    menu: DesktopMenu,
+    controller_menu: Mutex<ControllerMenuState>,
     busy: AtomicBool,
     quitting: AtomicBool,
     commands: mpsc::Sender<Operation>,
+}
+
+struct ControllerMenuState {
+    has_process: bool,
+    direct_https: bool,
+}
+
+struct DesktopMenu {
+    start: MenuItem<tauri::Wry>,
+    connect: MenuItem<tauri::Wry>,
+    stop: MenuItem<tauri::Wry>,
+    network: MenuItem<tauri::Wry>,
+    owner: MenuItem<tauri::Wry>,
+    certificate: MenuItem<tauri::Wry>,
+    copy_link: MenuItem<tauri::Wry>,
+    update: MenuItem<tauri::Wry>,
+    update_settings: MenuItem<tauri::Wry>,
 }
 
 enum Operation {
@@ -112,6 +138,48 @@ enum Operation {
     InitializeOwner { username: String, password: String },
     ExportCertificate,
     Update,
+    UpdateChannel(UpdateChannel),
+}
+
+fn refresh_menu(app: &AppHandle) {
+    let state = app.state::<Desktop>();
+    let menu = &state.menu;
+    let idle = !state.busy.load(Ordering::Acquire);
+    let (has_process, direct_https) = {
+        let controller = state.controller_menu.lock().expect("controller menu lock");
+        (controller.has_process, controller.direct_https)
+    };
+    let (ready, remote) = {
+        let endpoint = state.endpoint.read().expect("controller endpoint lock");
+        (
+            endpoint.is_some(),
+            endpoint.as_ref().is_some_and(|url| url.starts_with("https://")),
+        )
+    };
+    let can_update = idle && updates::available(app);
+    for (item, enabled) in [
+        (&menu.start, idle && !has_process),
+        (&menu.connect, idle && ready),
+        (&menu.stop, idle && has_process),
+        (&menu.network, idle),
+        (&menu.owner, idle),
+        (&menu.certificate, idle && direct_https),
+        (&menu.copy_link, idle && remote),
+        (&menu.update, can_update),
+        (&menu.update_settings, can_update),
+    ] {
+        if let Err(error) = item.set_enabled(enabled) {
+            show_error(app, format!("Cannot refresh the Clanky menu: {error}"));
+            break;
+        }
+    }
+}
+
+fn dispatch_menu_refresh(app: &AppHandle) {
+    let handle = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || refresh_menu(&handle)) {
+        show_error(app, format!("Cannot dispatch a Clanky menu refresh: {error}"));
+    }
 }
 
 fn show_error(app: &AppHandle, message: impl Into<String>) {
@@ -185,6 +253,7 @@ fn do_menu(app: &AppHandle, action: &str) {
         "owner" => dialogs::owner(app),
         "certificate" => queue(app, Operation::ExportCertificate),
         "update" => queue(app, Operation::Update),
+        "update-settings" => dialogs::update_settings(app),
         "copy-link" => {
             let endpoint = state.endpoint.read().expect("controller endpoint lock");
             if let Some(link) = endpoint
@@ -212,18 +281,28 @@ fn queue(app: &AppHandle, operation: Operation) {
         show_error(app, "Wait for the local controller operation to finish.");
         return;
     }
+    refresh_menu(app);
     if state.commands.send(operation).is_err() {
         state.busy.store(false, Ordering::Release);
+        refresh_menu(app);
         show_error(app, "The local controller supervisor is unavailable.");
     }
 }
 
-fn supervise(app: AppHandle, commands: mpsc::Receiver<Operation>) {
+fn supervise(app: AppHandle, mut controller: Controller, commands: mpsc::Receiver<Operation>) {
     let state = app.state::<Desktop>();
     loop {
         match commands.recv_timeout(Duration::from_millis(500)) {
             Ok(operation) => {
-                let result = controller_action(&app, &state, operation);
+                let result = controller_action(&app, &state, &mut controller, operation);
+                {
+                    let mut menu = state.controller_menu.lock().expect("controller menu lock");
+                    menu.has_process = controller.has_owned_process();
+                    menu.direct_https = matches!(
+                        state.preferences.lock().expect("preferences lock").settings.network,
+                        NetworkMode::Direct(_)
+                    );
+                }
                 state.busy.store(false, Ordering::Release);
                 if let Err(error) = result {
                     show_error(&app, error);
@@ -231,10 +310,16 @@ fn supervise(app: AppHandle, commands: mpsc::Receiver<Operation>) {
                 if state.quitting.load(Ordering::Acquire) {
                     break;
                 }
+                dispatch_menu_refresh(&app);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                let result = state.controller.lock().expect("controller lock").monitor();
-                if let Err(error) = result {
+                if let Err(error) = controller.monitor() {
+                    state
+                        .controller_menu
+                        .lock()
+                        .expect("controller menu lock")
+                        .has_process = controller.has_owned_process();
+                    dispatch_menu_refresh(&app);
                     show_error(&app, error);
                 }
             }
@@ -254,8 +339,12 @@ fn on_local_page(app: &AppHandle) -> DesktopResult<bool> {
         .starts_with("/local/"))
 }
 
-fn controller_action(app: &AppHandle, state: &Desktop, action: Operation) -> DesktopResult<()> {
-    let mut controller = state.controller.lock().expect("controller lock");
+fn controller_action(
+    app: &AppHandle,
+    state: &Desktop,
+    controller: &mut Controller,
+    action: Operation,
+) -> DesktopResult<()> {
     match action {
         Operation::Start | Operation::Restore => {
             let mut preferences = state.preferences.lock().expect("preferences lock");
@@ -318,8 +407,22 @@ fn controller_action(app: &AppHandle, state: &Desktop, action: Operation) -> Des
             controller.initialize_owner(&username, &password)
         }
         Operation::ExportCertificate => dialogs::save_certificate(app, controller.certificate()?),
+        Operation::UpdateChannel(channel) => {
+            let mut preferences = state.preferences.lock().expect("preferences lock");
+            let previous = preferences.settings.update_channel.replace(channel);
+            if let Err(error) = preferences.write() {
+                preferences.settings.update_channel = previous;
+                return Err(error);
+            }
+            Ok(())
+        }
         Operation::Update => {
-            if updates::apply(app, &mut controller)? {
+            let channel = state
+                .preferences
+                .lock()
+                .expect("preferences lock")
+                .update_channel(app);
+            if updates::apply(app, controller, channel)? {
                 state.quitting.store(true, Ordering::Release);
                 app.exit(UPDATE_RESTART);
             } else if on_local_page(app)?
@@ -354,22 +457,13 @@ fn setup(app: &mut tauri::App) -> DesktopResult<()> {
     let controller = Controller::new(root.join("Controller"), endpoint.clone())?;
     let origin = assets::serve(app.handle().clone(), listener, endpoint.clone())?;
     let automatic = preferences.settings.automatic;
+    let direct_https = matches!(preferences.settings.network, NetworkMode::Direct(_));
     let initial_path = match preferences.settings.connection {
         Some(Connection::Api) => "api/",
         Some(Connection::Collaboration) => "collaboration/",
         None => "",
     };
     let (commands, receive_commands) = mpsc::channel();
-    app.manage(Desktop {
-        origin: origin.clone(),
-        controller: Mutex::new(controller),
-        preferences: Mutex::new(preferences),
-        endpoint,
-        commands,
-        busy: AtomicBool::new(false),
-        quitting: AtomicBool::new(false),
-    });
-
     let start = MenuItem::with_id(app, "start", "Start Local Controller", true, None::<&str>)
         .map_err(|e| e.to_string())?;
     let connect = MenuItem::with_id(
@@ -406,6 +500,14 @@ fn setup(app: &mut tauri::App) -> DesktopResult<()> {
         MenuItem::with_id(app, "quit", "Quit", true, Some("Ctrl+Q")).map_err(|e| e.to_string())?;
     let update = MenuItem::with_id(app, "update", "Check for Updates...", true, None::<&str>)
         .map_err(|e| e.to_string())?;
+    let update_settings = MenuItem::with_id(
+        app,
+        "update-settings",
+        "Update Settings...",
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
     let local = Submenu::with_items(
         app,
         "Local Controller",
@@ -421,8 +523,32 @@ fn setup(app: &mut tauri::App) -> DesktopResult<()> {
         ],
     )
     .map_err(|e| e.to_string())?;
-    let file =
-        Submenu::with_items(app, "File", true, &[&update, &quit]).map_err(|e| e.to_string())?;
+    let file = Submenu::with_items(app, "File", true, &[&update, &update_settings, &quit])
+        .map_err(|e| e.to_string())?;
+    app.manage(Desktop {
+        origin: origin.clone(),
+        preferences: Mutex::new(preferences),
+        endpoint,
+        menu: DesktopMenu {
+            start,
+            connect,
+            stop,
+            network,
+            owner,
+            certificate,
+            copy_link,
+            update,
+            update_settings,
+        },
+        controller_menu: Mutex::new(ControllerMenuState {
+            has_process: false,
+            direct_https,
+        }),
+        commands,
+        busy: AtomicBool::new(false),
+        quitting: AtomicBool::new(false),
+    });
+    refresh_menu(app.handle());
     app.set_menu(Menu::with_items(app, &[&file, &local]).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     app.on_menu_event(|app, event| do_menu(app, event.id().as_ref()));
@@ -491,7 +617,7 @@ fn setup(app: &mut tauri::App) -> DesktopResult<()> {
     let supervisor = app.handle().clone();
     std::thread::Builder::new()
         .name("clanky-controller".into())
-        .spawn(move || supervise(supervisor, receive_commands))
+        .spawn(move || supervise(supervisor, controller, receive_commands))
         .map_err(|error| format!("Cannot start the controller supervisor: {error}"))?;
     if automatic {
         do_menu(app.handle(), "restore");

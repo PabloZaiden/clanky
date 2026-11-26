@@ -4,6 +4,7 @@ import { isChatBusyStatus } from "@/shared/chat";
 import { createInitialAutomationState, isAutomationRunActiveStatus } from "@/shared/automation";
 import { createTimestamp } from "@/shared/events";
 import { createLogger } from "@pablozaiden/webapp/server";
+import type { RepositoryBaseSelection } from "@/shared/repository-group";
 import { DomainError } from "../domain/domain-error";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
@@ -32,6 +33,7 @@ import {
 } from "./deterministic-automation-generation";
 import { backendManager } from "./backend";
 import type { CommandExecutor } from "./command-executor";
+import { bindWorkspaceRepositoryBases } from "./repository-group-service";
 import {
   assertGitBackedWorkspace,
   assertWorktreesAllowed,
@@ -46,6 +48,12 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function bindAutomationBases(workspaceId: string, directory: string, bases?: RepositoryBaseSelection[]) {
+  if (!bases?.length) return bases;
+  const executor = await backendManager.getCommandExecutorAsync(workspaceId, directory);
+  return await bindWorkspaceRepositoryBases(executor, directory, bases);
+}
+
 export interface CreateAutomationOptions {
   name: string;
   workspaceId: string;
@@ -53,6 +61,7 @@ export interface CreateAutomationOptions {
   code?: string | null;
   model: AutomationConfig["model"];
   baseBranch?: string;
+  repositoryBases?: RepositoryBaseSelection[];
   useWorktree: boolean;
   schedule: Omit<AutomationConfig["schedule"], "nextRunAt"> & { nextRunAt?: string };
   enabled?: boolean;
@@ -64,6 +73,7 @@ export interface UpdateAutomationOptions {
   code?: string | null;
   model?: AutomationConfig["model"];
   baseBranch?: string | null;
+  repositoryBases?: RepositoryBaseSelection[];
   useWorktree?: boolean;
   schedule?: Omit<AutomationConfig["schedule"], "nextRunAt"> & { nextRunAt?: string };
   enabled?: boolean;
@@ -111,8 +121,12 @@ export class AutomationManager {
         details: { workspaceId: options.workspaceId },
       });
     }
+    const multiGit = workspace.workspaceType === "multi-git";
+    if (multiGit ? options.baseBranch !== undefined : options.repositoryBases !== undefined) {
+      throw new DomainError("repository_group_unavailable", "Multirepository automations choose a base per repository.");
+    }
     if (
-      !isGitBackedWorkspace(workspace)
+      !multiGit && !isGitBackedWorkspace(workspace)
       && (options.useWorktree || options.baseBranch !== undefined)
     ) {
       assertGitBackedWorkspace(
@@ -120,7 +134,7 @@ export class AutomationManager {
         "Directory workspaces do not support branches or worktrees.",
       );
     }
-    if (options.useWorktree) {
+    if (multiGit || options.useWorktree) {
       assertWorktreesAllowed(workspace);
     }
     const now = createTimestamp();
@@ -145,7 +159,8 @@ export class AutomationManager {
       code,
       model: options.model,
       baseBranch: isGitBackedWorkspace(workspace) ? options.baseBranch : undefined,
-      useWorktree: isGitBackedWorkspace(workspace) ? options.useWorktree : false,
+      repositoryBases: await bindAutomationBases(workspace.id, workspace.directory, options.repositoryBases),
+      useWorktree: multiGit || (isGitBackedWorkspace(workspace) && options.useWorktree),
       schedule: {
         ...options.schedule,
         nextRunAt,
@@ -334,8 +349,13 @@ export class AutomationManager {
       return null;
     }
     const workspace = await getWorkspace(automation.config.workspaceId);
+    const multiGit = workspace?.workspaceType === "multi-git";
+    if (multiGit ? Boolean(updates.baseBranch) || updates.useWorktree === false : updates.repositoryBases !== undefined) {
+      throw new DomainError("repository_group_unavailable", "Multirepository automations use a worktree group with per-repository bases.");
+    }
     if (
       workspace
+      && !multiGit
       && !isGitBackedWorkspace(workspace)
       && (updates.useWorktree === true || updates.baseBranch !== undefined && updates.baseBranch !== null)
     ) {
@@ -379,9 +399,12 @@ export class AutomationManager {
         baseBranch: workspace && !isGitBackedWorkspace(workspace)
           ? undefined
           : updates.baseBranch === null ? undefined : updates.baseBranch ?? automation.config.baseBranch,
-        useWorktree: workspace && !isGitBackedWorkspace(workspace)
+        repositoryBases: workspace && updates.repositoryBases !== undefined
+          ? await bindAutomationBases(workspace.id, workspace.directory, updates.repositoryBases)
+          : automation.config.repositoryBases,
+        useWorktree: multiGit || (workspace && !isGitBackedWorkspace(workspace)
           ? false
-          : updates.useWorktree ?? automation.config.useWorktree,
+          : updates.useWorktree ?? automation.config.useWorktree),
         schedule: nextSchedule,
         enabled,
         isPrivate: updates.isPrivate ?? automation.config.isPrivate,

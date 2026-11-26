@@ -42,12 +42,16 @@ import type {
 import type { CurrentUser } from "@/platform/contracts";
 import { requireExecutionOwnerUser, runWithExecutionOwner } from "../context/user-context";
 import { executionHostService } from "./execution-host-service";
+import { closeCommandExecutor } from "./command-executor";
+import { planRepositoryGroup } from "./repository-group-service";
 import {
   EXECUTION_HOST_CAPABILITY_VERSIONS,
   executionHostBindingsEqual,
   getAgentExecutionHostCapability,
 } from "@/shared/execution-host";
 import { DomainError } from "../domain/domain-error";
+import { hasRepositoryGroupDependents } from "../persistence/chats/trash";
+import { KeyedOperationQueue } from "../utils/keyed-operation-queue";
 import type { ChatHistoryExportService } from "./chat-history-export-service";
 import { conversationAttachmentService } from "./conversation-attachment-service";
 import { resourcePrivacyEventEmitter } from "./event-emitter";
@@ -63,6 +67,7 @@ export interface ChatLifecycleServiceDependencies {
 }
 
 export class ChatLifecycleService implements ChatLifecyclePort {
+  private readonly repositoryGroupOperations = new KeyedOperationQueue();
   private readonly state: ChatStatePort;
   private readonly worktree: ChatWorktreePort;
   private readonly session: ChatSessionPort;
@@ -105,6 +110,18 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       1,
     );
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
+    const multiGit = workspace.workspaceType === "multi-git";
+    const groupExecution = multiGit && !options.sharedGroup
+      && !(scope === "automation" && options.useWorktree === false && options.prepareWorktreeOnCreate === false);
+    if (multiGit && (options.baseBranch !== undefined || options.useSelectedBranchForWorktree || options.useChatNameAsBranch)) {
+      throw new DomainError("repository_group_unavailable", "Choose a base per repository. Multirepository chats use new working branches.");
+    }
+    if (groupExecution && ((options.directory !== undefined && options.directory !== workspace.directory) || options.useWorktree === false)) {
+      throw new DomainError("repository_group_unavailable", "Multirepository chats use an isolated group at the workspace directory.");
+    }
+    if (!multiGit && options.repositoryBases !== undefined) {
+      throw new DomainError("repository_group_unavailable", "Per-repository bases require a multirepository workspace.");
+    }
     if (options.directory !== undefined) {
       await executionHostService.assertDirectoryExists(
         workspace.executionHostBinding,
@@ -113,7 +130,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
 
     if (
-      !isGitBackedWorkspace(workspace)
+      !multiGit && !isGitBackedWorkspace(workspace)
       && (
         options.useWorktree === true
         || options.useSelectedBranchForWorktree === true
@@ -125,9 +142,9 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         "Directory workspaces do not support branches or worktrees.",
       );
     }
-    const useWorktree = isGitBackedWorkspace(workspace)
+    const useWorktree = groupExecution || (isGitBackedWorkspace(workspace)
       ? (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree)
-      : false;
+      : false);
     if (useWorktree) {
       assertWorktreesAllowed(workspace);
     }
@@ -154,6 +171,31 @@ export class ChatLifecycleService implements ChatLifecyclePort {
     }
 
     const id = crypto.randomUUID();
+    const state = createInitialChatState(id);
+    if (options.sharedGroup) {
+      state.worktree = options.sharedGroup;
+    } else if (groupExecution) {
+      const executor = await executionHostService.getCommandExecutor(workspace.executionHostBinding, {
+        directory: workspace.directory,
+        operationId: `chat-group:${id}`,
+        sshKeyTarget: { kind: "workspace", id: workspace.id },
+        provider: workspace.serverSettings.agent.provider,
+        localUserId: requireExecutionOwnerUser().id,
+      });
+      try {
+        state.worktree = {
+          group: await timer.measure("worktree_preparation", () => planRepositoryGroup(
+            executor, workspace.directory, id, {
+              bases: options.repositoryBases,
+              defaults: workspace.repositoryBases,
+              refresh: options.syncBaseBranch !== false,
+            },
+          )),
+        };
+      } finally {
+        closeCommandExecutor(executor);
+      }
+    }
     const now = createTimestamp();
     const explicitName = options.name?.trim() ?? "";
     const generatedNamePrefix = (workspace.name.trim() || "Chat").slice(0, 100).trim() || "Chat";
@@ -195,12 +237,13 @@ export class ChatLifecycleService implements ChatLifecyclePort {
         updatedAt: now,
         mode: DEFAULT_CHAT_CONFIG.mode,
       },
-      state: createInitialChatState(id),
+      state,
     };
 
     const shouldPrepareWorktreeOnCreate =
       chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? false);
-    const initialChat = shouldPrepareWorktreeOnCreate || !chat.config.useWorktree
+    const prepareBeforeSave = shouldPrepareWorktreeOnCreate && !groupExecution;
+    const initialChat = prepareBeforeSave || !chat.config.useWorktree
       ? chat
       : {
           ...chat,
@@ -210,7 +253,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
           },
         };
     await this.worktree.assertWorktreeBranchAvailable(initialChat);
-    const preparedChat = shouldPrepareWorktreeOnCreate
+    let preparedChat = prepareBeforeSave
       ? {
           ...initialChat,
           state: {
@@ -226,6 +269,21 @@ export class ChatLifecycleService implements ChatLifecyclePort {
 
     await timer.measure("chat_persistence", () => this.state.saveNewChat(preparedChat));
     this.state.emitChatCreated(preparedChat, now);
+    if (groupExecution && shouldPrepareWorktreeOnCreate) {
+      try {
+        preparedChat = await this.worktree.ensureWorktree(preparedChat);
+      } catch (error) {
+        try {
+          await this.deleteChat(id);
+        } catch (cleanupError) {
+          options.onRetainedGroup?.(preparedChat);
+          const message = `${String(error)} Cleanup remains pending: ${String(cleanupError)}`;
+          await this.state.markChatError(preparedChat, message);
+          throw new DomainError("repository_group_unavailable", message, { cause: error });
+        }
+        throw error;
+      }
+    }
     if (!shouldPrepareWorktreeOnCreate && preparedChat.config.useWorktree) {
       this.worktree.prepareWorktreeInBackground(preparedChat);
     }
@@ -240,10 +298,24 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async createChatHere(sourceChatId: string): Promise<Chat> {
-    const sourceChat = await this.state.getChat(sourceChatId);
+    const sourceChat = await this.state.getChatSummary(sourceChatId);
     if (!sourceChat) {
       throw new DomainError("chat_not_found", "Chat not found.");
     }
+    const group = sourceChat.state.worktree?.group;
+    if (!group) return await this.createChatFromSource(sourceChat);
+    return await this.repositoryGroupOperations.run(group.ownerChatId, async () => {
+      const current = await this.state.getChatSummary(sourceChatId);
+      if (!current) throw new DomainError("chat_not_found", "Chat not found.");
+      if (current.state.worktree?.group?.ownerChatId !== group.ownerChatId) {
+        throw new DomainError("repository_group_unavailable", "The source chat no longer uses this repository group.");
+      }
+      await this.worktree.resolveWorkingDirectory(current, { prepareWorkspace: false });
+      return await this.createChatFromSource(current);
+    });
+  }
+
+  private async createChatFromSource(sourceChat: Chat): Promise<Chat> {
     if (!isWorkspaceChat(sourceChat)) {
       throw new DomainError(
         "chat_context_unavailable",
@@ -281,6 +353,7 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       workspaceId,
       expectedExecutionHostBinding: sourceBinding,
       directory,
+      sharedGroup: sourceChat.state.worktree?.group ? sourceChat.state.worktree : undefined,
       modelProviderID: sourceChat.config.model.providerID,
       modelID: sourceChat.config.model.modelID,
       modelVariant: sourceChat.config.model.variant,
@@ -424,8 +497,14 @@ export class ChatLifecycleService implements ChatLifecyclePort {
       if (!workspace) {
         throw new Error(`Workspace not found: ${getChatWorkspaceId(chat)}`);
       }
+      if (workspace.workspaceType === "multi-git" && (
+        updates.baseBranch !== undefined || (updates.useWorktree !== undefined && updates.useWorktree !== chat.config.useWorktree)
+      )) {
+        throw new DomainError("repository_group_unavailable", "A chat's repository group cannot be changed after creation.");
+      }
       if (
         !isGitBackedWorkspace(workspace)
+        && workspace.workspaceType !== "multi-git"
         && (updates.useWorktree === true || updates.baseBranch !== undefined)
       ) {
         assertGitBackedWorkspace(
@@ -478,26 +557,42 @@ export class ChatLifecycleService implements ChatLifecyclePort {
   }
 
   async deleteChat(chatId: string, options: DeleteChatOptions = {}): Promise<boolean> {
-    const chat = await this.state.getChat(chatId);
-    if (!chat) {
-      return false;
-    }
+    const snapshot = await this.state.getChatSummary(chatId);
+    if (!snapshot) return false;
+    const group = snapshot.state.worktree?.group;
+    return await this.withPermanentChatRemoval(snapshot, async () => {
+      const chat = group ? await this.state.getChatSummary(chatId) : snapshot;
+      if (!chat) return false;
 
-    if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
-    if (options.deferCleanup) {
-      const result = await this.deleteChatDeferred(chat);
-      return result.deleted;
-    }
+      if (hasRemoteChatContinuity(chat)) await this.conversation.interruptChat(chatId);
+      if (options.deferCleanup && !group) {
+        const result = await this.deleteChatDeferred(chat);
+        return result.deleted;
+      }
+      if (group) await this.worktree.waitForPreparation(chatId);
 
-    await this.cleanupChatRuntime(chat, {
-      closeStream: () => this.conversation.closeActiveStream(chatId),
+      const complete = await this.cleanupChatRuntime(chat, {
+        closeStream: () => this.conversation.closeActiveStream(chatId),
+      });
+      if (!complete && group) {
+        throw new DomainError("repository_group_unavailable", "The chat was kept because its repository group could not be safely cleaned up.");
+      }
+      const deleted = await this.state.deletePersistedChat(chatId);
+      if (deleted) this.state.emitChatDeleted(chat, createTimestamp());
+      return deleted;
     });
+  }
 
-    const deleted = await this.state.deletePersistedChat(chatId);
-    if (deleted) {
-      this.state.emitChatDeleted(chat, createTimestamp());
-    }
-    return deleted;
+  async withPermanentChatRemoval<T>(chat: Chat, remove: () => Promise<T>): Promise<T> {
+    const group = chat.state.worktree?.group;
+    if (!group) return await remove();
+    return await this.repositoryGroupOperations.run(group.ownerChatId, async () => {
+      const { id, workspaceId } = chat.config;
+      if (id === group.ownerChatId && workspaceId && hasRepositoryGroupDependents(id, workspaceId)) {
+        throw new DomainError("repository_group_in_use", "Other chats share this directory. Permanently delete them before deleting this chat.");
+      }
+      return await remove();
+    });
   }
 
   private async cleanupChatRuntime(

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AppStoreConnectClient } from "./apple-distribution";
 import { readAppStoreReleaseNotes } from "./app-store-release-notes";
+import { compareVersions, parseVersion } from "./release-version";
 
 const resource = z.object({ id: z.string().min(1) });
 const storeVersion = resource.extend({
@@ -18,6 +19,33 @@ const localization = resource.extend({ attributes: z.object({
   locale: z.string(), description: z.string().nullish(), keywords: z.string().nullish(),
   supportUrl: z.string().nullish(), whatsNew: z.string().nullish(),
 }) });
+
+function parseMarketingVersion(version: string) {
+  const parts = version.split(".");
+  while (parts.length < 3) parts.push("0");
+  const parsed = parseVersion(`v${parts.join(".")}`);
+  if (!parsed) throw new Error(`Cannot compare App Store iOS version ${version}.`);
+  return parsed;
+}
+
+function getPublishedCopyright(versions: z.infer<typeof storeVersion>[], target: string): string {
+  const [current, next] = versions.filter(row => row.attributes.appVersionState === "READY_FOR_DISTRIBUTION")
+    .map(({ attributes }) => ({ ...attributes, version: parseMarketingVersion(attributes.versionString) }))
+    .sort((left, right) => compareVersions(right.version, left.version));
+  if (!current) {
+    throw new Error("Cannot inherit the App Store listing: no distributed iOS version. Prepare the first App Store version manually.");
+  }
+  if (next && compareVersions(current.version, next.version) === 0) {
+    throw new Error(`Apple returned multiple distributed iOS ${current.versionString} versions; cannot select a listing.`);
+  }
+  if (compareVersions(parseMarketingVersion(target), current.version) <= 0) {
+    throw new Error(`iOS ${target} must be newer than the distributed version ${current.versionString}.`);
+  }
+  if (!current.copyright?.trim()) {
+    throw new Error(`Distributed iOS ${current.versionString} is missing copyright; cannot inherit the App Store listing.`);
+  }
+  return current.copyright;
+}
 
 function requireEditableVersion(draft: z.infer<typeof storeVersion>, version: string) {
   if (draft.attributes.versionString !== version || !editableStates.has(draft.attributes.appVersionState)) {
@@ -62,16 +90,13 @@ export async function ensureAppStoreVersion(
   let draft = matching[0];
   let whatsNew: string | undefined;
   if (!draft) {
-    const current = versions.filter(row => row.attributes.appVersionState === "READY_FOR_DISTRIBUTION");
-    if (current.length !== 1 || !current[0]?.attributes.copyright?.trim()) {
-      throw new Error("Prepare the first App Store version manually; automatic creation requires one current distributed iOS version with copyright.");
-    }
+    const copyright = getPublishedCopyright(versions, version);
     whatsNew = readAppStoreReleaseNotes(releaseNotes);
     console.error(`Creating iOS ${version} from the current listing; inspect App Store Connect before rerunning if creation is interrupted.`);
     draft = z.object({ data: storeVersion }).parse(await client.api("/v1/appStoreVersions", "POST", { data: {
       type: "appStoreVersions",
       attributes: { platform: "IOS", versionString: version,
-        copyright: current[0].attributes.copyright, releaseType: "MANUAL" },
+        copyright, releaseType: "MANUAL" },
       relationships: { app: { data: { type: "apps", id: appId } } },
     } })).data;
     console.error(`Created iOS ${version} draft ${draft.id}; inherited metadata will be validated before upload.`);

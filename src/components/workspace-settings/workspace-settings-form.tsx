@@ -101,6 +101,7 @@ export function WorkspaceSettingsForm({
           allowClankyContext: submitted.allowClankyContext,
           allowWorktrees: submitted.allowWorktrees,
           isPrivate: submitted.isPrivate,
+          ...(workspace.workspaceType === "multi-git" ? { repositoryBases: submitted.repositoryBases } : {}),
           ...(model.runtimeDirty ? {
             serverSettings: submitted.settings,
             ...(submitted.executionHost ? { executionHost: submitted.executionHost } : {}),

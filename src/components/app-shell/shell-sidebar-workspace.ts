@@ -147,7 +147,6 @@ export function createWorkspaceSidebarNode(
     [],
     context.workspace.showPrivateItems,
   );
-  const isGitBacked = workspaceNode.workspace.workspaceType === "git";
   const children = sortSidebarNodesByActivity([
     ...[...workspaceNode.chats, ...workspaceNode.historyChats].map((chatNode) => ({
       lastActivityAt: getWorkItemLastInteractionAt(chatNode.chat),
@@ -199,7 +198,7 @@ export function createWorkspaceSidebarNode(
       ? `${workspaceNode.workspace.name} (${workspaceNode.workspace.collaboration.controllerName})`
       : workspaceNode.workspace.name,
     render: renderWorkspaceSidebarItem(workspaceNode.workspace),
-    searchText: `${workspaceNode.workspace.directory} ${isGitBacked ? "git" : "directory"}`,
+    searchText: `${workspaceNode.workspace.directory} ${workspaceNode.workspace.workspaceType}`,
     route: { view: "workspace", workspaceId },
     actions,
     pinnable: true,
