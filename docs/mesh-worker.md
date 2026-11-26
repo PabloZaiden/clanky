@@ -18,7 +18,8 @@ are trusted to execute commands and access files on the worker host.
 
 Settings separates **Workers**, **Controller**, and **Relays**. Workers contains
 the enrollment list and health action; **Enroll worker** opens a focused form
-and then the join command. Open a worker for runtime/protocol details.
+and then the commands to join and install the worker service. Open a worker for
+runtime/protocol details.
 Controller contains the guarded name/endpoint form and local runtime metadata.
 Controllers without an advertised endpoint can save their name without adding
 one; replacing an existing endpoint requires a valid HTTPS URL.
@@ -558,8 +559,9 @@ creating a replacement worker does not transfer ownership of old sessions.
 Run the generated `clanky worker join` command on a fresh worker to initialize
 and enroll it. Discovery selects the controller or relay from the invitation;
 there is no worker host, port, endpoint or certificate to configure.
-Install/start its service explicitly afterward. Join does not install an OS
-service or convert an existing controller data directory into a worker.
+Then [install the worker service](#run-the-worker-as-a-service). Join does not
+install an OS service or convert an existing controller data directory into a
+worker.
 
 Optional `clanky worker bootstrap` configures an outbound-only worker before
 joining. `--worker-directory` defaults to `$HOME` and `--instance-name` to the
@@ -746,16 +748,17 @@ HTTPS endpoint must be reachable from a direct worker.
 
 ## Run the worker as a service
 
-Bootstrap the worker first, then install its operating-system service as the
-worker account:
+After joining or bootstrapping the worker, install its operating-system service
+as the worker account. Installation starts the service unless you pass
+`--no-start`.
 
 ```bash
 clanky worker service install
 clanky worker service status
 ```
 
-Use the same `CLANKY_DATA_DIR` value used during bootstrap. Manage the service
-with:
+Use the same `CLANKY_DATA_DIR` value used during join or bootstrap. Manage the
+service with:
 
 ```bash
 clanky worker service start
