@@ -66,6 +66,7 @@ export interface ShellMainContentProps {
 
   // Data
   chats: Chat[];
+  chatsLoading: boolean;
   workspaces: Workspace[];
   pendingControlFileOpen: PendingControlFileOpen | null;
   onControlFileOpenResult: (actionId: string, outcome: ControlUiActionOutcome) => void;
@@ -777,11 +778,15 @@ function renderMainContent(props: ShellMainContentProps) {
     if (!kind || !isComposeKind(kind)) {
       return missingRouteParameter(route.view, "kind");
     }
+    if (props.chatsLoading && (kind === "chat" || kind === "execution-host-chat")) {
+      return <LoadingState title="Loading chats" />;
+    }
     return (
       <ComposeView
         kind={kind}
         composeWorkspace={props.composeWorkspace}
         composeExecutionHost={props.composeExecutionHost}
+        chats={chats}
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
         createExecutionHostChat={props.createExecutionHostChat}

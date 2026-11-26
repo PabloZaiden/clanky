@@ -34,6 +34,7 @@ interface ComposeViewProps {
   kind: ComposeKind;
   composeWorkspace: Workspace | null;
   composeExecutionHost: ExecutionHostDescriptor | null;
+  chats: readonly import("@/shared").Chat[];
   navigateWithinShell: (route: WebAppRoute) => void;
   createChat: (request: import("@/contracts").CreateChatRequest) => Promise<import("@/shared").Chat>;
   createExecutionHostChat: UseChatsResult["createExecutionHostChat"];
@@ -54,6 +55,7 @@ export function ComposeView(props: ComposeViewProps) {
     kind,
     composeWorkspace,
     composeExecutionHost,
+    chats,
     navigateWithinShell,
     createChat,
     createExecutionHostChat,
@@ -111,6 +113,7 @@ export function ComposeView(props: ComposeViewProps) {
     return (
       <ComposeChatView
         composeWorkspace={composeWorkspace}
+        chats={chats}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
@@ -124,7 +127,9 @@ export function ComposeView(props: ComposeViewProps) {
   if (kind === "execution-host-chat") {
     return composeExecutionHost ? (
       <ExecutionHostChatComposer
+        key={composeExecutionHost.targetKey}
         host={composeExecutionHost}
+        chats={chats}
         onCreateChat={createExecutionHostChat}
         navigateWithinShell={navigateWithinShell}
       />

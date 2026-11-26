@@ -71,8 +71,15 @@ A workspace brings together your project and its conversations.
    **Codex**, **OpenCode 2** or **Claude Agent** under **Adapter**. Test the
    connection and create the workspace.
 
-Open **New Chat** from the workspace's menu and choose a model. Use worktrees
-to give independent coding tasks their own working copy.
+Open **New Chat** from the workspace's menu. Clanky preselects the model and
+variant from the chat with the most recent activity in that workspace, or the
+first available model if it can't reuse that selection. You can choose a
+different model before creating the chat. Use worktrees to give independent
+coding tasks their own working copy.
+
+For **New Chat** directly from a server, only that server's direct chats count.
+Without a reusable recent model, Clanky uses the server's **Preferred model**
+when available, then the first available model.
 
 For larger changes, select **Start with a plan** and describe the result you
 want. For example:
