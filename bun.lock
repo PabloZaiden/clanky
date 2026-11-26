@@ -7,7 +7,7 @@
       "dependencies": {
         "@anthropic-ai/claude-agent-sdk": "0.3.325",
         "@anthropic-ai/sdk": "1.12.0",
-        "@microsoft/copilot-sdk": "2.0.0",
+        "@microsoft/copilot-sdk": "2.0.1",
         "@modelcontextprotocol/sdk": "1.32.2",
         "@modelcontextprotocol/server": "2.4.0",
         "@monaco-editor/react": "4.7.0",
@@ -141,23 +141,23 @@
 
     "@mermaid-js/parser": ["@mermaid-js/parser@2.0.1", "", { "dependencies": { "@chevrotain/types": "~13.2.0" } }, "sha512-j37dj/h6p6pots1L7pLPPNuABEEu9WP4OYg9pW1g+nYG331j0+3canE9OagtYdytYvdSAMG+2fKU5cxep6LgjA=="],
 
-    "@microsoft/copilot-sdk": ["@microsoft/copilot-sdk@2.0.0", "", { "dependencies": { "koffi": "3.3.6", "lossless-json": "4.3.3", "vscode-jsonrpc": "10.0.0", "zod": "4.6.7" }, "optionalDependencies": { "@microsoft/copilot-sdk-darwin-arm64": "2.0.0", "@microsoft/copilot-sdk-darwin-x64": "2.0.0", "@microsoft/copilot-sdk-linux-arm64": "2.0.0", "@microsoft/copilot-sdk-linux-x64": "2.0.0", "@microsoft/copilot-sdk-linuxmusl-arm64": "2.0.0", "@microsoft/copilot-sdk-linuxmusl-x64": "2.0.0", "@microsoft/copilot-sdk-win32-arm64": "2.0.0", "@microsoft/copilot-sdk-win32-x64": "2.0.0" } }, "sha512-+7kDnGI5kRYhshfnSTunpTzNF8mToFbRpcE9mvfGimKgdom7z4Y7vxJDUcq7iPBM2Ld/P9/CN4xPgKTE5zS1dQ=="],
+    "@microsoft/copilot-sdk": ["@microsoft/copilot-sdk@2.0.1", "", { "dependencies": { "koffi": "3.3.6", "lossless-json": "4.3.3", "vscode-jsonrpc": "10.0.0", "zod": "4.6.7" }, "optionalDependencies": { "@microsoft/copilot-sdk-darwin-arm64": "2.0.1", "@microsoft/copilot-sdk-darwin-x64": "2.0.1", "@microsoft/copilot-sdk-linux-arm64": "2.0.1", "@microsoft/copilot-sdk-linux-x64": "2.0.1", "@microsoft/copilot-sdk-linuxmusl-arm64": "2.0.1", "@microsoft/copilot-sdk-linuxmusl-x64": "2.0.1", "@microsoft/copilot-sdk-win32-arm64": "2.0.1", "@microsoft/copilot-sdk-win32-x64": "2.0.1" } }, "sha512-5ENTz3aTL2duoa9VcfWH9pZjxBlQdIqBu3uN9M/lzggz1Gj0fXh3oCsjZ/a/8qp5N1JDHIcS0FqhH6VJtf0GTg=="],
 
-    "@microsoft/copilot-sdk-darwin-arm64": ["@microsoft/copilot-sdk-darwin-arm64@2.0.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-/MACw3wvmpBkspQMa9wxrINSOZHkQ+HrDiT7IyUNIJAvkAa2aYTzXkRnP4RbBIY7Zqh2cZ+ZwVbvgolNe4cUFA=="],
+    "@microsoft/copilot-sdk-darwin-arm64": ["@microsoft/copilot-sdk-darwin-arm64@2.0.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-KqBScY+1w5/znWkWMnLvyiXz/xlk4DXc5EcXUABT/z0jbE2tpJLiTfnmewAUiGvC9jLi+tmEzy2346zUm9+0YQ=="],
 
-    "@microsoft/copilot-sdk-darwin-x64": ["@microsoft/copilot-sdk-darwin-x64@2.0.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-Ya5FMj455s0v05Qjxa7hBmJnrqoZv+gl4dkzlL8yTC1db3FboNBvOrhVOD+L4o9ytLoRj+USf9b7J9M8h/puJg=="],
+    "@microsoft/copilot-sdk-darwin-x64": ["@microsoft/copilot-sdk-darwin-x64@2.0.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-thwynJE+nNQRHn2f4DxsXXsDHF66sOAquOyZwmGH9Z6y/VXyNWskKW6lXCuGl5aBxSvZA3UQpEVsKZ8XAVy4OQ=="],
 
-    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-FuJXpbdFjkmltdYvyGchCLM64bQ192QK7CW1HE36pPZz72Oji1hS19V802ZIS/YqbQKOMY+/+xZYD10F2zHDGw=="],
+    "@microsoft/copilot-sdk-linux-arm64": ["@microsoft/copilot-sdk-linux-arm64@2.0.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-NTgh6x6HDp/YvYKPsw9hmRK7Pgt4TzwoNayGFIdtI0PStvJKCjxKjI32Ip9aoBuCPIwM5P6W5sUT8ZhsPYcANw=="],
 
-    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-JWE0zQwsZhYx4Xew+ak8xNEy6PWYDTgYy2we5nE9/DACXO4OTrRPwBK71iKZIOeI/Yb7SF2tnt1iIUYfKzRQ0g=="],
+    "@microsoft/copilot-sdk-linux-x64": ["@microsoft/copilot-sdk-linux-x64@2.0.1", "", { "os": "linux", "cpu": "x64" }, "sha512-yT4YouoPuK9ReXG2FySTxSWXejMh++Eh35fkVFyQoLHptWBia8dsSHaORt1scFA5bWgyuk/QwB2fJV0tots1TA=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-9//7vxTuk2Sx8iBjNs5dR++zJyv1ykcGli68PGHbHOev2y3rKfEn8g4d8c4IhNvWM5kZzA3YurqePFG4Z9qjQQ=="],
+    "@microsoft/copilot-sdk-linuxmusl-arm64": ["@microsoft/copilot-sdk-linuxmusl-arm64@2.0.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-wwPihies9JL3uqeCn0+dvk5Nw8h8afdRppB/ZCQyhyprEcnuU9nauYX1noSeaBnMkFn9noLmR8l7TDfpiVIB1Q=="],
 
-    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.0", "", { "os": "linux", "cpu": "x64" }, "sha512-IbeU/7Gi8wSj6BPVh65bidsdiAP0hkKJNhxoPBMZeG/KnTcW9OqhFs0UAbQMjOdt5wQkxl+0uw64smB2wPo8sA=="],
+    "@microsoft/copilot-sdk-linuxmusl-x64": ["@microsoft/copilot-sdk-linuxmusl-x64@2.0.1", "", { "os": "linux", "cpu": "x64" }, "sha512-kdpjVoPe37cIbsOGDrkV5m95F+kY1OQHNeI1jnuwMGHL/KQ+pNc/vgzVfBwxI6sicleqRXFy8+XLJftN96ZjZA=="],
 
-    "@microsoft/copilot-sdk-win32-arm64": ["@microsoft/copilot-sdk-win32-arm64@2.0.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-R+MOMx/DOKhEuIlPzWvBwpmdx+8fNS5eWMqwfGIYQ5XtB5lNathqAaig1fEDC9T1ietwoC8uF5+wLuWBti4Paw=="],
+    "@microsoft/copilot-sdk-win32-arm64": ["@microsoft/copilot-sdk-win32-arm64@2.0.1", "", { "os": "win32", "cpu": "arm64" }, "sha512-O6wrd/GpKrREpq4iijhoYVQBSO7xkk1aflvMFqr1xBrcgp+WqoSVXkwJtKP3YfsJ/NjwwFPXyJ0EOLHP6RQ1YA=="],
 
-    "@microsoft/copilot-sdk-win32-x64": ["@microsoft/copilot-sdk-win32-x64@2.0.0", "", { "os": "win32", "cpu": "x64" }, "sha512-DbSFBWuYx6tE8Z1KoYpzsyBWaHGsldRojPl2MjsiQ1En6wvQSkCCkxZUNuhNEZa/bBYVVLeV8ITDpoc6iecjEw=="],
+    "@microsoft/copilot-sdk-win32-x64": ["@microsoft/copilot-sdk-win32-x64@2.0.1", "", { "os": "win32", "cpu": "x64" }, "sha512-psjAzQUhOSsHQtUioGGgfuiHPI10VMA+1f0Lpa6h40P0jiF9904j/o7+zv8MOxO77ai/JacWwlbG4ib6Z0d08A=="],
 
     "@modelcontextprotocol/core": ["@modelcontextprotocol/core@2.4.0", "", { "dependencies": { "zod": "^4.2.0" } }, "sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q=="],
 
