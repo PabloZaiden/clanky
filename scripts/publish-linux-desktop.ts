@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 import { github } from "./release-version";
+import { linuxDesktopUpdateVersion } from "./linux-desktop-version";
 
 const [input, tag, repository, revision, version, ...extra] = Bun.argv.slice(2);
 if (!input || !tag || !repository || !revision || !version || extra.length
@@ -11,6 +12,8 @@ if (!input || !tag || !repository || !revision || !version || extra.length
   throw new Error("Usage: publish-linux-desktop <artifacts-dir> <tag> <owner/repo> <revision> <version>");
 }
 
+const build = process.env["CLANKY_LINUX_UPDATE_BUILD"];
+const updateVersion = linuxDesktopUpdateVersion(version, build);
 const files: string[] = [];
 const expected = new Map<string, string>();
 const platforms: Record<string, { url: string; signature: string }> = {};
@@ -32,6 +35,11 @@ for (const [target, arch] of [["linux-x64", "x86_64"], ["linux-arm64", "aarch64"
   if (!signature || !/^[A-Za-z0-9+/]+={0,2}$/.test(signature)) {
     throw new Error(`${filename} does not have a Tauri update signature.`);
   }
+  const signedVersion = Buffer.from(signature, "base64").toString("utf8").split(/\r?\n/)[2]
+    ?.split("\t").find(field => field.startsWith("version:"));
+  if (signedVersion !== `version:${updateVersion}`) {
+    throw new Error(`${filename} was not signed for ${updateVersion}.`);
+  }
   const header = Buffer.from(await Bun.file(base).slice(0, 20).arrayBuffer());
   if (header.length !== 20 || header.readUInt32BE(0) !== 0x7f454c46
     || header.readUIntLE(8, 3) !== 0x024941 || header.readUInt16LE(18) !== (arch === "x86_64" ? 62 : 183)) {
@@ -46,7 +54,7 @@ for (const [target, arch] of [["linux-x64", "x86_64"], ["linux-arm64", "aarch64"
     signature,
   };
 }
-const feed = `${JSON.stringify({ version, platforms }, null, 2)}\n`;
+const feed = `${JSON.stringify({ version: updateVersion, platforms }, null, 2)}\n`;
 await Bun.write(feedPath, feed);
 
 if (process.env["CLANKY_RELEASE_VALIDATE_ONLY"] === "1") {
@@ -82,7 +90,12 @@ const previousFeed = previousAssets.find(asset => asset.name === feedName);
 const downloadLatest = (name: string) => github(["release", "download", "latest", "--repo", repository, "--pattern", name, "--output", "-"]);
 const previousVersion = previousFeed && z.object({ version: z.string() })
   .parse(JSON.parse(await downloadLatest(feedName))).version;
-if (previousVersion === version) {
+const previousBuild = previousVersion?.match(/\+build\.([1-9]\d{0,7})$/)?.[1];
+if (previousBuild && previousVersion !== updateVersion
+  && Number(previousBuild) >= Number(build)) {
+  throw new Error("The rolling Linux desktop feed already points to an equal or newer build.");
+}
+if (previousVersion?.split("+", 1)[0] === version) {
   // A retry must not overwrite binaries already referenced by a published feed.
   verifyAssets(expected, previousAssets);
 } else {

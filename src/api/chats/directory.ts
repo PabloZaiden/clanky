@@ -6,6 +6,7 @@ import { errorResponse, internalErrorResponse } from "../helpers";
 import { workspaceOperation } from "../workspace-delegation";
 import { chatActionErrorResponse } from "./helpers";
 import { ChatDiffFileQuerySchema } from "@/contracts/schemas/chat";
+import { RepositoryQuerySchema } from "../route-schemas";
 
 const log = createLogger("api:chat-directory");
 
@@ -42,12 +43,14 @@ export const chatsDirectoryRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "List committed and pending tracked/untracked changes without loading patches. Read a selected patch through the per-file operation. The comparison ref and commit are returned in X-Clanky-Diff-Base-Ref and X-Clanky-Diff-Base; untracked line counts are null until opened.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: RepositoryQuerySchema, automation: { policy: "read" } },
     },
-    async GET(_req, ctx) {
+    async GET(req, ctx) {
       const chatId = ctx.params["id"]!;
+      const query = RepositoryQuerySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+      if (!query.success) return errorResponse("validation_error", "Choose a repository in this chat.");
       return readChatDirectory(chatId, async () => {
-        const diff = await chatManager.getDiff(chatId);
+        const diff = await chatManager.getDiff(chatId, query.data.repository);
         return Response.json(diff.files, {
           headers: {
             "X-Clanky-Diff-Base": diff.base,
@@ -74,7 +77,7 @@ export const chatsDirectoryRoutes = defineRoutes({
         return errorResponse("validation_error", "Supply a changed file path and its comparison base.", 400);
       }
       return readChatDirectory(chatId, async () =>
-        Response.json(await chatManager.getFileDiff(chatId, query.data.base, query.data.path)));
+        Response.json(await chatManager.getFileDiff(chatId, query.data.base, query.data.path, query.data.repository)));
     },
   },
   "/api/chats/:id/plan": {
@@ -109,11 +112,13 @@ export const chatsDirectoryRoutes = defineRoutes({
     sameOrigin: "mutations",
     description: "Read the current branch and an existing pull request with its state through the chat's execution host. Prefer an open PR, otherwise the most recently created PR. Unavailable lookups are distinct from no PR.",
     operations: {
-      GET: { requestSchema: undefined, querySchema: undefined, automation: { policy: "read" } },
+      GET: { requestSchema: undefined, querySchema: RepositoryQuerySchema, automation: { policy: "read" } },
     },
-    async GET(_req, ctx) {
+    async GET(req, ctx) {
       const chatId = ctx.params["id"]!;
-      return readChatDirectory(chatId, async () => Response.json(await chatManager.getRepositoryContext(chatId)));
+      const query = RepositoryQuerySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+      if (!query.success) return errorResponse("validation_error", "Choose a repository in this chat.");
+      return readChatDirectory(chatId, async () => Response.json(await chatManager.getRepositoryContext(chatId, query.data.repository)));
     },
   },
 });

@@ -21,6 +21,7 @@ export interface UseAutomationCodeTestOptions {
   modelKey: string;
   workspaceSelectionsReady: boolean;
   baseBranch: string;
+  repositoryBases: import("@/shared/repository-group").RepositoryBaseSelection[];
   useWorktree: boolean;
   onTestStarted: () => void;
   onTestAutomationCode: UseAutomationsResult["testAutomationCode"];
@@ -43,6 +44,7 @@ export function useAutomationCodeTest({
   modelKey,
   workspaceSelectionsReady,
   baseBranch,
+  repositoryBases,
   useWorktree,
   onTestStarted,
   onTestAutomationCode,
@@ -124,7 +126,8 @@ export function useAutomationCodeTest({
         baseBranch: selectedWorkspace.workspaceType === "git"
           ? baseBranch.trim() || undefined
           : undefined,
-        useWorktree: selectedWorkspace.workspaceType === "git" ? useWorktree : false,
+        ...(selectedWorkspace.workspaceType === "multi-git" ? { repositoryBases } : {}),
+        useWorktree: selectedWorkspace.workspaceType === "multi-git" || (selectedWorkspace.workspaceType === "git" && useWorktree),
         testRunId,
       } satisfies TestAutomationCodeRequest, {
         signal: controller.signal,
@@ -158,6 +161,7 @@ export function useAutomationCodeTest({
   }, [
     appendTestLog,
     baseBranch,
+    repositoryBases,
     code,
     modelKey,
     name,

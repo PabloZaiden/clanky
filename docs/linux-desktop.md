@@ -24,7 +24,8 @@ Controller data lives in `$XDG_DATA_HOME/com.clanky.desktop/Controller`
 Use **Local Controller > Start Local Controller** to start the included server.
 Clanky remembers a successful start and relaunches the controller next time.
 **Stop Local Controller** disables startup; **File > Quit** stops the controller
-but preserves the preference. An occupied port is reported, not adopted.
+but preserves the preference. **Connect to Local Controller** is available once
+the controller is ready. An occupied port is reported, not adopted.
 
 **Local Controller > Network Access** offers:
 
@@ -50,9 +51,15 @@ connections. Localhost passkeys do not carry over to an HTTPS hostname.
 
 ## Updates
 
-Choose **File > Check for Updates**. Stable and rolling AppImages check their
-own feeds. With your approval, Clanky verifies the signature and announced
-version, stops the app-owned controller, replaces the AppImage, and restarts.
+Choose **File > Update Settings** to select **Stable** or **Latest** (the rolling
+channel), then **File > Check for Updates**. The initial channel matches the
+downloaded AppImage. A saved choice overrides it. Switching channels does not
+reinstall the same build or install an older one. If the selected channel has
+no newer build, wait for its next publication.
+If **Update Settings** is missing, first update the AppImage in its current
+channel or download a newer AppImage manually.
+With your approval, Clanky verifies the signature and announced version, stops
+the app-owned controller, replaces the AppImage, and restarts.
 Keep the AppImage in a location you can write to. The update replaces both
 the shell and the controller, not your data or a standalone Clanky install.
 
@@ -72,7 +79,10 @@ unsigned builds cannot update. To produce signed builds, also install
 `minisign`. Generate a dedicated Tauri key with `tauri signer generate`, keep
 the private key backed up in protected storage, and supply its public key
 as `CLANKY_LINUX_UPDATE_PUBLIC_KEY` and the private key through Tauri's signing
-environment. In GitHub Actions, set `CLANKY_LINUX_UPDATE_PUBLIC_KEY` as a
+environment. For local signing tests, also supply a positive
+`CLANKY_LINUX_UPDATE_BUILD` (one to eight digits); use increasing numbers for
+successive test builds. The release workflow supplies its run number
+automatically. In GitHub Actions, set `CLANKY_LINUX_UPDATE_PUBLIC_KEY` as a
 repository variable and `CLANKY_LINUX_UPDATE_PRIVATE_KEY` and
 `CLANKY_LINUX_UPDATE_PRIVATE_KEY_PASSWORD` as protected secrets. Keep the same
 public key across both architectures and channels so existing installations

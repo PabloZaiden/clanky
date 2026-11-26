@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createWriteStream } from "node:fs";
 import { CLANKY_VERSION } from "../src/version";
+import { linuxDesktopUpdateVersion } from "./linux-desktop-version";
 
 const runtimes = {
   x64: { name: "x86_64", digest: "617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46", machine: 62 },
@@ -23,6 +24,7 @@ const signing = Boolean(process.env["TAURI_SIGNING_PRIVATE_KEY"] || process.env[
 if (signing !== Boolean(process.env["CLANKY_LINUX_UPDATE_PUBLIC_KEY"])) {
   throw new Error("Configure both the updater public key and the private signing key, or neither for an unsigned local build.");
 }
+const updateVersion = signing ? linuxDesktopUpdateVersion(CLANKY_VERSION, process.env["CLANKY_LINUX_UPDATE_BUILD"]) : CLANKY_VERSION;
 for (const tool of ["cargo", "mksquashfs", ...(signing ? ["minisign"] : [])]) {
   if (!Bun.which(tool)) throw new Error(`${tool} is required to build the Linux desktop AppImage.`);
 }
@@ -58,7 +60,7 @@ try {
   await run(["cargo", "build", "--release", "--locked"], native, {
     ...buildEnv,
     CARGO_TARGET_DIR: cargoTarget,
-    TAURI_CONFIG: JSON.stringify({ version: CLANKY_VERSION }),
+    TAURI_CONFIG: JSON.stringify({ version: updateVersion }),
   });
   await run(["bun", "--no-env-file", "src/build.ts", `--target=bun-${target}`]);
   const shell = join(cargoTarget, "release/clanky-desktop");
@@ -102,7 +104,7 @@ try {
   })()), createWriteStream(image, { flags: "wx", mode: 0o755 }));
   const digest = await checksum(image);
   if (signing) {
-    await run(["bun", "x", "--package", "@tauri-apps/cli@2.12.6", "tauri", "signer", "sign", "--app-version", CLANKY_VERSION, image], root, process.env);
+    await run(["bun", "x", "--package", "@tauri-apps/cli@2.12.6", "tauri", "signer", "sign", "--app-version", updateVersion, image], root, process.env);
     const publicKey = join(stage, "minisign.pub");
     const signature = join(stage, "appimage.minisig");
     await Bun.write(publicKey, Buffer.from(process.env["CLANKY_LINUX_UPDATE_PUBLIC_KEY"]!.trim(), "base64"));

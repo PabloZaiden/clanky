@@ -71,6 +71,10 @@ impl Controller {
         Ok(self.process.is_some())
     }
 
+    pub fn has_owned_process(&self) -> bool {
+        self.process.is_some() || self.publication.is_some()
+    }
+
     pub fn authorize_network(&self) -> DesktopResult<()> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]

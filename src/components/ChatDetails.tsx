@@ -162,7 +162,8 @@ export function ChatDetails({
     onSendMessage,
     voice: voice.composer,
   });
-  const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
+  const chatWorkingDirectory = chat?.state.worktree?.worktreePath
+    ?? (chat?.state.worktree?.group ? "" : chat?.config.directory ?? "");
   const linkedChatId = chat?.config.id;
   const executionHost = chat?.config.source?.kind === "execution_host"
     ? chat.config.source.executionHost.host
@@ -358,7 +359,8 @@ export function ChatDetails({
             aria-hidden={contentView !== "diff" || undefined}
             data-testid="chat-diff-view"
           >
-            <ChatDiffView chatId={chatId} visible={isVisible && contentView === "diff" && !showActivity && !embeddedActivity} active={isActive} />
+            <ChatDiffView chatId={chatId} visible={isVisible && contentView === "diff" && !showActivity && !embeddedActivity}
+              active={isActive} group={chat?.state.worktree?.group} groupReady={Boolean(chat?.state.worktree?.worktreePath)} />
           </div>
         ) : null}
       </div>

@@ -21,6 +21,8 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { BranchSelector } from "../common/branch-selector";
+import { RepositoryBaseFields } from "../common/repository-base-fields";
+import type { RepositoryBaseSelection } from "@/shared/repository-group";
 import {
   ErrorState,
   SelectField,
@@ -81,7 +83,7 @@ export function ComposeChatView({
   workspaceError: string | null;
   dashboardData: UseDashboardDataResult;
   navigateWithinShell: (route: WebAppRoute) => void;
-  createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  createChat: (request: CreateChatRequest) => Promise<Chat>;
 }) {
   const { error: showError } = useToast();
   const {
@@ -110,6 +112,8 @@ export function ComposeChatView({
     branch: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [groupBases, setGroupBases] = useState<{ workspaceId: string; value: RepositoryBaseSelection[] }>();
+  const [customizeBases, setCustomizeBases] = useState(false);
   const loadedWorkspaceRef = useRef<string | null>(null);
   const selectedWorkspaceId = composeWorkspace?.id ?? workspaceSelectionId;
 
@@ -117,6 +121,8 @@ export function ComposeChatView({
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
     [selectedWorkspaceId, workspaces],
   );
+  const multiGit = selectedWorkspace?.workspaceType === "multi-git";
+  const repositoryBases = groupBases && groupBases.workspaceId === selectedWorkspace?.id ? groupBases.value : [];
   const {
     targets: executionTargets,
     loading: executionTargetsLoading,
@@ -306,11 +312,12 @@ export function ComposeChatView({
           modelID: parsedModel.modelID,
           variant: parsedModel.variant ?? "",
         },
-        useWorktree: worktreesAllowed ? useWorktree : false,
-        ...(worktreesAllowed && useWorktree && useSelectedBranchForWorktree
+        useWorktree: multiGit || (worktreesAllowed && useWorktree),
+        ...(multiGit && repositoryBases.length ? { repositoryBases } : {}),
+        ...(!multiGit && worktreesAllowed && useWorktree && useSelectedBranchForWorktree
           ? { useSelectedBranchForWorktree: true }
           : {}),
-        ...(worktreesAllowed && useWorktree && !useSelectedBranchForWorktree && useChatNameAsBranch
+        ...(!multiGit && worktreesAllowed && useWorktree && !useSelectedBranchForWorktree && useChatNameAsBranch
           ? { useChatNameAsBranch: true }
           : {}),
         ...(selectedWorkspace.workspaceType === "git"
@@ -319,10 +326,6 @@ export function ComposeChatView({
         quick: false,
         ...(startWithPlan ? { startWithPlan: true } : {}),
       });
-      if (!chat) {
-        showError("Failed to create chat");
-        return;
-      }
       setLastModel({
         providerID: parsedModel.providerID,
         modelID: parsedModel.modelID,
@@ -334,6 +337,8 @@ export function ComposeChatView({
         variant: parsedModel.variant,
       });
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Failed to create chat");
     } finally {
       setIsSubmitting(false);
     }
@@ -347,6 +352,7 @@ export function ComposeChatView({
       : ""
   );
   const canSubmit = !isSubmitting
+    && (!multiGit || selectedWorkspace?.allowWorktrees !== false)
     && (selectedWorkspace?.workspaceType !== "git" || branchDataReady)
     && (!useSelectedBranchForWorktree || Boolean(selectedWorkspaceBaseBranch))
     && (!useSelectedBranchForWorktree || selectedBranchSupported)
@@ -526,6 +532,18 @@ export function ComposeChatView({
           </div>
         </label>
         )}
+
+        {multiGit && selectedWorkspace ? (
+          <div className="space-y-3">
+            <button type="button" className="text-sm font-medium underline" aria-expanded={customizeBases}
+              onClick={() => setCustomizeBases(!customizeBases)}>
+              Base branches: {repositoryBases.length ? `${repositoryBases.length} customized` : "workspace defaults"}
+            </button>
+            {customizeBases ? <RepositoryBaseFields key={selectedWorkspace.id} workspace={selectedWorkspace}
+              value={repositoryBases} onChange={(value) => setGroupBases({ workspaceId: selectedWorkspace.id, value })} /> : null}
+            {selectedWorkspace.allowWorktrees === false ? <p role="status">Worktrees are disabled for this workspace.</p> : null}
+          </div>
+        ) : null}
 
         {selectedWorkspace?.workspaceType === "directory" && (
         <p className="text-sm text-gray-500 dark:text-gray-400">

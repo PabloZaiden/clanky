@@ -5,6 +5,7 @@
 import type { Chat, ChatConfig, ChatSource, ChatState } from "@/shared";
 import type { PersistedMessage } from "@/shared/conversation";
 import { DEFAULT_CHAT_CONFIG } from "@/shared/chat";
+import { ChatWorktreeGroupSchema } from "@/contracts/schemas/repository-group";
 import { HARNESS_ADAPTER_IDS } from "@/shared/harness-events";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { requireResourcePersistenceUserId } from "../ownership";
@@ -58,6 +59,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "worktree_original_branch",
   "worktree_working_branch",
   "worktree_path",
+  "worktree_group_json",
   "pending_permission_requests",
   "queued_messages",
   "active_message_id",
@@ -156,6 +158,7 @@ const CHAT_STATE_ENCODERS = {
     worktree_original_branch: state.worktree?.originalBranch ?? null,
     worktree_working_branch: state.worktree?.workingBranch ?? null,
     worktree_path: state.worktree?.worktreePath ?? null,
+    worktree_group_json: state.worktree?.group ? JSON.stringify(state.worktree.group) : null,
   }),
   pendingPermissionRequests: (state: ChatState) => ({
     pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
@@ -313,7 +316,12 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     };
   }
 
-  if (
+  if (typeof row["worktree_group_json"] === "string") {
+    state.worktree = {
+      group: ChatWorktreeGroupSchema.parse(JSON.parse(row["worktree_group_json"])),
+      worktreePath: (row["worktree_path"] as string | null) ?? undefined,
+    };
+  } else if (
     row["worktree_original_branch"] !== null
     && row["worktree_original_branch"] !== undefined
     && row["worktree_working_branch"] !== null

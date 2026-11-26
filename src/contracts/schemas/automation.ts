@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { RepositoryBasesSchema } from "./repository-group";
 import { isValidIanaTimeZone } from "@/shared";
 import { ModelConfigSchema } from "./model";
 import { EntityNameSchema, MessageAttachmentsSchema } from "./conversation";
@@ -39,6 +40,7 @@ export const AutomationTransferConfigSchema = z.object({
   code: z.string().nullable().optional(),
   model: ModelConfigSchema,
   baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
   useWorktree: z.boolean(),
   schedule: AutomationTransferScheduleSchema,
 });
@@ -56,6 +58,7 @@ export const CreateAutomationRequestSchema = z.object({
   code: z.string().nullable().optional(),
   model: ModelConfigSchema,
   baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
   schedule: AutomationScheduleSchema,
   enabled: z.boolean().default(true),
@@ -67,6 +70,7 @@ export const UpdateAutomationRequestSchema = z.object({
   code: z.string().nullable().optional(),
   model: ModelConfigSchema.optional(),
   baseBranch: z.string().trim().min(1, "baseBranch must be non-empty when provided").nullable().optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
   useWorktree: z.boolean().optional(),
   schedule: AutomationScheduleSchema.optional(),
   enabled: z.boolean().optional(),
@@ -97,6 +101,7 @@ export const TestAutomationCodeRequestSchema = z.object({
   workspaceId: z.string().min(1),
   model: ModelConfigSchema,
   baseBranch: z.string().trim().min(1).optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
   useWorktree: z.boolean().default(false),
   testRunId: z.string().uuid().optional(),
 });

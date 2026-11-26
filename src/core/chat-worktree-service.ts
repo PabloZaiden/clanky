@@ -5,7 +5,7 @@
 import type { Chat, ChatWorktreeState } from "@/shared";
 import { ChatBranchCheckoutError, getChatWorkspaceId, InvalidChatBaseBranchError } from "@/shared/chat";
 import { backendManager } from "./backend";
-import { closeCommandExecutor } from "./command-executor";
+import { closeCommandExecutor, type CommandExecutor } from "./command-executor";
 import { executionHostService } from "./execution-host-service";
 import { getChatExecutionHostBinding } from "./chat-history-export-service";
 import { requireExecutionOwnerUserId } from "../context/user-context";
@@ -19,6 +19,7 @@ import { DomainError } from "../domain/domain-error";
 import { createLogger } from "@pablozaiden/webapp/server";
 import { createTimestamp } from "@/shared/events";
 import { saveTrashedChatWorktree } from "../persistence/chats/trash";
+import { cleanRepositoryGroup, prepareRepositoryGroup, requireGroupRepository, requireRepositoryGroupDirectory } from "./repository-group-service";
 import type {
   ChatDirectoryResolution,
   ChatStatePort,
@@ -122,6 +123,14 @@ export class ChatWorktreeService implements ChatWorktreePort {
     options: { prepareWorkspace: boolean; signal?: AbortSignal },
   ): Promise<ChatDirectoryResolution> {
     throwIfAborted(options.signal);
+    const group = chat.state.worktree?.group;
+    if (group && (!options.prepareWorkspace || !chat.config.useWorktree)) {
+      return this.withGroupExecutor(chat, group.sourceDirectory, async (executor) => {
+        const directory = await requireRepositoryGroupDirectory(executor, group, chat.state.worktree?.worktreePath);
+        for (const repo of group.repositories) await requireGroupRepository(executor, group, repo);
+        return { chat, directory };
+      });
+    }
     if (!chat.config.useWorktree) {
       if (options.prepareWorkspace) {
         await this.ensureStandaloneChatBranch(chat, options.signal);
@@ -165,6 +174,19 @@ export class ChatWorktreeService implements ChatWorktreePort {
     options: { syncBaseBranch?: boolean; signal?: AbortSignal } = {},
   ): Promise<ChatWorktreeState> {
     throwIfAborted(options.signal);
+    const group = chat.state.worktree?.group;
+    if (group) {
+      return this.withGroupExecutor(chat, group.sourceDirectory, async (executor) => {
+        const recorded = chat.state.worktree?.worktreePath;
+        const worktreePath = recorded
+          ? await requireRepositoryGroupDirectory(executor, group, recorded)
+          : await prepareRepositoryGroup(executor, group, options.signal);
+        if (recorded) {
+          for (const repo of group.repositories) await requireGroupRepository(executor, group, repo);
+        }
+        return { group, worktreePath };
+      });
+    }
     const executor = await this.executorProvider.getCommandExecutorAsync(getChatWorkspaceId(chat), chat.config.directory);
     throwIfAborted(options.signal);
     const git = GitService.withExecutor(executor);
@@ -260,6 +282,12 @@ export class ChatWorktreeService implements ChatWorktreePort {
   }
 
   async cleanupWorktree(chat: Chat): Promise<void> {
+    const group = chat.state.worktree?.group;
+    if (group && chat.config.useWorktree) {
+      if (group.ownerChatId !== chat.config.id) throw new Error("Cannot remove a repository group owned by another chat.");
+      await this.withGroupExecutor(chat, group.sourceDirectory, (executor) => cleanRepositoryGroup(executor, group));
+      return;
+    }
     const worktreePath = chat.state.worktree?.worktreePath;
     if (!chat.config.useWorktree || !worktreePath) {
       return;
@@ -277,6 +305,20 @@ export class ChatWorktreeService implements ChatWorktreePort {
         chat.config.directory, chat.config.id, worktreePath,
       );
       await git.ensureWorktreeRemoved(chat.config.directory, managedWorktreePath, { force: true });
+    } finally {
+      closeCommandExecutor(executor);
+    }
+  }
+
+  private async withGroupExecutor<T>(chat: Chat, directory: string, action: (executor: CommandExecutor) => Promise<T>): Promise<T> {
+    const binding = await getChatExecutionHostBinding(this.state, chat);
+    const executor = await executionHostService.getCommandExecutor(binding, {
+      directory,
+      operationId: `chat-group:${chat.config.id}`,
+      localUserId: requireExecutionOwnerUserId(),
+    });
+    try {
+      return await action(executor);
     } finally {
       closeCommandExecutor(executor);
     }

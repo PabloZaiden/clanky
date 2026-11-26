@@ -1,6 +1,6 @@
 use crate::{
     network::{direct_endpoint, NetworkMode},
-    queue, show_error, Desktop, DesktopResult, Operation,
+    queue, show_error, updates, Desktop, DesktopResult, Operation, UpdateChannel,
 };
 use gtk::{
     prelude::*, Align, Box as GtkBox, Dialog, DialogFlags, Label, Orientation, ResponseType,
@@ -143,6 +143,45 @@ pub fn owner(app: &AppHandle) {
             });
         } else {
             password.set_text("");
+        }
+        dialog.close();
+    });
+    dialog.show_all();
+}
+
+pub fn update_settings(app: &AppHandle) {
+    let channel = app
+        .state::<Desktop>()
+        .preferences
+        .lock()
+        .expect("preferences lock")
+        .update_channel(app);
+    let (dialog, content) = form(app, "Update Settings", "Save");
+    let installed = app.package_info().version.to_string();
+    let version = Label::new(Some(updates::display_version(&installed)));
+    version.set_halign(Align::Start);
+    field(&content, "Installed Version", &version);
+
+    let choices = gtk::ComboBoxText::new();
+    choices.append_text("Stable");
+    choices.append_text("Latest");
+    choices.set_active(Some(match channel {
+        UpdateChannel::Stable => 0,
+        UpdateChannel::Latest => 1,
+    }));
+    field(&content, "Update Channel", &choices);
+    let app = app.clone();
+    dialog.connect_response(move |dialog, response| {
+        if response == ResponseType::Accept {
+            let channel = match choices.active() {
+                Some(0) => UpdateChannel::Stable,
+                Some(1) => UpdateChannel::Latest,
+                _ => {
+                    show_error(&app, "Choose an update channel.");
+                    return;
+                }
+            };
+            queue(&app, Operation::UpdateChannel(channel));
         }
         dialog.close();
     });

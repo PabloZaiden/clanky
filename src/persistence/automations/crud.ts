@@ -33,6 +33,7 @@ const AUTOMATION_RUN_METADATA_COLUMNS = [
   "worktree_original_branch",
   "worktree_working_branch",
   "worktree_path",
+  "worktree_group_json",
   "pending_permission_requests",
   "config_snapshot",
   "created_at",

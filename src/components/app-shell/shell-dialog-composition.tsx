@@ -191,16 +191,12 @@ export function useShellDialogComposition({
       const chat = await createChat({
         workspaceId: quickChatWorkspace.id,
         model: settings.model,
-        useWorktree: quickChatWorkspace.workspaceType === "git"
+        useWorktree: quickChatWorkspace.workspaceType === "multi-git" || (quickChatWorkspace.workspaceType === "git"
           && quickChatWorkspace.allowWorktrees !== false
           ? settings.useWorktree
-          : false,
+          : false),
         quick: true,
       } satisfies CreateChatRequest);
-      if (!chat) {
-        onError("Failed to create quick chat");
-        return;
-      }
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (error) {
       onError(String(error));

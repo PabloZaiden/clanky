@@ -22,6 +22,7 @@ export interface TestDeterministicAutomationCodeOptions {
   directory: string;
   model: ModelConfig;
   baseBranch?: string;
+  repositoryBases?: import("@/shared/repository-group").RepositoryBaseSelection[];
   useWorktree: boolean;
   testRunId?: string;
   userId?: string;
@@ -49,6 +50,7 @@ function createTestRun(options: TestDeterministicAutomationCodeOptions): Automat
       code: options.code,
       model: options.model,
       baseBranch: options.baseBranch,
+      repositoryBases: options.repositoryBases,
       useWorktree: options.useWorktree,
       schedule: {
         startAtLocal: now.slice(0, 16),
@@ -109,6 +111,7 @@ export async function testDeterministicAutomationCode(
       modelVariant: options.model.variant,
       useWorktree: options.useWorktree,
       baseBranch: options.baseBranch,
+      repositoryBases: options.repositoryBases,
       directory: options.directory,
       syncBaseBranch: true,
       prepareWorktreeOnCreate: true,

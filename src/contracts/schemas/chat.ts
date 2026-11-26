@@ -9,10 +9,12 @@ import { DEFAULT_CHAT_INTERRUPT_REASON, HARNESS_ADAPTER_IDS } from "@/shared";
 import { ModelConfigSchema } from "./model";
 import { EntityNameSchema, MessageAttachmentsSchema } from "./conversation";
 import { AgentProviderSchema } from "./workspace";
+import { RepositoryBasesSchema, RepositoryNameSchema } from "./repository-group";
 
 export const ChatDiffFileQuerySchema = z.object({
   path: z.string().min(1).refine((value) => !value.includes("\0"), "Invalid file path."),
   base: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/, "Use the comparison base from the change list."),
+  repository: RepositoryNameSchema.optional(),
 }).strict();
 
 export const CreateChatRequestSchema = z.object({
@@ -25,6 +27,7 @@ export const CreateChatRequestSchema = z.object({
   useChatNameAsBranch: z.boolean().optional(),
   startWithPlan: z.boolean().optional(),
   baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
+  repositoryBases: RepositoryBasesSchema.optional(),
   quick: z.boolean().default(false),
 }).strict().superRefine((value, context) => {
   if (!value.useSelectedBranchForWorktree) {

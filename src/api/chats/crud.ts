@@ -149,6 +149,7 @@ export const chatsCrudRoutes = defineRoutes({
           useChatNameAsBranch: body.useChatNameAsBranch,
           startWithPlan: body.startWithPlan,
           baseBranch: body.baseBranch,
+          repositoryBases: body.repositoryBases,
           directory: body.directory,
           syncBaseBranch: !body.quick,
           prepareWorktreeOnCreate: false,

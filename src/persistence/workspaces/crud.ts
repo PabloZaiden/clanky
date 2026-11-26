@@ -85,7 +85,7 @@ export async function updateWorkspace(
   id: string,
   updates: Partial<Pick<
     Workspace,
-    "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext" | "allowWorktrees"
+    "name" | "directory" | "scratchpad" | "serverSettings" | "executionTargetRevision" | "executionHostBinding" | "provisioningHostBinding" | "devcontainerSubpath" | "isPrivate" | "archived" | "allowClankyContext" | "allowWorktrees" | "repositoryBases"
   >>
 ): Promise<Workspace | null> {
   log.debug("Updating workspace", {
@@ -120,6 +120,10 @@ export async function updateWorkspace(
   if (updates.scratchpad !== undefined) {
     setClauses.push("scratchpad = ?");
     values.push(updates.scratchpad);
+  }
+  if (updates.repositoryBases !== undefined) {
+    setClauses.push("repository_bases_json = ?");
+    values.push(JSON.stringify(updates.repositoryBases));
   }
 
   if (updates.serverSettings !== undefined) {

@@ -98,7 +98,7 @@ export function useShellActions({
     route,
   });
 
-  const pullLatestWorkspaceChanges = useCallback(async (workspaceId: string) => {
+  const pullLatestWorkspaceChanges = useCallback(async (workspaceId: string, repository?: string) => {
     if (pullingLatestWorkspaceIdsRef.current.has(workspaceId)) {
       return;
     }
@@ -107,16 +107,16 @@ export function useShellActions({
     setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
 
     try {
-      const result = await pullLatestChanges(workspaceId);
+      const result = await pullLatestChanges(workspaceId, repository);
       if (!result.success) {
         toast.error(result.error ?? "Failed to pull latest changes");
         return;
       }
 
-      await refreshBranchDataIfCurrent(workspaceId);
+      if (!repository) await refreshBranchDataIfCurrent(workspaceId);
 
       const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
-      toast.success(`Pulled latest changes for "${branchLabel}".`);
+      toast.success(`Pulled latest changes for "${repository ? `${repository}: ` : ""}${branchLabel}".`);
     } catch (error) {
       toast.error(String(error));
     } finally {

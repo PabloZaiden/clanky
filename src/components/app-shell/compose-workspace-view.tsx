@@ -272,17 +272,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   placeholder="/workspaces/project"
                   required
                 />
-                <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={workspaceType === "git"}
-                    onChange={(event) => setWorkspaceType(event.target.checked ? "git" : "directory")}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="flex-1">
-                    <span className="block font-medium">Git repository</span>
-                  </span>
-                </label>
+                <SelectField id="workspace-type" label="Workspace type" value={workspaceType}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    if (value === "git" || value === "multi-git" || value === "directory") setWorkspaceType(value);
+                  }}>
+                  <option value="git">Git repository</option>
+                  <option value="multi-git">Multiple Git repositories</option>
+                  <option value="directory">Directory</option>
+                </SelectField>
               </div>
             </ServerSettingsForm>
           ) : (

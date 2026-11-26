@@ -1068,6 +1068,18 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 103,
+    name: "add_repository_groups",
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE workspaces ADD COLUMN repository_bases_json TEXT;
+        ALTER TABLE chats ADD COLUMN worktree_group_json TEXT;
+        ALTER TABLE automation_runs ADD COLUMN worktree_group_json TEXT;
+        ALTER TABLE automations ADD COLUMN repository_bases_json TEXT;
+      `);
+    },
+  },
 ];
 
 function getMigrationTableColumns(db: Database, tableName: string): string[] {

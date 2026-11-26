@@ -162,6 +162,7 @@ export function ChatTranscript({
   const isWorking = isActive && (
     chat.state.status !== "waiting" || hasConfirmedHarnessWork || hasActiveTranscriptWork
   );
+  const baseSyncWarnings = chat.state.worktree?.group?.repositories.filter((repository) => repository.baseSyncWarning) ?? [];
 
   return (
     <div
@@ -177,6 +178,16 @@ export function ChatTranscript({
         </div>
       )}
       <ChatProviderLimitPanel chat={chat} onChatSnapshot={onChatSnapshot} />
+      {baseSyncWarnings.length > 0 ? (
+        <details className="mx-4 mt-3 min-w-0 shrink-0 rounded-md bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-200">
+          <summary className="cursor-pointer">Original base branches not updated ({baseSyncWarnings.length})</summary>
+          <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto break-words">
+            {baseSyncWarnings.map(({ name, baseSyncWarning }) => (
+              <li key={name}><strong>{name}:</strong> {baseSyncWarning}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {chat.state.error && (!chat.state.harness?.providerLimit
         || chat.state.status !== "blocked" && chat.state.harness.providerLimit.continuation?.status !== "paused") && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
