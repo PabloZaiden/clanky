@@ -332,6 +332,20 @@ export function getWorkItemLastInteractionAt(item: Chat): string {
     : lastUserMessageAt;
 }
 
+export function getMostRecentChat(
+  chats: readonly Chat[],
+  matches: (chat: Chat) => boolean,
+): Chat | undefined {
+  let latest: Chat | undefined;
+  for (const chat of chats) {
+    if (chat.config.deletedAt || !isStandaloneChat(chat) || !matches(chat)) continue;
+    if (!latest || getWorkItemLastInteractionAt(chat) > getWorkItemLastInteractionAt(latest)) {
+      latest = chat;
+    }
+  }
+  return latest;
+}
+
 export function getTerminalLastInteractionAt(session: TerminalSession): string {
   return session.state.lastConnectedAt ?? session.config.createdAt;
 }

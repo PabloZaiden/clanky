@@ -3,12 +3,6 @@
  */
 
 export {
-  getStoredChatModelPreference,
-  saveStoredChatModelPreference,
-  type ModelPreferenceStorageLike,
-  type ModelSelectionPreferenceDependencies,
-} from "./model-selection-preferences";
-export {
   clearStoredConversationComposerDraft,
   createConversationComposerDraftPersistence,
   getStoredConversationComposerDraft,

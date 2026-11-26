@@ -6,24 +6,20 @@ import {
   useHeaderActions,
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
-import type { ExecutionHostDescriptor } from "@/shared";
+import type { Chat, ExecutionHostDescriptor } from "@/shared";
 import { getExecutionHostSourceId } from "@/shared";
-import { getHarnessAdapterForProvider } from "@/shared/settings";
+import { createAgentSettings, getHarnessAdapterForProvider, isAgentProvider } from "@/shared/settings";
 import type {
   CreateExecutionHostChatRequest,
   ExecutionHostWorkingDirectory,
 } from "@/contracts";
 import { apiRequest } from "../../lib/api-client";
 import {
-  getStoredChatModelPreference,
-  saveStoredChatModelPreference,
-} from "../../lib/model-selection-preferences";
-import {
-  makeModelKey,
+  getAvailableModelKey,
   ModelSelector,
-  modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
+import { getMostRecentChat } from "./shell-types";
 import { useExecutionHostModelDiscovery } from "./use-execution-host-model-discovery";
 import type { UseChatsResult } from "../../hooks/useChats";
 
@@ -34,15 +30,27 @@ function executionHostApiPath(host: ExecutionHostDescriptor): string {
 
 export function ExecutionHostChatComposer({
   host,
+  chats,
   onCreateChat,
   navigateWithinShell,
 }: {
   host: ExecutionHostDescriptor;
+  chats: readonly Chat[];
   onCreateChat: UseChatsResult["createExecutionHostChat"];
   navigateWithinShell: (route: WebAppRoute) => void;
 }) {
   const apiPath = useMemo(() => executionHostApiPath(host), [host.ref]);
-  const storedModel = useMemo(() => getStoredChatModelPreference(), []);
+  const recentChat = useMemo(() => getMostRecentChat(chats, (chat) =>
+    chat.config.source?.kind === "execution_host"
+    && chat.config.source.executionHost.targetKey === host.targetKey), [chats, host.targetKey]);
+  const recentSource = recentChat?.config.source;
+  const recentAdapter = recentSource?.kind === "execution_host" ? recentSource.adapter : null;
+  const { providerID, modelID, variant = "" } = recentChat?.config.model ?? {};
+  const recentSelection = useMemo(() => {
+    if (!providerID || !modelID) return undefined;
+    const provider = recentAdapter ? createAgentSettings(recentAdapter).provider : providerID;
+    return isAgentProvider(provider) ? { provider, model: { providerID, modelID, variant } } : undefined;
+  }, [modelID, providerID, recentAdapter, variant]);
   const [name, setName] = useState("");
   const [startWithPlan, setStartWithPlan] = useState(false);
   const [directory, setDirectory] = useState(host.repositoriesBasePath ?? "");
@@ -52,21 +60,34 @@ export function ExecutionHostChatComposer({
   const [discoveryDirectory, setDiscoveryDirectory] = useState(
     host.repositoriesBasePath ?? "",
   );
-  const [selectedModel, setSelectedModel] = useState("");
+  const [manualModel, setManualModel] = useState<{
+    key: string;
+    recent: typeof recentSelection;
+  }>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const discovery = useExecutionHostModelDiscovery(
-    host,
-    discoveryDirectory,
-    storedModel?.providerID,
-  );
+  const recent = manualModel ? manualModel.recent : recentSelection;
+  const discovery = useExecutionHostModelDiscovery(host, discoveryDirectory, recent);
+  const preferred = host.preferredModel;
+  // The host stores a harness provider; its catalog can use a model provider ID.
+  const configuredModel = preferred?.providerID === discovery.provider
+    ? discovery.models.find((model) => model.connected && model.modelID === preferred.modelID)
+    : undefined;
+  const manualSelection = manualModel ? parseModelKey(manualModel.key) : null;
+  const selectedModel = manualModel?.key === "" ? "" :
+    (manualSelection && getAvailableModelKey(discovery.models, manualSelection))
+      || (recent?.provider === discovery.provider && getAvailableModelKey(discovery.models, recent.model))
+      || (preferred && configuredModel && getAvailableModelKey(discovery.models, {
+        ...preferred, providerID: configuredModel.providerID,
+      }))
+      || getAvailableModelKey(discovery.models);
 
   useEffect(() => {
     const controller = new AbortController();
     setDirectory(host.repositoriesBasePath ?? "");
     setDiscoveryDirectory(host.repositoriesBasePath ?? "");
     setDirectoryLoading(host.repositoriesBasePath === null);
-    setSelectedModel("");
+    setManualModel(undefined);
     setError(null);
     void (async () => {
       try {
@@ -102,41 +123,6 @@ export function ExecutionHostChatComposer({
     host.repositoriesBasePath,
   ]);
 
-  useEffect(() => {
-    const candidates = [host.preferredModel, storedModel];
-    for (const candidate of candidates) {
-      const model = candidate && discovery.models.find((entry) =>
-        entry.connected && entry.modelID === candidate.modelID
-        && (entry.providerID === candidate.providerID
-          || (candidate === host.preferredModel && candidate.providerID === discovery.provider)));
-      if (
-        candidate
-        && model
-        && modelVariantExists(
-          discovery.models,
-          model.providerID,
-          candidate.modelID,
-          candidate.variant,
-        )
-      ) {
-        setSelectedModel(makeModelKey(
-          model.providerID,
-          candidate.modelID,
-          candidate.variant,
-        ));
-        return;
-      }
-    }
-    const firstConnected = discovery.models.find((model) => model.connected);
-    setSelectedModel(firstConnected
-      ? makeModelKey(
-        firstConnected.providerID,
-        firstConnected.modelID,
-        firstConnected.variants?.[0] ?? "",
-      )
-      : "");
-  }, [discovery.models, discovery.provider, host.preferredModel, storedModel]);
-
   const handleSubmit = useCallback(async () => {
     const model = parseModelKey(selectedModel);
     if (
@@ -159,7 +145,6 @@ export function ExecutionHostChatComposer({
         model,
       };
       const chat = await onCreateChat(host.ref, request);
-      saveStoredChatModelPreference(model);
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (submitError) {
       setError(String(submitError));
@@ -234,8 +219,13 @@ export function ExecutionHostChatComposer({
           id="execution-host-chat-provider"
           label="Provider"
           value={discovery.provider}
-          onChange={(event) =>
-            discovery.setProvider(event.target.value as typeof discovery.provider)}
+          onChange={(event) => {
+            const provider = event.target.value;
+            if (isAgentProvider(provider)) {
+              setManualModel(undefined);
+              discovery.setProvider(provider);
+            }
+          }}
           disabled={
             discovery.providersLoading || discovery.providerOptions.length === 0
           }
@@ -262,7 +252,7 @@ export function ExecutionHostChatComposer({
           <ModelSelector
             id="execution-host-chat-model"
             value={selectedModel}
-            onChange={setSelectedModel}
+            onChange={(key) => setManualModel({ key, recent })}
             models={discovery.models}
             loading={discovery.modelsLoading}
             showDisconnected

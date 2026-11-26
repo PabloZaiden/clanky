@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Chat, Workspace } from "@/shared";
+import { getChatWorkspaceId, isWorkspaceChat, type Chat, type Workspace } from "@/shared";
 import { getWorkspaceDisplayName } from "../../lib/workspace-label";
 import {
   executionHostRefsEqual,
@@ -11,15 +11,11 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useWorkspaceExecutionTargets } from "../../hooks/workspace-server-settings";
 import { resolveWorkspaceBranchSelection } from "../../lib/workspace-branch-selection";
 import {
-  getStoredChatModelPreference,
-  saveStoredChatModelPreference,
-} from "../../lib/model-selection-preferences";
-import {
-  makeModelKey,
+  getAvailableModelKey,
   ModelSelector,
-  modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
+import { getMostRecentChat } from "./shell-types";
 import { BranchSelector } from "../common/branch-selector";
 import { RepositoryBaseFields } from "../common/repository-base-fields";
 import type { RepositoryBaseSelection } from "@/shared/repository-group";
@@ -32,44 +28,9 @@ import {
   type WebAppRoute,
 } from "@pablozaiden/webapp/web";
 
-function getPreferredModelKey(
-  models: UseDashboardDataResult["models"],
-  preferredModel: UseDashboardDataResult["lastModel"],
-  fallbackModel: UseDashboardDataResult["lastModel"],
-): string {
-  for (const candidate of [preferredModel, fallbackModel]) {
-    if (!candidate) {
-      continue;
-    }
-    const variant = candidate.variant ?? "";
-    if (!modelVariantExists(models, candidate.providerID, candidate.modelID, variant)) {
-      continue;
-    }
-    const matchingModel = models.find(
-      (model) =>
-        model.connected
-        && model.providerID === candidate.providerID
-        && model.modelID === candidate.modelID,
-    );
-    if (!matchingModel) {
-      continue;
-    }
-    return makeModelKey(candidate.providerID, candidate.modelID, variant);
-  }
-
-  const firstConnected = models.find((model) => model.connected);
-  if (!firstConnected) {
-    return "";
-  }
-  return makeModelKey(
-    firstConnected.providerID,
-    firstConnected.modelID,
-    firstConnected.variants?.[0] ?? "",
-  );
-}
-
 export function ComposeChatView({
   composeWorkspace,
+  chats,
   workspaces,
   workspacesLoading,
   workspaceError,
@@ -78,6 +39,7 @@ export function ComposeChatView({
   createChat,
 }: {
   composeWorkspace: Workspace | null;
+  chats: readonly Chat[];
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -93,13 +55,12 @@ export function ComposeChatView({
     currentBranch,
     defaultBranch,
     handleWorkspaceChange,
-    lastModel,
     models,
     modelsLoading,
+    modelsWorkspaceId,
     resetCreateModalState,
     setLastModel,
   } = dashboardData;
-  const storedChatModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
   const [startWithPlan, setStartWithPlan] = useState(false);
   const [workspaceSelectionId, setWorkspaceSelectionId] = useState(composeWorkspace?.id ?? "");
@@ -121,6 +82,10 @@ export function ComposeChatView({
     () => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null,
     [selectedWorkspaceId, workspaces],
   );
+  const recentModel = useMemo(() => selectedWorkspaceId
+    ? getMostRecentChat(chats, (chat) =>
+      isWorkspaceChat(chat) && getChatWorkspaceId(chat) === selectedWorkspaceId)?.config.model
+    : undefined, [chats, selectedWorkspaceId]);
   const multiGit = selectedWorkspace?.workspaceType === "multi-git";
   const repositoryBases = groupBases && groupBases.workspaceId === selectedWorkspace?.id ? groupBases.value : [];
   const {
@@ -266,19 +231,6 @@ export function ComposeChatView({
     setBaseBranch,
   ]);
 
-  useEffect(() => {
-    if (selectedModel || models.length === 0) {
-      return;
-    }
-    setSelectedModel(
-      getPreferredModelKey(
-        models,
-        storedChatModel,
-        lastModel,
-      ),
-    );
-  }, [lastModel, models, selectedModel, storedChatModel]);
-
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
       showError("Select a workspace first");
@@ -331,11 +283,6 @@ export function ComposeChatView({
         modelID: parsedModel.modelID,
         variant: parsedModel.variant,
       });
-      saveStoredChatModelPreference({
-        providerID: parsedModel.providerID,
-        modelID: parsedModel.modelID,
-        variant: parsedModel.variant,
-      });
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } catch (error) {
       showError(error instanceof Error ? error.message : "Failed to create chat");
@@ -344,13 +291,14 @@ export function ComposeChatView({
     }
   }
 
-  const modelOptions = models;
-  const modelOptionsLoading = modelsLoading;
-  const effectiveSelectedModel = selectedModel || (
-    models.length > 0
-      ? getPreferredModelKey(models, storedChatModel, lastModel)
-      : ""
+  const modelOptions = modelsWorkspaceId === selectedWorkspaceId ? models : [];
+  const modelOptionsLoading = Boolean(selectedWorkspace) && (
+    modelsLoading || modelsWorkspaceId !== selectedWorkspaceId
   );
+  const effectiveSelectedModel = modelOptions.length > 0
+    ? selectedModel || (recentModel && getAvailableModelKey(modelOptions, recentModel))
+      || getAvailableModelKey(modelOptions)
+    : "";
   const canSubmit = !isSubmitting
     && (!multiGit || selectedWorkspace?.allowWorktrees !== false)
     && (selectedWorkspace?.workspaceType !== "git" || branchDataReady)
@@ -407,6 +355,7 @@ export function ComposeChatView({
             Model
           </label>
           <ModelSelector
+            key={selectedWorkspaceId}
             id="chat-model"
             value={effectiveSelectedModel}
             onChange={setSelectedModel}

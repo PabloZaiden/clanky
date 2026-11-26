@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ModelInfo } from "@/contracts";
+import type { ModelConfig } from "@/shared";
 import { createLogger } from "@pablozaiden/webapp/web";
 import { apiRequest } from "../lib/api-client";
 
@@ -43,6 +44,19 @@ export function isModelEnabled(models: ModelInfo[], modelKey: string): boolean {
   if (!parsed) return false;
   const model = models.find((m) => m.providerID === parsed.providerID && m.modelID === parsed.modelID);
   return model?.connected ?? false;
+}
+
+export function getAvailableModelKey(models: ModelInfo[], preference?: ModelConfig | null): string {
+  const model = models.find((entry) => entry.connected && (!preference || (
+    entry.providerID === preference.providerID
+    && entry.modelID === preference.modelID
+    && (entry.variants?.length ? entry.variants.includes(preference.variant) : !preference.variant)
+  )));
+  return model ? makeModelKey(
+    model.providerID,
+    model.modelID,
+    preference?.variant ?? model.variants?.[0],
+  ) : "";
 }
 
 /** Get display name for a model key. */
