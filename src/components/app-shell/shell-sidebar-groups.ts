@@ -199,7 +199,7 @@ export function buildSidebarDomainNodes({
     ...(capabilities.executionHosts ? [{
       type: "section" as const,
       id: "execution-hosts",
-      title: "Servers",
+      title: "Workers",
       children: unifiedServerNodes,
     }] : []),
   ];

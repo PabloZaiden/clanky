@@ -33,7 +33,7 @@ export type {
 export const SIDEBAR_TABS: SidebarTab[] = [
   { id: "active", title: "Active", label: "Active", icon: <ActivityIcon size="h-5 w-5" /> },
   { id: "workspaces", title: "Workspaces", label: "Workspaces", icon: <FolderTreeIcon size="h-5 w-5" /> },
-  { id: "servers", title: "Servers", label: "Servers", icon: <ServerIcon size="h-5 w-5" /> },
+  { id: "servers", title: "Workers", label: "Workers", icon: <ServerIcon size="h-5 w-5" /> },
 ];
 
 function buildSidebarNodes(options: ShellSidebarCompositionOptions, forHeader = false): SidebarNode[] {
