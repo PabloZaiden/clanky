@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createLogger } from "@pablozaiden/webapp/web";
 import type { ModelInfo } from "@/contracts";
 import type { ExecutionHostDescriptor, ModelConfig } from "@/shared";
 import {
@@ -24,6 +25,7 @@ interface RecentModelSelection {
   model: ModelConfig;
 }
 
+const log = createLogger("executionHostModelDiscovery");
 const EMPTY_MODELS: ModelInfo[] = [];
 
 function executionHostApiPath(host: ExecutionHostDescriptor): string {
@@ -129,11 +131,19 @@ export function useExecutionHostModelDiscovery(
       });
     void (async () => {
       let provider = request.provider;
+      const fallback = request.fallback;
       try {
-        let models = await fetchModels(provider);
+        let models = await fetchModels(provider).catch((error: unknown) => {
+          if (!fallback || controller.signal.aborted) throw error;
+          log.warn("Failed to load the recent provider's models; trying the server default", {
+            provider,
+            error: String(error),
+          });
+          return EMPTY_MODELS;
+        });
         if (controller.signal.aborted) return;
-        if (request.fallback && !getAvailableModelKey(models, request.fallback.recentModel)) {
-          provider = request.fallback.provider;
+        if (fallback && !getAvailableModelKey(models, fallback.recentModel)) {
+          provider = fallback.provider;
           models = await fetchModels(provider);
         }
         if (!controller.signal.aborted) {
