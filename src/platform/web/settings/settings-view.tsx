@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WebAppConfigResponse } from "../../contracts";
-import { clientScopedStorageKey } from "../client-session";
-import { FormSection } from "@pablozaiden/webapp/web";
+import { clientScopedStorageKey, getClientSession } from "../client-session";
+import { FormSection, SettingsFieldRow } from "@pablozaiden/webapp/web";
 import type { SettingsScope, SettingsSection } from "../root-types";
 import type { WebAppRoute } from "@pablozaiden/webapp/web";
 import { readStorage, warnStorageIssue, writeStorage } from "../storage";
@@ -31,14 +31,14 @@ export interface SettingsViewProps {
   config?: WebAppConfigResponse;
   external?: WebAppExternalSession;
   appName?: string;
-  version?: string;
+  uiVersion: string;
   refresh: () => Promise<void>;
   customSections: SettingsSection[];
   route: WebAppRoute;
   navigate: (route: WebAppRoute) => void;
 }
 
-export function SettingsView({ config, external, appName, version, refresh, customSections, route, navigate }: SettingsViewProps) {
+export function SettingsView({ config, external, appName, uiVersion, refresh, customSections, route, navigate }: SettingsViewProps) {
   const [error, setError] = useState<string>();
   const visibleSections = customSections.filter((section) => isScopeVisible(section.scope, config, external)).map((section) => ({
     ...section,
@@ -88,8 +88,11 @@ export function SettingsView({ config, external, appName, version, refresh, cust
         {visibleSections.filter((section) => (section.category?.id ?? "general") === selected).map((section) => <SettingsSectionContent key={section.id} section={section} />)}
         {selected === "maintenance" && config ? <ShutdownSection config={config} setError={setError} /> : null}
         {selected === "about" ? <>
-          <FormSection title="Version"><span>{appName ?? config?.appName} {version ?? config?.version}</span></FormSection>
-          {config?.currentUser ? <PerformanceStatsSettings version={version ?? config.version} /> : null}
+          <FormSection title="Version">
+            <SettingsFieldRow title="UI version" content={uiVersion} />
+            {config && !getClientSession().demo ? <SettingsFieldRow title="Server version" content={config.version} /> : null}
+          </FormSection>
+          {config?.currentUser ? <PerformanceStatsSettings version={uiVersion} /> : null}
           <PrivacyPolicyLink />
         </> : null}
       </div>
