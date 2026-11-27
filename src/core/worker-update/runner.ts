@@ -215,9 +215,10 @@ export class WorkerUpdateJobRunner {
       clearTimeout(responseTimer);
     }
     if (result && !result.success) {
+      const reason = result.stderr.trim();
       this.failStep(userId, job, "restart", new DomainError(
         "worker_restart_command_failed",
-        `clanky worker service restart exited with code ${String(result.exitCode)}.`,
+        `clanky worker service restart exited with code ${String(result.exitCode)}.${reason ? ` ${reason}` : ""}`,
       ), result.exitCode);
       return;
     }

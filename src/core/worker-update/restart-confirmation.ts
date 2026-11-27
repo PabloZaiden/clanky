@@ -64,9 +64,11 @@ export async function readWorkerServiceStatus(
     logFailures: false,
   });
   if (!result.success) {
+    const reason = result.stderr.trim()
+      || "Ensure its service is installed; older automatic workspaces need their launcher upgraded manually.";
     throw new DomainError(
       "worker_service_status_failed",
-      `Could not inspect the worker service or workspace loop (exit code ${String(result.exitCode)}). Ensure its service is installed; older automatic workspaces need their launcher upgraded manually.`,
+      `Could not inspect the worker service or workspace loop (exit code ${String(result.exitCode)}). ${reason}`,
       { details: { exitCode: result.exitCode } },
     );
   }
