@@ -46,7 +46,7 @@
     "@opencode/client": "2.4.1",
     "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
     "@pablozaiden/webapp": "github:PabloZaiden/webapp#ce17d978b8f66b8177db496fb581487d29dd1bd0",
-    "@peculiar/x509": "2.2.0",
+    "@peculiar/x509": "3.1.0",
     "@tailwindcss/typography": "0.5.20",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/addon-webgl": "0.19.0",
