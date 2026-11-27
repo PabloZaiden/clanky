@@ -12,7 +12,7 @@
         "@modelcontextprotocol/server": "2.4.0",
         "@monaco-editor/react": "4.7.0",
         "@noble/hashes": "2.4.0",
-        "@opencode/client": "2.3.2",
+        "@opencode/client": "2.4.1",
         "@pablozaiden/installer": "github:PabloZaiden/installer#a60b4b71e8add6dcdf1aa89f71f132b742c326e7",
         "@pablozaiden/webapp": "github:PabloZaiden/webapp#ce17d978b8f66b8177db496fb581487d29dd1bd0",
         "@peculiar/x509": "2.2.0",
@@ -61,13 +61,13 @@
 
     "@anthropic-ai/claude-agent-sdk-darwin-x64": ["@anthropic-ai/claude-agent-sdk-darwin-x64@0.3.330", "", { "os": "darwin", "cpu": "x64" }, "sha512-woe+f9qeZYWML5fACibNyth0xMDf22riNRNDryIYuhdteh7IoWrK6zC31cC2MrZRoqDZcPVtfOLND79+iZbrLA=="],
 
-    "@anthropic-ai/claude-agent-sdk-linux-arm64": ["@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.330", "", { "os": "linux", "cpu": "arm64", "libc": "glibc" }, "sha512-2Q+kfzaoTvJv1rsyu+iR4UHDZ3nxiOfdXISk+2ydQShU9DqXNlgQAt3BdJMh0Yx4MrxB66TMphVvVQeRslwwhA=="],
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": ["@anthropic-ai/claude-agent-sdk-linux-arm64@0.3.330", "", { "os": "linux", "cpu": "arm64" }, "sha512-2Q+kfzaoTvJv1rsyu+iR4UHDZ3nxiOfdXISk+2ydQShU9DqXNlgQAt3BdJMh0Yx4MrxB66TMphVvVQeRslwwhA=="],
 
-    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": ["@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.330", "", { "os": "linux", "cpu": "arm64", "libc": "musl" }, "sha512-fXmuAEegw31v+kiBd51yn7RVhjs7Rz2lnhfx/+XJXqt5lyqR2v7Ul/U/9r1CQZKuIw8M3ms9jQqGpmKbgKndqQ=="],
+    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": ["@anthropic-ai/claude-agent-sdk-linux-arm64-musl@0.3.330", "", { "os": "linux", "cpu": "arm64" }, "sha512-fXmuAEegw31v+kiBd51yn7RVhjs7Rz2lnhfx/+XJXqt5lyqR2v7Ul/U/9r1CQZKuIw8M3ms9jQqGpmKbgKndqQ=="],
 
-    "@anthropic-ai/claude-agent-sdk-linux-x64": ["@anthropic-ai/claude-agent-sdk-linux-x64@0.3.330", "", { "os": "linux", "cpu": "x64", "libc": "glibc" }, "sha512-9w4uMdA3vNZXocwOUhivOGotXoRDxN/C/xPMkZMY9WPpKLAlj8upMZskNgPjQKlVRXhxPfNagcBijGPUH4WepA=="],
+    "@anthropic-ai/claude-agent-sdk-linux-x64": ["@anthropic-ai/claude-agent-sdk-linux-x64@0.3.330", "", { "os": "linux", "cpu": "x64" }, "sha512-9w4uMdA3vNZXocwOUhivOGotXoRDxN/C/xPMkZMY9WPpKLAlj8upMZskNgPjQKlVRXhxPfNagcBijGPUH4WepA=="],
 
-    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": ["@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.330", "", { "os": "linux", "cpu": "x64", "libc": "musl" }, "sha512-kooZMdp6tFwNFkDXbGoNTZMgFcPQfJVfG+gZ2qAdkk11S6MFts9ybHRLQmzUK3VrqlahH7T9fmI2mNfzYgOXkw=="],
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": ["@anthropic-ai/claude-agent-sdk-linux-x64-musl@0.3.330", "", { "os": "linux", "cpu": "x64" }, "sha512-kooZMdp6tFwNFkDXbGoNTZMgFcPQfJVfG+gZ2qAdkk11S6MFts9ybHRLQmzUK3VrqlahH7T9fmI2mNfzYgOXkw=="],
 
     "@anthropic-ai/claude-agent-sdk-win32-arm64": ["@anthropic-ai/claude-agent-sdk-win32-arm64@0.3.330", "", { "os": "win32", "cpu": "arm64" }, "sha512-6jscch7vk/XBSn7mm1i6zwTeiz05q98nKrQ3HdTavQEDGvXycMcB/QxIdMrs3vrdNEjWuoxwrL1qlT1lOyAWLg=="],
 
@@ -171,11 +171,11 @@
 
     "@noble/hashes": ["@noble/hashes@2.4.0", "", {}, "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="],
 
-    "@opencode/client": ["@opencode/client@2.3.2", "", { "dependencies": { "@opencode/protocol": "2.3.2", "@opencode/schema": "2.3.2" }, "peerDependencies": { "effect": "4.1.0", "solid-js": ">=1.9.0" }, "optionalPeers": ["effect", "solid-js"] }, "sha512-zwlR1Q0MQxpLJU4tILaaNyHrexNQpTbquy4Lv4i5lwkSba5MMuhK0tsPmGhyLIrqAyY+sY1qI75dOzOpsCJK7Q=="],
+    "@opencode/client": ["@opencode/client@2.4.1", "", { "dependencies": { "@opencode/protocol": "2.4.1", "@opencode/schema": "2.4.1" }, "peerDependencies": { "effect": "4.1.0", "solid-js": ">=1.9.0" }, "optionalPeers": ["effect", "solid-js"] }, "sha512-VKMsNqK8p8EplzwhS3rKBtnBR08Xiz76r6yJ/eZ/7hNF5CTdvWVEjVKZB6dTp5CJ/fyGJBaVPtSPiBaNmhWU+g=="],
 
-    "@opencode/protocol": ["@opencode/protocol@2.3.2", "", { "dependencies": { "@opencode/schema": "2.3.2", "effect": "4.1.0" } }, "sha512-AEb1DZeWYrCVm+g2OUPWBLskCzGr4sXYj59Do8PzTHFb4a6jrDL0wN7kqYq65NrXGOW32alwxlnMHxJSjAfJ+w=="],
+    "@opencode/protocol": ["@opencode/protocol@2.4.1", "", { "dependencies": { "@opencode/schema": "2.4.1", "effect": "4.1.0" } }, "sha512-RYG7ZTmKMVQZifntclOzSFr+WoukftY6h46niMS1k1YJHa8PqqLPlZuXYVv3dcjWexyOTKnMrOLdNP1Fx/nifQ=="],
 
-    "@opencode/schema": ["@opencode/schema@2.3.2", "", { "dependencies": { "@standard-schema/spec": "1.1.0", "effect": "4.1.0" } }, "sha512-9PqnLzPNV0QTG3HrRHTVjVEQ2Hv+zcprM6QvwxNVdQ3RUTmtdpmUD6/0y0NQnHFzHwI3hpnkNCIstjw9TVsJcg=="],
+    "@opencode/schema": ["@opencode/schema@2.4.1", "", { "dependencies": { "@standard-schema/spec": "1.1.0", "effect": "4.1.0" } }, "sha512-lYkxvxAEbsJEf56o3P8C5ukTThhFRYqJuSGqsGr6QV9mmRxDyhI36ExuuMirXKoa3vmZOeU9tEm8U6Mp5rSnvw=="],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.10.0", "", {}, "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ=="],
 
