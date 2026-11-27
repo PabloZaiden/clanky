@@ -22,6 +22,7 @@ import { useSidebarPinProvider } from "@/hooks/useSidebarPinProvider";
 import { AppearanceProvider } from "./appearance-context";
 import { CLANKY_REALTIME_RESOURCES } from "@/shared/realtime";
 import { PerformanceStatsPanel } from "./performance-stats-panel";
+import { CLANKY_VERSION } from "../../version";
 
 function pagePath(path: string): string {
   return path.replace(/\/+$/, "") || "/";
@@ -108,11 +109,11 @@ export const ClankyRoot = forwardRef<WebAppRootController, WebAppRootProps>(func
   const { config, external, refresh } = useWebAppConfig();
   const theme = useAccountTheme();
   const pins = useSidebarPinProvider();
-  const version = getWebAppClientVersion() ?? props.version ?? config?.version ?? "";
+  const uiVersion = getWebAppClientVersion();
   return <WebAppRoot
     {...props}
     ref={controllerRef}
-    version={version}
+    version={uiVersion ?? props.version ?? config?.version ?? ""}
     theme={theme}
     sidebar={{
       ...props.sidebar,
@@ -128,7 +129,7 @@ export const ClankyRoot = forwardRef<WebAppRootController, WebAppRootProps>(func
         config={config}
         external={external}
         appName={props.appName}
-        version={version}
+        uiVersion={uiVersion ?? CLANKY_VERSION}
         refresh={refresh}
         customSections={props.settings?.sections ?? []}
         route={route}
