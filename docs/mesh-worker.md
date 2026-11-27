@@ -776,8 +776,16 @@ Use `--no-start` when installation should register the service without starting
 it immediately. The service account needs access to Git, the selected provider
 runtime, the workspace directory, and any other tools used by agents.
 
-On Linux, installation creates systemd services. It loads default SSH private
-keys if present, but starts the worker even when the SSH agent has no keys.
+On Linux, installation creates system-wide systemd services, but the worker
+process runs as the worker account. Status queries do not need `sudo`, and the
+worker can update its binary without elevation if its installation directory is
+writable. Restarting the unit requires authorization from the system manager
+or permission to run `sudo systemctl restart clanky-worker.service`. For
+unattended maintenance, grant only the needed restart permission to the worker
+account; the job cannot answer password prompts.
+
+The Linux installation loads default SSH private keys if present, but starts
+the worker even when the SSH agent has no keys.
 On macOS, it installs a per-user LaunchAgent; the worker can request
 Accessibility, Screen Recording, and Files and Folders permissions when those
 capabilities are used.

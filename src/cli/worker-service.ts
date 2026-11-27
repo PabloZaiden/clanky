@@ -113,7 +113,7 @@ export interface WorkerServiceProcessResult {
 export type WorkerServiceProcessRunner = (
   command: string,
   args: readonly string[],
-  options?: { inheritOutput?: boolean },
+  options?: { inheritOutput?: boolean; env?: NodeJS.ProcessEnv },
 ) => Promise<WorkerServiceProcessResult>;
 
 type ProcessResult = WorkerServiceProcessResult;
@@ -515,10 +515,11 @@ export function renderSystemdUnit(configuration: WorkerServiceConfiguration): st
 async function defaultProcessRunner(
   command: string,
   args: readonly string[],
-  options?: { inheritOutput?: boolean },
+  options?: Parameters<ProcessRunner>[2],
 ): Promise<ProcessResult> {
   if (options?.inheritOutput) {
     const process = Bun.spawn([command, ...args], {
+      env: options.env,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -530,6 +531,7 @@ async function defaultProcessRunner(
     };
   }
   const process = Bun.spawn([command, ...args], {
+    env: options?.env,
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",
@@ -877,16 +879,37 @@ function assertSystemctlStatusResult(
   result: ProcessResult,
   args: readonly string[],
 ): void {
-  if (
-    (result.exitCode === 0 ||
-      result.exitCode === 1 ||
-      result.exitCode === 3 ||
-      result.exitCode === 4) &&
-    !/(?:sudo:|permission denied|command not found)/i.test(result.stderr)
-  ) {
+  const unavailable = /access denied|permission denied|authentication required|command not found|failed to connect to (?:the )?bus|system has not been booted/i;
+  if ([0, 1, 3, 4].includes(result.exitCode) && !unavailable.test(result.stderr)) {
     return;
   }
-  throw commandFailure(result, "sudo", systemctlArgs(args));
+  throw commandFailure(result, "systemctl", args);
+}
+
+async function restartLinuxWorkerService(
+  label: string,
+  runner: ProcessRunner,
+): Promise<void> {
+  const args = ["--no-ask-password", "restart", label];
+  const result = await runner("systemctl", args, {
+    env: { ...process.env, LC_ALL: "C", SYSTEMD_COLORS: "0" },
+  });
+  if (result.exitCode === 0) return;
+
+  // Only an authorization rejection establishes that systemd did not queue the restart.
+  const failurePrefix = `Failed to restart ${label}: `;
+  const denied = result.stderr.split("\n").some((line) => {
+    const reason = line.trim().replace(/\.$/, "");
+    return reason === `${failurePrefix}Access denied`
+      || reason === `${failurePrefix}Interactive authentication required`;
+  });
+  if (!denied) {
+    throw commandFailure(result, "systemctl", args);
+  }
+  await runRequired(runner, "sudo", [
+    ...(process.stdin.isTTY ? [] : ["-n"]),
+    ...systemctlArgs(["restart", label]),
+  ]);
 }
 
 async function stopLinuxService(
@@ -1008,27 +1031,27 @@ export async function getWorkerServiceStatus(
       path: paths.servicePath,
     };
   }
-  const active = await runSystemctl(runner, ["is-active", paths.label]);
-  const enabled = await runSystemctl(runner, ["is-enabled", paths.label]);
+  const active = await runner("systemctl", ["is-active", paths.label]);
+  const enabled = await runner("systemctl", ["is-enabled", paths.label]);
   assertSystemctlStatusResult(active, ["is-active", paths.label]);
   assertSystemctlStatusResult(enabled, ["is-enabled", paths.label]);
   const sshAgentActive = sshAgentPaths
-    ? await runSystemctl(runner, ["is-active", sshAgentPaths.label])
+    ? await runner("systemctl", ["is-active", sshAgentPaths.label])
     : undefined;
   const sshAgentEnabled = sshAgentPaths
-    ? await runSystemctl(runner, ["is-enabled", sshAgentPaths.label])
+    ? await runner("systemctl", ["is-enabled", sshAgentPaths.label])
     : undefined;
   const sshAgentRelayActive = sshAgentPaths
-    ? await runSystemctl(runner, ["is-active", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
+    ? await runner("systemctl", ["is-active", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
     : undefined;
   const sshAgentRelayEnabled = sshAgentPaths
-    ? await runSystemctl(runner, ["is-enabled", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
+    ? await runner("systemctl", ["is-enabled", LINUX_SSH_AGENT_RELAY_SERVICE_UNIT_NAME])
     : undefined;
   const sshAgentRelaySocketActive = sshAgentPaths
-    ? await runSystemctl(runner, ["is-active", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
+    ? await runner("systemctl", ["is-active", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
     : undefined;
   const sshAgentRelaySocketEnabled = sshAgentPaths
-    ? await runSystemctl(runner, ["is-enabled", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
+    ? await runner("systemctl", ["is-enabled", LINUX_SSH_AGENT_RELAY_SOCKET_UNIT_NAME])
     : undefined;
   const sshAgentStatus = sshAgentPaths
     && sshAgentActive
@@ -1174,6 +1197,8 @@ async function runWorkerServiceOperation(
   }
   if (platform === "darwin") {
     await runMacWorkerServiceOperation(command.operation, paths, runner);
+  } else if (command.operation === "restart") {
+    await restartLinuxWorkerService(paths.label, runner);
   } else {
     await assertSystemctlSuccess(runner, [command.operation, paths.label]);
   }
